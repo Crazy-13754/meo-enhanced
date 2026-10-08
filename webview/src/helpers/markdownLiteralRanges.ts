@@ -12,6 +12,10 @@ export function collectMarkdownLiteralRanges(state: EditorState, tree: Tree): re
   const ranges: SourceRange[] = [];
   const codeTags: Array<{ from: number; to: number; name: string }> = [];
   tree.iterate({ enter(node) {
+    if (node.name === 'InlineHTMLCode') {
+      ranges.push({ from: node.from, to: node.to, htmlCode: { from: node.node.firstChild!.to, to: node.node.lastChild!.from } });
+      return false;
+    }
     if (literalNodes.has(node.name)) {
       ranges.push({ from: node.from, to: node.to, ...(node.name === 'Subscript' || node.name === 'Superscript' ? { script: true } : {}) });
       return false;

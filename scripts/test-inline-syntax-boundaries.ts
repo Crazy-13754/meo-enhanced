@@ -18,6 +18,7 @@ for (const fixture of inlineSyntaxBoundaryFixtures) {
   for (const result of results) {
     try {
       const targets: InlineBoundaryStyle[][] = [];
+      const witnesses = (fixture.witnesses ?? []).map(witness => ({ ...witness, actual: [] as InlineBoundaryStyle[][] }));
       const links: string[] = [];
       let text = '', mathCount = 0;
       const visit = (nodes: readonly ChildNode[], styles: InlineBoundaryStyle[] = []) => {
@@ -25,6 +26,7 @@ for (const fixture of inlineSyntaxBoundaryFixtures) {
           if (node.type === 'text') {
             text += node.data;
             if (node.data.includes('TARGET')) targets.push([...new Set(styles)].sort());
+            for (const witness of witnesses) if (node.data.includes(witness.text)) witness.actual.push([...new Set(styles)].sort());
           } else if ('children' in node) {
             if ('attribs' in node) {
               if (/\bmeo-export-math\b/.test(node.attribs.class ?? '')) { mathCount += 1; continue; }
@@ -37,11 +39,22 @@ for (const fixture of inlineSyntaxBoundaryFixtures) {
       };
       visit(parseDocument(result.html).children);
       assert.deepEqual(targets, [[...fixture.styles].sort()], 'target formatting');
+      for (const witness of witnesses) assert.deepEqual(witness.actual, [[...witness.styles].sort()], `${witness.text} formatting`);
       if (fixture.literal) assert.ok(text.includes(fixture.literal), `missing literal ${fixture.literal}`);
       if (fixture.mathCount !== undefined) assert.equal(mathCount, fixture.mathCount, 'math count');
       if (fixture.href) assert.deepEqual(links, [fixture.href], 'complete, unnested link');
     } catch (error) { failures.push(`${fixture.name}/${result.name}: ${String(error)}`); }
   }
+}
+for (const fixture of inlineSyntaxBoundaryFixtures.filter(fixture => fixture.name.startsWith('nested-') || fixture.name.startsWith('same-') || fixture.name === 'triple-punctuation')) {
+  const markdown = fixture.markdown.replace(/^# /, '');
+  const state = EditorState.create({ doc: `# ${markdown}`, extensions: [editorMarkdownLanguage] });
+  const heading = extractHeadings(state)[0]!;
+  try {
+    const target = heading.inlineSegments?.find(segment => segment.text.includes('TARGET'))!;
+    assert.deepEqual(['emphasis', 'strong', 'strikethrough', 'highlight'].filter(style => target?.[style as keyof typeof target] === true).sort(), fixture.styles.filter(style => style !== 'code').sort());
+    if (fixture.literal) assert.ok(heading.text.includes(fixture.literal), 'outline nested text');
+  } catch (error) { failures.push(`${fixture.name}/outline: ${String(error)}`); }
 }
 for (const marker of ['*', '**', '~~', '==']) {
   const text = `(TARGET${marker})(b${marker})`;

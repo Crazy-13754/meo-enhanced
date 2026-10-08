@@ -1,13 +1,12 @@
 import type MarkdownIt from 'markdown-it';
-import { isExactInlineStyleMarker } from '../shared/punctuationInlineStyles';
+import { inlineStyleDelimiter } from '../shared/punctuationInlineStyles';
 
 const HIGHLIGHT_MARKER_CODE = 0x3D;
 
 function tokenize(state: any, silent: boolean): boolean {
-  if (silent || state.src.charCodeAt(state.pos) !== HIGHLIGHT_MARKER_CODE || !isExactInlineStyleMarker(state.src, state.pos, '==')) return false;
-
-  const scanned = state.scanDelims(state.pos, true);
-  if (scanned.length !== 2) return false;
+  if (silent || state.src.charCodeAt(state.pos) !== HIGHLIGHT_MARKER_CODE) return false;
+  const delimiter = inlineStyleDelimiter(state.src, state.pos, state.posMax);
+  if (!delimiter) return false;
 
   const markerText = state.push('text', '', 0);
   markerText.content = '==';
@@ -16,8 +15,8 @@ function tokenize(state: any, silent: boolean): boolean {
     length: 0,
     ['token']: state.tokens.length - 1,
     end: -1,
-    open: scanned.can_open,
-    close: scanned.can_close
+    open: delimiter.canOpen,
+    close: delimiter.canClose
   });
   state.pos += 2;
   return true;

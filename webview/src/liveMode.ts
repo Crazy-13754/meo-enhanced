@@ -12,6 +12,7 @@ import {
   type DecorationSet
 } from '@codemirror/view';
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
+import type { MarkdownParser } from '@lezer/markdown';
 import { createElement, AlertCircle, Code2, Delete } from 'lucide';
 import {
   resolveCodeLanguage,
@@ -30,6 +31,8 @@ import { getImagePresentationFactory } from './editor/imagePresentation';
 import { liveHighlightStyle, sourceMarkdownHighlightProps } from './theme';
 import { highlightMarkdownExtension } from './helpers/highlightSyntax';
 import { inlineScriptMarkdownExtension } from './helpers/inlineStyles';
+import { createPunctuationInlineStyleExtension } from './helpers/punctuationSyntax';
+import { markdownLiteralSyntaxExtension } from './helpers/markdownLiteralSyntax';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
 import { currentSyntaxTree, getFencedCodeInfo, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
 import { detailsBlockLiveExtensions, getDetailsBlocks, toggleDetailsBlock } from './helpers/detailsBlocks';
@@ -93,7 +96,6 @@ import {
   setMermaidBlockModeEffect,
   setMermaidSearchRevealEffect
 } from './helpers/mermaidEditing';
-import { collectPunctuationClosingInlineStyles, type ParsedInlineStyleRange } from '../../src/shared/punctuationInlineStyles';
 import { collectMarkdownLiteralRanges } from './helpers/markdownLiteralRanges';
 import { collectHexColorRangesFromText } from '../../src/shared/hexColorSwatches';
 import { shikiRefreshEffect } from './helpers/shikiDecorations';
@@ -1566,58 +1568,6 @@ function addInlineMarkerRange(builder: DecorationCollector, activeLines: Set<num
   }
 }
 
-function addPunctuationClosingInlineStyleDecorations(
-  builder: DecorationCollector,
-  state: EditorState,
-  activeLines: Set<number>,
-  parsedStyleRanges: ReadonlyArray<ParsedInlineStyleRange>,
-  codeBlockLines: Set<number> | null = null,
-  blockedRanges: ReadonlyArray<SourceRange> = [],
-  frontmatter: FrontmatterInfo | null = null,
-  literalRanges: ReadonlyArray<SourceRange> = []
-): void {
-  const decorationsByNodeName = {
-    StrongEmphasis: { content: inlineStyleDecos.strong, inactive: strongMarkerDeco, active: activeStrongMarkerDeco },
-    Strikethrough: { content: inlineStyleDecos.strike, inactive: strikeMarkerDeco, active: activeStrikeMarkerDeco },
-    Highlight: {
-      content: inlineStyleDecos.highlight,
-      inactive: highlightMarkerDeco,
-      active: activeHighlightMarkerDeco
-    },
-    Emphasis: { content: inlineStyleDecos.em, inactive: emMarkerDeco, active: activeEmMarkerDeco }
-  };
-
-  for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
-    if (codeBlockLines?.has(lineNo)) continue;
-    const line = state.doc.line(lineNo);
-    if (isInsideFrontmatterContent(frontmatter, line.from)) continue;
-    const excluded = [...literalRanges, ...blockedRanges].filter(range => line.from < range.to && line.to > range.from);
-    for (const range of collectPunctuationClosingInlineStyles(line.text, line.from, parsedStyleRanges, excluded)) {
-      const style = decorationsByNodeName[range.nodeName];
-      addRange(builder, range.contentFrom, range.contentTo, style.content);
-      addInlineMarkerRange(
-        builder,
-        activeLines,
-        lineNo,
-        range.from,
-        range.contentFrom,
-        style.inactive,
-        style.active
-      );
-      addInlineMarkerRange(
-        builder,
-        activeLines,
-        lineNo,
-        range.closeFrom,
-        range.to,
-        style.inactive,
-        style.active,
-        true
-      );
-    }
-  }
-}
-
 function collectActiveLines(state: EditorState): Set<number> {
   const pointerSelection = state.field(livePointerSelectionActiveField);
   if (state.field(liveDocumentIdleField)) {
@@ -2043,14 +1993,6 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
   const tree = resolvedSyntaxTree(state);
   const footnotes = parseFootnotes(state);
   const detailsBlocks = getDetailsBlocks(state, tree);
-  const parsedInlineStyleRanges: ParsedInlineStyleRange[] = [];
-  tree.iterate({
-    enter(node: SyntaxNodeRef) {
-      if (node.name === 'StrongEmphasis' || node.name === 'Emphasis' || node.name === 'Strikethrough' || node.name === 'Highlight' || node.name === 'InlineCode') {
-        parsedInlineStyleRanges.push({ from: node.from, to: node.to, nodeName: node.name });
-      }
-    }
-  });
   const codeBlockLines = collectCodeBlockLines(state, tree);
   const renderedTableRanges = collectRenderedTableRanges(
     state,
@@ -2571,16 +2513,6 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
 
   addFallbackTableDecorations(ranges, state, tree, parsedTableRanges, diagnostics);
   addRawFileUrlDecorations(ranges, state, tree, activeLines, frontmatter);
-  addPunctuationClosingInlineStyleDecorations(
-    ranges,
-    state,
-    activeLines,
-    parsedInlineStyleRanges,
-    codeBlockLines,
-    [...renderedTableRanges, ...mathRanges],
-    frontmatter,
-    collectMarkdownLiteralRanges(state, tree).filter(range => !range.script || !mathRanges.some(math => range.from >= math.from && range.from < math.to))
-  );
   // Source prose and rendered blocks consume the same task-marker width delta.
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     if (codeBlockLines.has(lineNo)) continue;
@@ -3932,11 +3864,12 @@ const styledLineNumberMarkerField = StateField.define<RangeSet<GutterMarker>>({
 
 // Both modes edit the same grammar. Stable language identity lets CodeMirror
 // retain its incremental parse when only presentation extensions change.
+const inlineMarkdownExtensions = [footnoteMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, markdownLiteralSyntaxExtension];
 export const editorMarkdownLanguage = markdown({
   base: markdownLanguage,
   addKeymap: false,
   codeLanguages: resolveCodeLanguage,
-  extensions: [footnoteMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension,
+  extensions: [...inlineMarkdownExtensions, createPunctuationInlineStyleExtension((markdownLanguage.parser as MarkdownParser).configure(inlineMarkdownExtensions)),
     { props: [sourceMarkdownHighlightProps] }, { remove: ['SetextHeading', 'Emoji'] }]
 });
 

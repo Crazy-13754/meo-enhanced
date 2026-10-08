@@ -4,18 +4,10 @@ import type { SyntaxNodeRef } from '@lezer/common';
 import { tags } from '@lezer/highlight';
 import type { DelimiterType, MarkdownConfig } from '@lezer/markdown';
 import { currentSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
-import { isExactInlineStyleMarker } from '../../../src/shared/punctuationInlineStyles';
+import { inlineStyleDelimiter } from '../../../src/shared/punctuationInlineStyles';
 
 const HIGHLIGHT_MARKER_CODE = 61;
 const highlightDelimiter: DelimiterType = { resolve: 'Highlight', mark: 'HighlightMark' };
-
-function isWhitespace(char: string): boolean {
-  return /\s|^$/.test(char);
-}
-
-function isPunctuation(char: string): boolean {
-  return char !== '' && /[\p{P}\p{S}]/u.test(char);
-}
 
 export const highlightMarkdownExtension: MarkdownConfig = {
   defineNodes: [
@@ -26,22 +18,9 @@ export const highlightMarkdownExtension: MarkdownConfig = {
     name: 'Highlight',
     after: 'Emphasis',
     parse(context, next, pos) {
-      if (
-        next !== HIGHLIGHT_MARKER_CODE ||
-        !isExactInlineStyleMarker(context.text, pos - context.offset, '==')
-      ) {
-        return -1;
-      }
-
-      const before = context.slice(pos - 1, pos);
-      const after = context.slice(pos + 2, pos + 3);
-      const whitespaceBefore = isWhitespace(before);
-      const whitespaceAfter = isWhitespace(after);
-      const punctuationBefore = isPunctuation(before);
-      const punctuationAfter = isPunctuation(after);
-      const canOpen = !whitespaceAfter && (!punctuationAfter || whitespaceBefore || punctuationBefore);
-      const canClose = !whitespaceBefore && (!punctuationBefore || whitespaceAfter || punctuationAfter);
-      return context.addDelimiter(highlightDelimiter, pos, pos + 2, canOpen, canClose);
+      if (next !== HIGHLIGHT_MARKER_CODE) return -1;
+      const delimiter = inlineStyleDelimiter(context.text, pos - context.offset);
+      return delimiter ? context.addDelimiter(highlightDelimiter, pos, pos + 2, delimiter.canOpen, delimiter.canClose) : -1;
     }
   }]
 };

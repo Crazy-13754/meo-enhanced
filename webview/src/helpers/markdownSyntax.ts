@@ -1,8 +1,6 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { EditorState, type Transaction } from '@codemirror/state';
 import type { Tree } from '@lezer/common';
-import { collectPunctuationClosingInlineStyles, type InlineStyleNodeName } from '../../../src/shared/punctuationInlineStyles';
-import { collectMarkdownLiteralRanges } from './markdownLiteralRanges';
 
 /** Returns CodeMirror's published, possibly partial tree without extending the parse synchronously. */
 export function currentSyntaxTree(state: EditorState): ReturnType<typeof syntaxTree> {
@@ -74,7 +72,7 @@ const detailsOpenTagPattern = /<details\b[^>]*>/i;
 const detailsCloseTagPattern = /<\/details\s*>/i;
 const summaryTagPattern = /<summary\b[^>]*>([\s\S]*?)<\/summary\s*>/i;
 
-function extractHeadingInlineSegments(state: EditorState, headingNode: any, literalRanges: readonly { from: number; to: number }[]): HeadingInlineSegment[] {
+function extractHeadingInlineSegments(state: EditorState, headingNode: any): HeadingInlineSegment[] {
   const raw = state.doc.sliceString(headingNode.from, headingNode.to);
   const prefixLength = raw.match(/^#{1,6}\s+/)?.[0].length ?? 0;
   const suffixLength = raw.match(/\s+#+\s*$/)?.[0].length ?? 0;
@@ -85,14 +83,13 @@ function extractHeadingInlineSegments(state: EditorState, headingNode: any, lite
     from: number;
     to: number;
     style: 'strong' | 'emphasis' | 'strikethrough' | 'highlight';
-    nodeName: InlineStyleNodeName;
   }> = [];
 
   const visit = (node: any, parentName = '') => {
-    if (node.name === 'StrongEmphasis') styleRanges.push({ from: node.from, to: node.to, style: 'strong', nodeName: node.name });
-    else if (node.name === 'Emphasis') styleRanges.push({ from: node.from, to: node.to, style: 'emphasis', nodeName: node.name });
-    else if (node.name === 'Strikethrough') styleRanges.push({ from: node.from, to: node.to, style: 'strikethrough', nodeName: node.name });
-    else if (node.name === 'Highlight') styleRanges.push({ from: node.from, to: node.to, style: 'highlight', nodeName: node.name });
+    if (node.name === 'StrongEmphasis') styleRanges.push({ from: node.from, to: node.to, style: 'strong' });
+    else if (node.name === 'Emphasis') styleRanges.push({ from: node.from, to: node.to, style: 'emphasis' });
+    else if (node.name === 'Strikethrough') styleRanges.push({ from: node.from, to: node.to, style: 'strikethrough' });
+    else if (node.name === 'Highlight') styleRanges.push({ from: node.from, to: node.to, style: 'highlight' });
     else if (
       node.name === 'EmphasisMark' ||
       node.name === 'StrikethroughMark' ||
@@ -107,25 +104,6 @@ function extractHeadingInlineSegments(state: EditorState, headingNode: any, lite
     for (let child = node.firstChild; child; child = child.nextSibling) visit(child, node.name);
   };
   visit(headingNode);
-
-  const fallbackStyleByNodeName = {
-    StrongEmphasis: 'strong',
-    Emphasis: 'emphasis',
-    Strikethrough: 'strikethrough',
-    Highlight: 'highlight'
-  } as const;
-  for (const range of collectPunctuationClosingInlineStyles(raw, headingNode.from, styleRanges, literalRanges)) {
-    styleRanges.push({
-      from: range.from,
-      to: range.to,
-      style: fallbackStyleByNodeName[range.nodeName],
-      nodeName: range.nodeName
-    });
-    hiddenRanges.push(
-      { from: range.from, to: range.contentFrom },
-      { from: range.closeFrom, to: range.to }
-    );
-  }
 
   const boundaries = new Set([contentFrom, contentTo]);
   for (const range of [...hiddenRanges, ...styleRanges]) {
@@ -152,14 +130,13 @@ function extractHeadingInlineSegments(state: EditorState, headingNode: any, lite
 export function extractHeadings(state: EditorState): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
   const tree = resolvedSyntaxTree(state);
-  const literalRanges = collectMarkdownLiteralRanges(state, tree);
 
   tree.iterate({
     enter(node: any) {
       const headingLevel = headingLevelFromName(node.name);
       if (headingLevel !== null) {
         const line = state.doc.lineAt(node.from);
-        const inlineSegments = extractHeadingInlineSegments(state, node.node, literalRanges);
+        const inlineSegments = extractHeadingInlineSegments(state, node.node);
         const text = inlineSegments.map((segment) => segment.text).join('').trim();
         headings.push({
           level: headingLevel,

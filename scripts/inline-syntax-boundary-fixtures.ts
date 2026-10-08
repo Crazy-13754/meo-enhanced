@@ -7,6 +7,7 @@ export type InlineBoundaryFixture = {
   literal?: string;
   mathCount?: number;
   href?: string;
+  witnesses?: readonly { text: string; styles: readonly InlineBoundaryStyle[] }[];
 };
 
 export const inlineSyntaxBoundaryFixtures: readonly InlineBoundaryFixture[] = [
@@ -49,6 +50,40 @@ export const inlineSyntaxBoundaryFixtures: readonly InlineBoundaryFixture[] = [
   { name: 'html-code-stars', markdown: '<code>*TARGET*</code>', styles: ['code'], literal: '*TARGET*' },
   { name: 'triple-highlight', markdown: 'x===TARGET===y', styles: [], literal: 'x===TARGET===y' },
   { name: 'normal-nesting', markdown: '***TARGET***', styles: ['strong', 'emphasis'] },
+  ...(['*', '**', '~~', '=='] as const).flatMap((outer, outerIndex) =>
+    (['*', '**', '~~', '=='] as const).filter(inner => inner !== outer).map(inner => {
+      const innerIndex = ['*', '**', '~~', '=='].indexOf(inner);
+      const styles = ['emphasis', 'strong', 'strikethrough', 'highlight'] as const;
+      return { name: `nested-${outerIndex}-${innerIndex}`, markdown: `${outer}outer ${inner}TARGET：${inner}AFTER${outer} OUTSIDE`,
+        styles: [styles[outerIndex]!, styles[innerIndex]!], literal: 'outer TARGET：AFTER',
+        witnesses: [{ text: 'AFTER', styles: [styles[outerIndex]!] }, { text: 'OUTSIDE', styles: [] }] };
+    })),
+  { name: 'same-strong-nesting', markdown: '**outer **TARGET：**AFTER end** OUTSIDE', styles: ['strong'], literal: 'outer TARGET：AFTER end', witnesses: [{ text: 'OUTSIDE', styles: [] }] },
+  { name: 'same-emphasis-nesting', markdown: '*outer *TARGET：*AFTER end* OUTSIDE', styles: ['emphasis'], literal: 'outer TARGET：AFTER end', witnesses: [{ text: 'OUTSIDE', styles: [] }] },
+  { name: 'same-strike-nesting', markdown: '~~outer ~~TARGET：~~AFTER end~~ OUTSIDE', styles: ['strikethrough'], literal: 'outer TARGET：AFTER end', witnesses: [{ text: 'OUTSIDE', styles: [] }] },
+  { name: 'same-highlight-nesting', markdown: '==outer ==TARGET：==AFTER end== OUTSIDE', styles: ['highlight'], literal: 'outer TARGET：AFTER end', witnesses: [{ text: 'OUTSIDE', styles: [] }] },
+  { name: 'nested-three-levels', markdown: '*outer **inner ~~TARGET：~~AFTER end** tail* OUTSIDE', styles: ['emphasis', 'strong', 'strikethrough'], literal: 'outer inner TARGET：AFTER end tail', witnesses: [{ text: 'AFTER', styles: ['emphasis', 'strong'] }, { text: 'OUTSIDE', styles: [] }] },
+  { name: 'nested-triple-run', markdown: '***outer ~~TARGET：~~AFTER*** OUTSIDE', styles: ['strong', 'emphasis', 'strikethrough'], literal: 'outer TARGET：AFTER', witnesses: [{ text: 'AFTER', styles: ['strong', 'emphasis'] }, { text: 'OUTSIDE', styles: [] }] },
+  { name: 'triple-punctuation', markdown: '***TARGET：***OUTSIDE', styles: ['strong', 'emphasis'], witnesses: [{ text: 'OUTSIDE', styles: [] }] },
+  { name: 'adjacent-punctuation', markdown: '*FIRST*：*TARGET* OUTSIDE', styles: ['emphasis'], literal: 'FIRST：TARGET', witnesses: [{ text: 'FIRST', styles: ['emphasis'] }, { text: 'OUTSIDE', styles: [] }] },
+  { name: 'nested-link', markdown: '**outer [*TARGET：*AFTER](https://example.com) end** OUTSIDE', styles: ['strong', 'emphasis'], href: 'https://example.com', witnesses: [{ text: 'AFTER', styles: ['strong'] }, { text: 'OUTSIDE', styles: [] }] },
+  { name: 'link-scope', markdown: '[*TARGET：](https://example.com) AFTER* OUTSIDE', styles: [], literal: '*TARGET：', href: 'https://example.com', witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'math-delimiters-nested', markdown: '**outer *TARGET $a*b$：*AFTER** OUTSIDE', styles: ['strong', 'emphasis'], mathCount: 1, witnesses: [{ text: 'AFTER', styles: ['strong'] }, { text: 'OUTSIDE', styles: [] }] },
+  { name: 'html-code-delimiters-nested', markdown: '**outer *TARGET <code>a*b</code>：*AFTER** OUTSIDE', styles: ['strong', 'emphasis'], literal: 'a*b', witnesses: [{ text: 'AFTER', styles: ['strong'] }, { text: 'OUTSIDE', styles: [] }] },
+  { name: 'nested-heading', markdown: '# **outer *TARGET：*AFTER** OUTSIDE', styles: ['strong', 'emphasis'], literal: 'outer TARGET：AFTER', witnesses: [{ text: 'AFTER', styles: ['strong'] }, { text: 'OUTSIDE', styles: [] }] },
+  { name: 'crossing-emphasis-strike', markdown: '*TARGET ~~cross*AFTER~~ OUTSIDE', styles: ['emphasis'], literal: 'TARGET ~~crossAFTER~~', witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'crossing-strong-highlight', markdown: '**TARGET ==cross**AFTER== OUTSIDE', styles: ['strong'], literal: 'TARGET ==crossAFTER==', witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'unclosed-outer', markdown: '**outer *TARGET：*AFTER OUTSIDE', styles: ['emphasis'], literal: '**outer TARGET：AFTER', witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'unclosed-inner', markdown: '**outer ~~TARGET：AFTER end** OUTSIDE', styles: ['strong'], literal: 'outer ~~TARGET：AFTER end', witnesses: [{ text: 'OUTSIDE', styles: [] }] },
+  { name: 'multiline-style', markdown: '*TARGET\nline：*AFTER', styles: ['emphasis'], witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'paragraph-scope', markdown: '*TARGET：\n\nAFTER*', styles: [], literal: '*TARGET：', witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'escaped-style', markdown: '\\*TARGET：\\*AFTER', styles: [], literal: '*TARGET：*AFTER', witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'script-in-strong', markdown: '**outer ~*TARGET：*~AFTER** OUTSIDE', styles: ['strong', 'subscript'], literal: '*TARGET：*AFTER', witnesses: [{ text: 'AFTER', styles: ['strong'] }] },
+  { name: 'comment-in-strong', markdown: '**outer <!-- *TARGET：* --> AFTER** OUTSIDE', styles: ['strong'], literal: '*TARGET：*', witnesses: [{ text: 'AFTER', styles: ['strong'] }] },
+  { name: 'html-code-quoted-attribute', markdown: '**outer <code title=">">*TARGET：*</code>AFTER** OUTSIDE', styles: ['strong', 'code'], literal: '*TARGET：*', witnesses: [{ text: 'AFTER', styles: ['strong'] }] },
+  { name: 'reference-label-scope', markdown: '[*TARGET：][ref] AFTER*\n\n[ref]: https://example.com', styles: [], literal: '*TARGET：', witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'image-label-style', markdown: '**outer ![*ALT：*AFTER](https://example.com/image.png) TARGET** OUTSIDE', styles: ['strong'], witnesses: [{ text: 'OUTSIDE', styles: [] }] },
+  { name: 'table-style-nested', markdown: '| Header |\n| --- |\n| **outer *TARGET：*AFTER** OUTSIDE |', styles: ['strong', 'emphasis'], literal: 'outer TARGET：AFTER', witnesses: [{ text: 'AFTER', styles: ['strong'] }, { text: 'OUTSIDE', styles: [] }] },
   { name: 'link-label', markdown: '[*TARGET：*后续](https://example.com)', styles: ['emphasis'], href: 'https://example.com' },
   { name: 'normal-html', markdown: 'before <b>TARGET</b> after', styles: ['strong'] },
   ...(['*', '**', '~~', '=='] as const).map((marker, index) => ({

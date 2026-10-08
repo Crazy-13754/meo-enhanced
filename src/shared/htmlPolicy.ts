@@ -104,6 +104,21 @@ export interface HtmlTagToken {
   selfClosing: boolean;
 }
 
+/** A paired HTML code element owns its Markdown characters as literal content. */
+export function matchInlineHtmlCode(source: string, from: number, end = source.length): {
+  from: number; contentFrom: number; contentTo: number; to: number;
+} | null {
+  if (source.slice(from, from + 5).toLowerCase() !== '<code') return null;
+  const text = source.slice(from, end);
+  const open = /^<code(?:\s+[a-zA-Z:_][\w-.:]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*>/i.exec(text);
+  if (!open) return null;
+  const closing = /<\/code\s*>/i.exec(text.slice(open[0].length));
+  if (!closing) return null;
+  const contentFrom = from + open[0].length;
+  const contentTo = contentFrom + closing.index;
+  return { from, contentFrom, contentTo, to: contentTo + closing[0].length };
+}
+
 export function scanHtmlTags(source: string): HtmlTagToken[] {
   const tags: HtmlTagToken[] = [];
   let cursor = 0;

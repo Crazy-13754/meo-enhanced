@@ -16,13 +16,14 @@ async function settle(page: Page): Promise<void> {
   });
 }
 
-async function snapshot(page: Page, selector: string) {
-  return page.evaluate(selector => {
+async function snapshot(page: Page, selector: string, witnessTexts: readonly string[] = []) {
+  return page.evaluate(({ selector, witnessTexts }) => {
     const root = document.querySelector(selector)!;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const targets: string[][] = [];
     const targetElements: HTMLElement[] = [];
     const visibleText: string[] = [];
+    const witnesses = witnessTexts.map(text => ({ text, styles: [] as string[][] }));
     const selectors = {
       emphasis: '.meo-md-em, em, i', strong: '.meo-md-strong, strong, b',
       strikethrough: '.meo-md-strike, s, del', highlight: '.meo-md-highlight, mark',
@@ -41,14 +42,15 @@ async function snapshot(page: Page, selector: string) {
         targets.push(Object.entries(selectors).filter(([, css]) => element.closest(css)).map(([name]) => name).sort());
         targetElements.push(element);
       }
+      for (const witness of witnesses) if (text.includes(witness.text)) witness.styles.push(Object.entries(selectors).filter(([, css]) => element.closest(css)).map(([name]) => name).sort());
     }
     return {
-      targets, text: visibleText.join(''),
+      targets, witnesses, text: visibleText.join(''),
       visibleMarkers: Array.from(root.querySelectorAll('.meo-md-marker-active, .meo-md-code-marker-active')).filter(element => element.getBoundingClientRect().width > 0).length,
       links: targetElements.map(element => element.closest('a')?.getAttribute('href') ?? element.closest('[data-meo-link-href]')?.getAttribute('data-meo-link-href')).filter(Boolean),
       mathCount: root.querySelectorAll('.meo-md-math, .meo-export-math').length
     };
-  }, selector);
+  }, { selector, witnessTexts });
 }
 
 const failures: string[] = [];
@@ -86,13 +88,14 @@ async function main(): Promise<void> {
             }, doc.indexOf('TARGET') + 2);
             await settle(live);
           }
-          const sample = await snapshot(mode === 'preview' ? preview : live, mode === 'preview' ? 'main' : '.cm-content');
+          const sample = await snapshot(mode === 'preview' ? preview : live, mode === 'preview' ? 'main' : '.cm-content', fixture.witnesses?.map(witness => witness.text));
           try {
             const expected = [...fixture.styles].sort();
             assert.deepEqual(sample.targets, [expected], 'target formatting');
+            for (const [index, witness] of (fixture.witnesses ?? []).entries()) assert.deepEqual(sample.witnesses[index]!.styles, [[...witness.styles].sort()], `${witness.text} formatting`);
             if (fixture.literal) {
               // Live can reveal escape slashes as source syntax; escaped tags must still stay literal.
-              const text = fixture.name === 'html-escaped-pair' && mode !== 'preview' ? sample.text.replace(/\\(?=[<>])/g, '') : sample.text;
+              const text = ['html-escaped-pair', 'escaped-style'].includes(fixture.name) && mode !== 'preview' ? sample.text.replace(/\\(?=[<>*])/g, '') : sample.text;
               assert.ok(text.includes(fixture.literal), `missing literal ${fixture.literal}: ${sample.text}`);
             }
             if (fixture.mathCount !== undefined) {
@@ -122,6 +125,23 @@ async function main(): Promise<void> {
           const committed = await snapshot(live, '.cm-content');
           assert.deepEqual(committed.targets, [[...fixture.styles].sort()], 'native table cell restores formatting');
           assert.equal(await live.evaluate(() => (window as any).boundaryEditor.view.state.doc.toString()), doc, 'table editing preserves the document');
+        }
+        if (fixture.name === 'nested-1-0') {
+          const closing = doc.indexOf('** OUTSIDE');
+          await live.evaluate(({ from, to }) => {
+            (window as any).boundaryEditor.view.dispatch({ selection: { anchor: from, head: to } });
+          }, { from: closing, to: closing + 2 });
+          await live.keyboard.press('Backspace');
+          await settle(live);
+          const invalidated = await snapshot(live, '.cm-content', ['AFTER']);
+          assert.deepEqual(invalidated.targets, [['emphasis']], 'removing outer close releases its style');
+          assert.deepEqual(invalidated.witnesses[0]!.styles, [[]], 'released style stays inside remaining markers');
+          await live.keyboard.down('Control');
+          await live.keyboard.press('z');
+          await live.keyboard.up('Control');
+          await settle(live);
+          assert.equal(await live.evaluate(() => (window as any).boundaryEditor.view.state.doc.toString()), doc, 'undo restores source');
+          assert.deepEqual((await snapshot(live, '.cm-content')).targets, [[...fixture.styles].sort()], 'undo restores nested styles');
         }
       }
       console.log(`Inline boundaries: ${theme}, ${inlineSyntaxBoundaryFixtures.length} fixtures checked.`);

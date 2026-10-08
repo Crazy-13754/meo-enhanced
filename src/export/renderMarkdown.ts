@@ -18,6 +18,7 @@ import { installPunctuationInlineTransform } from './punctuationInlineTransform'
 import { Info, Lightbulb, AlertCircle, AlertTriangle, XCircle } from 'lucide';
 import {
   getSupportedHtmlAttributes,
+  matchInlineHtmlCode,
   isSupportedHtmlSource,
   supportedHtmlTags
 } from '../shared/htmlPolicy';
@@ -421,10 +422,10 @@ function installSafeHtmlTransform(
 ): void {
   // HTML code contents are literal, including when another paragraph enables math rendering.
   md.inline.ruler.before('html_inline', 'meo_literal_html_code', (state, silent) => {
-    const match = /^<code\b[^>]*>[\s\S]*?<\/code\s*>/i.exec(state.src.slice(state.pos, state.posMax));
+    const match = matchInlineHtmlCode(state.src, state.pos, state.posMax);
     if (!match) return false;
-    if (!silent) state.push('html_inline', '', 0).content = match[0];
-    state.pos += match[0].length;
+    if (!silent) state.push('html_inline', '', 0).content = state.src.slice(state.pos, match.to);
+    state.pos = match.to;
     return true;
   });
   const allowedAttributes = Object.fromEntries(
