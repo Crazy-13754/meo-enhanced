@@ -93,7 +93,8 @@ import {
   setMermaidBlockModeEffect,
   setMermaidSearchRevealEffect
 } from './helpers/mermaidEditing';
-import { collectPunctuationClosingInlineStyles, type ParsedInlineStyleRange } from './helpers/inlineStyleFallback';
+import { collectPunctuationClosingInlineStyles, type ParsedInlineStyleRange } from '../../src/shared/punctuationInlineStyles';
+import { collectMarkdownLiteralRanges } from './helpers/markdownLiteralRanges';
 import { collectHexColorRangesFromText } from '../../src/shared/hexColorSwatches';
 import { shikiRefreshEffect } from './helpers/shikiDecorations';
 import { addColorSwatchDecoration, hexColorAdjustmentExtension } from './helpers/colorSwatches';
@@ -1572,7 +1573,8 @@ function addPunctuationClosingInlineStyleDecorations(
   parsedStyleRanges: ReadonlyArray<ParsedInlineStyleRange>,
   codeBlockLines: Set<number> | null = null,
   blockedRanges: ReadonlyArray<SourceRange> = [],
-  frontmatter: FrontmatterInfo | null = null
+  frontmatter: FrontmatterInfo | null = null,
+  literalRanges: ReadonlyArray<SourceRange> = []
 ): void {
   const decorationsByNodeName = {
     StrongEmphasis: { content: inlineStyleDecos.strong, inactive: strongMarkerDeco, active: activeStrongMarkerDeco },
@@ -1588,13 +1590,9 @@ function addPunctuationClosingInlineStyleDecorations(
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     if (codeBlockLines?.has(lineNo)) continue;
     const line = state.doc.line(lineNo);
-    if (
-      isInsideFrontmatterContent(frontmatter, line.from) ||
-      blockedRanges.some((range) => line.from < range.to && line.to > range.from)
-    ) {
-      continue;
-    }
-    for (const range of collectPunctuationClosingInlineStyles(line.text, line.from, parsedStyleRanges)) {
+    if (isInsideFrontmatterContent(frontmatter, line.from)) continue;
+    const excluded = [...literalRanges, ...blockedRanges].filter(range => line.from < range.to && line.to > range.from);
+    for (const range of collectPunctuationClosingInlineStyles(line.text, line.from, parsedStyleRanges, excluded)) {
       const style = decorationsByNodeName[range.nodeName];
       addRange(builder, range.contentFrom, range.contentTo, style.content);
       addInlineMarkerRange(
@@ -2078,11 +2076,20 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
   }
   addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter, codeBlockLines);
   const mathRanges = [...collectMathRanges(state, tree, renderedTableRanges, frontmatter), ...collectEmptyLatexMathEditingRanges(state)];
+  const literalRanges = collectMarkdownLiteralRanges(state, tree);
+  const htmlCodeBodies = literalRanges.flatMap(range => range.htmlCode ? [range.htmlCode] : []);
+  for (const body of htmlCodeBodies) addRange(ranges, body.from, body.to, inlineStyleDecos.inlineCode);
   const inlineHtmlRanges: Array<{ from: number; to: number }> = [];
   const renderedHtmlBlocks = addHtmlContentDecorations(ranges, state, activeLines, previous, changes, inlineHtmlRanges);
 
   tree.iterate({
     enter: (node: SyntaxNodeRef) => {
+      // Literal HTML code and TeX source keep their original characters when widgets reveal source.
+      // Lezer can otherwise pair a TeX caret with one in a later formula or style code contents.
+      if (htmlCodeBodies.some(body => node.from >= body.from && node.to <= body.to)
+        || mathRanges.some(math => node.from >= math.from && node.to <= math.to
+          || ['Subscript', 'Superscript', 'Emphasis', 'StrongEmphasis', 'Strikethrough', 'Highlight'].includes(node.name)
+            && node.from >= math.from && node.from < math.to)) return false;
       if (hasCodeBlockAncestor(node)) {
         if (node.name === 'QuoteMark') {
           const line = state.doc.lineAt(node.from);
@@ -2571,7 +2578,8 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
     parsedInlineStyleRanges,
     codeBlockLines,
     [...renderedTableRanges, ...mathRanges],
-    frontmatter
+    frontmatter,
+    collectMarkdownLiteralRanges(state, tree).filter(range => !range.script || !mathRanges.some(math => range.from >= math.from && range.from < math.to))
   );
   // Source prose and rendered blocks consume the same task-marker width delta.
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
@@ -3003,43 +3011,15 @@ function mergeSimpleRanges(ranges: Array<{ from: number; to: number }>): Array<{
   return merged;
 }
 
-function collectInlineCodeRanges(tree: Tree): SourceRange[] {
-  const ranges: Array<{ from: number; to: number }> = [];
-  tree.iterate({
-    enter(node: SyntaxNodeRef) {
-      if (node.name === 'InlineCode' || node.name === 'CodeText') {
-        ranges.push({ from: node.from, to: node.to });
-      }
-    }
-  });
-  return ranges;
-}
-
-function collectCodeBlockRanges(tree: Tree): SourceRange[] {
-  const ranges: Array<{ from: number; to: number }> = [];
-
-  tree.iterate({
-    enter(node: SyntaxNodeRef) {
-      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') {
-        return;
-      }
-      ranges.push({ from: node.from, to: node.to });
-      return false;
-    }
-  });
-
-  return ranges;
-}
-
 function collectMathRanges(
   state: EditorState,
   tree: Tree,
   renderedTableRanges: ReadonlyArray<SourceRange>,
   frontmatter: FrontmatterInfo | null = null
 ): LatexMathRange[] {
+  const literalRanges = collectMarkdownLiteralRanges(state, tree);
   const excludedRanges = [
-    ...collectInlineCodeRanges(tree),
-    ...collectCodeBlockRanges(tree),
+    ...literalRanges.filter(range => !range.script),
     ...renderedTableRanges
   ];
 
@@ -3052,9 +3032,13 @@ function collectMathRanges(
     return [];
   }
 
-  return collectLatexMathRanges(text, {
+  const candidates = collectLatexMathRanges(text, {
     excludedRanges: mergeSimpleRanges(excludedRanges)
   });
+  // A TeX caret may look like a Markdown script to Lezer. Only scripts opened outside
+  // a complete formula protect their dollar signs from formula conversion.
+  const scripts = literalRanges.filter(range => range.script && !candidates.some(math => range.from >= math.from && range.from < math.to));
+  return candidates.filter(math => !scripts.some(script => math.from >= script.from && math.from < script.to));
 }
 
 function resolveFencedMathRenderSpan(

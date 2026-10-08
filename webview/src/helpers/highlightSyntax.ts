@@ -4,6 +4,7 @@ import type { SyntaxNodeRef } from '@lezer/common';
 import { tags } from '@lezer/highlight';
 import type { DelimiterType, MarkdownConfig } from '@lezer/markdown';
 import { currentSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
+import { isExactInlineStyleMarker } from '../../../src/shared/punctuationInlineStyles';
 
 const HIGHLIGHT_MARKER_CODE = 61;
 const highlightDelimiter: DelimiterType = { resolve: 'Highlight', mark: 'HighlightMark' };
@@ -27,9 +28,7 @@ export const highlightMarkdownExtension: MarkdownConfig = {
     parse(context, next, pos) {
       if (
         next !== HIGHLIGHT_MARKER_CODE ||
-        context.char(pos + 1) !== HIGHLIGHT_MARKER_CODE ||
-        context.char(pos - 1) === HIGHLIGHT_MARKER_CODE ||
-        context.char(pos + 2) === HIGHLIGHT_MARKER_CODE
+        !isExactInlineStyleMarker(context.text, pos - context.offset, '==')
       ) {
         return -1;
       }

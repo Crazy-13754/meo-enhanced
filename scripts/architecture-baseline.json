@@ -65,8 +65,25 @@
           "file": "src/export/math.ts",
           "function": "collectLatexMathRanges",
           "requiredCall": "scanLatexMath"
+        },
+        {
+          "file": "src/export/math.ts",
+          "function": "parseLatexMathAt",
+          "requiredCall": "scanLatexMathAt",
+          "allowNullReturn": true
         }
       ]
+    },
+    {
+      "module": "src/shared/punctuationInlineStyles.ts",
+      "exactImporters": [
+        "webview/src/liveMode.ts",
+        "webview/src/helpers/markdownSyntax.ts",
+        "webview/src/helpers/highlightSyntax.ts",
+        "src/export/punctuationInlineTransform.ts",
+        "src/export/highlightTransform.ts"
+      ],
+      "delegates": []
     }
   ],
   "knownLegacyTestFailures": []

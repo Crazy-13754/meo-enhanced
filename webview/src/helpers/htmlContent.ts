@@ -696,6 +696,14 @@ function addInlineHtmlDecorations(
   blockRanges: readonly RenderableHtmlBlock[],
   inlineRanges: Array<{ from: number; to: number }>
 ): void {
+  const tagStarts = new Set<number>();
+  const tagEnds = new Set<number>();
+  resolvedSyntaxTree(state).iterate({ enter(node) {
+    if (node.name === 'HTMLTag') {
+      tagStarts.add(node.from);
+      tagEnds.add(node.to);
+    }
+  } });
   const pattern = /<(strong|b|em|i|del|s|mark|code|span|sub|sup|u|a)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
     if (activeLines.has(lineNo)) continue;
@@ -707,6 +715,8 @@ function addInlineHtmlDecorations(
       if (!isSupportedHtmlWithComments(match[0])) continue;
       const from = line.from + match.index;
       const to = from + match[0].length;
+      // Only actual HTML syntax may replace source; code, escapes, comments and scripts are literal.
+      if (!tagStarts.has(from) || !tagEnds.has(to)) continue;
       ranges.push(Decoration.replace({
         widget: new InlineHtmlWidget(match[0], from, lineNo),
         inclusive: false

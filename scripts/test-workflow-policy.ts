@@ -118,6 +118,8 @@ function targetedCommands(
         script('scripts/test-indented-code-blocks-production.ts'),
         script('scripts/test-mode-selection-continuity.ts'),
         script('scripts/test-html-content.ts'),
+        script('scripts/test-inline-syntax-boundaries.ts'),
+        script('scripts/test-inline-syntax-boundaries-production.ts'),
         script('scripts/test-rendered-block-mode-shell.ts'),
         script('scripts/test-history-rendered-block-interaction.ts'),
         script('scripts/test-mermaid-diagram-presentation-runtime.ts'),

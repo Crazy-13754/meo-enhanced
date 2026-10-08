@@ -14,6 +14,7 @@ import { collectMarkdownCodeLines } from './markdownCodeLines';
 import { collectLatexMathRanges, renderLatexMathToHtml } from './math';
 import { installHighlightTransform } from './highlightTransform';
 import { installInlineScriptTransform } from './inlineScriptTransform';
+import { installPunctuationInlineTransform } from './punctuationInlineTransform';
 import { Info, Lightbulb, AlertCircle, AlertTriangle, XCircle } from 'lucide';
 import {
   getSupportedHtmlAttributes,
@@ -101,21 +102,9 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     breaks: true,
     langPrefix: 'language-'
   });
-  // Markdown-it leaves punctuation-ending strong text literal when prose follows the closing marker.
-  // Limit this Live-compatible case to plain labels; nested Markdown keeps the normal parser.
-  md.inline.ruler.before('emphasis', 'punctuation_closing_strong', (state, silent) => {
-    const match = /^\*\*([^*\n]+[\p{P}\p{S}])\*\*(?=\S)/u.exec(state.src.slice(state.pos, state.posMax));
-    if (!match || /^\s/u.test(match[1]) || /[*_`~\[\]<>\\&]/u.test(match[1])) return false;
-    if (!silent) {
-      state.push('strong_open', 'strong', 1);
-      state.push('text', '', 0).content = match[1];
-      state.push('strong_close', 'strong', -1);
-    }
-    state.pos += match[0].length;
-    return true;
-  });
   installHighlightTransform(md);
   installInlineScriptTransform(md);
+  installPunctuationInlineTransform(md);
   installSourcePositionAndHeadingAnchorTransform(md, (startIndex, endIndex) => ({
     start: bodySourceLines?.[startIndex] ?? 0,
     end: bodySourceLines?.[Math.max(startIndex, endIndex - 1)] ?? 0
@@ -430,6 +419,14 @@ function installSafeHtmlTransform(
   resolveSourceRange: (startIndex: number, endIndex: number) => { start: number; end: number },
   showComments: boolean
 ): void {
+  // HTML code contents are literal, including when another paragraph enables math rendering.
+  md.inline.ruler.before('html_inline', 'meo_literal_html_code', (state, silent) => {
+    const match = /^<code\b[^>]*>[\s\S]*?<\/code\s*>/i.exec(state.src.slice(state.pos, state.posMax));
+    if (!match) return false;
+    if (!silent) state.push('html_inline', '', 0).content = match[0];
+    state.pos += match[0].length;
+    return true;
+  });
   const allowedAttributes = Object.fromEntries(
     [...supportedHtmlTags].map((tagName) => [tagName, getSupportedHtmlAttributes(tagName)])
   );

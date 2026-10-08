@@ -1,0 +1,38 @@
+import type { EditorState } from '@codemirror/state';
+import type { Tree } from '@lezer/common';
+
+type SourceRange = { from: number; to: number; script?: boolean; htmlCode?: { from: number; to: number } };
+const literalNodes = new Set(['InlineCode', 'FencedCode', 'CodeBlock', 'CodeText', 'Autolink', 'URL', 'LinkTitle', 'LinkLabel', 'Comment', 'CommentBlock', 'HTMLBlock', 'Subscript', 'Superscript']);
+const cache = new WeakMap<Tree, SourceRange[]>();
+
+/** Prose transforms share the parser's literal containers, while link labels remain prose. */
+export function collectMarkdownLiteralRanges(state: EditorState, tree: Tree): readonly SourceRange[] {
+  const cached = cache.get(tree);
+  if (cached) return cached;
+  const ranges: SourceRange[] = [];
+  const codeTags: Array<{ from: number; to: number; name: string }> = [];
+  tree.iterate({ enter(node) {
+    if (literalNodes.has(node.name)) {
+      ranges.push({ from: node.from, to: node.to, ...(node.name === 'Subscript' || node.name === 'Superscript' ? { script: true } : {}) });
+      return false;
+    }
+    if (node.name !== 'HTMLTag') return;
+    ranges.push({ from: node.from, to: node.to });
+    const tag = /^<(\/?)(code|pre)\b/i.exec(state.sliceDoc(node.from, node.to));
+    if (!tag) return;
+    const name = tag[2]!.toLowerCase();
+    if (!tag[1]) codeTags.push({ from: node.from, to: node.to, name });
+    else {
+      let index = codeTags.length - 1;
+      while (index >= 0 && codeTags[index]!.name !== name) index -= 1;
+      if (index >= 0) {
+        const open = codeTags[index]!;
+        ranges.push({ from: open.from, to: node.to, htmlCode: { from: open.to, to: node.from } });
+        codeTags.splice(index);
+      }
+    }
+  } });
+  ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+  cache.set(tree, ranges);
+  return ranges;
+}

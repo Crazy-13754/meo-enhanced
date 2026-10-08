@@ -1,7 +1,7 @@
 import {
   collectPunctuationClosingInlineStyles,
   type ParsedInlineStyleRange
-} from '../webview/src/helpers/inlineStyleFallback';
+} from '../src/shared/punctuationInlineStyles';
 
 function range(text: string, source: string, nodeName: ParsedInlineStyleRange['nodeName']): ParsedInlineStyleRange {
   const from = text.indexOf(source);
@@ -93,4 +93,14 @@ if (collectPunctuationClosingInlineStyles(longPrefix).length !== 0) {
   throw new Error('Plain long lines must not create fallback styling');
 }
 
+for (const marker of ['*', '**', '~~', '==']) {
+  const source = `\`(a${marker})(b${marker})\``;
+  if (fallbackSources(source, [range(source, source, 'InlineCode')]).length) {
+    throw new Error(`Inline code was reformatted by ${marker}: ${source}`);
+  }
+  const separate = `\`a${marker}\` 和 \`b${marker}\``;
+  const parsed = [range(separate, `\`a${marker}\``, 'InlineCode'), range(separate, `\`b${marker}\``, 'InlineCode')];
+  if (fallbackSources(separate, parsed).length) throw new Error(`Markers paired across code spans: ${separate}`);
+}
+if (collectPunctuationClosingInlineStyles('x===TARGET===y').length) throw new Error('Triple equals must stay literal');
 console.log('inline style fallback boundary checks passed');

@@ -1,9 +1,10 @@
 import type MarkdownIt from 'markdown-it';
+import { isExactInlineStyleMarker } from '../shared/punctuationInlineStyles';
 
 const HIGHLIGHT_MARKER_CODE = 0x3D;
 
 function tokenize(state: any, silent: boolean): boolean {
-  if (silent || state.src.charCodeAt(state.pos) !== HIGHLIGHT_MARKER_CODE) return false;
+  if (silent || state.src.charCodeAt(state.pos) !== HIGHLIGHT_MARKER_CODE || !isExactInlineStyleMarker(state.src, state.pos, '==')) return false;
 
   const scanned = state.scanDelims(state.pos, true);
   if (scanned.length !== 2) return false;

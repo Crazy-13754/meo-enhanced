@@ -1,7 +1,8 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { EditorState, type Transaction } from '@codemirror/state';
 import type { Tree } from '@lezer/common';
-import { collectPunctuationClosingInlineStyles, type InlineStyleNodeName } from './inlineStyleFallback';
+import { collectPunctuationClosingInlineStyles, type InlineStyleNodeName } from '../../../src/shared/punctuationInlineStyles';
+import { collectMarkdownLiteralRanges } from './markdownLiteralRanges';
 
 /** Returns CodeMirror's published, possibly partial tree without extending the parse synchronously. */
 export function currentSyntaxTree(state: EditorState): ReturnType<typeof syntaxTree> {
@@ -73,7 +74,7 @@ const detailsOpenTagPattern = /<details\b[^>]*>/i;
 const detailsCloseTagPattern = /<\/details\s*>/i;
 const summaryTagPattern = /<summary\b[^>]*>([\s\S]*?)<\/summary\s*>/i;
 
-function extractHeadingInlineSegments(state: EditorState, headingNode: any): HeadingInlineSegment[] {
+function extractHeadingInlineSegments(state: EditorState, headingNode: any, literalRanges: readonly { from: number; to: number }[]): HeadingInlineSegment[] {
   const raw = state.doc.sliceString(headingNode.from, headingNode.to);
   const prefixLength = raw.match(/^#{1,6}\s+/)?.[0].length ?? 0;
   const suffixLength = raw.match(/\s+#+\s*$/)?.[0].length ?? 0;
@@ -113,7 +114,7 @@ function extractHeadingInlineSegments(state: EditorState, headingNode: any): Hea
     Strikethrough: 'strikethrough',
     Highlight: 'highlight'
   } as const;
-  for (const range of collectPunctuationClosingInlineStyles(raw, headingNode.from, styleRanges)) {
+  for (const range of collectPunctuationClosingInlineStyles(raw, headingNode.from, styleRanges, literalRanges)) {
     styleRanges.push({
       from: range.from,
       to: range.to,
@@ -151,13 +152,14 @@ function extractHeadingInlineSegments(state: EditorState, headingNode: any): Hea
 export function extractHeadings(state: EditorState): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
   const tree = resolvedSyntaxTree(state);
+  const literalRanges = collectMarkdownLiteralRanges(state, tree);
 
   tree.iterate({
     enter(node: any) {
       const headingLevel = headingLevelFromName(node.name);
       if (headingLevel !== null) {
         const line = state.doc.lineAt(node.from);
-        const inlineSegments = extractHeadingInlineSegments(state, node.node);
+        const inlineSegments = extractHeadingInlineSegments(state, node.node, literalRanges);
         const text = inlineSegments.map((segment) => segment.text).join('').trim();
         headings.push({
           level: headingLevel,
