@@ -35,6 +35,7 @@ type BrowserMemory = {
 
 type ResourceSample = {
   readonly detachedResizeTargets: number;
+  readonly detachedMutationTargets: number;
   readonly resizeObservers: number;
   readonly mutationObservers: number;
   readonly intersectionObservers: number;
@@ -110,12 +111,15 @@ async function preparePage(page: Page): Promise<void> {
       }
     }
     class TrackedMutationObserver extends NativeMutationObserver {
+      readonly targets = new Set<Node>();
       override observe(target: Node, options?: MutationObserverInit): void {
+        this.targets.add(target);
         active.mutation.add(this);
         super.observe(target, options);
       }
       override disconnect(): void {
         super.disconnect();
+        this.targets.clear();
         active.mutation.delete(this);
         settleIdleWaiters();
       }
@@ -202,6 +206,8 @@ async function preparePage(page: Page): Promise<void> {
       snapshot: (): ResourceSample => ({
         detachedResizeTargets: [...active.resize].reduce((count, observer) => count
           + [...(observer as TrackedResizeObserver).targets].filter(target => !target.isConnected).length, 0),
+        detachedMutationTargets: [...active.mutation].reduce((count, observer) => count
+          + [...(observer as TrackedMutationObserver).targets].filter(target => !target.isConnected).length, 0),
         resizeObservers: active.resize.size,
         mutationObservers: active.mutation.size,
         intersectionObservers: active.intersection.size,
@@ -237,18 +243,21 @@ function assertLiveResourceBound(
   resources: ResourceSample
 ): void {
   assert.equal(resources.detachedResizeTargets, 0, `${kind} retained detached ResizeObserver targets`);
+  assert.equal(resources.detachedMutationTargets, 0, `${kind} retained detached MutationObserver targets`);
   // Live owns three editor-wide observers. Each connected table owns height,
-  // column-width, and sticky-header observers; Mermaid and math own one each.
+  // column-width, and sticky-header observers. Mermaid owns a diagram and preview
+  // height observer; math owns viewport, preview height, and toolbar observers.
   // Image widgets do not own ResizeObservers.
-  const connectedResizeOwners = 3 + sample.tables * 3 + sample.mermaid + sample.math;
+  const connectedResizeOwners = 3 + sample.tables * 3 + sample.mermaid * 2 + sample.math * 3;
   assert.ok(
     resources.resizeObservers <= connectedResizeOwners,
     `${kind} allocated ResizeObservers outside the connected rich surface: ${JSON.stringify({ sample, resources })}`
   );
-  assert.ok(
-    resources.mutationObservers <= 2 + sample.mermaid * 2,
-    `${kind} allocated MutationObservers outside the connected Mermaid surface`
-  );
+  // CodeMirror, column-width projection, and block-header content/fullscreen own four.
+  // Each connected table owns two sticky-header observers; math controls own one.
+  const connectedMutationOwners = 4 + sample.tables * 2 + sample.math;
+  assert.ok(resources.mutationObservers <= connectedMutationOwners,
+    `${kind} allocated MutationObservers outside the connected surface: ${JSON.stringify({ sample, resources })}`);
   assert.ok(resources.intersectionObservers <= 2, `${kind} duplicated viewport observers`);
   assert.ok(resources.pendingFrames <= 1, `${kind} retained unbounded frame work: ${JSON.stringify({ sample, resources })}`);
   assert.ok(resources.pendingIdleCallbacks <= 1, `${kind} retained unbounded idle work`);
@@ -259,6 +268,7 @@ function assertLiveResourceBound(
 }
 
 function assertSourceResourceBound(kind: LargeDocumentFixture['kind'], resources: ResourceSample): void {
+  assert.equal(resources.detachedMutationTargets, 0, `${kind} Source retained detached MutationObserver targets`);
   assert.ok(resources.resizeObservers <= 3, `${kind} Source duplicated ResizeObservers`);
   assert.ok(resources.mutationObservers <= 1, `${kind} Source duplicated MutationObservers`);
   assert.ok(resources.intersectionObservers <= 2, `${kind} Source duplicated viewport observers`);
@@ -455,6 +465,7 @@ async function main(): Promise<void> {
         assert.equal(liveDestroy.connectedEditors, 0);
         assert.deepEqual(liveDestroy.resources, {
           detachedResizeTargets: 0,
+          detachedMutationTargets: 0,
           resizeObservers: 0,
           mutationObservers: 0,
           intersectionObservers: 0,
@@ -507,6 +518,7 @@ async function main(): Promise<void> {
           (startedAt) => performance.now() - startedAt,
           liveToSourceStartedAt
         );
+        assertSourceResourceBound(fixture.kind, await readResources(page));
         const finalState = await page.evaluate(() => {
           const editor = (window as any).__largeDocumentBenchmarkEditor;
           const selection = window.getSelection();
@@ -525,6 +537,7 @@ async function main(): Promise<void> {
         assert.equal(finalDestroy.connectedEditors, 0);
         assert.deepEqual(finalDestroy.resources, {
           detachedResizeTargets: 0,
+          detachedMutationTargets: 0,
           resizeObservers: 0,
           mutationObservers: 0,
           intersectionObservers: 0,
