@@ -12,11 +12,38 @@ export function installMathTransform(
     onRenderedMath?: () => void;
   } = {}
 ): void {
+  const lookingAhead = new WeakSet<object>();
+  const excludedByState = new WeakMap<object, Map<string, { from: number; to: number }[]>>();
   // Consume a complete formula before Markdown can reinterpret TeX carets, tildes or escapes.
   // Code, autolinks and literal scripts are consumed by their own enclosing rules.
   md.inline.ruler.before('strikethrough', 'meo_math_inline', (state, silent) => {
-    if (state.src[state.pos] !== '$') return false;
-    const math = parseLatexMathAt(state.src, state.pos);
+    if (lookingAhead.has(state) || state.src[state.pos] !== '$') return false;
+    let cached = excludedByState.get(state);
+    if (!cached) { cached = new Map(); excludedByState.set(state, cached); }
+    const scope = `${state.posMax}:${state.level}`;
+    let excluded = cached.get(scope);
+    if (!excluded) {
+      excluded = [];
+      const start = state.pos, cache = state.cache;
+      lookingAhead.add(state);
+      state.cache = {};
+      try {
+        state.pos += 1;
+        while (state.pos < state.posMax) {
+          const from = state.pos, char = state.src[from];
+          // Validation mode lets native code, HTML and link rules own their scopes.
+          // Its cache must not leak into later validation with math enabled.
+          md.inline.skipToken(state);
+          if ('`<[!'.includes(char!) && state.pos > from + 1) excluded.push({ from, to: state.pos });
+        }
+      } finally {
+        state.pos = start;
+        state.cache = cache;
+        lookingAhead.delete(state);
+      }
+      cached.set(scope, excluded);
+    }
+    const math = parseLatexMathAt(state.src, state.pos, { excludedRanges: excluded.filter(range => range.from > state.pos) });
     if (!math || math.to > state.posMax) return false;
     if (!silent) {
       const html = renderLatexMathToHtml(math.content, math.mode);

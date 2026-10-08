@@ -1,5 +1,7 @@
 import { blockInsertion, type MarkdownInputContext } from '../editor/blockInsertion';
 import { matchInlineScript } from '../../../src/foundation/inlineScript';
+import { matchInlineHtmlCode } from '../../../src/shared/htmlPolicy';
+import { parseTableInlineSyntax } from './inlineMarkdownParser';
 import { wireNativeSymbolInput, nativeSymbolInput } from '../editor/nativeTypingAssistance';
 import { automaticSymbolPairs, symbolOriginEpoch, replaceAutomaticSymbolPairArea, inputAssistanceFacet, type AutomaticSymbolPair } from '../editor/typingAssistance';
 import { emptyMarkdownTable, markdownTableFromCells, serializeDelimitedTable, parseMarkdownTable, externalTableCellToMarkdown } from '../application/delimitedTable';
@@ -783,37 +785,12 @@ const tableDiagnosticSeverityClasses = [
   'meo-diagnostic-hint'
 ];
 
-function isTableInlineWhitespaceOnly(text: string): boolean {
-  return /^\s+$/.test(text);
-}
-
 function isTableInlineEscaped(text: string, index: number): boolean {
   let slashCount = 0;
   for (let i = index - 1; i >= 0 && text[i] === '\\'; i -= 1) {
     slashCount += 1;
   }
   return (slashCount % 2) === 1;
-}
-
-function isTableInlineWordCharacter(char: string): boolean {
-  return Boolean(char) && /[\p{L}\p{N}\p{M}]/u.test(char);
-}
-
-function canOpenTableInlineDelimiter(text: string, index: number, marker: string): boolean {
-  if (isTableInlineEscaped(text, index)) return false;
-  const markerLen = marker.length;
-  const next = text[index + markerLen] ?? '';
-  if (!next || /\s/.test(next)) return false;
-  if (marker.includes('_') && isTableInlineWordCharacter(text[index - 1] ?? '')) return false;
-  return true;
-}
-
-function canCloseTableInlineDelimiter(text: string, index: number, marker: string): boolean {
-  if (isTableInlineEscaped(text, index)) return false;
-  const previous = text[index - 1] ?? '';
-  if (!previous || /\s/.test(previous)) return false;
-  if (marker.includes('_') && isTableInlineWordCharacter(text[index + marker.length] ?? '')) return false;
-  return true;
 }
 
 function isTableInlineUrlLike(text: string): boolean {
@@ -882,6 +859,7 @@ interface TableCellLogicalLine {
 
 function splitTableCellLogicalLines(text: string): TableCellLogicalLine[] {
   const lines: TableCellLogicalLine[] = [];
+  const syntax = text.includes('[') ? parseTableInlineSyntax(text, 0) : null;
   let lineStart = 0;
   for (let index = 0; index < text.length;) {
     const breakMatch = !isTableInlineEscaped(text, index) ? tableCellBreakAtRe.exec(text.slice(index)) : null;
@@ -892,7 +870,7 @@ function splitTableCellLogicalLines(text: string): TableCellLogicalLine[] {
       continue;
     }
 
-    const protectedNext = consumeTableInlineProtectedSpan(text, index, text.length);
+    const protectedNext = consumeTableInlineProtectedSpan(text, index, text.length, syntax);
     if (protectedNext && protectedNext > index) {
       index = protectedNext;
       continue;
@@ -905,6 +883,7 @@ function splitTableCellLogicalLines(text: string): TableCellLogicalLine[] {
 
 export function tableCellEditorValueToSource(value: string): string {
   let source = '';
+  const syntax = value.includes('[') ? parseTableInlineSyntax(value, 0) : null;
   for (let index = 0; index < value.length;) {
     const breakMatch = !isTableInlineEscaped(value, index) ? tableCellBreakAtRe.exec(value.slice(index)) : null;
     if (breakMatch) {
@@ -915,7 +894,7 @@ export function tableCellEditorValueToSource(value: string): string {
       continue;
     }
 
-    const protectedNext = consumeTableInlineProtectedSpan(value, index, value.length);
+    const protectedNext = consumeTableInlineProtectedSpan(value, index, value.length, syntax);
     if (protectedNext && protectedNext > index) {
       source += value.slice(index, protectedNext);
       index = protectedNext;
@@ -1375,103 +1354,19 @@ function consumeTableInlineAngleSection(text: string, index: number) {
   };
 }
 
-function consumeTableInlineBracketContent(text: string, index: number) {
-  if (text[index] !== '[' || isTableInlineEscaped(text, index)) return null;
-  let depth = 1;
-  for (let i = index + 1; i < text.length;) {
-    if (text[i] === '\\' && i + 1 < text.length) {
-      i += 2;
-      continue;
-    }
-    const code = parseTableInlineCodeSpan(text, i);
-    if (code) {
-      i = code.nextIndex;
-      continue;
-    }
-    if (text[i] === '[' && !isTableInlineEscaped(text, i)) {
-      depth += 1;
-      i += 1;
-      continue;
-    }
-    if (text[i] === ']' && !isTableInlineEscaped(text, i)) {
-      depth -= 1;
-      if (depth === 0) {
-        return {
-          content: text.slice(index + 1, i),
-          nextIndex: i + 1
-        };
-      }
-      i += 1;
-      continue;
-    }
-    i += 1;
-  }
-  return null;
-}
-
-function consumeTableInlineParenContent(text: string, index: number) {
-  if (text[index] !== '(' || isTableInlineEscaped(text, index)) return null;
-  let depth = 1;
-  for (let i = index + 1; i < text.length;) {
-    if (text[i] === '\\' && i + 1 < text.length) {
-      i += 2;
-      continue;
-    }
-    const code = parseTableInlineCodeSpan(text, i);
-    if (code) {
-      i = code.nextIndex;
-      continue;
-    }
-    const angle = consumeTableInlineAngleSection(text, i);
-    if (angle) {
-      i = angle.nextIndex;
-      continue;
-    }
-    if (text[i] === '(' && !isTableInlineEscaped(text, i)) {
-      depth += 1;
-      i += 1;
-      continue;
-    }
-    if (text[i] === ')' && !isTableInlineEscaped(text, i)) {
-      depth -= 1;
-      if (depth === 0) {
-        return {
-          content: text.slice(index + 1, i),
-          nextIndex: i + 1
-        };
-      }
-      i += 1;
-      continue;
-    }
-    i += 1;
-  }
-  return null;
-}
-
-function parseTableInlineMarkdownLink(text: string, index: number, { image = false }: { image?: boolean } = {}) {
-  const start = image ? index + 1 : index;
-  if (image) {
-    if (!(text[index] === '!' && text[index + 1] === '[') || isTableInlineEscaped(text, index)) return null;
-  } else if (text[index] !== '[' || isTableInlineEscaped(text, index)) {
-    return null;
-  }
-  if (!image && text.startsWith('[[', index)) return null;
-
-  const label = consumeTableInlineBracketContent(text, start);
-  if (!label || text[label.nextIndex] !== '(') return null;
-  const destination = consumeTableInlineParenContent(text, label.nextIndex);
-  if (!destination) return null;
-
-  let url = normalizeSourceHref(destination.content.trim());
+function parseTableInlineMarkdownLink(text: string, index: number, syntax: ReturnType<typeof parseTableInlineSyntax> | null, offset: number, { image = false }: { image?: boolean } = {}) {
+  const link = syntax?.links.get(offset + index);
+  if (!link || link.image !== image) return null;
+  let url = normalizeSourceHref(text.slice(link.urlFrom - offset, link.urlTo - offset).trim());
   if (url.startsWith('<') && url.endsWith('>') && url.length >= 2) {
     url = url.slice(1, -1).trim();
   }
 
   return {
-    label: label.content,
-    labelFrom: start + 1,
+    label: text.slice(link.labelFrom - offset, link.labelTo - offset),
+    labelFrom: link.labelFrom - offset,
     url,
-    nextIndex: destination.nextIndex
+    nextIndex: link.to - offset
   };
 }
 
@@ -1498,90 +1393,6 @@ function parseTableInlineWikiLink(text: string, index: number) {
       };
     }
   }
-  return null;
-}
-
-function findTableInlineClosingMarker(text: string, startIndex: number, marker: string) {
-  const markerLen = marker.length;
-  for (let i = startIndex; i <= text.length - markerLen; i += 1) {
-    if (!text.startsWith(marker, i)) continue;
-    const delimiter = marker[0];
-    let runEnd = i + markerLen;
-    while (text[runEnd] === delimiter && !isTableInlineEscaped(text, runEnd)) {
-      runEnd += 1;
-    }
-    const runLength = runEnd - i;
-    // An even run belongs to nested strong markup, not to a surrounding
-    // single-character emphasis span. For odd runs, the outer delimiter is
-    // the final character (or pair) in the run.
-    if (markerLen === 1 && runLength > 1 && runLength % 2 === 0) {
-      i = runEnd - 1;
-      continue;
-    }
-    const close = runEnd - markerLen;
-    if (!canCloseTableInlineDelimiter(text, close, marker)) {
-      i = runEnd - 1;
-      continue;
-    }
-    return close;
-  }
-  return -1;
-}
-
-function parseTableInlineDelimitedSpan(text: string, index: number) {
-  if (
-    text.startsWith('==', index) &&
-    text[index - 1] !== '=' &&
-    text[index + 2] !== '=' &&
-    canOpenTableInlineDelimiter(text, index, '==')
-  ) {
-    const start = index + 2;
-    const close = findTableInlineClosingMarker(text, start, '==');
-    if (close > start && text[close - 1] !== '=' && text[close + 2] !== '=') {
-      const content = text.slice(start, close);
-      if (!isTableInlineWhitespaceOnly(content)) {
-        return { kind: 'highlight', content, nextIndex: close + 2 };
-      }
-    }
-  }
-
-  const strongMarker = text.startsWith('**', index)
-    ? '**'
-    : (text.startsWith('__', index) ? '__' : null);
-  if (strongMarker && canOpenTableInlineDelimiter(text, index, strongMarker)) {
-    const start = index + 2;
-    const close = findTableInlineClosingMarker(text, start, strongMarker);
-    if (close > start) {
-      const content = text.slice(start, close);
-      if (!isTableInlineWhitespaceOnly(content)) {
-        return { kind: 'strong', content, nextIndex: close + 2 };
-      }
-    }
-  }
-
-  if (text.startsWith('~~', index)) {
-    const start = index + 2;
-    const close = findTableInlineClosingMarker(text, start, '~~');
-    if (close > start) {
-      const content = text.slice(start, close);
-      if (!isTableInlineWhitespaceOnly(content)) {
-        return { kind: 'strike', content, nextIndex: close + 2 };
-      }
-    }
-  }
-
-  const emMarker = (text[index] === '*' || text[index] === '_') ? text[index] : null;
-  if (emMarker && text[index + 1] !== emMarker && canOpenTableInlineDelimiter(text, index, emMarker)) {
-    const start = index + 1;
-    const close = findTableInlineClosingMarker(text, start, emMarker);
-    if (close > start) {
-      const content = text.slice(start, close);
-      if (!isTableInlineWhitespaceOnly(content)) {
-        return { kind: 'em', content, nextIndex: close + 1 };
-      }
-    }
-  }
-
   return null;
 }
 
@@ -1651,11 +1462,13 @@ function appendTableInlinePreviewLink(parent: HTMLElement, label: string, href: 
   presentationFactory: ImagePresentationFactory;
   uiLanguage: UiLanguage;
   view: EditorView;
+  literalLabel?: boolean;
 }) {
   const el = document.createElement('span');
   el.className = 'meo-md-link';
   if (href) el.setAttribute('data-meo-link-href', href);
-  appendTableInlinePreviewNodes(el, label, { ...options, disableLinkParsers: true });
+  if (options.literalLabel) appendTablePlainText(el, label, options.baseOffset ?? 0, options.diagnostics ?? [], options.searchState ?? null, options.sourceRange ?? null);
+  else appendTableInlinePreviewNodes(el, label, { ...options, disableLinkParsers: true });
   if (isMissingLocalLinkTarget(href)) {
     parent.appendChild(createMissingLocalLinkIndicator(options.uiLanguage));
   }
@@ -1717,8 +1530,11 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
   presentationFactory: ImagePresentationFactory;
   uiLanguage: UiLanguage;
   view: EditorView;
+  inlineSyntax?: ReturnType<typeof parseTableInlineSyntax>;
 }) {
   const { baseOffset = 0, diagnostics = [], disableLinkParsers = false, searchState = null, sourceRange = null } = options;
+  const inlineSyntax = options.inlineSyntax ?? parseTableInlineSyntax(text, baseOffset);
+  options = { ...options, inlineSyntax };
   const colorRangesByStart = new Map(collectHexColorRangesFromText(text).map((range) => [range.from, range]));
   let buffer = '';
   let bufferStart = 0;
@@ -1765,6 +1581,18 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       continue;
     }
 
+    const htmlCode = text[i] === '<' ? matchInlineHtmlCode(text, i) : null;
+    if (htmlCode) {
+      flushBuffer();
+      const el = document.createElement('code');
+      el.className = 'meo-md-inline-code';
+      setInlineSourceRange(el, { from: baseOffset + i, to: baseOffset + htmlCode.to });
+      appendTablePlainText(el, text.slice(htmlCode.contentFrom, htmlCode.contentTo), baseOffset + htmlCode.contentFrom, diagnostics, searchState, sourceRange);
+      parent.appendChild(el);
+      i = htmlCode.to;
+      continue;
+    }
+
     const code = parseTableInlineCodeSpan(text, i);
     if (code) {
       flushBuffer();
@@ -1808,7 +1636,17 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       continue;
     }
 
-    const math = parseLatexMathAt(text, i);
+    const htmlTagEnd = inlineSyntax.htmlTags.get(baseOffset + i);
+    if (htmlTagEnd !== undefined) {
+      flushBuffer();
+      appendTablePlainText(parent, text.slice(i, htmlTagEnd - baseOffset), baseOffset + i, diagnostics, searchState, sourceRange);
+      i = htmlTagEnd - baseOffset;
+      continue;
+    }
+
+    const math = text[i] === '$' ? parseLatexMathAt(text, i, { excludedRanges: inlineSyntax.mathExcludedRanges
+      .filter(range => range.from > baseOffset + i)
+      .map(range => ({ from: range.from - baseOffset, to: range.to - baseOffset })) }) : null;
     if (math) {
       const mathElement = createLatexMathElement(math.content, math.mode);
       if (mathElement) {
@@ -1860,7 +1698,7 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       continue;
     }
 
-    const image = parseTableInlineMarkdownLink(text, i, { image: true });
+    const image = parseTableInlineMarkdownLink(text, i, inlineSyntax, baseOffset, { image: true });
     if (image) {
       flushBuffer();
       appendTableInlinePreviewImage(
@@ -1881,19 +1719,19 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
         flushBuffer();
         appendTableInlinePreviewLink(parent, wiki.visibleText, tableInlineHrefFromWikiTarget(wiki.target), {
           ...options,
-          baseOffset: baseOffset + i + wiki.visibleTextFrom
+          baseOffset: baseOffset + wiki.visibleTextFrom
         });
         i = wiki.nextIndex;
         continue;
       }
 
-      const link = parseTableInlineMarkdownLink(text, i);
+      const link = parseTableInlineMarkdownLink(text, i, inlineSyntax, baseOffset);
       if (link) {
         flushBuffer();
         if (link.url) {
           appendTableInlinePreviewLink(parent, link.label, decodeTableInlineEscapes(link.url), {
             ...options,
-            baseOffset: baseOffset + i + link.labelFrom
+            baseOffset: baseOffset + link.labelFrom
           });
         } else {
           appendTableInlinePreviewNodes(parent, link.label, {
@@ -1910,14 +1748,15 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
         flushBuffer();
         appendTableInlinePreviewLink(parent, autolink.label, autolink.href, {
           ...options,
-          baseOffset: baseOffset + i + 1
+          baseOffset: baseOffset + i + 1,
+          literalLabel: true
         });
         i = autolink.nextIndex;
         continue;
       }
     }
 
-    const script = matchInlineScript(text, i);
+    const script = inlineSyntax.scripts.has(baseOffset + i) ? matchInlineScript(text, i) : null;
     if (script) {
       flushBuffer();
       const el = document.createElement(script.kind === 'subscript' ? 'sub' : 'sup');
@@ -1937,43 +1776,14 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       continue;
     }
 
-    const span = parseTableInlineDelimitedSpan(text, i);
+    const span = inlineSyntax.spans.get(baseOffset + i);
     if (span) {
       flushBuffer();
-      if (span.kind === 'em') {
-        const el = document.createElement('em');
-        el.className = 'meo-md-em';
-        appendTableInlinePreviewNodes(el, span.content, {
-          ...options,
-          baseOffset: baseOffset + i + 1
-        });
-        parent.appendChild(el);
-      } else if (span.kind === 'strong') {
-        const el = document.createElement('strong');
-        el.className = 'meo-md-strong';
-        appendTableInlinePreviewNodes(el, span.content, {
-          ...options,
-          baseOffset: baseOffset + i + 2
-        });
-        parent.appendChild(el);
-      } else if (span.kind === 'strike') {
-        const el = document.createElement('span');
-        el.className = 'meo-md-strike';
-        appendTableInlinePreviewNodes(el, span.content, {
-          ...options,
-          baseOffset: baseOffset + i + 2
-        });
-        parent.appendChild(el);
-      } else if (span.kind === 'highlight') {
-        const el = document.createElement('mark');
-        el.className = 'meo-md-highlight';
-        appendTableInlinePreviewNodes(el, span.content, {
-          ...options,
-          baseOffset: baseOffset + i + 2
-        });
-        parent.appendChild(el);
-      }
-      i = span.nextIndex;
+      const el = document.createElement(({ em: 'em', strong: 'strong', strike: 'span', highlight: 'mark' } as const)[span.kind]);
+      el.className = `meo-md-${span.kind}`;
+      appendTableInlinePreviewNodes(el, text.slice(span.contentFrom - baseOffset, span.contentTo - baseOffset), { ...options, baseOffset: span.contentFrom });
+      parent.appendChild(el);
+      i = span.to - baseOffset;
       continue;
     }
 
@@ -2017,7 +1827,8 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
         flushBuffer();
         appendTableInlinePreviewLink(parent, rawUrl.label, rawUrl.href, {
           ...options,
-          baseOffset: baseOffset + i
+          baseOffset: baseOffset + i,
+          literalLabel: true
         });
         i = rawUrl.nextIndex;
         continue;
@@ -2320,7 +2131,7 @@ function renderTableCellInlinePreview(
   );
 }
 
-function consumeTableInlineProtectedSpan(text: string, index: number, endIndex: number): number | null {
+function consumeTableInlineProtectedSpan(text: string, index: number, endIndex: number, syntax: ReturnType<typeof parseTableInlineSyntax> | null): number | null {
   const code = parseTableInlineCodeSpan(text, index);
   if (code && code.nextIndex <= endIndex) return code.nextIndex;
 
@@ -2330,10 +2141,10 @@ function consumeTableInlineProtectedSpan(text: string, index: number, endIndex: 
   const wiki = parseTableInlineWikiLink(text, index);
   if (wiki && wiki.nextIndex <= endIndex) return wiki.nextIndex;
 
-  const image = parseTableInlineMarkdownLink(text, index, { image: true });
+  const image = parseTableInlineMarkdownLink(text, index, syntax, 0, { image: true });
   if (image && image.nextIndex <= endIndex) return image.nextIndex;
 
-  const link = parseTableInlineMarkdownLink(text, index);
+  const link = parseTableInlineMarkdownLink(text, index, syntax, 0);
   if (link && link.nextIndex <= endIndex) return link.nextIndex;
 
   const angle = consumeTableInlineAngleSection(text, index);
@@ -2345,8 +2156,9 @@ function consumeTableInlineProtectedSpan(text: string, index: number, endIndex: 
 
 function findTableRowSeparatorPipes(text: string, startIndex: number, endIndex: number): number[] {
   const pipes: number[] = [];
+  const syntax = text.includes('[') ? parseTableInlineSyntax(text, 0) : null;
   for (let i = startIndex; i < endIndex;) {
-    const protectedNext = consumeTableInlineProtectedSpan(text, i, endIndex);
+    const protectedNext = consumeTableInlineProtectedSpan(text, i, endIndex, syntax);
     if (protectedNext && protectedNext > i) {
       i = protectedNext;
       continue;

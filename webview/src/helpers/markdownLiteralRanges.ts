@@ -2,7 +2,7 @@ import type { EditorState } from '@codemirror/state';
 import type { Tree } from '@lezer/common';
 
 type SourceRange = { from: number; to: number; script?: boolean; htmlCode?: { from: number; to: number } };
-const literalNodes = new Set(['InlineCode', 'FencedCode', 'CodeBlock', 'CodeText', 'Autolink', 'URL', 'LinkTitle', 'LinkLabel', 'Comment', 'CommentBlock', 'HTMLBlock', 'Subscript', 'Superscript']);
+const literalNodes = new Set(['InlineCode', 'FencedCode', 'CodeBlock', 'CodeText', 'InlineMathExcluded', 'Autolink', 'URL', 'LinkTitle', 'LinkLabel', 'Comment', 'CommentBlock', 'HTMLBlock', 'Subscript', 'Superscript']);
 const cache = new WeakMap<Tree, SourceRange[]>();
 
 /** Prose transforms share the parser's literal containers, while link labels remain prose. */

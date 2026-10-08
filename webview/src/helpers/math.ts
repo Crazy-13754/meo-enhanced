@@ -9,6 +9,7 @@ import { renderMathToHtml } from '../../../src/shared/mathRenderer';
 export type { LatexMathMode, LatexMathRange } from '../../../src/shared/latexMathScanner';
 
 export interface ParseLatexMathAtOptions {
+  excludedRanges?: ReadonlyArray<Readonly<{ from: number; to: number }>>;
   allowInline?: boolean;
   allowDisplay?: boolean;
   includeEmptyDisplay?: boolean;
@@ -52,7 +53,7 @@ export function parseLatexMathAt(
   if (!text || index < 0 || index >= text.length) {
     return null;
   }
-  const range = scanLatexMathAt(text, index, { includeEmptyDisplay: options.includeEmptyDisplay });
+  const range = scanLatexMathAt(text, index, { includeEmptyDisplay: options.includeEmptyDisplay, excludedRanges: options.excludedRanges });
   if (!range) {
     return null;
   }

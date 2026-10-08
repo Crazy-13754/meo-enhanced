@@ -104,6 +104,7 @@ async function main(): Promise<void> {
               }
               else assert.equal(sample.mathCount, fixture.mathCount, 'math count');
             }
+            if (fixture.forbiddenLiteral && (mode !== 'live-active' || sample.mathCount > 0)) assert.ok(!sample.text.includes(fixture.forbiddenLiteral), `unexpected literal ${fixture.forbiddenLiteral}`);
             if (fixture.href) assert.deepEqual(sample.links, [fixture.href], 'complete target link');
             if (mode !== 'preview') {
               assert.equal(await live.evaluate(() => (window as any).boundaryEditor.view.state.doc.toString()), doc, 'rendering must preserve the document');

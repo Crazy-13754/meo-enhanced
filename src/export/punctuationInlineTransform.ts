@@ -6,6 +6,11 @@ export function installPunctuationInlineTransform(md: MarkdownIt): void {
     if (silent || !'*~'.includes(state.src[state.pos] ?? '')) return false;
     const delimiter = inlineStyleDelimiter(state.src, state.pos, state.posMax);
     if (!delimiter) return false;
+    if (delimiter.marker === '~~' && delimiter.length !== 2) {
+      state.push('text', '', 0).content = state.src.slice(state.pos, state.pos + delimiter.length);
+      state.pos += delimiter.length;
+      return true;
+    }
     // Native postprocessors own nesting, split asterisk runs and the rule of three.
     // Two-character strike markers are one token and bypass that rule.
     const tokenSize = delimiter.marker === '*' ? 1 : 2;

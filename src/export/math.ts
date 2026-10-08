@@ -13,8 +13,8 @@ export function collectLatexMathRanges(text: string, options: LatexMathScanOptio
   return scanLatexMath(text, options);
 }
 
-export function parseLatexMathAt(text: string, from: number): LatexMathRange | null {
-  return scanLatexMathAt(text, from);
+export function parseLatexMathAt(text: string, from: number, options: LatexMathScanOptions = {}): LatexMathRange | null {
+  return scanLatexMathAt(text, from, options);
 }
 
 export function renderLatexMathToHtml(content: string, mode: LatexMathMode): string | null {

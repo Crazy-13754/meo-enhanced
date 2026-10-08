@@ -41,6 +41,7 @@ for (const fixture of inlineSyntaxBoundaryFixtures) {
       assert.deepEqual(targets, [[...fixture.styles].sort()], 'target formatting');
       for (const witness of witnesses) assert.deepEqual(witness.actual, [[...witness.styles].sort()], `${witness.text} formatting`);
       if (fixture.literal) assert.ok(text.includes(fixture.literal), `missing literal ${fixture.literal}`);
+      if (fixture.forbiddenLiteral) assert.ok(!text.includes(fixture.forbiddenLiteral), `unexpected literal ${fixture.forbiddenLiteral}`);
       if (fixture.mathCount !== undefined) assert.equal(mathCount, fixture.mathCount, 'math count');
       if (fixture.href) assert.deepEqual(links, [fixture.href], 'complete, unnested link');
     } catch (error) { failures.push(`${fixture.name}/${result.name}: ${String(error)}`); }

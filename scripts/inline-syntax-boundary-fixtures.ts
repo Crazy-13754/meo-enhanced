@@ -5,12 +5,16 @@ export type InlineBoundaryFixture = {
   markdown: string;
   styles: readonly InlineBoundaryStyle[];
   literal?: string;
+  forbiddenLiteral?: string;
   mathCount?: number;
   href?: string;
   witnesses?: readonly { text: string; styles: readonly InlineBoundaryStyle[] }[];
 };
 
-export const inlineSyntaxBoundaryFixtures: readonly InlineBoundaryFixture[] = [
+const proseFixtures: readonly InlineBoundaryFixture[] = [
+  ...[3, 4, 5].map(length => ({ name: `literal-tilde-run-${length}`, markdown: `前${'~'.repeat(length)}TARGET：${'~'.repeat(length)}后`, styles: [], literal: `${'~'.repeat(length)}TARGET：${'~'.repeat(length)}` })),
+  { name: 'math-comment-closing-dollar', markdown: 'TARGET $x <!-- y$ --> z$ AFTER', styles: [], mathCount: 1, forbiddenLiteral: '--> z$', witnesses: [{ text: 'AFTER', styles: [] }] },
+  { name: 'strike-leading-space', markdown: '~~ TARGET~~', styles: [], literal: '~~ TARGET~~' },
   { name: 'issue-pointer-stars', markdown: 'TARGET 对于 `float* row = (float*)((char*)devPtr + r * pitch);`，其中 `devPtr` 的类型是 `float*` 和 `char*`。', styles: [], literal: 'float* row = (float*)((char*)devPtr + r * pitch);' },
   ...(['*', '**', '~~', '=='] as const).flatMap(marker => [
     { name: `code-${marker}`, markdown: `\`(TARGET${marker})(b${marker})\``, styles: ['code'] as const, literal: `(TARGET${marker})(b${marker})` },
@@ -92,4 +96,12 @@ export const inlineSyntaxBoundaryFixtures: readonly InlineBoundaryFixture[] = [
   })),
   { name: 'table-code', markdown: '| Header |\n| --- |\n| `(TARGET*)(b*)` |', styles: ['code'], literal: '(TARGET*)(b*)' },
   { name: 'heading-code', markdown: '# `(TARGET*)(b*)`', styles: ['code'], literal: '(TARGET*)(b*)' }
+];
+
+export const inlineSyntaxBoundaryFixtures: readonly InlineBoundaryFixture[] = [
+  ...proseFixtures,
+  // Cells use inline Markdown; block indentation/headings and general HTML rendering
+  // are not cell formatting cases. Literal HTML code is included below.
+  ...proseFixtures.filter(fixture => !/[\n|]/.test(fixture.markdown) && !/^(?: {4}|#)/.test(fixture.markdown) && fixture.name !== 'normal-html')
+    .map(fixture => ({ ...fixture, name: `table-${fixture.name}`, markdown: `| Boundary |\n| --- |\n| ${fixture.markdown} |` }))
 ];

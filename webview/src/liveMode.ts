@@ -12,7 +12,6 @@ import {
   type DecorationSet
 } from '@codemirror/view';
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
-import type { MarkdownParser } from '@lezer/markdown';
 import { createElement, AlertCircle, Code2, Delete } from 'lucide';
 import {
   resolveCodeLanguage,
@@ -29,10 +28,7 @@ import {
 import { ImageGroupWidget, ImageWidget, getImageData, isImageUrl, type ImageGroupItem } from './helpers/images';
 import { getImagePresentationFactory } from './editor/imagePresentation';
 import { liveHighlightStyle, sourceMarkdownHighlightProps } from './theme';
-import { highlightMarkdownExtension } from './helpers/highlightSyntax';
-import { inlineScriptMarkdownExtension } from './helpers/inlineStyles';
-import { createPunctuationInlineStyleExtension } from './helpers/punctuationSyntax';
-import { markdownLiteralSyntaxExtension } from './helpers/markdownLiteralSyntax';
+import { inlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
 import { currentSyntaxTree, getFencedCodeInfo, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
 import { detailsBlockLiveExtensions, getDetailsBlocks, toggleDetailsBlock } from './helpers/detailsBlocks';
@@ -66,7 +62,6 @@ import {
   detectAlertInBlockquote
 } from './helpers/alerts';
 import {
-  footnoteMarkdownExtension,
   parseFootnotes,
   footnoteReferenceKey,
   type FootnoteReference,
@@ -3864,12 +3859,11 @@ const styledLineNumberMarkerField = StateField.define<RangeSet<GutterMarker>>({
 
 // Both modes edit the same grammar. Stable language identity lets CodeMirror
 // retain its incremental parse when only presentation extensions change.
-const inlineMarkdownExtensions = [footnoteMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, markdownLiteralSyntaxExtension];
 export const editorMarkdownLanguage = markdown({
   base: markdownLanguage,
   addKeymap: false,
   codeLanguages: resolveCodeLanguage,
-  extensions: [...inlineMarkdownExtensions, createPunctuationInlineStyleExtension((markdownLanguage.parser as MarkdownParser).configure(inlineMarkdownExtensions)),
+  extensions: [...inlineMarkdownExtensions,
     { props: [sourceMarkdownHighlightProps] }, { remove: ['SetextHeading', 'Emoji'] }]
 });
 
