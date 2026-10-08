@@ -178,9 +178,14 @@ async function main() {
       const nestedInlinePreviews = Array.from(document.querySelectorAll<HTMLElement>(
         'tbody .meo-md-html-table-cell-preview'
       ));
+      // Native triple-star nesting can wrap either format first; both must style the leaf.
+      const combinedInlineLeaf = Array.from(nestedInlinePreviews[0]?.querySelectorAll<HTMLElement>('*') ?? [])
+        .find((element) => element.childElementCount === 0 && element.textContent === 'bold italic');
+      const combinedInlineStyle = combinedInlineLeaf ? getComputedStyle(combinedInlineLeaf) : null;
       const nestedInlineState = {
         texts: nestedInlinePreviews.map((preview) => preview.textContent ?? ''),
-        strongEm: Boolean(nestedInlinePreviews[0]?.querySelector('strong > em')),
+        combinedEmphasis: Boolean(combinedInlineLeaf?.closest('strong') && combinedInlineLeaf.closest('em')
+          && combinedInlineStyle?.fontStyle === 'italic' && Number.parseFloat(combinedInlineStyle.fontWeight) >= 600),
         strongCode: Boolean(nestedInlinePreviews[1]?.querySelector('strong > code')),
         emStrong: Boolean(nestedInlinePreviews[2]?.querySelector('em > strong')),
         strikeStrong: Boolean(nestedInlinePreviews[3]?.querySelector('.meo-md-strike > strong'))
@@ -1339,7 +1344,7 @@ async function main() {
         'italic with bold',
         'strike with bold'
       ]) ||
-      !result.nestedInlineState.strongEm ||
+      !result.nestedInlineState.combinedEmphasis ||
       !result.nestedInlineState.strongCode ||
       !result.nestedInlineState.emStrong ||
       !result.nestedInlineState.strikeStrong
