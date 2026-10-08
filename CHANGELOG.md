@@ -3,6 +3,11 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## 0.3.29
+- Kept Markdown formatting markers inside code, formulas, link destinations and titles, comments, and HTML code from affecting surrounding text; fixed pointer expressions being shown as italics in Live mode.
+- Aligned punctuation-adjacent emphasis, strikethrough and highlighting across Live prose, tables, Preview, and HTML, PDF and Word exports.
+- Corrected nested and mixed inline formatting, unmatched delimiters and incremental editing while preserving literal code and readable outline labels.
+
 ## 0.3.28
 - Expanded bilingual settings search, editing assistance and configurable shortcuts, including image storage rules, contextual slash commands, link and emoji suggestions, and native table paste behavior.
 - Kept Live code, Mermaid and math block controls visible while scrolling, and added hover copy controls for Mermaid source and LaTeX expressions in document Preview.
