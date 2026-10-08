@@ -3107,18 +3107,14 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   display: inline-block;
   width: var(--meo-quote-space-width);
   white-space: pre;
-}
-
-.cm-editor.meo-mode-live .meo-md-quote-marker-active {
-  display: inline-block;
-  width: var(--meo-live-container-ch);
   text-indent: 0;
 }
 
-/* Prose quote syntax uses its prefix space without moving the rendered body. */
-.cm-editor.meo-mode-live .meo-md-container-prose .meo-md-quote-marker-active {
+/* Editable quote prefixes need distinct, ordered caret positions. */
+.cm-editor.meo-mode-live .meo-md-quote-marker-active {
   display: inline-block !important;
-  margin-inline-end: calc(-1 * var(--meo-live-container-ch));
+  width: var(--meo-live-container-ch);
+  text-indent: 0;
 }
 
 /* Prefix spaces express nesting once; list wrapping adds only the content inset. */

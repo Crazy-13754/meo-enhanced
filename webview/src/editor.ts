@@ -434,6 +434,7 @@ export function createEditor({
   let inlineCodeClick: InlineCodeClickState | null = null;
   let checkboxClick: PointerClickState | null = null;
   let frontmatterBoundaryClick: FrontmatterBoundaryClickState | null = null;
+  let quoteContentClick: { pointerId: number; position: number; x: number; y: number } | null = null;
   let view: EditorView;
   let lastFocusedEditorTarget: HTMLElement | null = null;
   let lastTextareaSelection: { target: HTMLTextAreaElement; start: number; end: number; direction: 'forward' | 'backward' | 'none' } | null = null;
@@ -708,6 +709,29 @@ export function createEditor({
   const isPlainPrimaryPointerEvent = (event: PointerEvent) => (
     event.button === 0 && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey
   );
+  const trackInactiveQuoteContentClick = (event: PointerEvent, editorView: EditorView, target: Element | null) => {
+    quoteContentClick = null;
+    if (!isPlainPrimaryPointerEvent(event)) return;
+    const line = target?.closest<HTMLElement>('.cm-line.meo-md-quote');
+    if (!line || line.classList.contains('meo-md-code-block') || line.classList.contains('meo-mermaid-block')) return;
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.parentElement?.closest('.meo-md-marker, .meo-md-list-marker, .meo-task-checkbox, .cm-widgetBuffer, [contenteditable="false"]')) continue;
+      const offset = /[^\s\u200b]/.exec(node.textContent ?? '')?.index;
+      if (offset === undefined) continue;
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, offset + 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) continue;
+      if (event.clientX < rect.left) {
+        // Resolve before revealing syntax changes the clicked row's geometry.
+        quoteContentClick = { pointerId: event.pointerId, position: editorView.posAtDOM(node, offset),
+          x: event.clientX, y: event.clientY };
+      }
+      return;
+    }
+  };
   const frontmatterBoundaryCursorEnd = (state: EditorState, pos: number) => {
     const frontmatter = parseFrontmatter(state);
     if (!frontmatter) {
@@ -941,6 +965,7 @@ export function createEditor({
   };
 
   const clearPointerSelection = (preserveGitDiffDomain = false) => {
+    quoteContentClick = null;
     if (view) {
       view.dom.classList.remove('meo-pointer-selecting');
     }
@@ -2350,6 +2375,7 @@ export function createEditor({
             const preservedLine = pointerLine !== null && view.state.selection.ranges.some(
               (range) => view.state.doc.lineAt(range.head).number === pointerLine
             ) ? pointerLine : null;
+            if (preservedLine === null) trackInactiveQuoteContentClick(event, view, targetElement);
             liveSelectionGeneration += 1;
             liveSelectionPointerId = event.pointerId;
             view.dispatch({
@@ -3054,11 +3080,17 @@ export function createEditor({
   document.addEventListener('selectionchange', onDocumentSelectionChange);
   onWindowPointerUp = (event) => {
     const completedSelection = selectionMenuPointerId === event.pointerId;
+    const quoteClick = quoteContentClick;
     if (gitDiffSelectionPointerId === event.pointerId) gitDiffSelectionPointerId = null;
     // Keep the originating diff domain while the completed selection remains.
     // Otherwise Chromium repaints the DOM range after pointerup and reveals
     // text from the other version under the same native range.
     clearPointerSelection(true);
+    if (completedSelection && quoteClick?.pointerId === event.pointerId && isLiveMode(view)
+      && isPlainPrimaryPointerEvent(event) && view.state.selection.ranges.length === 1
+      && view.state.selection.main.empty && Math.hypot(event.clientX - quoteClick.x, event.clientY - quoteClick.y) <= 3) {
+      view.dispatch({ selection: { anchor: quoteClick.position } });
+    }
     // Pointer capture targets view.dom, bypassing contentDOM's pointerup handler.
     // Only clicks beyond an empty quote's prefix should snap to its content start.
     if (completedSelection && isLiveMode(view) && isPlainPrimaryPointerEvent(event)
