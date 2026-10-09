@@ -75,6 +75,7 @@ try {
     });
     assert.ok(layout.visible.length > 0 && layout.visible.every(row => row.top >= layout.top - 1 && row.bottom <= layout.bottom + 1), label + ': every visible command row fits completely: ' + JSON.stringify(layout));
     assert.ok(layout.selected && layout.selected.top >= layout.top - 1 && layout.selected.bottom <= layout.bottom + 1, label + ': the selected command remains fully visible: ' + JSON.stringify(layout));
+    return layout.visible.length;
   };
   for (const mode of ['source', 'live']) {
     await prepare(mode); await page.keyboard.type('/'); await open(); await completeRows(mode + ': preferred menu height'); await watchPopup();
@@ -111,6 +112,109 @@ try {
     }
     const longDocument = Array.from({ length: 120 }, (_, index) => 'Line ' + String(index).padStart(3, '0') + ' sample text').join('\n\n');
     const anchor = longDocument.indexOf('Line 060') + 8;
+    const commandOrder = () => page.$$eval('.meo-slash-suggestion', rows => rows.map(row => (row as HTMLElement).dataset.command));
+    const selectedCommand = () => page.$eval('.meo-input-suggestion[aria-selected="true"]', row => (row as HTMLElement).dataset.command);
+    for (const slashPreferAbove of [false, true]) {
+      const label = mode + (slashPreferAbove ? ': fixed upward order' : ': fixed downward order');
+      await prepare(mode, longDocument, anchor, { slashPreferAbove });
+      await page.evaluate(anchor => { (window as any).slashAnchor = anchor; }, anchor);
+      await placeAnchor(slashPreferAbove ? 450 : 150); await page.keyboard.type('/'); await open();
+      await completeRows(label);
+      const order = await commandOrder(), initial = await geometry();
+      const metrics = await page.$eval('.meo-slash-list', list => ({ rowHeight: list.firstElementChild!.getBoundingClientRect().height,
+        chrome: list.parentElement!.getBoundingClientRect().height - list.getBoundingClientRect().height }));
+      const preferredOffset = (rows: number) => slashPreferAbove
+        ? Math.max(8, initial.viewport.top) - initial.viewport.top + 4 + rows * metrics.rowHeight + metrics.chrome
+        : Math.min(712, initial.viewport.bottom) - initial.viewport.top - (initial.anchor.bottom - initial.anchor.top) - 4 - rows * metrics.rowHeight - metrics.chrome;
+      assert.equal(slashPreferAbove ? order.at(-1) : order[0], 'bold', label + ': first-ranked command is at the preferred edge');
+      assert.equal(await selectedCommand(), 'bold', label + ': first-ranked command is initially selected');
+      assert.ok(slashPreferAbove ? initial.menu.bottom <= initial.anchor.top - 3 : initial.menu.top >= initial.anchor.bottom + 3, label + ': prefers the configured side');
+      await placeAnchor(slashPreferAbove ? 22 : 675);
+      const fallback = await geometry();
+      assert.ok(slashPreferAbove ? fallback.menu.top >= fallback.anchor.bottom + 3 : fallback.menu.bottom <= fallback.anchor.top - 3, label + ': falls back at the viewport boundary');
+      assert.deepEqual(await commandOrder(), order, label + ': fallback does not reverse the candidate order');
+      assert.equal(await selectedCommand(), 'bold', label + ': fallback preserves the selected command');
+      const next = slashPreferAbove ? 'ArrowUp' : 'ArrowDown';
+      const previous = slashPreferAbove ? 'ArrowDown' : 'ArrowUp';
+      await page.keyboard.press(next); await completeRows(label + ': next candidate');
+      assert.equal(await selectedCommand(), 'italic', label + ': navigation direction remains fixed after fallback');
+      await page.keyboard.press(previous); assert.equal(await selectedCommand(), 'bold');
+      for (let index = 0; index < order.length; index++) {
+        await page.keyboard.press(next); await completeRows(label + ': scrolling and wrapping');
+      }
+      assert.equal(await selectedCommand(), 'bold', label + ': navigation wraps without changing the rank');
+      await prepare(mode, longDocument, anchor, { slashPreferAbove });
+      await page.evaluate(anchor => { (window as any).slashAnchor = anchor; }, anchor);
+      await placeAnchor(preferredOffset(6.25)); await page.keyboard.type('/'); await open();
+      const compactPreferred = await geometry();
+      assert.ok(slashPreferAbove ? compactPreferred.menu.bottom <= compactPreferred.anchor.top - 3 : compactPreferred.menu.top >= compactPreferred.anchor.bottom + 3, label + ': retains the configured side with space for six rows');
+      assert.equal(await completeRows(label + ': six-row preferred side'), 6);
+      await page.keyboard.type('bold'); await open();
+      assert.equal(await completeRows(label + ': filtering'), 2, label + ': fewer than six matches are all visible');
+      assert.equal(await selectedCommand(), 'bold');
+      const filtered = await commandOrder();
+      assert.equal(slashPreferAbove ? filtered.at(-1) : filtered[0], 'bold', label + ': filtering retains fixed order');
+      await page.keyboard.press('Enter');
+      await waitText(longDocument.slice(0, anchor) + '****' + longDocument.slice(anchor));
+      await prepare(mode, longDocument, anchor, { slashPreferAbove });
+      await page.evaluate(anchor => { (window as any).slashAnchor = anchor; }, anchor);
+      await placeAnchor(preferredOffset(5.75)); await page.keyboard.type('/'); await open();
+      const sixRowFallback = await geometry();
+      assert.ok(slashPreferAbove ? sixRowFallback.menu.top >= sixRowFallback.anchor.bottom + 3 : sixRowFallback.menu.bottom <= sixRowFallback.anchor.top - 3, label + ': five whole rows cause fallback to the side with at least six');
+      assert.ok(await completeRows(label + ': six-row fallback') >= 6);
+      await placeAnchor(preferredOffset(6.25)); await page.keyboard.type('bold'); await open();
+      const stableFallback = await geometry();
+      assert.ok(slashPreferAbove ? stableFallback.menu.top >= stableFallback.anchor.bottom + 3 : stableFallback.menu.bottom <= stableFallback.anchor.top - 3, label + ': filtering and restored preferred space keep the current side');
+      assert.equal(await completeRows(label + ': filtered fallback'), 2);
+      await page.keyboard.press('Escape');
+
+      await page.setViewport({ width: 1000, height: 320 });
+      await prepare(mode, longDocument, anchor, { slashPreferAbove });
+      await page.evaluate(anchor => { (window as any).slashAnchor = anchor; }, anchor);
+      const middle = (320 - (initial.anchor.bottom - initial.anchor.top)) / 2;
+      await placeAnchor(middle + (slashPreferAbove ? -1 : 1)); await page.keyboard.type('/'); await open();
+      const tied = await geometry(), tiedRows = await completeRows(label + ': tied row capacities');
+      assert.ok(tiedRows < 6);
+      assert.ok(slashPreferAbove ? tied.menu.bottom <= tied.anchor.top - 3 : tied.menu.top >= tied.anchor.bottom + 3, label + ': equal complete-row capacities prefer the configured side despite a pixel difference');
+      await placeAnchor(middle + (slashPreferAbove ? 1 : -1));
+      const stableTie = await geometry();
+      assert.ok(slashPreferAbove ? stableTie.menu.bottom <= stableTie.anchor.top - 3 : stableTie.menu.top >= stableTie.anchor.bottom + 3, label + ': equal capacities keep the open menu on the same side');
+      await placeAnchor(middle + metrics.rowHeight);
+      const moreAbove = await geometry();
+      assert.ok(moreAbove.menu.bottom <= moreAbove.anchor.top - 3);
+      assert.equal(await completeRows(label + ': more complete rows above'), tiedRows + 1);
+      await placeAnchor(middle - metrics.rowHeight);
+      const moreBelow = await geometry();
+      assert.ok(moreBelow.menu.top >= moreBelow.anchor.bottom + 3);
+      assert.equal(await completeRows(label + ': more complete rows below'), tiedRows + 1);
+      assert.equal(await selectedCommand(), 'bold', label + ': constrained repositioning preserves selection');
+      await page.keyboard.press('Escape');
+      await page.setViewport({ width: 1000, height: 1100 });
+      await prepare(mode, longDocument, anchor, { slashPreferAbove });
+      await page.evaluate(anchor => {
+        const g = window as any; g.slashAnchor = anchor;
+        g.editor.view.contentDOM.style.fontSize = '41px'; g.editor.view.requestMeasure();
+      }, anchor);
+      await settlePosition(); await placeAnchor(slashPreferAbove ? 800 : 100); await page.keyboard.type('/'); await open();
+      assert.equal(await completeRows(label + ': large-font minimum'), 6, label + ': large fonts raise the height limit to fit six whole rows');
+      const largeFont = await geometry();
+      assert.ok(largeFont.menu.height > 342 && largeFont.menu.top >= largeFont.viewport.top && largeFont.menu.bottom <= largeFont.viewport.bottom);
+      await page.keyboard.press('Escape'); await page.setViewport({ width: 1000, height: 720 });
+    }
+    await prepare(mode, '', 0, { slashPreferAbove: true }); await page.keyboard.type('/'); await open();
+    await page.click('[data-command="italic"]'); await waitText('**');
+    await prepare(mode, '', 0, { slashPreferAbove: true }); await page.keyboard.type('/'); await open();
+    const upwardIme = await page.createCDPSession();
+    await upwardIme.send('Input.imeSetComposition', { text: 'bold', selectionStart: 4, selectionEnd: 4 });
+    await page.waitForFunction(() => document.querySelectorAll('.meo-input-suggestion').length === 2 && Array.from(document.querySelectorAll('.meo-input-suggestion')).every(row => row.getAttribute('aria-disabled') === 'true'));
+    for (const key of ['ArrowUp', 'ArrowDown', 'Enter', 'Tab', 'Escape']) {
+      assert.equal(await page.evaluate(key => {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, isComposing: true });
+        document.activeElement!.dispatchEvent(event); return event.defaultPrevented;
+      }, key), false, mode + ': upward menu leaves composition keys to the IME');
+    }
+    await upwardIme.send('Input.insertText', { text: 'bold' }); await open();
+    await page.keyboard.press('Enter'); await waitText('****'); await upwardIme.detach();
     await prepare(mode, longDocument, anchor); await page.evaluate(anchor => { (window as any).slashAnchor = anchor; }, anchor);
     await placeAnchor(90); await page.keyboard.type('/'); await open();
     const initial = await geometry();
@@ -417,11 +521,20 @@ try {
   assert.equal(await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).value), '****');
   await page.keyboard.type('word');
   await page.evaluate(() => (window as any).editor.getTextForSave()); await waitText(table.replace('|  | x |', '| **word** | x |'));
-  const prepareCell = async (value = '', pos = value.length) => {
-    await prepare('live', table.replace('|  | x |', '| ' + value + ' | x |'), 0);
+  const prepareCell = async (value = '', pos = value.length, slashPreferAbove = false) => {
+    await prepare('live', table.replace('|  | x |', '| ' + value + ' | x |'), 0, { slashPreferAbove });
     await page.waitForSelector('tbody textarea'); await page.click('tbody textarea');
     await page.evaluate(pos => (document.activeElement as HTMLTextAreaElement).setSelectionRange(pos, pos), pos);
   };
+  await prepareCell('', 0, true); await page.keyboard.type('/'); await open();
+  assert.equal(await page.$eval('.meo-slash-list', list => (list.lastElementChild as HTMLElement).dataset.command), 'bold', 'native cell uses the fixed upward order');
+  await page.keyboard.press('ArrowUp'); await completeRows('native cell: upward navigation');
+  assert.equal(await page.$eval('.meo-input-suggestion[aria-selected="true"]', row => (row as HTMLElement).dataset.command), 'italic');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).value), '**', 'native cell navigation inserts the selected command');
+  await prepareCell('', 0, true); await page.keyboard.type('/'); await open();
+  await page.click('[data-command="bold"]');
+  assert.equal(await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).value), '****', 'native cell pointer selection uses the command index rather than visual order');
   await prepareCell(); await page.keyboard.type('/'); await open(); await watchPopup();
   await page.keyboard.type('bold', { delay: 60 }); await open();
   await page.waitForFunction(() => (window as any).editor.getText().includes('/bold'));

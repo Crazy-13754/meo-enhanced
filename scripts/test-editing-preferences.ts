@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { generalSearchKeywords, imageLocationSearchKeywords, settingsSearchMatches, shortcutSearchKeywords, shortcutSections, typingSearchKeywords } from '../webview/src/application/settingsCatalog';
 import assert from 'node:assert/strict';
+import { mock } from 'bun:test';
 import { defaultInputAssistance, editorCommandIds, isEditingPreferencesChange } from '../src/foundation/editingPreferences';
 import {
   canBindCommand, changeEditingPreferences, defaultShortcuts, effectiveShortcuts,
@@ -146,3 +147,49 @@ assert.deepEqual(race.result, { ok: true, value: raceValue }, 'acknowledgement c
 const schema = JSON.parse(readFileSync('package.json', 'utf8')).contributes.configuration.properties['meoEnhanced.editing.preferences'];
 assert.deepEqual(new Set(schema.properties.shortcuts.propertyNames.enum), new Set(editorCommandIds.filter(canBindCommand)));
 assert.deepEqual(schema.default, defaults);
+
+let savedGlobal: Partial<EditingPreferences> | undefined;
+let savedWorkspace: Partial<EditingPreferences> | undefined;
+const configurationWrites: number[] = [];
+mock.module('vscode', () => ({
+  ConfigurationTarget: { Global: 1, Workspace: 2 },
+  workspace: { getConfiguration: () => ({
+    inspect: () => ({ globalValue: savedGlobal, workspaceValue: savedWorkspace }),
+    get: () => normalizeEditingPreferences({
+      input: { ...savedGlobal?.input, ...savedWorkspace?.input },
+      shortcuts: { ...savedGlobal?.shortcuts, ...savedWorkspace?.shortcuts }
+    }),
+    update: async (_key: string, value: EditingPreferences, target: number) => {
+      configurationWrites.push(target);
+      if (target === 1) savedGlobal = value; else savedWorkspace = value;
+    }
+  }) }
+}));
+const { createVscodeEditingPreferences } = await import('../src/host/vscodeEditingPreferences');
+for (const language of ['zh-CN', 'en'] as const) {
+  savedGlobal = undefined; savedWorkspace = undefined; configurationWrites.length = 0;
+  const initialized = await createVscodeEditingPreferences(language);
+  assert.equal(initialized.read().input.slashPreferAbove, language === 'zh-CN');
+  assert.deepEqual(configurationWrites, [1], 'the language-derived default is immediately persisted globally');
+  const later = await createVscodeEditingPreferences(language === 'zh-CN' ? 'en' : 'zh-CN');
+  assert.equal(later.read().input.slashPreferAbove, language === 'zh-CN', 'language changes preserve the initial value without a manual toggle');
+  assert.deepEqual(configurationWrites, [1], 'reloading does not initialize twice');
+  await initialized.update({ type: 'updateEditingPreferences', requestId: 'placement', change: { type: 'input', key: 'slashPreferAbove', value: language !== 'zh-CN' } });
+  assert.equal((await createVscodeEditingPreferences(language)).read().input.slashPreferAbove, language !== 'zh-CN', 'explicit changes survive restart');
+}
+savedGlobal = { input: { ...defaultInputAssistance, emoji: true, pasteUrl: false }, shortcuts: { bold: [] } };
+delete (savedGlobal.input as { slashPreferAbove?: boolean }).slashPreferAbove;
+savedWorkspace = { input: { ...defaultInputAssistance, slashPreferAbove: false, pasteHtml: false } };
+configurationWrites.length = 0;
+const migrated = await createVscodeEditingPreferences('zh-CN');
+assert.equal(savedGlobal.input!.slashPreferAbove, true);
+assert.equal(savedGlobal.input!.emoji, true);
+assert.equal(savedGlobal.input!.pasteUrl, false);
+assert.deepEqual(savedGlobal.shortcuts, { bold: [] }, 'initialization preserves existing global choices');
+assert.equal(migrated.read().input.slashPreferAbove, false, 'an existing workspace choice overrides the global default');
+assert.equal(savedGlobal.input!.pasteHtml, true, 'workspace-only choices are not copied into global preferences');
+assert.deepEqual(configurationWrites, [1]);
+savedWorkspace = undefined;
+assert.equal((await createVscodeEditingPreferences('en')).read().input.slashPreferAbove, true);
+assert.deepEqual(configurationWrites, [1]);
+console.log('Slash menu preference: one-time language defaults, persistence, explicit choices and workspace overrides passed');

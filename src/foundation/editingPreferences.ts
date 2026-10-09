@@ -24,6 +24,7 @@ export type InputAssistance = {
   readonly pasteHtml: boolean;
   readonly documentSuggestions: boolean;
   readonly slash: boolean;
+  readonly slashPreferAbove: boolean;
   readonly emoji: boolean;
 };
 /** Missing commands use platform defaults; an explicit empty array removes a binding. */
@@ -39,7 +40,7 @@ export type EditingPreferencesChange =
 
 export const defaultInputAssistance: InputAssistance = {
   selectionToolbar: true, wrapSelection: true, pairMode: 'smart', skipMode: 'smart', deleteMode: 'smart', lists: true,
-  convertTables: true, pasteUrl: true, pasteHtml: true, documentSuggestions: true, slash: true, emoji: false
+  convertTables: true, pasteUrl: true, pasteHtml: true, documentSuggestions: true, slash: true, slashPreferAbove: false, emoji: false
 };
 
 export function isEditorCommandId(value: unknown): value is EditorCommandId {
