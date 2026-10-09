@@ -35,6 +35,7 @@
   --meo-code-block-active-line-bg-live: color-mix(in srgb, var(--vscode-sideBar-background) 50%, transparent 50%);
   --meo-font-live: var(--vscode-editor-font-family);
   --meo-font-source: var(--vscode-editor-font-family);
+  --meo-kbd-font-family: Consolas, 'SFMono-Regular', Menlo, var(--meo-font-live), sans-serif;
   --meo-font-live-weight: var(--vscode-editor-font-weight);
   --meo-font-source-weight: var(--vscode-editor-font-weight);
   --meo-font-live-size: var(--vscode-editor-font-size, 13px);
@@ -2156,7 +2157,8 @@ button:focus-visible > .menu-switch {
 }
 
 html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
-  --meo-foreground: #cbd8e4;
+  --meo-foreground: #d2d8df;
+  --meo-semantic-blockquoteForeground: #b6bcc3;
 }
 
 .cm-editor.meo-mode-source {
@@ -3523,27 +3525,42 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   text-rendering: auto;
 }
 
-.cm-editor .meo-md-kbd {
+.cm-editor :is(.meo-md-kbd, .meo-md-html-inline kbd, .meo-md-html-content kbd) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   margin: 0 0.08em;
   padding: 0.04em 0.42em 0.1em;
   min-width: 1.3em;
-  border: 1px solid var(--meo-semantic-kbdBorder);
+  border: 1px solid color-mix(in srgb, var(--meo-semantic-kbdBorder) 85%, transparent);
+  border-bottom-width: 2px;
   border-radius: 0.35em;
   background: var(--meo-semantic-kbdBackground);
-  /* Keep fill out of the border area so the bottom edge stays crisp. */
-  background-clip: padding-box;
   color: var(--meo-foreground);
-  font-size: 0.84em;
+  -webkit-text-fill-color: currentColor;
+  font-family: var(--meo-kbd-font-family);
+  font-size: var(--meo-font-source-size);
   font-weight: 600;
   line-height: 1.2;
   vertical-align: baseline;
   white-space: nowrap;
   text-indent: 0;
-  /* Extra 1px inside stroke -> visual 2px bottom edge without changing line height. */
-  box-shadow: inset 0 -1px 0 var(--meo-semantic-kbdBorder);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--meo-semantic-kbdBorder) 55%, transparent);
+}
+
+.cm-editor :is(.meo-md-kbd, .meo-md-html-inline kbd, .meo-md-html-content kbd) * {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  -webkit-text-fill-color: currentColor;
+}
+
+.cm-editor.meo-mode-live :is(.meo-md-kbd, .meo-md-html-inline kbd, .meo-md-html-content kbd) {
+  /* Inline borders and padding paint outside the line box without shifting its baseline. */
+  display: inline;
+  font-size: 0.9em;
+  line-height: 1;
 }
 
 .cm-editor .meo-md-math {
@@ -4155,26 +4172,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor .meo-md-html-block th {
   background: var(--meo-live-table-header-background, var(--meo-semantic-tableHeaderBackground));
   font-weight: 600;
-}
-
-.cm-editor .meo-md-html-content kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.3em;
-  margin: 0 0.08em;
-  padding: 0.04em 0.42em 0.1em;
-  border: 1px solid var(--meo-semantic-kbdBorder);
-  border-radius: 0.35em;
-  color: var(--meo-foreground);
-  background: var(--meo-semantic-kbdBackground);
-  background-clip: padding-box;
-  box-shadow: inset 0 -1px 0 var(--meo-semantic-kbdBorder);
-  font-size: 0.84em;
-  font-weight: 600;
-  line-height: 1.2;
-  vertical-align: baseline;
-  white-space: nowrap;
 }
 
 .cm-editor .meo-md-html-content code {

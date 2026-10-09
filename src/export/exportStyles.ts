@@ -842,13 +842,14 @@ kbd {
   border-radius: 0.35em;
   background: var(--meo-kbd-bg);
   color: var(--meo-fg);
-  font-family: var(--meo-font-code);
+  font-family: Consolas, 'SFMono-Regular', Menlo, var(--meo-font-body), sans-serif;
   font-size: var(--meo-font-size-code);
   font-weight: 600;
   line-height: 1.2;
   vertical-align: baseline;
   white-space: nowrap;
   text-indent: 0;
+  -webkit-text-fill-color: currentColor;
   box-shadow: inset 0 -1px 0 var(--meo-kbd-shadow);
 }
 
