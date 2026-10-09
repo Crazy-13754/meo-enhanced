@@ -59,6 +59,12 @@ exact commands without running them.
 
 ## Daily repair loop
 
+`scripts/test-preview-navigation-continuity.ts` exercises the production Webview
+with real Preview rendering. Outline jumps, keyboard fragment links and return
+to top must retain the new location when returning to either Live or Source,
+without a body click. It also checks unchanged roundtrips and samples multiple
+frames after the return. It belongs to the quick and targeted viewport gates.
+
 1. Reproduce the reported behavior with the smallest relevant contract.
 2. While implementing, rerun only that contract.
 3. Once the change is coherent, run `bun run test:quick` once.

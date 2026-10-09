@@ -120,6 +120,7 @@ assert.equal(release.stages[0]?.maxConcurrency, 3);
 assert.deepEqual(release.stages[1]?.commands, [
   { args: ['scripts/test-editor-startup-load.ts'] },
   { args: ['scripts/test-mode-roundtrip-reveal.ts'] },
+  { args: ['scripts/test-preview-navigation-continuity.ts'] },
   { args: ['run', 'test:browser-high-risk'] }
 ]);
 assert.deepEqual(release.stages[2]?.commands, [{ args: ['run', 'test:browser'] }]);
