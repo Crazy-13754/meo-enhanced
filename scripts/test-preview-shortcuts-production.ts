@@ -40,7 +40,7 @@ try {
         const global = window as any;
         global.__shortcutPreferences = {
           input: global.EditingSettingsHarness.defaultInputAssistance,
-          shortcuts: { preview: ['Ctrl + Alt + P'] }
+          shortcuts: { preview: ['Ctrl + Alt + V'] }
         };
         window.dispatchEvent(new MessageEvent('message', { data: {
           type: 'init', documentId: 'file:///preview-shortcuts.md', text, version: 1,
@@ -75,6 +75,41 @@ try {
         finally { if (alt) await page.keyboard.up('Alt'); await page.keyboard.up('Control'); }
       };
       const focusBody = () => frame.click('#reading');
+      // Model the outer VS Code key listener, rather than another MEO command.
+      await page.evaluate(() => {
+        const global = window as any;
+        global.__hostKeys = [];
+        for (const type of ['keydown', 'keyup']) window.addEventListener(type, event => {
+          const key = event as KeyboardEvent;
+          global.__hostKeys.push({ type, key: key.key, code: key.code, keyCode: key.keyCode,
+            ctrl: key.ctrlKey, alt: key.altKey, shift: key.shiftKey, meta: key.metaKey,
+            repeat: key.repeat, target: (key.target as Element)?.className });
+          if (key.ctrlKey && key.altKey && key.code === 'KeyP') key.preventDefault();
+        });
+      });
+      await focusBody();
+      await chord('p', true);
+      const hostKeys = await page.evaluate(() => (window as any).__hostKeys);
+      assert.deepEqual(hostKeys, ['keydown', 'keyup'].map(type => ({
+        type, key: 'p', code: 'KeyP', keyCode: 80, ctrl: true, alt: true,
+        shift: false, meta: false, repeat: false, target: 'preview-frame'
+      })), `${surface}: unhandled Ctrl+Alt+P never reached the VS Code key listener`);
+      assert.equal(await page.$eval('#app', app => (app as HTMLElement).dataset.mode), surface === 'full' ? 'preview' : 'source');
+      await page.evaluate(() => { (window as any).__hostKeys = []; });
+      await page.keyboard.press('F1');
+      assert.deepEqual(await page.evaluate(() => (window as any).__hostKeys.map((event: any) => [event.type, event.key])),
+        [['keydown', 'F1'], ['keyup', 'F1']], `${surface}: function keys must reach the host`);
+      await page.evaluate(() => { (window as any).__hostKeys = []; });
+      await chord('k'); await chord('m');
+      assert.deepEqual(await page.evaluate(() => (window as any).__hostKeys.map((event: any) => [event.type, event.key])),
+        [['keydown', 'k'], ['keyup', 'k'], ['keydown', 'm'], ['keyup', 'm']], `${surface}: host chords must retain both strokes`);
+      await page.evaluate(() => { (window as any).__hostKeys = []; });
+      await page.keyboard.down('Control'); await page.keyboard.down('Alt');
+      try { await page.keyboard.down('p'); await page.keyboard.down('p'); await page.keyboard.up('p'); }
+      finally { await page.keyboard.up('Alt'); await page.keyboard.up('Control'); }
+      assert.deepEqual(await page.evaluate(() => (window as any).__hostKeys.map((event: any) => [event.type, event.repeat])),
+        [['keydown', false], ['keydown', true], ['keyup', false]], `${surface}: repeats must not duplicate keyup`);
+      await page.evaluate(() => { (window as any).__hostKeys = []; });
       await focusBody();
       await chord('f');
       await page.waitForSelector('.find-panel.is-visible', { timeout: 3000 });
@@ -82,7 +117,7 @@ try {
       await page.evaluate(() => {
         const global = window as any;
         global.__shortcutPreferences = { ...global.__shortcutPreferences,
-          shortcuts: { preview: ['Ctrl + Alt + P'], find: ['Ctrl + Alt + F'] } };
+          shortcuts: { preview: ['Ctrl + Alt + V'], find: ['Ctrl + Alt + F'] } };
         window.dispatchEvent(new MessageEvent('message', { data: {
           type: 'editingPreferencesChanged', preferences: global.__shortcutPreferences, revision: 1
         } }));
@@ -104,8 +139,12 @@ try {
       const saves = await page.evaluate(() => (window as any).__shortcutMessages.filter((message: any) => message.type === 'saveDocumentRevision'));
       assert.equal(saves.length, 1, `${surface}: Save must dispatch exactly once`);
       assert.equal(saves[0].revision.text, editedText);
+      assert.ok(!(await page.evaluate(() => (window as any).__hostKeys)).some((event: any) => event.key === 's'),
+        `${surface}: handled MEO Save must not also reach the host`);
+      await page.evaluate(() => { (window as any).__hostKeys = []; });
       await chord('a');
       assert.ok(await frame.evaluate(() => (getSelection()?.toString().length ?? 0) > 0), `${surface}: native Preview selection was stolen`);
+      await chord('c');
       await chord('z');
       assert.equal(await page.evaluate(() => (window as any).EditingSettingsHarness.EditorView
         .findFromDOM(document.querySelector('.editor-host > .cm-editor')).state.doc.toString()), editedText,
@@ -136,6 +175,8 @@ try {
         return results;
       });
       assert.ok(untouched.every(prevented => !prevented), `${surface}: native/input/IME keys were intercepted: ${untouched}`);
+      assert.deepEqual(await page.evaluate(() => (window as any).__hostKeys), [],
+        `${surface}: native reading and synthetic input must not reach the host`);
       assert.equal(await page.$('.find-panel.is-visible'), null);
       if (surface === 'full') {
         // Clicking a reading margin must work just like clicking the actual text.
@@ -143,13 +184,17 @@ try {
         const margin = await frame.evaluate(() => ({ x: 5, y: document.getElementById('reading')!.getBoundingClientRect().top + 12 }));
         const bounds = await page.$eval('.preview-frame', element => ({ x: element.getBoundingClientRect().left, y: element.getBoundingClientRect().top }));
         await page.mouse.click(bounds.x + margin.x, bounds.y + margin.y);
-        await chord('p', true);
+        await chord('v', true);
         await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'live', { timeout: 3000 });
         await page.click('[data-mode="preview"]');
         await page.waitForFunction(() => document.querySelector<HTMLElement>('.preview-status')?.hidden === true);
         await new Promise(resolve => setTimeout(resolve, 250));
         await focusBody();
+        await page.evaluate(() => { (window as any).__hostKeys = []; });
         await chord('p', true);
+        assert.equal(await page.evaluate(() => (window as any).__hostKeys.length), 2,
+          're-entering Preview must not duplicate its host keyboard listeners');
+        await chord('v', true);
         await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'live', { timeout: 3000 });
         const previousScroll = await page.$eval('.cm-scroller', element => element.scrollTop);
         await page.click('[data-mode="preview"]');

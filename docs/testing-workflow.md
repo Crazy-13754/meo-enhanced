@@ -728,6 +728,16 @@ original document for this runner.
 
 ## Manual F5 acceptance
 
+For Preview host-shortcut changes, run the short native check after building:
+`./scripts/test-vscode-preview-shortcuts.ps1 -CodePath <absolute-Code.exe-path>`.
+It starts a hidden VS Code extension test instance with its own disposable user
+profile, workspace and extensions directory. Real keyboard input must open the
+workbench command palette, Quick Open and a two-stroke binding from full and
+split Preview, with Live as a binding baseline. The runner writes `result.json`
+and a command-palette screenshot under `.local/probes/preview-shortcuts-*`.
+This supplements the production browser checks; it never edits user keybindings
+or invokes the command under test through `executeCommand`.
+
 Manual acceptance should also be risk-based. Test the changed surface first,
 then do a short transition check around it: Live/Source/Preview mode switching,
 typing and undo/redo, cursor visibility and scroll stability. Add Mermaid/math,

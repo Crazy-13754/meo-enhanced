@@ -3500,6 +3500,9 @@ window.addEventListener('message', (event) => {
 });
 
 window.addEventListener('keydown', (event) => {
+  // Preview has already offered these forwarded keys to global MEO commands.
+  // Replaying them here could reach the Source editor behind a side Preview.
+  if (event.target instanceof HTMLIFrameElement && event.target.classList.contains('preview-frame')) return;
   handleEditorShortcut(event, shortcutHandlerContext);
 }, { capture: true });
 

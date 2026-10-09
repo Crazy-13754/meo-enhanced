@@ -40,8 +40,8 @@ type PreviewControllerOptions = {
   applyCodeTheme: (appearance: 'light' | 'dark') => void;
   onRendered?: (options?: { readonly skipLinkedViewportProjection?: boolean }) => void;
   onPaintReady?: () => void;
-  /** Dispatch only global commands; unhandled gestures keep the iframe's native behavior. */
-  onShortcut?: (event: KeyboardEvent) => void;
+  /** Return true for a handled global command; other command keys continue to VS Code. */
+  onShortcut?: (event: KeyboardEvent) => boolean;
   onSearchResultsChanged?: () => void;
   onNavigateToTop?: () => boolean;
   onNavigateToSource?: (line: number) => void;
@@ -1479,7 +1479,7 @@ export function createPreviewController({
       bindPreviewLinks(frameDocument, vscode, notifyViewportInteraction, signal);
       bindSourceNavigation(frameDocument, mappedRoot, signal);
       bindPreviewWheelFallback(frameDocument, signal);
-      frameDocument.defaultView?.addEventListener('keydown', event => onShortcut?.(event), { capture: true, signal });
+      bindPreviewShortcuts(frame, onShortcut, signal);
       const keepPosition = () => {
         if (
           disposed ||
@@ -2867,6 +2867,53 @@ function bindPreviewLinks(
       activateLink(event);
     }
   }, { capture: true, signal });
+}
+
+function bindPreviewShortcuts(
+  frame: HTMLIFrameElement,
+  onShortcut: PreviewControllerOptions['onShortcut'],
+  signal: AbortSignal
+): void {
+  const frameWindow = frame.contentWindow;
+  if (!frameWindow) return;
+  const forwardedKeys = new Set<string>();
+  const forward = (event: KeyboardEvent): void => {
+    // VS Code listens on the outer webview window, not inside nested iframes.
+    // Its existing keyboard bridge retains user bindings and chord contexts.
+    const forwarded = new KeyboardEvent(event.type, {
+      key: event.key, code: event.code, keyCode: event.keyCode, location: event.location,
+      ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey,
+      shiftKey: event.shiftKey, repeat: event.repeat, bubbles: true, cancelable: true
+    });
+    frame.dispatchEvent(forwarded);
+    if (forwarded.defaultPrevented) event.preventDefault();
+    event.stopPropagation();
+  };
+  frameWindow.addEventListener('keydown', event => {
+    if (onShortcut?.(event) || !isPreviewHostShortcut(event)) return;
+    forwardedKeys.add(event.code || event.key);
+    forward(event);
+  }, { capture: true, signal });
+  frameWindow.addEventListener('keyup', event => {
+    if (event.isTrusted && forwardedKeys.delete(event.code || event.key)) forward(event);
+  }, { capture: true, signal });
+  frameWindow.addEventListener('blur', () => forwardedKeys.clear(), { signal });
+}
+
+function isPreviewHostShortcut(event: KeyboardEvent): boolean {
+  if (!event.isTrusted || event.defaultPrevented || event.isComposing || event.keyCode === 229
+    || event.getModifierState('AltGraph')) return false;
+  if (['Control', 'Meta', 'Alt', 'Shift', 'Process', 'Dead', 'Unidentified'].includes(event.key)) return false;
+  // Reading selection and embedded inputs must retain native editing gestures.
+  if (!event.altKey) {
+    const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
+    const input = (event.target as Element | null)?.closest?.('input, textarea, [contenteditable="true"]');
+    if ((event.ctrlKey || event.metaKey) && ((!event.shiftKey && ['a', 'c', 'x', 'v', 'y', 'z'].includes(key))
+      || (event.shiftKey && key === 'z') || (input && ['c', 'x', 'v'].includes(key)) || event.key === 'Insert')) return false;
+    if (/^(Arrow(?:Up|Down|Left|Right)|Home|End|PageUp|PageDown|Backspace|Delete)$/.test(event.key)) return false;
+    if (event.shiftKey && event.key === 'Insert') return false;
+  }
+  return event.ctrlKey || event.metaKey || event.altKey || /^F(?:[1-9]|1\d|2[0-4])$/.test(event.key);
 }
 
 function bindPreviewWheelFallback(frameDocument: Document, signal: AbortSignal): void {
