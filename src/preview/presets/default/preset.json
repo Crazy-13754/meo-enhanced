@@ -1,0 +1,20 @@
+{
+  "$schema": "../preset.schema.json",
+  "schemaVersion": 1,
+  "id": "default",
+  "name": { "en": "Default", "zh-CN": "默认" },
+  "description": {
+    "en": "Use the editor's reading styles and your Preview settings.",
+    "zh-CN": "使用编辑器的阅读样式与预览设置。"
+  },
+  "renderer": "meo",
+  "defaults": { "appearance": "auto", "contentWidth": "responsive" },
+  "controls": {
+    "fontFamily": { "mode": "editable" },
+    "appearance": { "mode": "editable", "options": ["auto", "light", "dark"] },
+    "codeColoring": { "mode": "editable" },
+    "htmlComments": { "mode": "editable" },
+    "contentWidth": { "mode": "unsupported" }
+  },
+  "notes": []
+}

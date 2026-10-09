@@ -37,6 +37,8 @@ MEO Enhanced 适用于需要在 VS Code 中编写和审阅复杂 Markdown 文档
 
 三种模式使用同一份文档内容。模式切换时会保留当前阅读位置，无需创建或维护单独的预览文档。
 
+Preview 的 **预设** 菜单提供 **默认** 和 **GitHub README**。GitHub README 使用内置的 GitHub 风格字体、代码配色和渲染规则，可选择自动 / 浅色 / 深色主题，正文有固定最大宽度，窄面板自动收缩。切回默认会恢复原来的设置。HTML、PDF 导出沿用当前预览预设和主题；Word 保持固定格式。公式、图表和仓库专属功能的差异可查看预设说明。
+
 ![同一份 Markdown 文档在 Live、Source 和 Preview 模式中的显示效果](docs/readme/zh-cn/display-modes.png)
 
 ## 文档改动审阅

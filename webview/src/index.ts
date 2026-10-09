@@ -989,6 +989,8 @@ exportControl.addEventListener('keydown', (event) => {
 });
 
 const previewAppearanceSlot = document.createElement('span');
+const previewPresetSlot = document.createElement('span');
+const previewWidthSlot = document.createElement('span');
 const previewFontFamilySlot = document.createElement('span');
 const previewSourceColoringSlot = document.createElement('span');
 const previewShowCommentsSlot = document.createElement('span');
@@ -998,10 +1000,12 @@ previewFormatGroup.setAttribute('role', 'group');
 previewFormatGroup.setAttribute('aria-label', activeUiStrings.previewTools);
 previewFormatGroup.append(
   previewOutlineLeftBtn,
+  previewPresetSlot,
   previewFontFamilySlot,
   previewAppearanceSlot,
   previewSourceColoringSlot,
   previewShowCommentsSlot,
+  previewWidthSlot,
   exportControl
 );
 
@@ -1417,7 +1421,7 @@ sourcePreviewMoreButton.addEventListener('click', () => {
 document.addEventListener('pointerdown', (event) => {
   if (sourcePreviewMorePanel.hidden || !(event.target instanceof Node)) return;
   if (sourcePreviewTools.contains(event.target)) return;
-  if (event.target instanceof Element && event.target.closest('.preview-font-family-dropdown-panel')) return;
+  if (event.target instanceof Element && event.target.closest('.preview-dropdown-panel')) return;
   setSourcePreviewMoreOpen(false);
 });
 document.addEventListener('keydown', (event) => {
@@ -1529,7 +1533,7 @@ const moveToolbarItemToOverflow = (item: HTMLElement): void => {
 };
 
 const syncToolbarOverflow = () => {
-  const nextLayoutKey = `${toolbar.clientWidth}:${rightGroup.offsetWidth}:${root.dataset.mode ?? ''}:${activeUiLanguage}`;
+  const nextLayoutKey = `${toolbar.clientWidth}:${rightGroup.offsetWidth}:${root.dataset.mode ?? ''}:${activeUiLanguage}:${previewController.getPresetState().preset}`;
   if (nextLayoutKey === toolbarOverflowLayoutKey) return;
   toolbarOverflowLayoutKey = nextLayoutKey;
   restoreToolbarOverflowItems();
@@ -1665,6 +1669,10 @@ const previewController = createPreviewController({
   isCurrentText: (text) => normalizeDocumentText(getCurrentEditorText()) === text,
   getCodePalette: (appearance) => resolveCodePaletteForPreview(appearance),
   applyCodeTheme: (appearance) => applyCodeThemeForPreview(appearance),
+  onPresetPreferencesChanged: () => {
+    persistUiState();
+    syncToolbarOverflow();
+  },
   mermaidRenderResources: mermaidDiagramRenderPool,
   onFindRequested: () => findPanelController.open('find'),
   onSearchResultsChanged: () => {
@@ -1687,6 +1695,7 @@ const previewController = createPreviewController({
     editorHost.removeAttribute('data-preview-cover');
     editorSurface.removeAttribute('data-source-preview-exit-cover');
     markSourcePreviewSurfaceReady();
+    if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
     if (getActiveEditorMode() === 'preview') findPanelController.refreshForModeChange();
   },
   onRendered: (options) => {
@@ -1710,6 +1719,7 @@ const previewController = createPreviewController({
     readingPositionLifecycle?.viewportChanged();
   },
   onGeometryChanged: () => {
+    if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
     if (isSidePreviewVisible()) editor?.linkedPreviewReady?.();
   },
   runViewportTransaction: (mutate, documentChange) => {
@@ -1738,6 +1748,8 @@ const previewController = createPreviewController({
 const previewAdapter = createPreviewWebviewAdapter(previewController);
 previewAppearanceSlot.replaceWith(previewController.appearanceControl);
 previewFontFamilySlot.replaceWith(previewController.fontFamilyControl);
+previewPresetSlot.replaceWith(previewController.presetControl);
+previewWidthSlot.replaceWith(previewController.widthControl);
 previewSourceColoringSlot.replaceWith(previewController.sourceColoringControl);
 previewShowCommentsSlot.replaceWith(previewController.showCommentsControl);
 previewController.host.append(sourcePreviewTools);
@@ -1933,19 +1945,27 @@ const presentPreviewSurface = (
   sourcePreviewButton.setAttribute('aria-pressed', split ? 'true' : 'false');
   presentSourcePreviewControls();
   if (split && previewController.fontFamilyControl.parentElement !== sourcePreviewMorePanel) {
+    restoreToolbarOverflowItems();
+    toolbarOverflowLayoutKey = '';
     sourcePreviewMorePanel.append(
+      previewController.presetControl,
       previewController.fontFamilyControl,
       previewController.appearanceControl,
       previewController.sourceColoringControl,
-      previewController.showCommentsControl
+      previewController.showCommentsControl,
+      previewController.widthControl
     );
-  } else if (!split && previewController.fontFamilyControl.parentElement !== previewFormatGroup) {
+  } else if (!split && previewController.fontFamilyControl.parentElement === sourcePreviewMorePanel) {
+    restoreToolbarOverflowItems();
+    toolbarOverflowLayoutKey = '';
     setSourcePreviewMoreOpen(false);
     for (const control of [
+      previewController.presetControl,
       previewController.fontFamilyControl,
       previewController.appearanceControl,
       previewController.sourceColoringControl,
-      previewController.showCommentsControl
+      previewController.showCommentsControl,
+      previewController.widthControl
     ]) previewFormatGroup.insertBefore(control, exportControl);
   }
   if (atomicSplit && split) {
@@ -2194,6 +2214,7 @@ const acknowledgeReadyHandshake = () => {
 };
 
 type WebviewUiState = {
+  previewPresetState?: import('../../src/foundation/previewPresets').PreviewPresetState;
   mode?: 'live' | 'source' | 'preview';
   lastEditableMode?: 'live' | 'source';
   contentMaxWidthEnabled?: boolean;
@@ -2209,6 +2230,7 @@ const persistUiState = (
   // Do not turn that temporary default into a preference for the next reload.
   if (editorModeApplication.getState().lifecycle !== 'ready') return;
   const state: WebviewUiState = {
+    previewPresetState: previewController.getPresetState(),
     mode,
     lastEditableMode,
     contentMaxWidthEnabled,
@@ -3142,7 +3164,9 @@ const exportAdapter = createExportWebviewAdapter({
   getPreviewAppearance: () => previewAdapter.getAppearance(),
   getUiLanguage: () => activeUiLanguage,
   getStyleEnvironment: () => previewController.getStyleEnvironment(),
-  getCodeTheme: () => themeAdapter.getCodePalette('light').sourceTheme
+  getCodeTheme: () => themeAdapter.getCodePalette('light').sourceTheme,
+  getPreset: () => getActiveEditorMode() === 'preview' || isSidePreviewVisible()
+    ? previewController.getPresetState().preset : 'default'
 });
 
 const themeAdapter = createAppearanceWebviewAdapter({
@@ -3271,6 +3295,7 @@ window.addEventListener('message', (event) => {
     if (initReceived) return;
     initReceived = true;
     acknowledgeReadyHandshake();
+    const restoredPresetState = (vscode.getState() as WebviewUiState | undefined)?.previewPresetState;
     withMessageErrorBoundary('init handler', () => {
       themeAdapter.start({
         vscodeTheme: message.vscodeTheme,
@@ -3287,6 +3312,7 @@ window.addEventListener('message', (event) => {
         fontFamily: message.previewFontFamily,
         sourceColoring: message.previewSourceColoring,
         showComments: message.previewShowComments,
+        presetState: restoredPresetState,
         active: false
       });
 

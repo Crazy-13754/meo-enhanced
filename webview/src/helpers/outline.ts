@@ -55,6 +55,8 @@ interface OutlineController {
   sidebar: HTMLElement;
   setVisible: (nextVisible: boolean) => void;
   refresh: () => void;
+  /** Re-measures the current viewport after Preview layout changes, without rebuilding headings. */
+  refreshViewport: () => void;
   setPosition: (position: OutlinePosition) => void;
   requestPosition: (position: OutlinePosition) => void;
   getPosition: () => OutlinePosition;
@@ -617,6 +619,7 @@ export function createOutlineController({
     sidebar: outlineSidebar,
     setVisible,
     refresh,
+    refreshViewport: scheduleActiveRefresh,
     setPosition,
     requestPosition,
     getPosition: () => position,

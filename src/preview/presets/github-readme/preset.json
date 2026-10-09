@@ -1,0 +1,29 @@
+{
+  "$schema": "../preset.schema.json",
+  "schemaVersion": 1,
+  "id": "github-readme",
+  "name": { "en": "GitHub README", "zh-CN": "GitHub README" },
+  "description": {
+    "en": "Approximate GitHub README preview; actual rendering may differ slightly.",
+    "zh-CN": "GitHub README 的近似预览，实际显示可能略有差异。"
+  },
+  "renderer": "github-readme",
+  "styles": {
+    "light": "github-markdown-light.css",
+    "dark": "github-markdown-dark.css"
+  },
+  "source": {
+    "url": "https://github.com/sindresorhus/github-markdown-css",
+    "version": "5.9.0",
+    "commit": "265b22aa79815418195f453352456d5784bb7580"
+  },
+  "defaults": { "appearance": "auto", "contentWidth": "responsive" },
+  "controls": {
+    "fontFamily": { "mode": "fixed" },
+    "appearance": { "mode": "editable", "options": ["auto", "light", "dark"] },
+    "codeColoring": { "mode": "fixed", "value": true },
+    "htmlComments": { "mode": "fixed", "value": false },
+    "contentWidth": { "mode": "fixed" }
+  },
+  "notes": []
+}

@@ -140,6 +140,8 @@ type PanelSessionControllerParams = {
     sourceDocumentPath: string;
     uiLanguage: InitMessage['uiLanguage'];
     styleEnvironment?: ExportStyleEnvironment;
+    preset?: import('../foundation/previewPresets').PreviewPresetId;
+    contentWidth?: import('../foundation/previewPresets').PreviewContentWidth;
   }) => Promise<PreviewRenderResult>;
   getFindOptions: () => FindOptions;
   getUiLanguage: () => InitMessage['uiLanguage'];
@@ -865,7 +867,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
             markdownText: raw.text,
             sourceDocumentPath: documentUri.fsPath,
             uiLanguage: raw.uiLanguage,
-            styleEnvironment: raw.environment
+            styleEnvironment: raw.environment,
+            preset: raw.preset,
+            contentWidth: raw.contentWidth
           });
           response = {
             type: 'previewRenderResult',

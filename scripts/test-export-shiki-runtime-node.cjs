@@ -39,6 +39,17 @@ async function main() {
     }
     assert.ok(runtime, 'installed export runtime did not expose renderExportHtmlDocument in Node');
 
+    const preview = runtime.renderPreviewDocument({
+      markdownText: 'first\nsecond\n\n<!-- hidden -->', sourceDocumentPath: 'C:/tmp/preset.md', uiLanguage: 'en',
+      preset: 'github-readme', contentWidth: 'reference',
+      styleEnvironment: { previewFontFamily: 'Georgia', previewShowComments: true }
+    });
+    assert.equal(preview.preset, 'github-readme');
+    assert.ok(preview.styles.light.includes('.markdown-body') && preview.styles.light.includes('max-width: 1076px'));
+    assert.ok(preview.styles.dark.includes('background: #0d1117'));
+    assert.ok(!preview.styles.light.includes('Georgia'));
+    assert.ok(!preview.html.includes('<br') && !preview.html.includes('hidden'));
+
     const renderOptions = {
       readingSnapshot: {
         snapshotId: 'export-shiki-runtime-node',
@@ -76,6 +87,14 @@ async function main() {
       shikiLanguageAssetsRoot: installedAssetsRoot
     };
     const rendered = await runtime.renderExportHtmlDocument(renderOptions);
+    const github = await runtime.renderExportHtmlDocument({
+      ...renderOptions,
+      readingSnapshot: { ...renderOptions.readingSnapshot, preset: 'github-readme', environment: { previewFontFamily: 'Georgia', previewSourceColoring: false, previewShowComments: true } }
+    });
+    assert.ok(github.htmlDocument.includes('class="meo-export-doc markdown-body"'));
+    assert.ok(github.htmlDocument.includes('background: #0d1117'));
+    assert.ok(!github.htmlDocument.includes('Georgia'));
+    assert.ok(github.htmlDocument.includes('color:#FF7B72'), 'GitHub code colors must load in the installed runtime');
 
     assert.equal((rendered.htmlDocument.match(/<div class="meo-export-code-block-wrap/g) ?? []).length, 3);
     assert.ok(

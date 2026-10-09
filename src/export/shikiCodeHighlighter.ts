@@ -170,10 +170,12 @@ function renderRuns(lines: ReturnType<typeof projectShikiTokenLines>): string {
   }).join('')).join('\n');
 }
 
+/** Platform presets disable the MEO bracket overlay to keep the theme's own token colors. */
 export async function createExportCodeHighlighter(
   markdownText: string,
   theme: CodeThemeDto,
-  languageAssetsRoot?: string
+  languageAssetsRoot?: string,
+  colorBrackets = true
 ): Promise<ExportCodeHighlighter> {
   const [{ createHighlighterCore }, { createOnigurumaEngine }, registry] = await Promise.all([
     import('shiki/core'),
@@ -212,7 +214,7 @@ export async function createExportCodeHighlighter(
           isStringComment: tokenIsStringComment(scopeNames)
         };
       }));
-      return renderRuns(projectShikiTokenLines(mapped, brackets));
+      return renderRuns(colorBrackets ? projectShikiTokenLines(mapped, brackets) : mapped);
     },
     dispose() {
       highlighter.dispose();

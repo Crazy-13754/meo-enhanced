@@ -129,6 +129,11 @@ function targetedCommands(
       ];
     case 'appearance':
       return [
+        script('scripts/test-preview-preset-host.ts'),
+        script('scripts/test-preview-presets-browser.ts'),
+        script('scripts/test-preview-outline-viewport-browser.ts'),
+        script('scripts/test-github-preset-export-browser.ts'),
+        script('scripts/test-preview-comment-toggle-browser.ts'),
         script('scripts/test-inline-code-layout-production.ts'),
         script('scripts/test-settings-window-production.ts'),
         script('scripts/test-toolbar-menus-browser.ts'),
@@ -248,6 +253,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
         longRunning: false,
         stages: [serialStage('Quick regression contracts', [
           packageScript('typecheck'),
+          script('scripts/test-preview-presets.ts'),
           script('scripts/test-editor-shortcuts.ts'),
           script('scripts/test-editing-preferences.ts'),
           script('scripts/test-editor-services.ts'),

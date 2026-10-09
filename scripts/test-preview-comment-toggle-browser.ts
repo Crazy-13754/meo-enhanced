@@ -59,6 +59,9 @@ try {
   assert.equal(await page.$eval('[data-preview-source-coloring="false"]', element => element.getAttribute('aria-pressed')), 'true');
   await page.click('[data-preview-source-coloring="true"]');
   assert.equal(await page.$eval('[data-preview-source-coloring="true"]', element => element.getAttribute('aria-pressed')), 'true');
+  if (await page.$eval('.preview-show-comments', element => element.closest('.toolbar-overflow-panel') !== null)) {
+    await page.click('.toolbar-overflow-indicator');
+  }
   assert.equal(await page.$eval('[data-preview-comments="false"]', element => element.getAttribute('aria-pressed')), 'true');
   await page.click('[data-preview-comments="true"]');
   await waitFor('comment render', () => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.body?.textContent?.includes('visible when enabled'));

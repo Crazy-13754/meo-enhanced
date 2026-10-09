@@ -1,3 +1,5 @@
+import { getGithubMermaidConfig } from '../preview/githubMermaid';
+
 export type BuildExportHtmlDocumentOptions = {
   title: string;
   bodyHtml: string;
@@ -8,6 +10,7 @@ export type BuildExportHtmlDocumentOptions = {
   mermaidRuntimeSrc?: string;
   katexStylesHref?: string;
   baseHref?: string;
+  githubStyle?: boolean;
 };
 
 export function buildExportHtmlDocument(options: BuildExportHtmlDocumentOptions): string {
@@ -37,14 +40,14 @@ export function buildExportHtmlDocument(options: BuildExportHtmlDocumentOptions)
   </head>
   <body data-meo-export-target="${exportTarget}">
     <div class="meo-export-page">
-      <main id="meo-export-root" class="meo-export-doc">
+      <main id="meo-export-root" class="meo-export-doc${options.githubStyle ? ' markdown-body' : ''}">
 ${options.bodyHtml}
       </main>
     </div>
     ${mermaidScriptTag}
     ${mathViewportScriptTag}
     <script data-meo-export-runtime>
-${buildRuntimeScript(options.hasMermaid)}
+${buildRuntimeScript(options.hasMermaid, options.githubStyle === true)}
     </script>
   </body>
 </html>`;
@@ -273,7 +276,7 @@ function buildMathViewportRuntimeScript(): string {
 })();`.trim();
 }
 
-function buildRuntimeScript(hasMermaid: boolean): string {
+function buildRuntimeScript(hasMermaid: boolean, githubStyle = false): string {
   const mermaidFlag = hasMermaid ? 'true' : 'false';
   return `
 (() => {
@@ -572,6 +575,9 @@ function buildRuntimeScript(hasMermaid: boolean): string {
     const bodyStyles = getComputedStyle(document.body);
     const background = getExportThemeColor('--meo-mermaid-background', bodyStyles.backgroundColor || '#ffffff');
     const darkMode = isProbablyDarkColor(background);
+    if (${githubStyle}) return darkMode
+      ? ${JSON.stringify(getGithubMermaidConfig(true))}
+      : ${JSON.stringify(getGithubMermaidConfig(false))};
     const nodeBackground = getExportThemeColor('--meo-mermaid-node-background', darkMode ? '#2b333b' : '#ffffff');
     const foreground = getExportThemeColor('--meo-mermaid-foreground', darkMode ? '#e6edf3' : '#24292f', 'color');
     const border = getExportThemeColor('--meo-mermaid-border', darkMode ? '#768390' : '#8c959f', 'color');

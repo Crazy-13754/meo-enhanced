@@ -42,4 +42,5 @@ export type PreviewRenderResult = {
   html: string;
   hasMermaid: boolean;
   styles: PreviewStyles;
+  preset?: import('../foundation/previewPresets').PreviewPresetId;
 };

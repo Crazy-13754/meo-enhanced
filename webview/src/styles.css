@@ -863,6 +863,61 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
   max-width: 156px;
 }
 
+.preview-font-family-control {
+  --preview-select-border: color-mix(in srgb, var(--preview-select-foreground) 15%, var(--preview-select-background));
+  --preview-select-hover-border: color-mix(in srgb, var(--preview-select-foreground) 25%, var(--preview-select-background));
+}
+
+.preview-font-family-dropdown .preview-toolbar-dropdown-chevron {
+  color: var(--preview-select-label-foreground);
+}
+
+.preview-preset-control {
+  gap: 3px;
+  margin-inline-end: 4px;
+}
+
+.preview-preset-dropdown {
+  --preview-preset-accent: #0969da;
+  gap: 6px;
+  padding-inline: 5px 8px;
+  border-color: color-mix(in srgb, var(--preview-select-foreground) 15%, var(--preview-select-background));
+  background: var(--preview-select-background);
+}
+
+html[data-editor-appearance='dark'] .preview-preset-dropdown {
+  --preview-preset-accent: #79b8ff;
+}
+
+.preview-preset-dropdown > svg {
+  flex: 0 0 auto;
+  padding: 3px;
+  color: var(--preview-preset-accent);
+}
+
+.preview-preset-dropdown .preview-select-label {
+  color: var(--preview-select-label-foreground);
+}
+
+.preview-preset-dropdown .preview-toolbar-dropdown-value {
+  font-weight: 600;
+}
+
+.preview-preset-dropdown .preview-toolbar-dropdown-chevron {
+  margin-left: 3px;
+  color: var(--preview-select-label-foreground);
+}
+
+.preview-preset-control .preview-preset-dropdown:is(:hover, [aria-expanded='true']) {
+  border-color: color-mix(in srgb, var(--preview-select-foreground) 25%, var(--preview-select-background));
+  background: color-mix(in srgb, var(--preview-select-foreground) 4%, var(--preview-select-background));
+}
+
+.preview-preset-control .preview-preset-dropdown:focus-visible {
+  border-color: var(--preview-preset-accent);
+  outline-color: var(--preview-preset-accent);
+}
+
 .preview-toolbar-dropdown:hover,
 .preview-toolbar-dropdown[aria-expanded="true"] {
   border-color: var(--preview-select-hover-border);
@@ -914,6 +969,10 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
   box-shadow: none;
 }
 
+.preview-select-control[hidden],
+.preview-preset-info[hidden],
+.toolbar-overflow-panel .preview-select-control[hidden],
+.toolbar-overflow-panel .preview-preset-info[hidden],
 .preview-dropdown-panel[hidden] {
   display: none;
 }
@@ -945,6 +1004,56 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
   background: color-mix(in srgb, var(--vscode-editor-foreground) 14%, transparent);
 }
 
+.preview-preset-dropdown-panel {
+  width: min(216px, calc(100vw - 16px));
+  padding: 4px;
+  border-color: color-mix(in srgb, var(--vscode-editor-foreground) 12%, var(--vscode-sideBar-background));
+  box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
+}
+
+html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
+  box-shadow: 0 4px 14px rgb(0 0 0 / 32%);
+}
+
+.preview-preset-dropdown-panel .preview-dropdown-option {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.preview-preset-dropdown-panel .preview-dropdown-option + .preview-dropdown-option {
+  margin-top: 2px;
+}
+
+.preview-preset-dropdown-panel .preview-dropdown-option.is-selected {
+  background: color-mix(in srgb, var(--vscode-editor-foreground) 6%, transparent);
+}
+
+.preview-preset-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--vscode-editor-foreground) 10%, transparent);
+}
+
+.preview-preset-option-name {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.preview-preset-dropdown-panel .preview-dropdown-option.is-selected .preview-preset-option-name {
+  font-weight: 500;
+}
+
+.preview-preset-option-check {
+  color: inherit;
+  visibility: hidden;
+}
+
+.preview-dropdown-option.is-selected .preview-preset-option-check {
+  visibility: visible;
+}
+
 .editor-appearance-button {
   --segmented-control-content-gap: 5px;
   min-width: 76px;
@@ -973,6 +1082,18 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 .preview-toolbar-action:hover {
   color: var(--vscode-editor-foreground);
   background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.18));
+}
+
+.preview-preset-info {
+  flex: 0 0 auto;
+  width: 24px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.preview-preset-info:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, currentColor);
+  outline-offset: 1px;
 }
 
 .preview-toolbar-action:focus-visible {
@@ -6367,6 +6488,28 @@ body.outline-resizing .preview-frame {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+}
+
+.source-preview-more-panel .preview-select-control[hidden] {
+  display: none;
+}
+
+.source-preview-more-panel .preview-preset-control {
+  gap: 6px;
+  margin-inline-end: 0;
+}
+
+.source-preview-more-panel .preview-preset-control .preview-select-shell {
+  flex: 1;
+}
+
+.source-preview-more-panel .preview-preset-dropdown {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.source-preview-more-panel .preview-preset-dropdown .preview-toolbar-dropdown-chevron {
+  margin-left: auto;
 }
 
 .source-preview-more-panel .preview-font-family-dropdown {

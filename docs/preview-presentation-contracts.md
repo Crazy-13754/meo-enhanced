@@ -57,6 +57,11 @@ nodes during incremental updates. See
 
 ## Table fit and visible right edge
 
+These fit rules apply to the Default preset. GitHub README keeps native table
+layout and local horizontal overflow to match the platform's reading behavior.
+Preset changes discard measured Default column groups before morphing, while
+retaining the source reading anchor. See [preview-presets.md](preview-presets.md).
+
 - Preview tables never create an internal horizontal scrollbar. Column demand
   controls the proportions; when space is insufficient, every column continues
   to shrink and wrap.

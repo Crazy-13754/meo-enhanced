@@ -10,19 +10,36 @@ export function installMathTransform(
   md: MarkdownIt,
   options: {
     onRenderedMath?: () => void;
+    githubStyle?: boolean;
   } = {}
 ): void {
+  const listInlineTokens = new WeakSet<object>();
+  if (options.githubStyle) {
+    // Inline state has no block ancestry; retain the list context of its token array.
+    md.core.ruler.before('inline', 'meo-github-math-context', (state) => {
+      let listDepth = 0;
+      for (const token of state.tokens) {
+        if (token.type === 'bullet_list_open' || token.type === 'ordered_list_open') listDepth += 1;
+        if (token.type === 'inline' && listDepth > 0 && token.children) listInlineTokens.add(token.children);
+        if (token.type === 'bullet_list_close' || token.type === 'ordered_list_close') listDepth -= 1;
+      }
+    });
+  }
   // Consume a complete formula before Markdown can reinterpret TeX carets, tildes or escapes.
   // Code, autolinks and literal scripts are consumed by their own enclosing rules.
   md.inline.ruler.before('strikethrough', 'meo_math_inline', (state, silent) => {
     if (state.src[state.pos] !== '$') return false;
+    if (options.githubStyle && (state.env?.meoGithubFootnote
+      || (state.pos > 0 && !/\s/.test(state.src[state.pos - 1])))) return false;
     const math = parseLatexMathAt(state.src, state.pos);
     if (!math || math.to > state.posMax) return false;
+    if (options.githubStyle && math.mode === 'display' && listInlineTokens.has(state.tokens)) return false;
+    if (options.githubStyle && /\n[ \t]*\n/.test(math.raw)) return false;
     if (!silent) {
       const html = renderLatexMathToHtml(math.content, math.mode);
       if (!html) return false;
       const node = state.push('html_inline', '', 0);
-      node.meta = { meoTrustedHtml: true };
+      node.meta = { meoTrustedHtml: true, meoMathSource: math.raw };
       node.content = `<span class="meo-export-math meo-export-math-${math.mode}"${mathSourceAttribute(math.content, math.mode)}>${html}</span>`;
       options.onRenderedMath?.();
     }
@@ -31,6 +48,7 @@ export function installMathTransform(
   });
 
   md.block.ruler.before('fence', 'meo-math-block', (state: any, startLine: number, endLine: number, silent: boolean) => {
+    if (options.githubStyle && (state.env?.meoGithubFootnote || state.listIndent >= 0)) return false;
     const start = state.bMarks[startLine] + state.tShift[startLine];
     const end = state.eMarks[startLine];
     if (state.src.slice(start, end).trim() !== '$$') {
@@ -40,6 +58,7 @@ export function installMathTransform(
     for (let line = startLine + 1; line < endLine; line += 1) {
       const lineStart = state.bMarks[line] + state.tShift[line];
       const lineEnd = state.eMarks[line];
+      if (options.githubStyle && !state.src.slice(lineStart, lineEnd).trim()) return false;
       if (state.src.slice(lineStart, lineEnd).trim() !== '$$') {
         continue;
       }

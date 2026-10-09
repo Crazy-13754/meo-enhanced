@@ -5,6 +5,7 @@ import {
   type PreviewRenderResponse,
   type PreviewStyleEnvironment
 } from '../../../src/protocol/previewRender';
+import type { PreviewPresetId, PreviewContentWidth } from '../../../src/foundation/previewPresets';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
 
 type PendingRequest = {
@@ -19,7 +20,7 @@ export type PreviewRenderTransportOptions = {
 };
 
 export type PreviewRenderTransport = {
-  render(request: { readonly text: string; readonly uiLanguage: UiLanguage; readonly environment: PreviewStyleEnvironment }): Promise<PreviewRenderResolution>;
+  render(request: { readonly text: string; readonly uiLanguage: UiLanguage; readonly environment: PreviewStyleEnvironment; readonly preset?: PreviewPresetId; readonly contentWidth?: PreviewContentWidth }): Promise<PreviewRenderResolution>;
   accept(response: PreviewRenderResponse): boolean;
   cancelAll(message?: string): void;
 };
