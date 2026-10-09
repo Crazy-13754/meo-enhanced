@@ -5,7 +5,6 @@ body:
     id: feedback
     attributes:
       label: 反馈内容 / Feedback
-      description: 中文或英文均可 / Use Chinese or English.
       placeholder: |
         遇到的问题或希望改进的地方 / Problem or improvement:
         期望效果（如有） / Desired outcome (if any):
