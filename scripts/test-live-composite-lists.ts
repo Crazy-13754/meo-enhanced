@@ -35,6 +35,8 @@ async function main(): Promise<void> {
     const page = await browser.newPage();
     await page.setContent('<!doctype html><div id="host"></div><div id="order-host"></div><div id="table-host"></div><div id="nested-table-host"></div><div id="edit-host"></div>');
     await page.addStyleTag({ path: path.join(root, 'webview', 'src', 'styles.css') });
+    // VS Code's host quote background can differ from the editor appearance.
+    await page.addStyleTag({ content: 'blockquote { background: #1c2128; }' });
     await page.addStyleTag({ content: ':root { --meo-semantic-blockquoteBorder: #777; --meo-semantic-blockquoteForeground: #444; }' });
     await page.addStyleTag({ content: '#host { width: 280px; } #host .cm-editor { width: 280px; } #host .cm-gutters { display: none; }' });
     await page.addStyleTag({ content: '#order-host { width: 280px; } #order-host .cm-editor { width: 280px; } #order-host .cm-gutters { display: none; }' });
@@ -86,11 +88,19 @@ async function main(): Promise<void> {
       const cell = document.querySelector<HTMLElement>(
         '#table-host tbody td .meo-md-html-table-cell-preview'
       )!;
+      const originalAppearance = document.documentElement.dataset.editorAppearance;
+      const quoteBackgrounds = Object.fromEntries(['light', 'dark'].map(appearance => {
+        document.documentElement.dataset.editorAppearance = appearance;
+        return [appearance, Array.from(cell.querySelectorAll('blockquote'), quote => getComputedStyle(quote).backgroundColor)];
+      }));
+      if (originalAppearance === undefined) delete document.documentElement.dataset.editorAppearance;
+      else document.documentElement.dataset.editorAppearance = originalAppearance;
       const table = {
         listItems: cell.querySelectorAll('li').length,
         quotes: cell.querySelectorAll('blockquote').length,
         checkboxes: cell.querySelectorAll('input[type=checkbox]').length,
         quoteBorder: Number.parseFloat(getComputedStyle(cell.querySelector('blockquote')!).borderLeftWidth),
+        quoteBackgrounds,
         checkboxDisplay: getComputedStyle(cell.querySelector('input[type=checkbox]')!).display,
         text: cell.innerText,
         source: tableEditor.getText()
@@ -139,6 +149,10 @@ async function main(): Promise<void> {
     assert.equal(result.afterUndo, source);
     assert.equal(result.table.listItems, 10, 'table cell must retain every nested list item');
     assert.equal(result.table.quotes, 5, 'table cell must display each quote container');
+    for (const [appearance, backgrounds] of Object.entries(result.table.quoteBackgrounds)) {
+      assert.ok(backgrounds.every(background => background === 'rgba(0, 0, 0, 0)'),
+        `${appearance}: table-cell quotes must retain the cell background instead of the Host quote background: ${JSON.stringify(backgrounds)}`);
+    }
     assert.equal(result.table.checkboxes, 4, 'table cell must display task markers as checkboxes');
     assert.ok(result.table.quoteBorder > 0 && result.table.checkboxDisplay !== 'none',
       'table-cell quote and task styles must be visible');
