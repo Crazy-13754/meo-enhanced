@@ -134,7 +134,72 @@ try {
     assert.equal((await hint()).right, 378, 'direct components also follow pointer movement');
     await surface.evaluate(() => (window as any).__direct.dispose());
     assert.equal(await surface.$('.meo-tooltip.is-visible'), null, 'disposal removes the active hint');
-    console.log(`Pointer tooltip: ${theme}, ${language}, iframe=${nested}: movement, edges, scrolling, keyboard, menus and component API passed`);
+
+    // Full-text hints belong outside the whole list, including its other columns.
+    await move(0, 0);
+    await surface.evaluate(language => {
+      for (const element of document.querySelectorAll<HTMLElement>('button')) element.hidden = true;
+      const list = document.createElement('div'); list.id = 'fulltext-list';
+      list.style.cssText = 'position:fixed;display:block;left:16px;top:160px;width:230px;height:100px;box-sizing:border-box;padding:12px;overflow:hidden';
+      const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:6px;height:32px';
+      const texts = language === 'en'
+        ? ['A long heading with enough detail to identify the document', 'notes/reference/a-long-document-name.md#installation-details']
+        : ['包含完整说明以便识别文档的较长目录标题', '文档/参考资料/较长的文档名称.md#安装与使用说明'];
+      for (const [index, text] of texts.entries()) {
+        const target = document.createElement(index === 0 ? 'button' : 'span'); target.id = index === 0 ? 'list-label' : 'list-detail';
+        target.style.cssText = 'position:static;display:block;flex:0 0 100px;width:100px;height:28px;padding:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        target.textContent = text; target.dataset.tooltip = text; target.dataset.tooltipKind = 'fulltext'; row.append(target);
+      }
+      const short = document.createElement('span'); short.id = 'list-short'; short.textContent = 'Short';
+      short.style.cssText = 'display:block;width:200px;height:28px'; short.dataset.tooltip = 'Short'; short.dataset.tooltipKind = 'fulltext';
+      list.append(row, short); document.body.append(list);
+    }, language);
+    const hoverList = async (selector: string) => {
+      await move(0, 0);
+      const rect = await surface.$eval(selector, element => {
+        const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      await move(rect.x, rect.y);
+      await surface.waitForSelector('.meo-tooltip.is-visible');
+      return { hint: await hint(), center: rect.y };
+    };
+    for (const kind of ['outline-sidebar', 'meo-input-suggestions']) for (const side of ['right', 'left']) {
+      await move(0, 0);
+      await surface.$eval('#fulltext-list', (element, { kind, side, width }) => {
+        element.className = kind;
+        (element as HTMLElement).style.left = (side === 'right' ? 16 : width - 246) + 'px';
+        element.querySelector('#list-label')!.className = kind === 'outline-sidebar' ? 'outline-item' : 'meo-suggestion-label';
+        element.querySelector('#list-detail')!.className = 'meo-input-suggestion-detail';
+      }, { kind, side, width });
+      for (const selector of kind === 'outline-sidebar' ? ['#list-label'] : ['#list-label', '#list-detail']) {
+        const { hint: result, center } = await hoverList(selector);
+        const list = await surface.$eval('#fulltext-list', element => {
+          const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right };
+        });
+        assert.equal(result.text, await surface.$eval(selector, element => element.textContent));
+        assert.equal(result.side, side, `${kind} uses its available horizontal side`);
+        assert.equal(side === 'right' ? result.left - list.right : list.left - result.right, 6, 'full text clears the entire list');
+        assert.ok(Math.abs((result.top + result.bottom) / 2 - center) < 1, 'full text aligns with the hovered row');
+        assert.equal(result.inside, true); assert.equal(result.pointerEvents, 'none');
+      }
+    }
+    await move(0, 0);
+    await surface.$eval('#list-label', element => (element as HTMLElement).dataset.tooltipPlacement = 'top');
+    assert.equal((await hoverList('#list-label')).hint.side, 'top', 'explicit directions override the list default');
+    await move(0, 0);
+    await surface.$eval('#list-label', element => delete (element as HTMLElement).dataset.tooltipPlacement);
+    await surface.$eval('#fulltext-list', element => { (element as HTMLElement).style.left = '8px'; (element as HTMLElement).style.width = innerWidth - 16 + 'px'; });
+    const fallback = (await hoverList('#list-label')).hint;
+    assert.equal(fallback.side, 'top', 'a list filling the viewport retains a visible fallback');
+    assert.equal(fallback.inside, true);
+    await move(0, 0);
+    const short = await surface.$eval('#list-short', element => {
+      const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await move(short.x, short.y);
+    await surface.evaluate(() => new Promise(resolve => setTimeout(resolve, 250)));
+    assert.equal(await surface.$('.meo-tooltip.is-visible, .meo-tooltip.is-pending'), null, 'fitting list text does not show a full-text hint');
+    console.log(`Tooltip positioning: ${theme}, ${language}, iframe=${nested}: pointer, edges, keyboard, menus, component API and list full text passed`);
     await page.close();
   }
 } finally {

@@ -58,6 +58,7 @@ function visibleBounds(anchor: HTMLElement, area: Bounds): Bounds | null {
  * After a shown pointer hint, another hover within 500ms of leaving skips the wait.
  * Explicit dismissal and owner disposal end the sequence; only hover handoff keeps it.
  * Optional placement prefers that side, then its opposite, while keeping the hint visible.
+ * List full-text hints prefer right/left outside the list, aligned with the target row.
  * Pointer positioning defaults right; keyboard focus uses the element. Forwarded
  * input uses ownerDocument client coordinates in show / setPointerPosition.
  * Live updates retain a stateful control's hint and reveal changed content immediately
@@ -173,6 +174,8 @@ export function createTooltip(anchor: HTMLElement, options: {
     const menus = [...doc.querySelectorAll<HTMLElement>(menuSelector)].filter(element => painted(element));
     const requested = options.placement ?? anchor.dataset.tooltipPlacement;
     const placement = requested === 'top' || requested === 'bottom' || requested === 'left' || requested === 'right' ? requested : undefined;
+    const list = !placement && !point && content.kind === 'fulltext'
+      ? anchor.closest('.outline-sidebar, .meo-input-suggestions')?.getBoundingClientRect() : undefined;
     // Explicit menu-item hints belong to the small control, not its containing menu.
     const obstacles: Bounds[] = menus.filter(menu => (!placement && !point) || !menu.contains(anchor)).map(menu => menu.getBoundingClientRect());
     const menuOwner = anchor.closest('.heading-wrapper, .table-wrapper, .preview-export-control, .preview-select-control, .changes-review-control, [data-hover-menu]') ?? anchor.parentElement;
@@ -192,7 +195,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     const x = Math.max(area.left, Math.min((bounds.left + bounds.right - hint.width) / 2, area.right - hint.width));
     const y = Math.max(area.top, Math.min((bounds.top + bounds.bottom - hint.height) / 2, area.bottom - hint.height));
     const enclosing = placement ? [] : menus.filter(menu => menu.contains(anchor)).map(menu => menu.getBoundingClientRect());
-    const outer = { left: Math.min(bounds.left, ...enclosing.map(rect => rect.left)), right: Math.max(bounds.right, ...enclosing.map(rect => rect.right)),
+    const outer = { left: Math.min(bounds.left, list?.left ?? bounds.left, ...enclosing.map(rect => rect.left)), right: Math.max(bounds.right, list?.right ?? bounds.right, ...enclosing.map(rect => rect.right)),
       top: Math.min(bounds.top, ...enclosing.map(rect => rect.top)), bottom: Math.max(bounds.bottom, ...enclosing.map(rect => rect.bottom)) };
     const pointerX = point ? Math.max(area.left, Math.min(point.x + 12, area.right - hint.width)) : x;
     const pointerY = point ? Math.max(area.top, Math.min(point.y + 8, area.bottom - hint.height)) : y;
@@ -209,7 +212,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     };
     const sides: readonly TooltipPlacement[] = ['top', 'bottom', 'right', 'left'];
     const opposite: Record<TooltipPlacement, TooltipPlacement> = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
-    const preferred = placement ?? (point ? 'right' : undefined);
+    const preferred = placement ?? (point || list ? 'right' : undefined);
     const ordered: readonly TooltipPlacement[] = preferred ? [preferred, opposite[preferred], ...sides.filter(side => side !== preferred && side !== opposite[preferred])] : sides;
     for (const side of ordered) {
       const candidate = candidates[side];

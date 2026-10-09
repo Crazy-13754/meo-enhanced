@@ -321,9 +321,26 @@ try {
   await page.waitForFunction(() => !document.querySelector('.meo-mermaid-fullscreen-scrim'));
   assert.equal(await page.$('.meo-tooltip.is-visible'), null, 'closing fullscreen removes its active hint');
 
-  phase = 'outline resizing without a hint';
+  phase = 'outline full text beside the list';
+  const outlineHeading = '较长的目录标题：完整说明目录气泡的位置，避免遮住相邻标题与列表内容';
+  await page.evaluate(heading => {
+    const editor = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    editor.dispatch({ changes: { from: 0, to: editor.state.doc.line(1).to, insert: '# ' + heading } });
+  }, outlineHeading);
   await page.click('[data-action="outline-right"]');
   await page.waitForSelector('.outline-resizer', { visible: true });
+  const outlineHint = await show('.outline-item');
+  assert.equal(outlineHint.text, outlineHeading);
+  assert.equal(outlineHint.side, 'left', 'a right-hand outline reveals full text on its left');
+  assert.equal(outlineHint.inside, true);
+  assert.equal(await page.$eval('.outline-item', element => {
+    const hint = document.getElementById(element.getAttribute('aria-describedby')!)!.getBoundingClientRect();
+    return element.closest('.outline-sidebar')!.getBoundingClientRect().left - hint.right;
+  }), 6, 'the full-text hint clears the actual sidebar');
+  if (process.env.MEO_TOOLTIP_SCREENSHOT_DIR) {
+    await page.screenshot({ path: process.env.MEO_TOOLTIP_SCREENSHOT_DIR + '/outline-fulltext.png' });
+  }
+  phase = 'outline resizing without a hint';
   const resizePoint = await page.$eval('.outline-resizer', element => {
     const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   });
@@ -337,6 +354,10 @@ try {
   await page.mouse.up();
   assert.ok(await page.$eval('.outline-sidebar', element => element.getBoundingClientRect().width) > outlineWidth, 'outline dragging still changes width');
   await page.click('.outline-close-button');
+  await page.evaluate(() => {
+    const editor = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    editor.dispatch({ changes: { from: 0, to: editor.state.doc.line(1).to, insert: '# Tooltip fixture' } });
+  });
 
   await page.click('[data-mode="source"]');
   await page.waitForSelector('.cm-editor.meo-mode-source');

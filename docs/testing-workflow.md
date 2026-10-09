@@ -112,7 +112,10 @@ while the renderer is busy.
 `scripts/test-tooltip-pointer-position.ts` checks the shared component and delegated
 binding in both languages and themes, including Preview iframe coordinates,
 continuous movement, boundary fitting, scroll dismissal, keyboard fallback and
-menu avoidance. It runs in the targeted appearance and release browser gates.
+menu avoidance. It also verifies clipped outline and completion text outside the
+list on the right/left, row alignment, explicit direction precedence and fallback
+when neither side fits. It runs in the targeted appearance and release browser gates.
+The production tooltip check also reveals a clipped heading beside the real outline.
 Production source locator and floating table header checks also verify the two
 pointer-positioned navigation hints and their existing click behavior.
 
