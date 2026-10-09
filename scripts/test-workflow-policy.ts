@@ -81,6 +81,7 @@ function targetedCommands(
   switch (area) {
     case 'history':
       return [
+        script('scripts/test-preview-shortcuts-production.ts'),
         script('scripts/test-input-assistance-production.ts'),
         script('scripts/test-html-comment-input-production.ts'),
         script('scripts/test-editing-features-production.ts'),
@@ -269,6 +270,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-editor-startup-load.ts'),
           script('scripts/test-mode-roundtrip-reveal.ts'),
           script('scripts/test-preview-navigation-continuity.ts'),
+          script('scripts/test-preview-shortcuts-production.ts'),
           script('scripts/test-editor-history-runtime.ts'),
           script('scripts/test-table-cell-editing.ts'),
           script('scripts/test-rendered-block-mode-shell.ts'),
@@ -330,6 +332,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
             script('scripts/test-editor-startup-load.ts'),
             script('scripts/test-mode-roundtrip-reveal.ts'),
             script('scripts/test-preview-navigation-continuity.ts'),
+            script('scripts/test-preview-shortcuts-production.ts'),
             packageScript('test:browser-high-risk')
           ]),
           serialStage('Production browser matrix', [packageScript('test:browser')]),

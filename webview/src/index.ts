@@ -1666,7 +1666,8 @@ const previewController = createPreviewController({
   getCodePalette: (appearance) => resolveCodePaletteForPreview(appearance),
   applyCodeTheme: (appearance) => applyCodeThemeForPreview(appearance),
   mermaidRenderResources: mermaidDiagramRenderPool,
-  onFindRequested: () => findPanelController.open('find'),
+  // The side Preview is also read-only, even while Source is the active mode.
+  onShortcut: event => handleEditorShortcut(event, { ...shortcutHandlerContext, editorSurfaceActive: false }),
   onSearchResultsChanged: () => {
     if (getActiveEditorMode() === 'preview') findPanelController.updateFindStatusSummary();
   },

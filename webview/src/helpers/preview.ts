@@ -40,7 +40,8 @@ type PreviewControllerOptions = {
   applyCodeTheme: (appearance: 'light' | 'dark') => void;
   onRendered?: (options?: { readonly skipLinkedViewportProjection?: boolean }) => void;
   onPaintReady?: () => void;
-  onFindRequested?: () => void;
+  /** Dispatch only global commands; unhandled gestures keep the iframe's native behavior. */
+  onShortcut?: (event: KeyboardEvent) => void;
   onSearchResultsChanged?: () => void;
   onNavigateToTop?: () => boolean;
   onNavigateToSource?: (line: number) => void;
@@ -793,7 +794,7 @@ export function createPreviewController({
   applyCodeTheme,
   onRendered,
   onPaintReady,
-  onFindRequested,
+  onShortcut,
   onSearchResultsChanged,
   onNavigateToTop,
   onNavigateToSource,
@@ -1478,7 +1479,7 @@ export function createPreviewController({
       bindPreviewLinks(frameDocument, vscode, notifyViewportInteraction, signal);
       bindSourceNavigation(frameDocument, mappedRoot, signal);
       bindPreviewWheelFallback(frameDocument, signal);
-      bindPreviewFindShortcut(frameDocument, onFindRequested, signal);
+      frameDocument.defaultView?.addEventListener('keydown', event => onShortcut?.(event), { capture: true, signal });
       const keepPosition = () => {
         if (
           disposed ||
@@ -2808,23 +2809,6 @@ export function createPreviewController({
       search.dispose();
     }
   };
-}
-
-function bindPreviewFindShortcut(frameDocument: Document, onFindRequested: (() => void) | undefined, signal: AbortSignal): void {
-  frameDocument.addEventListener('keydown', (event) => {
-    const hasPrimaryModifier = event.metaKey !== event.ctrlKey && (event.metaKey || event.ctrlKey);
-    if (
-      !hasPrimaryModifier ||
-      event.altKey ||
-      event.shiftKey ||
-      (event.key.toLowerCase() !== 'f' && event.code !== 'KeyF')
-    ) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    onFindRequested?.();
-  }, { capture: true, signal });
 }
 
 function bindPreviewLinks(

@@ -21,9 +21,13 @@ export const handleEditorShortcut = (event: KeyboardEvent, context: ShortcutHand
   const editor = context.editor;
   if (!editor || event.isComposing || event.keyCode === 229 || editor.view?.compositionStarted) return false;
   const target = event.target;
-  if (typeof Element !== 'undefined' && target instanceof Element) {
-    if (target.closest('[data-meo-settings]')) return false;
-    if (target.matches('input, textarea, [contenteditable="true"]') && !editor.view?.dom.contains(target)) return false;
+  // Preview targets belong to the iframe's realm, so instanceof Element from
+  // the outer window would miss its input and contenteditable controls.
+  const targetElement = typeof (target as Element | null)?.closest === 'function' ? target as Element : null;
+  if (targetElement) {
+    if (targetElement.closest('[data-meo-settings]')) return false;
+    const input = targetElement.closest('input, textarea, [contenteditable="true"]');
+    if (input && !editor.view?.dom.contains(input)) return false;
   }
   const editorFocused = editor.hasFocus();
   const detached = context.editorSurfaceActive && (target as Node | null)?.nodeName === 'BODY';
@@ -33,7 +37,7 @@ export const handleEditorShortcut = (event: KeyboardEvent, context: ShortcutHand
   const platform = context.platform ?? (isMac ? 'mac' : 'other');
   const stroke = { key: event.key, code: event.code, ctrl: !!event.ctrlKey, meta: !!event.metaKey, alt: !!event.altKey, shift: !!event.shiftKey, composing: event.isComposing, altGraph: event.getModifierState?.('AltGraph') ?? false };
   const command = resolveShortcut(stroke, context.shortcuts ?? {}, platform, scope);
-  const nestedInput = typeof Element !== 'undefined' && target instanceof Element && target.matches('input, textarea') && !target.closest('.meo-md-html-table-wrap');
+  const nestedInput = targetElement?.matches('input, textarea') && !targetElement.closest('.meo-md-html-table-wrap');
   if (nestedInput && command && !['undo', 'redo', 'plain'].includes(command) && commandContext(command) !== 'global') return false;
   if (detached && !editorFocused && command && !['undo', 'redo'].includes(command) && commandContext(command) !== 'global') return false;
   const consume = () => { event.preventDefault(); event.stopPropagation(); };

@@ -65,6 +65,12 @@ to top must retain the new location when returning to either Live or Source,
 without a body click. It also checks unchanged roundtrips and samples multiple
 frames after the return. It belongs to the quick and targeted viewport gates.
 
+`scripts/test-preview-shortcuts-production.ts` checks trusted keyboard input in
+full and side Preview, including live binding changes, Save's emitted revision,
+Find/Replace and mode switching from text and margins. Native selection, copy,
+undo, scrolling, composition and iframe input controls must keep their scope.
+It belongs to the quick and targeted history gates.
+
 1. Reproduce the reported behavior with the smallest relevant contract.
 2. While implementing, rerun only that contract.
 3. Once the change is coherent, run `bun run test:quick` once.

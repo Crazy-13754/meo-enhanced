@@ -40,7 +40,9 @@ try {
     restoreReadingPositionOnOpen: false, vscodeTheme: null
   } })), text);
   await page.waitForSelector('.editor-host > .cm-editor');
+  await page.waitForFunction(() => !document.querySelector('.editor-wrapper')?.classList.contains('meo-preload-editor-shell'));
   await page.click('[data-action="find"]');
+  await page.waitForSelector('.find-panel.is-visible');
   await page.evaluate(() => {
     const inputs = document.querySelectorAll<HTMLInputElement>('.find-input');
     inputs[0]!.value = 'needle';
