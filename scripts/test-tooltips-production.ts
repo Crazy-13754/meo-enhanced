@@ -79,6 +79,7 @@ try {
   const encodedAnchor = '.meo-md-link-open-btn[data-tooltip="#%E5%AE%89%E8%A3%85%E8%AF%B4%E6%98%8E"]';
   assert.equal((await show(encodedAnchor)).text, 'Go to: #安装说明', 'encoded Chinese anchors display readable text');
   assert.equal(await page.$eval(encodedAnchor, element => (element as HTMLElement).dataset.tooltipLinkHref), '#%E5%AE%89%E8%A3%85%E8%AF%B4%E6%98%8E', 'display formatting preserves the navigation target');
+  await page.keyboard.press('Escape');
   await page.mouse.move(0, 0);
 
   const find = '[data-action="find"]';

@@ -116,6 +116,14 @@ menu avoidance. It runs in the targeted appearance and release browser gates.
 Production source locator and floating table header checks also verify the two
 pointer-positioned navigation hints and their existing click behavior.
 
+`scripts/test-tooltip-hover-sequence.ts` checks the 200ms continuation window
+with native button and Preview frame crossings in both themes, including hover
+fade-in controls and persistently hidden controls. It verifies that only shown
+pointer hints start or renew the window, and covers expiry, empty
+targets, clicks, explicit dismissal, blur, removal, owner disposal, keyboard focus
+and stateful updates. It runs in the targeted appearance and release browser
+gates alongside the compositor timing and production control checks.
+
 ## HTML comment input
 
 `scripts/test-html-comment-input-production.ts` runs in the quick, targeted history

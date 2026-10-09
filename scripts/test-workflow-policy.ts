@@ -135,6 +135,7 @@ function targetedCommands(
         script('scripts/test-toolbar-menus-browser.ts'),
         script('scripts/test-tooltips-production.ts'),
         script('scripts/test-tooltip-pointer-position.ts'),
+        script('scripts/test-tooltip-hover-sequence.ts'),
         script('scripts/test-tooltip-display-latency.ts'),
         script('scripts/test-appearance-webview-adapter.ts'),
         script('scripts/test-appearance-settings.ts'),

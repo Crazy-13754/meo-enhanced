@@ -9,8 +9,11 @@ export type TooltipPositioning = 'element' | 'pointer';
 
 type Bounds = { left: number; top: number; right: number; bottom: number };
 type Point = { x: number; y: number };
+type Dismissal = 'leave' | 'dismiss';
 let nextTooltipId = 0;
-let activeTooltip: { hide(): void; reposition(): void; pointerDown(event: PointerEvent): void } | undefined;
+let activeTooltip: { hide(reason?: Dismissal): void; reposition(): void; pointerDown(event: PointerEvent): void } | undefined;
+// One module clock keeps parent and Preview frame time origins out of the sequence.
+let hoverReadyUntil = 0;
 const ownedAnchors = new WeakSet<HTMLElement>();
 const menuSelector = '.heading-dropdown, .table-dropdown, .preview-dropdown-panel, [role="menu"], .changes-review-popover, .meo-md-html-table-context-menu';
 const modalSelector = 'dialog[open], .meo-md-image-fullscreen-scrim, .meo-mermaid-fullscreen-scrim, .meo-latex-math-fullscreen-scrim';
@@ -21,7 +24,10 @@ function painted(element: HTMLElement): boolean {
   if (!element.isConnected || !element.getClientRects().length) return false;
   for (let parent: HTMLElement | null = element; parent; parent = parent.parentElement) {
     const style = view.getComputedStyle(parent);
-    if (parent.hidden || parent.inert || style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) return false;
+    if (parent.hidden || parent.inert || style.visibility === 'hidden' || style.display === 'none') return false;
+    // Hover controls can still be at zero opacity when their fade-in has just started.
+    if (Number(style.opacity) === 0 && !parent.getAnimations().some(animation => animation instanceof view.CSSTransition
+      && animation.transitionProperty === 'opacity' && Number((animation.effect as KeyframeEffect | null)?.getKeyframes().at(-1)?.opacity) > 0)) return false;
   }
   return true;
 }
@@ -49,6 +55,8 @@ function visibleBounds(anchor: HTMLElement, area: Bounds): Bounds | null {
 
 /**
  * One shared hint: 200ms hover/focus, above/below/right/left placement, menu avoidance.
+ * After a shown pointer hint, another hover within 200ms of leaving skips the wait.
+ * Explicit dismissal and owner disposal end the sequence; only hover handoff keeps it.
  * Optional placement prefers that side, then its opposite, while keeping the hint visible.
  * Pointer positioning defaults right; keyboard focus uses the element. Forwarded
  * input uses ownerDocument client coordinates in show / setPointerPosition.
@@ -94,6 +102,7 @@ export function createTooltip(anchor: HTMLElement, options: {
   let content = options.content;
   let hovering = anchor.matches(':hover'), visible = false, disposed = false;
   let engaged = false;
+  let pointerSession = false;
   let revealAt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let positionFrame: number | undefined;
@@ -231,8 +240,15 @@ export function createTooltip(anchor: HTMLElement, options: {
     setPointerPosition(point);
     if (disposed || timer !== undefined || visible) return;
     engaged = true;
-    if (activeTooltip !== handle) { activeTooltip?.hide(); activeTooltip = handle; }
+    pointerSession = point !== undefined;
+    if (!pointerSession) hoverReadyUntil = 0;
+    if (activeTooltip !== handle) { activeTooltip?.hide(pointerSession ? 'leave' : 'dismiss'); activeTooltip = handle; }
     const started = view.performance.now();
+    if (pointerSession && performance.now() < hoverReadyUntil) {
+      revealAt = started;
+      reveal();
+      return;
+    }
     revealAt = started + 200;
     // Prepare after hover styles settle. The compositor can finish the wait
     // even while a diagram's synchronous rendering blocks JavaScript.
@@ -258,6 +274,7 @@ export function createTooltip(anchor: HTMLElement, options: {
   }
 
   function pointerDown(event: PointerEvent) {
+    hoverReadyUntil = 0; pointerSession = false;
     const live = options.liveUpdate ?? anchor.dataset.tooltipLiveUpdate === 'true';
     if (live && event.button === 0 && event.target instanceof view.Node && focusTarget.contains(event.target)) {
       // Keep an existing hint stable; a pending hint waits for the committed state.
@@ -277,7 +294,13 @@ export function createTooltip(anchor: HTMLElement, options: {
     } else hide();
   }
 
-  function hide() {
+  function hide(reason: Dismissal = 'dismiss') {
+    if (reason === 'leave') {
+      // Prepared DOM is still hidden until the compositor's reveal deadline.
+      if (pointerSession && visible && painted(anchor) && (tooltip.classList.contains('is-visible')
+        || (tooltip.classList.contains('is-pending') && view.performance.now() >= revealAt))) hoverReadyUntil = performance.now() + 200;
+    } else hoverReadyUntil = 0;
+    pointerSession = false;
     clearTimeout(timer); timer = undefined; visible = false; engaged = false; revealAt = 0;
     clearPositionFrame();
     if (pointerFrame !== undefined) view.cancelAnimationFrame(pointerFrame);
@@ -308,7 +331,7 @@ export function createTooltip(anchor: HTMLElement, options: {
   anchor.addEventListener('pointermove', event => {
     if (event.pointerType !== 'touch') setPointerPosition({ x: event.clientX, y: event.clientY });
   }, { signal: events.signal });
-  anchor.addEventListener('mouseleave', () => { hovering = false; setPointerPosition(); if (!focusTarget.matches(':focus-visible')) hide(); }, { signal: events.signal });
+  anchor.addEventListener('mouseleave', () => { hovering = false; if (!focusTarget.matches(':focus-visible')) hide('leave'); else setPointerPosition(); }, { signal: events.signal });
   focusTarget.addEventListener('focus', () => { if (focusTarget.matches(':focus-visible')) show(); }, { signal: events.signal });
   focusTarget.addEventListener('blur', () => { if (!hovering) hide(); }, { signal: events.signal });
   focusTarget.addEventListener('pointerdown', pointerDown, { signal: events.signal });
@@ -317,9 +340,9 @@ export function createTooltip(anchor: HTMLElement, options: {
   return {
     show, hide, setContent, setPointerPosition,
     isHovered: () => hovering,
-    dispose() {
+    dispose(reason: Dismissal = 'dismiss') {
       if (disposed) return;
-      disposed = true; hide(); events.abort(); tooltip.remove(); ownedAnchors.delete(anchor);
+      disposed = true; hide(reason); events.abort(); tooltip.remove(); ownedAnchors.delete(anchor);
       const remaining = (focusTarget.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(id => id && id !== tooltip.id);
       if (remaining.length) focusTarget.setAttribute('aria-describedby', remaining.join(' '));
       else focusTarget.removeAttribute('aria-describedby');
@@ -413,20 +436,21 @@ export function bindTooltips(root: HTMLElement, options: {
       && event.target.closest('.cm-editor.meo-mode-live') && !event.target.closest('[data-tooltip-link-href]')
       ? options.editableLinkHrefAtPoint?.(pointer) : undefined;
     const anchor = fromTarget(event.target, editableHref);
+    const dismissal = event.type === 'focusin' ? 'dismiss' : 'leave';
     // A pointer-driven mode switch may focus its source editor while the same
     // live-update button remains under the pointer. Keep that hint's ownership.
     if (event.type === 'focusin' && current?.anchor.dataset.tooltipLiveUpdate === 'true'
       && current.hint.isHovered() && (!anchor || !anchor.matches(':focus-visible'))) return;
-    if (!anchor) { current?.hint.dispose(); current = undefined; return; }
+    if (!anchor) { current?.hint.dispose(dismissal); current = undefined; return; }
     const content = contentFor(anchor, editableHref);
-    if (!content) { current?.hint.dispose(); current = undefined; return; }
+    if (!content) { current?.hint.dispose(dismissal); current = undefined; return; }
     if (current?.anchor === anchor) {
       if (event instanceof view.PointerEvent || event.type === 'focusin') {
         current.hint.setPointerPosition(event instanceof view.PointerEvent && event.pointerType !== 'touch' ? pointer : undefined);
       }
       current.editableHref = editableHref; current.hint.setContent(content); return;
     }
-    current?.hint.dispose(); prepare(anchor);
+    current?.hint.dispose(dismissal); prepare(anchor);
     // CodeMirror resets attributes on editable marks; describe its stable root instead.
     const focusTarget = anchor.isContentEditable ? anchor.closest<HTMLElement>('.cm-editor') ?? anchor : anchor;
     current = { anchor, hint: createTooltip(anchor, { content, focusTarget }), editableHref };
@@ -512,14 +536,15 @@ export function bindTooltips(root: HTMLElement, options: {
   view.addEventListener('keydown', modifierChanged, { capture: true, signal: events.signal });
   view.addEventListener('keyup', modifierChanged, { capture: true, signal: events.signal });
   root.addEventListener('focusin', enter, { signal: events.signal });
-  root.addEventListener('pointerdown', event => activeTooltip?.pointerDown(event), { capture: true, signal: events.signal });
-  root.addEventListener('keydown', event => { if (event.key === 'Escape' || event.key === 'Tab') activeTooltip?.hide(); }, { capture: true, signal: events.signal });
-  view.addEventListener('blur', () => { pointer = undefined; linkModifier = false; activeTooltip?.hide(); }, { signal: events.signal });
+  root.addEventListener('pointerdown', event => { hoverReadyUntil = 0; activeTooltip?.pointerDown(event); }, { capture: true, signal: events.signal });
+  root.addEventListener('keydown', event => { if (event.key === 'Escape' || event.key === 'Tab') { hoverReadyUntil = 0; activeTooltip?.hide(); } }, { capture: true, signal: events.signal });
+  view.addEventListener('blur', () => { pointer = undefined; linkModifier = false; hoverReadyUntil = 0; activeTooltip?.hide(); }, { signal: events.signal });
   view.addEventListener('scroll', () => activeTooltip?.reposition(), { capture: true, passive: true, signal: events.signal });
   view.addEventListener('resize', () => activeTooltip?.reposition(), { signal: events.signal });
   scan(root);
   return {
     dispose() {
+      hoverReadyUntil = 0;
       events.abort(); observer.disconnect(); appearance.disconnect(); current?.hint.dispose();
       for (const state of frames.values()) state.dispose?.(); frames.clear();
     }
