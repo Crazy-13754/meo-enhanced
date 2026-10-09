@@ -47,7 +47,7 @@ try {
     await page.keyboard.press('Escape');
     await page.$eval('#fade', element => element.remove());
 
-    for (const scenario of ['cold-sweep', 'renewed-window', 'expired', 'empty-target', 'click', 'gap-click', 'escape', 'gap-escape', 'blur', 'gap-blur', 'remove', 'stateful-click', 'keyboard', 'frame-expired', 'direct', 'gap-dispose'] as const) {
+    for (const scenario of ['cold-sweep', 'renewed-window', 'expired', 'empty-target', 'click', 'gap-click', 'escape', 'gap-escape', 'blur', 'gap-blur', 'remove', 'stateful-click', 'keyboard', 'frame-expired', 'frame-warm', 'direct', 'gap-dispose'] as const) {
       const observations = await page.evaluate(async scenario => {
         const child = document.querySelector('iframe')!.contentDocument!;
         const a = document.getElementById('a')!, b = document.getElementById('b')!, c = document.getElementById('c')!;
@@ -85,19 +85,21 @@ try {
         await wait(240);
         const shown = opacity(a);
         if (scenario === 'renewed-window') {
-          await wait(260); leave(a); await wait(100); enter(b);
-          const next = opacity(b); leave(b); await wait(150); enter(c);
+          await wait(560); leave(a); await wait(300); enter(b);
+          const next = opacity(b); leave(b); await wait(350); enter(c);
           return { cold, shown, next, last: opacity(c) };
         }
-        if (scenario === 'expired' || scenario === 'frame-expired') {
-          leave(a); await wait(250);
+        if (scenario === 'expired' || scenario === 'frame-expired' || scenario === 'frame-warm') {
+          leave(a); await wait(scenario === 'frame-warm' ? 350 : 550);
           const target = scenario === 'expired' ? b : child.getElementById('b')!;
-          enter(target); const next = opacity(target); await wait(240);
+          enter(target); const next = opacity(target);
+          if (scenario === 'frame-warm') return { cold, shown, next };
+          await wait(240);
           return { cold, shown, next, eventual: opacity(target) };
         }
         if (scenario === 'empty-target') {
-          leave(a); await wait(120); document.body.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
-          await wait(120); enter(b); const next = opacity(b); await wait(240);
+          leave(a); await wait(300); document.body.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+          await wait(300); enter(b); const next = opacity(b); await wait(240);
           return { cold, shown, next, eventual: opacity(b) };
         }
         if (scenario === 'direct') {
@@ -134,7 +136,7 @@ try {
       }, scenario);
       assert.equal(observations.cold, '0', `${theme}/${scenario}: first hover waits`);
       if ('shown' in observations) assert.equal(observations.shown, '1', `${theme}/${scenario}: first hint must have shown`);
-      const immediate = scenario === 'renewed-window' || scenario === 'direct';
+      const immediate = scenario === 'renewed-window' || scenario === 'frame-warm' || scenario === 'direct';
       assert.equal(observations.next, immediate ? '1' : '0', `${theme}/${scenario}: correct continuation or reset`);
       if ('eventual' in observations) assert.equal(observations.eventual, '1', `${theme}/${scenario}: delayed hints still reveal`);
       if ('last' in observations) assert.equal(observations.last, '1', 'each shown hover renews the departure window');

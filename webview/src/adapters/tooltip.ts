@@ -55,7 +55,7 @@ function visibleBounds(anchor: HTMLElement, area: Bounds): Bounds | null {
 
 /**
  * One shared hint: 200ms hover/focus, above/below/right/left placement, menu avoidance.
- * After a shown pointer hint, another hover within 200ms of leaving skips the wait.
+ * After a shown pointer hint, another hover within 500ms of leaving skips the wait.
  * Explicit dismissal and owner disposal end the sequence; only hover handoff keeps it.
  * Optional placement prefers that side, then its opposite, while keeping the hint visible.
  * Pointer positioning defaults right; keyboard focus uses the element. Forwarded
@@ -298,7 +298,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     if (reason === 'leave') {
       // Prepared DOM is still hidden until the compositor's reveal deadline.
       if (pointerSession && visible && painted(anchor) && (tooltip.classList.contains('is-visible')
-        || (tooltip.classList.contains('is-pending') && view.performance.now() >= revealAt))) hoverReadyUntil = performance.now() + 200;
+        || (tooltip.classList.contains('is-pending') && view.performance.now() >= revealAt))) hoverReadyUntil = performance.now() + 500;
     } else hoverReadyUntil = 0;
     pointerSession = false;
     clearTimeout(timer); timer = undefined; visible = false; engaged = false; revealAt = 0;
