@@ -61,6 +61,13 @@ async function main(): Promise<void> {
       (window as any).__outline = outline;
     });
 
+    for (const [language, label] of [['zh-CN', '拖动调整目录宽度'], ['en', 'Drag to resize outline']]) {
+      await page.evaluate(language => (window as any).__outline.setUiLanguage(language), language);
+      assert.deepEqual(await page.$eval('.outline-resizer', element => ({
+        tooltip: element.getAttribute('data-tooltip'), title: element.getAttribute('title'), label: element.getAttribute('aria-label')
+      })), { tooltip: null, title: null, label }, 'outline resizing keeps its accessible name without a visual hint');
+    }
+
     const foldIconSize = await page.$eval<SVGElement, { width: string | null; height: string | null }>(
       '.outline-fold-button svg',
       (icon) => ({ width: icon.getAttribute('width'), height: icon.getAttribute('height') })

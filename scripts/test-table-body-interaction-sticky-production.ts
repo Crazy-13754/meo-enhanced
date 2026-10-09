@@ -23,6 +23,10 @@ async function main(): Promise<void> {
     naming: 'bundle.js'
   });
   if (!build.success) throw new Error(build.logs.map(String).join('\n'));
+  const tooltipBuild = await Bun.build({
+    entrypoints: ['scripts/test-tooltip-display-latency-entry.ts'], target: 'browser', format: 'iife'
+  });
+  if (!tooltipBuild.success) throw new Error(tooltipBuild.logs.map(String).join('\n'));
 
   const browser = await launchTestBrowser();
   try {
@@ -32,6 +36,8 @@ async function main(): Promise<void> {
     await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
     await page.addStyleTag({ content: ':root{--meo-background:#fff;--meo-foreground:#111;--meo-code-background:#f4f4f4;--meo-surface-background:#fff;--meo-font-live:Arial;--meo-font-live-weight:400;--meo-font-live-size:16px;--meo-font-source:monospace;--meo-font-source-weight:400;--meo-font-source-size:14px;--meo-line-height-live:1.6;--meo-line-height-source:1.5}' });
     await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+    await page.addScriptTag({ content: await tooltipBuild.outputs[0]!.text() });
+    await page.evaluate(() => { (window as any).__tableTooltips = (window as any).TooltipLatencyHarness.bindTooltips(document.body); });
     const columns = Array.from({ length: 8 }, (_, index) => `Column ${index + 1}`);
     const tableRows = Array.from({ length: 36 }, (_, row) => (
       `| ${columns.map((_, column) => `row ${row + 1} value ${column + 1}`).join(' | ')} |`
@@ -163,6 +169,25 @@ async function main(): Promise<void> {
     );
     await page.mouse.move(stickyNavigationPoint.x, stickyNavigationPoint.y);
     await waitForFrames(page, 2);
+    await page.waitForSelector('.meo-tooltip.is-visible');
+    const stickyHint = await page.$eval('.meo-tooltip.is-visible', element => {
+      const rect = element.getBoundingClientRect(); return { left: rect.left, top: rect.top, text: element.textContent, id: element.id };
+    });
+    if (Math.abs(stickyHint.left - stickyNavigationPoint.x - 12) > 1 || Math.abs(stickyHint.top - stickyNavigationPoint.y - 8) > 1
+      || !['点击回到表头', 'Click to return to table header'].includes(stickyHint.text ?? '')) {
+      throw new Error(`Floating table header hint did not use pointer positioning: ${JSON.stringify({ stickyHint, stickyNavigationPoint })}`);
+    }
+    await page.mouse.move(stickyNavigationPoint.x + 6, stickyNavigationPoint.y);
+    await waitForFrames(page, 2);
+    const movedStickyHint = await page.$eval('.meo-tooltip.is-visible', element => ({ id: element.id, left: element.getBoundingClientRect().left }));
+    if (movedStickyHint.id !== stickyHint.id || Math.abs(movedStickyHint.left - stickyHint.left - 6) > 1) {
+      throw new Error(`Floating table header hint did not follow the pointer: ${JSON.stringify({ stickyHint, movedStickyHint })}`);
+    }
+    await page.mouse.move(stickyNavigationPoint.x, stickyNavigationPoint.y);
+    if (process.env.MEO_TOOLTIP_SCREENSHOT_DIR) {
+      await waitForFrames(page, 2);
+      await page.screenshot({ path: process.env.MEO_TOOLTIP_SCREENSHOT_DIR + '/table-header.png' });
+    }
     const stickyNavigationHover = await page.evaluate((point) => {
       const viewport = document.querySelector<HTMLElement>('.meo-md-html-table-sticky-header')!;
       const hit = document.elementFromPoint(point.x, point.y);

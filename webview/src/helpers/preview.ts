@@ -2136,6 +2136,7 @@ export function createPreviewController({
     const navigation = frameDocument.createElement('button');
     navigation.type = 'button';
     navigation.className = 'meo-preview-source-navigation';
+    navigation.dataset.tooltipPositioning = 'pointer';
     navigation.hidden = true;
     navigation.tabIndex = -1;
     navigation.dataset.tooltip = uiStrings.editInSource;

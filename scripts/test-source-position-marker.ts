@@ -463,7 +463,11 @@ try {
   assert.equal(reverseAction.markerCursorDisplay, 'none');
   const frameHandle = await page.$('.preview-frame');
   const previewFrame = (await frameHandle!.contentFrame())!;
-  await previewFrame.hover('.meo-preview-source-navigation');
+  const hintPoint = await previewFrame.$eval('.meo-preview-source-navigation', element => {
+    const rect = element.getBoundingClientRect(); return { x: rect.left + 14, y: rect.top + Math.min(10, rect.height / 2) };
+  });
+  const frameOrigin = await frameHandle!.boundingBox();
+  await page.mouse.move(frameOrigin!.x + hintPoint.x, frameOrigin!.y + hintPoint.y);
   try {
     await page.waitForFunction(() => !!document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-tooltip.is-visible'), { timeout: 5000 });
   } catch (error) {
@@ -480,23 +484,26 @@ try {
       };
     })), { cause: error });
   }
-  const sourceHint = await page.evaluate(() => {
+  const sourceHint = await page.evaluate(hintPoint => {
     const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
     const button = doc.querySelector<HTMLElement>('.meo-preview-source-navigation')!;
     const hint = doc.getElementById(button.getAttribute('aria-describedby')!)!;
-    const rect = hint.getBoundingClientRect(), target = button.getBoundingClientRect();
+    const rect = hint.getBoundingClientRect();
     return {
       text: hint.querySelector('.meo-tooltip-label')!.textContent,
       label: button.getAttribute('aria-label'),
       key: hint.querySelector('kbd:not([hidden])')?.textContent ?? null,
       title: button.getAttribute('title'),
-      above: rect.bottom <= target.top,
+      pointerPositioned: Math.abs(rect.left - (hintPoint.x + 12)) <= 1 && Math.abs(rect.top - (hintPoint.y + 8)) <= 1,
       inside: rect.left >= 8 && rect.right <= doc.defaultView!.innerWidth - 8
     };
-  });
+  }, hintPoint);
   assert.deepEqual(sourceHint, {
-    text: 'Reveal in source', label: 'Reveal in source', key: null, title: null, above: true, inside: true
-  }, 'the source locator uses one concise shared hint with automatic placement and no invented shortcut');
+    text: 'Click to reveal in source', label: 'Click to reveal in source', key: null, title: null, pointerPositioned: true, inside: true
+  }, 'the source locator uses the concise shared hint beside the pointer');
+  if (process.env.MEO_TOOLTIP_SCREENSHOT_DIR) {
+    await page.screenshot({ path: process.env.MEO_TOOLTIP_SCREENSHOT_DIR + '/source-navigation.png' });
+  }
 
   await page.mouse.click(
     frameRect.left + reverseAction.left + 4,

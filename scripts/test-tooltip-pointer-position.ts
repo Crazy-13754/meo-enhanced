@@ -1,0 +1,142 @@
+import assert from 'node:assert/strict';
+import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
+
+const build = await Bun.build({ entrypoints: ['scripts/test-tooltip-display-latency-entry.ts'], target: 'browser', format: 'iife' });
+if (!build.success) throw new Error(build.logs.map(String).join('\n'));
+const script = await build.outputs[0]!.text();
+const browser = await launchTestBrowser();
+
+try {
+  for (const nested of [false, true]) for (const theme of ['light', 'dark']) for (const language of ['en', 'zh-CN']) {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 720, height: 540 });
+    await page.setContent(nested ? '<!doctype html><iframe style="position:absolute;left:70px;top:45px;width:620px;height:480px;border:0"></iframe>' : '<!doctype html>');
+    const surface = nested ? page.frames()[1]! : page;
+    await surface.setContent(`<!doctype html><style>
+      html,body{margin:0;min-height:1200px}button{position:absolute;border:0;padding:0;background:#ddd}
+      #wide{left:24px;top:60px;width:592px;height:48px}#tall{left:24px;top:144px;width:28px;height:240px}
+      #direct{left:350px;top:440px;width:100px;height:28px}
+    </style><button id="wide" data-tooltip-positioning="pointer"><span>Wide target</span></button>
+    <button id="tall" data-tooltip-positioning="pointer">Tall target</button><button id="direct">Direct target</button>`);
+    await page.evaluate(({ theme, language }) => {
+      document.documentElement.dataset.editorAppearance = theme;
+      document.documentElement.lang = language;
+    }, { theme, language });
+    await page.addStyleTag({ path: 'webview/src/styles.css' });
+    await surface.evaluate(language => {
+      document.getElementById('wide')!.dataset.tooltip = language === 'en' ? 'Click to return to table header' : '点击回到表头';
+      document.getElementById('tall')!.dataset.tooltip = language === 'en' ? 'Click to reveal in source' : '点击定位源码';
+    }, language);
+    await page.addScriptTag({ content: script });
+    await page.evaluate(() => { (window as any).__binding = (window as any).TooltipLatencyHarness.bindTooltips(document.body); });
+    if (nested) await surface.waitForSelector('[data-meo-tooltip-style]');
+    const move = async (x: number, y: number) => {
+      const offset = nested ? { x: 70, y: 45 } : { x: 0, y: 0 };
+      await page.mouse.move(x + offset.x, y + offset.y);
+      await surface.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    };
+    const hint = () => surface.$eval('.meo-tooltip.is-visible', element => {
+      const rect = element.getBoundingClientRect();
+      return { id: element.id, text: element.textContent, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+        side: (element as HTMLElement).dataset.side, inside: rect.left >= 8 && rect.top >= 8 && rect.right <= innerWidth - 8 && rect.bottom <= innerHeight - 8,
+        pointerEvents: getComputedStyle(element).pointerEvents, background: getComputedStyle(element).backgroundColor };
+    });
+    await move(100, 80);
+    await surface.waitForSelector('.meo-tooltip.is-visible');
+    const initial = await hint();
+    assert.equal(initial.text, language === 'en' ? 'Click to return to table header' : '点击回到表头');
+    assert.equal(initial.left, 112); assert.equal(initial.top, 88);
+    assert.equal(initial.side, 'right'); assert.equal(initial.pointerEvents, 'none');
+    assert.equal(initial.background, theme === 'dark' ? 'rgb(58, 58, 58)' : 'rgb(13, 13, 13)');
+    await move(200, 86);
+    const moved = await hint();
+    assert.equal(moved.id, initial.id, 'movement retains the same visible hint');
+    assert.equal(moved.left - initial.left, 100); assert.equal(moved.top - initial.top, 6);
+    await page.keyboard.press('Escape');
+    await move(210, 86);
+    assert.equal(await surface.$('.meo-tooltip.is-visible'), null, 'movement cannot undo Escape dismissal');
+    await move(0, 0);
+    await surface.$eval('#wide', element => {
+      element.classList.add('meo-md-html-table-sticky-header');
+      const resize = document.createElement('span'); resize.className = 'meo-md-html-table-column-resize-handle';
+      resize.style.cssText = 'position:absolute;left:300px;top:0;width:10px;height:48px;pointer-events:auto';
+      element.append(resize);
+    });
+    await move(329, 80);
+    assert.equal(await surface.$('.meo-tooltip.is-visible, .meo-tooltip.is-pending'), null, 'column resizing does not expose a table navigation hint');
+    await surface.$eval('#wide', element => { element.classList.remove('meo-md-html-table-sticky-header'); element.lastElementChild!.remove(); });
+
+    await move(38, 210);
+    await surface.waitForSelector('.meo-tooltip.is-visible');
+    const tall = await hint();
+    await move(38, 320);
+    assert.equal((await hint()).top - tall.top, 110, 'a tall navigation surface follows the hovered position');
+    await surface.evaluate(() => scrollTo(0, 200));
+    await surface.waitForFunction(() => !document.querySelector('.meo-tooltip.is-visible'));
+    assert.equal(await surface.$('.meo-tooltip.is-visible'), null, 'scrolling away closes the hint even while part of the target is still visible');
+    await surface.evaluate(() => scrollTo(0, 0));
+    await move(0, 0);
+    const width = await surface.evaluate(() => innerWidth);
+    await surface.$eval('#wide', (element, width) => { (element as HTMLElement).style.left = width - 592 + 'px'; }, width);
+    await move(width - 20, 80);
+    await surface.waitForSelector('.meo-tooltip.is-visible');
+    const edge = await hint();
+    assert.equal(edge.side, 'left'); assert.equal(edge.inside, true, 'edge placement remains inside its own frame');
+    await page.mouse.down(); await page.mouse.up();
+    assert.equal(await surface.$('.meo-tooltip.is-visible'), null, 'click closes the hint');
+    await move(0, 0);
+
+    const height = await surface.evaluate(() => innerHeight);
+    await surface.$eval('#tall', (element, height) => { (element as HTMLElement).style.top = height - 80 + 'px'; (element as HTMLElement).style.height = '60px'; }, height);
+    await move(38, height - 24);
+    await surface.waitForSelector('.meo-tooltip.is-visible');
+    assert.equal((await hint()).inside, true, 'bottom edges shift vertically');
+    await move(0, 0);
+    await surface.$eval('#tall', element => { (element as HTMLElement).style.top = ''; (element as HTMLElement).style.height = ''; });
+    await page.keyboard.press('Tab');
+    await surface.focus('#tall');
+    await surface.waitForSelector('.meo-tooltip.is-visible');
+    const keyboard = await hint();
+    const targetTop = await surface.$eval('#tall', element => element.getBoundingClientRect().top);
+    assert.ok(keyboard.bottom <= targetTop, 'keyboard focus uses the component instead of a stale pointer');
+    await page.keyboard.press('Escape');
+    await surface.$eval('#tall', element => (element as HTMLElement).blur());
+
+    await move(38, 210);
+    await surface.waitForSelector('.meo-tooltip.is-visible');
+    await surface.evaluate(() => {
+      const menu = document.createElement('div'); menu.id = 'obstacle'; menu.setAttribute('role', 'menu');
+      menu.style.cssText = 'position:fixed;left:52px;top:190px;width:200px;height:110px;background:white;z-index:100'; document.body.append(menu);
+    });
+    await surface.waitForFunction(() => !document.querySelector('.meo-tooltip.is-visible'));
+    await surface.$eval('#obstacle', element => element.remove());
+    await move(0, 0);
+
+    // The component API and metadata binder share positioning, including precedence.
+    await surface.evaluate(() => {
+      const element = document.getElementById('direct')!; element.dataset.tooltipPositioning = 'pointer';
+      (window as any).__direct = (window.top as any).TooltipLatencyHarness.createTooltip(element, { content: { text: 'Direct hint' }, positioning: 'element' });
+    });
+    await move(380, 450);
+    await surface.waitForSelector('.meo-tooltip.is-visible');
+    assert.ok((await hint()).bottom <= 440, 'explicit element positioning overrides pointer metadata');
+    await move(0, 0);
+    await surface.evaluate(() => {
+      (window as any).__direct.dispose();
+      const element = document.getElementById('direct')!; element.dataset.tooltipPositioning = 'element';
+      (window as any).__direct = (window.top as any).TooltipLatencyHarness.createTooltip(element, { content: { text: 'Direct hint' }, positioning: 'pointer', placement: 'left' });
+    });
+    await move(380, 450);
+    await surface.waitForSelector('.meo-tooltip.is-visible');
+    const direct = await hint();
+    assert.equal(direct.side, 'left'); assert.equal(direct.right, 368, 'explicit pointer positioning and direction override metadata');
+    await move(390, 450);
+    assert.equal((await hint()).right, 378, 'direct components also follow pointer movement');
+    await surface.evaluate(() => (window as any).__direct.dispose());
+    assert.equal(await surface.$('.meo-tooltip.is-visible'), null, 'disposal removes the active hint');
+    console.log(`Pointer tooltip: ${theme}, ${language}, iframe=${nested}: movement, edges, scrolling, keyboard, menus and component API passed`);
+    await page.close();
+  }
+} finally {
+  await closeTestBrowser(browser);
+}

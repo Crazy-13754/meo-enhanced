@@ -5,8 +5,10 @@ export type TooltipContent =
   | { readonly text: string; readonly shortcut?: never; readonly kind: 'fulltext' | 'description' | 'link' };
 
 export type TooltipPlacement = 'top' | 'bottom' | 'left' | 'right';
+export type TooltipPositioning = 'element' | 'pointer';
 
 type Bounds = { left: number; top: number; right: number; bottom: number };
+type Point = { x: number; y: number };
 let nextTooltipId = 0;
 let activeTooltip: { hide(): void; reposition(): void; pointerDown(event: PointerEvent): void } | undefined;
 const ownedAnchors = new WeakSet<HTMLElement>();
@@ -48,6 +50,8 @@ function visibleBounds(anchor: HTMLElement, area: Bounds): Bounds | null {
 /**
  * One shared hint: 200ms hover/focus, above/below/right/left placement, menu avoidance.
  * Optional placement prefers that side, then its opposite, while keeping the hint visible.
+ * Pointer positioning defaults right; keyboard focus uses the element. Forwarded
+ * input uses ownerDocument client coordinates in show / setPointerPosition.
  * Live updates retain a stateful control's hint and reveal changed content immediately
  * while hovered or keyboard-focused, until dismissal or a new interaction target.
  * Callers supply localized, concise content and the current effective shortcut.
@@ -58,6 +62,7 @@ export function createTooltip(anchor: HTMLElement, options: {
   readonly id?: string;
   readonly focusTarget?: HTMLElement;
   readonly placement?: TooltipPlacement;
+  readonly positioning?: TooltipPositioning;
   readonly liveUpdate?: boolean;
 }) {
   const doc = anchor.ownerDocument, view = doc.defaultView!;
@@ -92,8 +97,23 @@ export function createTooltip(anchor: HTMLElement, options: {
   let revealAt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let positionFrame: number | undefined;
+  let pointerFrame: number | undefined;
+  let pointer: Point | undefined;
   let reportedConflict = '';
   const handle = { hide, reposition: position, pointerDown };
+
+  function pointerPositioning() {
+    return (options.positioning ?? anchor.dataset.tooltipPositioning) === 'pointer';
+  }
+
+  function setPointerPosition(point?: Point) {
+    pointer = point;
+    if (!visible || !pointerPositioning() || pointerFrame !== undefined) return;
+    pointerFrame = view.requestAnimationFrame(() => {
+      pointerFrame = undefined;
+      position();
+    });
+  }
 
   function reportConflict() {
     const identity = content.text + '/' + content.shortcut;
@@ -126,6 +146,10 @@ export function createTooltip(anchor: HTMLElement, options: {
       right: Math.min(viewport.right, container?.right ?? viewport.right) - margin, bottom: Math.min(viewport.bottom, container?.bottom ?? viewport.bottom) - margin };
     const bounds = visibleBounds(anchor, area);
     if (!bounds) { hide(); return; }
+    const point = pointerPositioning() ? pointer : undefined;
+    // Scrolling can move a large hit surface away from a stationary pointer.
+    if (point && (point.x < viewport.left || point.x > viewport.right || point.y < viewport.top || point.y > viewport.bottom
+      || !anchor.contains(doc.elementFromPoint(point.x, point.y)))) { hide(); return; }
     tooltip.style.maxWidth = '';
     tooltip.classList.toggle('meo-tooltip--wrap', content.kind === 'fulltext' || content.kind === 'description' || content.kind === 'link');
     tooltip.classList.toggle('meo-tooltip--link', content.kind === 'link');
@@ -141,7 +165,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     const requested = options.placement ?? anchor.dataset.tooltipPlacement;
     const placement = requested === 'top' || requested === 'bottom' || requested === 'left' || requested === 'right' ? requested : undefined;
     // Explicit menu-item hints belong to the small control, not its containing menu.
-    const obstacles: Bounds[] = menus.filter(menu => !placement || !menu.contains(anchor)).map(menu => menu.getBoundingClientRect());
+    const obstacles: Bounds[] = menus.filter(menu => (!placement && !point) || !menu.contains(anchor)).map(menu => menu.getBoundingClientRect());
     const menuOwner = anchor.closest('.heading-wrapper, .table-wrapper, .preview-export-control, .preview-select-control, .changes-review-control, [data-hover-menu]') ?? anchor.parentElement;
     const blocked = new Set<TooltipPlacement>();
     for (const menu of menus) {
@@ -161,7 +185,14 @@ export function createTooltip(anchor: HTMLElement, options: {
     const enclosing = placement ? [] : menus.filter(menu => menu.contains(anchor)).map(menu => menu.getBoundingClientRect());
     const outer = { left: Math.min(bounds.left, ...enclosing.map(rect => rect.left)), right: Math.max(bounds.right, ...enclosing.map(rect => rect.right)),
       top: Math.min(bounds.top, ...enclosing.map(rect => rect.top)), bottom: Math.max(bounds.bottom, ...enclosing.map(rect => rect.bottom)) };
-    const candidates: Record<TooltipPlacement, { left: number; top: number }> = {
+    const pointerX = point ? Math.max(area.left, Math.min(point.x + 12, area.right - hint.width)) : x;
+    const pointerY = point ? Math.max(area.top, Math.min(point.y + 8, area.bottom - hint.height)) : y;
+    const candidates: Record<TooltipPlacement, { left: number; top: number }> = point ? {
+      right: { left: point.x + 12, top: pointerY },
+      left: { left: point.x - hint.width - 12, top: pointerY },
+      top: { left: pointerX, top: point.y - hint.height - 12 },
+      bottom: { left: pointerX, top: point.y + 12 }
+    } : {
       top: { left: x, top: outer.top - hint.height - gap },
       bottom: { left: x, top: outer.bottom + gap },
       right: { left: outer.right + gap, top: y },
@@ -169,7 +200,8 @@ export function createTooltip(anchor: HTMLElement, options: {
     };
     const sides: readonly TooltipPlacement[] = ['top', 'bottom', 'right', 'left'];
     const opposite: Record<TooltipPlacement, TooltipPlacement> = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
-    const ordered: readonly TooltipPlacement[] = placement ? [placement, opposite[placement], ...sides.filter(side => side !== placement && side !== opposite[placement])] : sides;
+    const preferred = placement ?? (point ? 'right' : undefined);
+    const ordered: readonly TooltipPlacement[] = preferred ? [preferred, opposite[preferred], ...sides.filter(side => side !== preferred && side !== opposite[preferred])] : sides;
     for (const side of ordered) {
       const candidate = candidates[side];
       const rect = { left: candidate.left, top: candidate.top, right: candidate.left + hint.width, bottom: candidate.top + hint.height };
@@ -195,7 +227,8 @@ export function createTooltip(anchor: HTMLElement, options: {
     view.addEventListener('scroll', position, { capture: true, passive: true });
   }
 
-  function show() {
+  function show(point?: Point) {
+    setPointerPosition(point);
     if (disposed || timer !== undefined || visible) return;
     engaged = true;
     if (activeTooltip !== handle) { activeTooltip?.hide(); activeTooltip = handle; }
@@ -247,6 +280,8 @@ export function createTooltip(anchor: HTMLElement, options: {
   function hide() {
     clearTimeout(timer); timer = undefined; visible = false; engaged = false; revealAt = 0;
     clearPositionFrame();
+    if (pointerFrame !== undefined) view.cancelAnimationFrame(pointerFrame);
+    pointerFrame = undefined; pointer = undefined;
     tooltip.classList.remove('is-pending', 'is-visible');
     view.removeEventListener('resize', position); view.removeEventListener('scroll', position, true);
     if (activeTooltip === handle) activeTooltip = undefined;
@@ -266,18 +301,21 @@ export function createTooltip(anchor: HTMLElement, options: {
       // browser reconciles its pointer target; the hover session remains valid.
       if (hovering || focusTarget.matches(':focus-visible')) reveal();
       else hide();
-    } else position();
+    } else if (changed || !pointerPositioning()) position();
   }
 
-  anchor.addEventListener('mouseenter', () => { hovering = true; show(); }, { signal: events.signal });
-  anchor.addEventListener('mouseleave', () => { hovering = false; if (!focusTarget.matches(':focus-visible')) hide(); }, { signal: events.signal });
+  anchor.addEventListener('mouseenter', event => { hovering = true; show({ x: event.clientX, y: event.clientY }); }, { signal: events.signal });
+  anchor.addEventListener('pointermove', event => {
+    if (event.pointerType !== 'touch') setPointerPosition({ x: event.clientX, y: event.clientY });
+  }, { signal: events.signal });
+  anchor.addEventListener('mouseleave', () => { hovering = false; setPointerPosition(); if (!focusTarget.matches(':focus-visible')) hide(); }, { signal: events.signal });
   focusTarget.addEventListener('focus', () => { if (focusTarget.matches(':focus-visible')) show(); }, { signal: events.signal });
   focusTarget.addEventListener('blur', () => { if (!hovering) hide(); }, { signal: events.signal });
   focusTarget.addEventListener('pointerdown', pointerDown, { signal: events.signal });
   focusTarget.addEventListener('keydown', event => { if (event.key === 'Escape' || event.key === 'Tab') hide(); }, { signal: events.signal });
   setContent(content);
   return {
-    show, hide, setContent,
+    show, hide, setContent, setPointerPosition,
     isHovered: () => hovering,
     dispose() {
       if (disposed) return;
@@ -292,6 +330,7 @@ export function createTooltip(anchor: HTMLElement, options: {
 /**
  * Bootstrap-owned binding for data-tooltip, optional data-tooltip-shortcut and
  * data-tooltip-kind="fulltext|description", data-tooltip-placement="top|bottom|left|right",
+ * data-tooltip-positioning="element|pointer" (element by default),
  * and data-tooltip-live-update="true" for stateful controls.
  * Explicit placement uses the control's own anchor. Full-text reveals only clipped text.
  * Generated controls supply metadata; links show their destination and any authored title.
@@ -348,6 +387,7 @@ export function bindTooltips(root: HTMLElement, options: {
   function fromTarget(target: EventTarget | null, editableHref?: string): HTMLElement | null {
     if (!(target instanceof view.Element)) return null;
     if (target.closest('.meo-md-link-marker, .meo-md-link-marker-active, .meo-md-link-label-bracket, .meo-md-link-label-bracket-active')) return null;
+    if (target.closest('.meo-md-html-table-sticky-header .meo-md-html-table-column-resize-handle')) return null;
     let element = target.closest<HTMLElement>('[data-tooltip], [title], [data-meo-link-href], [data-meo-preview-href], a[href]');
     if (!element && editableHref && target.closest('.cm-editor.meo-mode-live')) {
       element = target.closest<HTMLElement>('textarea, .cm-line');
@@ -380,12 +420,17 @@ export function bindTooltips(root: HTMLElement, options: {
     if (!anchor) { current?.hint.dispose(); current = undefined; return; }
     const content = contentFor(anchor, editableHref);
     if (!content) { current?.hint.dispose(); current = undefined; return; }
-    if (current?.anchor === anchor) { current.editableHref = editableHref; current.hint.setContent(content); return; }
+    if (current?.anchor === anchor) {
+      if (event instanceof view.PointerEvent || event.type === 'focusin') {
+        current.hint.setPointerPosition(event instanceof view.PointerEvent && event.pointerType !== 'touch' ? pointer : undefined);
+      }
+      current.editableHref = editableHref; current.hint.setContent(content); return;
+    }
     current?.hint.dispose(); prepare(anchor);
     // CodeMirror resets attributes on editable marks; describe its stable root instead.
     const focusTarget = anchor.isContentEditable ? anchor.closest<HTMLElement>('.cm-editor') ?? anchor : anchor;
     current = { anchor, hint: createTooltip(anchor, { content, focusTarget }), editableHref };
-    if (event.type !== 'focusin' || anchor.matches(':focus-visible')) current.hint.show();
+    if (event.type !== 'focusin' || anchor.matches(':focus-visible')) current.hint.show(event instanceof view.PointerEvent && event.pointerType !== 'touch' ? pointer : undefined);
   }
 
   function sharedStyles(source: Document): string {
@@ -444,7 +489,7 @@ export function bindTooltips(root: HTMLElement, options: {
     }
     activeTooltip?.reposition();
   });
-  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-tooltip', 'data-tooltip-link-href', 'data-tooltip-shortcut', 'data-tooltip-kind', 'data-tooltip-placement', 'data-tooltip-live-update', 'data-meo-link-href', 'data-meo-preview-href', 'href', 'hidden', 'open'] });
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-tooltip', 'data-tooltip-link-href', 'data-tooltip-shortcut', 'data-tooltip-kind', 'data-tooltip-placement', 'data-tooltip-positioning', 'data-tooltip-live-update', 'data-meo-link-href', 'data-meo-preview-href', 'href', 'hidden', 'open'] });
   const appearance = new view.MutationObserver(() => {
     for (const state of frames.values()) if (state.doc) {
       state.doc.documentElement.dataset.meoTooltipAppearance = doc.documentElement.dataset.meoTooltipAppearance ?? doc.documentElement.dataset.editorAppearance ?? 'light';

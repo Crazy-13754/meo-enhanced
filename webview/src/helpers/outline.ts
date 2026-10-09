@@ -165,7 +165,9 @@ export function createOutlineController({
   visibleRangeHighlight.hidden = true;
   const outlineResizer = document.createElement('div');
   outlineResizer.className = 'outline-resizer';
-  outlineResizer.dataset.tooltip = uiStrings.outlineResize;
+  outlineResizer.setAttribute('role', 'separator');
+  outlineResizer.setAttribute('aria-orientation', 'vertical');
+  outlineResizer.setAttribute('aria-label', uiStrings.outlineResize);
   outlineSidebar.append(outlineHeader, outlineContent, outlineResizer);
 
   let visible = false;
@@ -631,7 +633,7 @@ export function createOutlineController({
       expandButton.dataset.tooltip = uiStrings.outlineExpandAll;
       expandButton.setAttribute('aria-label', expandButton.dataset.tooltip ?? '');
       closeButton.setAttribute('aria-label', uiStrings.outlineClose);
-      outlineResizer.dataset.tooltip = uiStrings.outlineResize;
+      outlineResizer.setAttribute('aria-label', uiStrings.outlineResize);
       updateModeButton();
       updatePositionButton();
       renderTree();

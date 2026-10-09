@@ -320,6 +320,23 @@ try {
   await page.waitForFunction(() => !document.querySelector('.meo-mermaid-fullscreen-scrim'));
   assert.equal(await page.$('.meo-tooltip.is-visible'), null, 'closing fullscreen removes its active hint');
 
+  phase = 'outline resizing without a hint';
+  await page.click('[data-action="outline-right"]');
+  await page.waitForSelector('.outline-resizer', { visible: true });
+  const resizePoint = await page.$eval('.outline-resizer', element => {
+    const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.move(resizePoint.x, resizePoint.y);
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 250)));
+  assert.equal(await page.$('.meo-tooltip.is-visible, .meo-tooltip.is-pending'), null, 'hovering the outline resize area does not show a hint');
+  assert.equal(await page.$eval('.outline-resizer', element => element.getAttribute('aria-label')), 'Drag to resize outline');
+  const outlineWidth = await page.$eval('.outline-sidebar', element => element.getBoundingClientRect().width);
+  await page.mouse.down();
+  await page.mouse.move(resizePoint.x - 40, resizePoint.y);
+  await page.mouse.up();
+  assert.ok(await page.$eval('.outline-sidebar', element => element.getBoundingClientRect().width) > outlineWidth, 'outline dragging still changes width');
+  await page.click('.outline-close-button');
+
   await page.click('[data-mode="source"]');
   await page.waitForSelector('.cm-editor.meo-mode-source');
   await page.click('.source-preview-button');

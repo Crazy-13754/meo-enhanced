@@ -5954,6 +5954,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     stickyChrome.setAttribute('aria-hidden', 'true');
     const stickyHeaderViewport = document.createElement('div');
     stickyHeaderViewport.className = 'meo-md-html-table-sticky-header';
+    stickyHeaderViewport.dataset.tooltipPositioning = 'pointer';
     stickyHeaderViewport.dataset.tooltip = getUiStrings(view.state.facet(uiLanguageFacet)).returnToTableHeader;
     const stickyTable = document.createElement('table');
     stickyTable.className = 'meo-md-html-table meo-md-html-table-sticky-table';

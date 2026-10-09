@@ -109,6 +109,13 @@ state updates. It complements the production control checks in
 release browser gates. A JavaScript timer or RAF alone cannot prove paint timing
 while the renderer is busy.
 
+`scripts/test-tooltip-pointer-position.ts` checks the shared component and delegated
+binding in both languages and themes, including Preview iframe coordinates,
+continuous movement, boundary fitting, scroll dismissal, keyboard fallback and
+menu avoidance. It runs in the targeted appearance and release browser gates.
+Production source locator and floating table header checks also verify the two
+pointer-positioned navigation hints and their existing click behavior.
+
 ## HTML comment input
 
 `scripts/test-html-comment-input-production.ts` runs in the quick, targeted history
