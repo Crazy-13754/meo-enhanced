@@ -1,3 +1,6 @@
+import { splitMarkdownTableRow } from '../../../src/foundation/markdownTableRow';
+export { splitMarkdownTableRow };
+
 const maxCharacters = 5_000_000;
 const maxCells = 10_000;
 
@@ -63,20 +66,6 @@ export function markdownTableFromCells(cells: readonly (readonly string[])[], so
   return [row(cells[0]), row(cells[0].map(() => '---')), ...cells.slice(1).map(row)].join('\n');
 }
 export type MarkdownTable = { readonly cells: string[][]; readonly alignments: ('left' | 'center' | 'right' | null)[] };
-export function splitMarkdownTableRow(line: string): string[] {
-  const content = line.replace(/^\s*(?:>\s*)*/, '').trim();
-  const cells: string[] = []; let value = ''; let slashes = 0; let trailingDelimiter = false;
-  for (const character of content) {
-    trailingDelimiter = character === '|' && slashes % 2 === 0;
-    if (trailingDelimiter) { cells.push(value.trim()); value = ''; }
-    else value += character;
-    slashes = character === '\\' ? slashes + 1 : 0;
-  }
-  cells.push(value.trim());
-  if (content.startsWith('|')) cells.shift();
-  if (trailingDelimiter) cells.pop();
-  return cells;
-}
 export function parseMarkdownTable(text: string): MarkdownTable | null {
   if (text.length > 5_000_000) return null;
   const lines = text.split(/\r?\n/).filter(line => line.trim());

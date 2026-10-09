@@ -1,5 +1,6 @@
 import { blockInsertion, type MarkdownInputContext } from '../editor/blockInsertion';
 import { matchInlineScript } from '../../../src/foundation/inlineScript';
+import { markdownTableSeparatorPipes } from '../../../src/foundation/markdownTableRow';
 import { matchInlineHtmlCode } from '../../../src/shared/htmlPolicy';
 import { parseTableInlineSyntax } from './inlineMarkdownParser';
 import { wireNativeSymbolInput, nativeSymbolInput } from '../editor/nativeTypingAssistance';
@@ -859,7 +860,7 @@ interface TableCellLogicalLine {
 
 function splitTableCellLogicalLines(text: string): TableCellLogicalLine[] {
   const lines: TableCellLogicalLine[] = [];
-  const syntax = text.includes('[') ? parseTableInlineSyntax(text, 0) : null;
+  const syntax = text.includes('[') || text.includes('`') ? parseTableInlineSyntax(text, 0) : null;
   let lineStart = 0;
   for (let index = 0; index < text.length;) {
     const breakMatch = !isTableInlineEscaped(text, index) ? tableCellBreakAtRe.exec(text.slice(index)) : null;
@@ -883,7 +884,7 @@ function splitTableCellLogicalLines(text: string): TableCellLogicalLine[] {
 
 export function tableCellEditorValueToSource(value: string): string {
   let source = '';
-  const syntax = value.includes('[') ? parseTableInlineSyntax(value, 0) : null;
+  const syntax = value.includes('[') || value.includes('`') ? parseTableInlineSyntax(value, 0) : null;
   for (let index = 0; index < value.length;) {
     const breakMatch = !isTableInlineEscaped(value, index) ? tableCellBreakAtRe.exec(value.slice(index)) : null;
     if (breakMatch) {
@@ -1323,27 +1324,6 @@ function decodeTableInlineEscapes(text: string): string {
   return result;
 }
 
-function findTableInlineMatchingBackticks(text: string, index: number, tickCount: number): number {
-  const marker = '`'.repeat(tickCount);
-  for (let i = index; i <= text.length - tickCount; i += 1) {
-    if (text.startsWith(marker, i)) return i;
-  }
-  return -1;
-}
-
-function parseTableInlineCodeSpan(text: string, index: number) {
-  if (text[index] !== '`') return null;
-  let tickCount = 1;
-  while (text[index + tickCount] === '`') tickCount += 1;
-  const close = findTableInlineMatchingBackticks(text, index + tickCount, tickCount);
-  if (close < 0) return null;
-  return {
-    content: text.slice(index + tickCount, close),
-    contentFrom: tickCount,
-    nextIndex: close + tickCount
-  };
-}
-
 function consumeTableInlineAngleSection(text: string, index: number) {
   if (text[index] !== '<' || isTableInlineEscaped(text, index)) return null;
   const close = text.indexOf('>', index + 1);
@@ -1593,22 +1573,28 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       continue;
     }
 
-    const code = parseTableInlineCodeSpan(text, i);
+    const code = inlineSyntax.codes.get(baseOffset + i);
     if (code) {
       flushBuffer();
       const el = document.createElement('code');
       el.className = 'meo-md-inline-code';
-      setInlineSourceRange(el, { from: baseOffset + i, to: baseOffset + code.nextIndex });
-      appendTablePlainText(
-        el,
-        decodeTableInlineEscapes(code.content),
-        baseOffset + i + code.contentFrom,
-        diagnostics,
-        searchState,
-        sourceRange
-      );
+      setInlineSourceRange(el, { from: baseOffset + i, to: code.to });
+      const raw = text.slice(code.contentFrom - baseOffset, code.contentTo - baseOffset);
+      // CommonMark strips one bounding space unless the payload is all spaces.
+      const padding = raw.startsWith(' ') && raw.endsWith(' ') && /[^ ]/.test(raw) ? 1 : 0;
+      const contentFrom = code.contentFrom + padding;
+      const content = raw.slice(padding, raw.length - padding);
+      let cursor = 0;
+      // Only the table-level pipe escape is removed; code backslashes are literal.
+      for (const escape of content.matchAll(/\\\|/g)) {
+        const index = escape.index!;
+        appendTablePlainText(el, content.slice(cursor, index), contentFrom + cursor, diagnostics, searchState, sourceRange);
+        appendInlineMappedText(el, '|', { from: contentFrom + index, to: contentFrom + index + 2 });
+        cursor = index + 2;
+      }
+      appendTablePlainText(el, content.slice(cursor), contentFrom + cursor, diagnostics, searchState, sourceRange);
       parent.appendChild(el);
-      i = code.nextIndex;
+      i = code.to - baseOffset;
       continue;
     }
 
@@ -2132,8 +2118,8 @@ function renderTableCellInlinePreview(
 }
 
 function consumeTableInlineProtectedSpan(text: string, index: number, endIndex: number, syntax: ReturnType<typeof parseTableInlineSyntax> | null): number | null {
-  const code = parseTableInlineCodeSpan(text, index);
-  if (code && code.nextIndex <= endIndex) return code.nextIndex;
+  const code = syntax?.codes.get(index);
+  if (code && code.to <= endIndex) return code.to;
 
   const kbd = text[index] === '<' && !isTableInlineEscaped(text, index) ? parseKbdTagAt(text, index) : null;
   if (kbd && kbd.nextIndex <= endIndex) return kbd.nextIndex;
@@ -2154,23 +2140,6 @@ function consumeTableInlineProtectedSpan(text: string, index: number, endIndex: 
   return null;
 }
 
-function findTableRowSeparatorPipes(text: string, startIndex: number, endIndex: number): number[] {
-  const pipes: number[] = [];
-  const syntax = text.includes('[') ? parseTableInlineSyntax(text, 0) : null;
-  for (let i = startIndex; i < endIndex;) {
-    const protectedNext = consumeTableInlineProtectedSpan(text, i, endIndex, syntax);
-    if (protectedNext && protectedNext > i) {
-      i = protectedNext;
-      continue;
-    }
-    if (text[i] === '|' && !isTableInlineEscaped(text, i)) {
-      pipes.push(i);
-    }
-    i += 1;
-  }
-  return pipes;
-}
-
 function parseTableRowCells(lineText: string, lineFrom = 0): ParsedTableRowCells {
   const quoted = parseTableCellQuotePrefix({ text: lineText, from: lineFrom, breakText: '' });
   if (quoted.indents.length) {
@@ -2186,9 +2155,9 @@ function parseTableRowCells(lineText: string, lineFrom = 0): ParsedTableRowCells
   let innerStart = contentStart;
   let innerEnd = contentEnd;
   if (innerStart < innerEnd && lineText[innerStart] === '|') innerStart += 1;
-  if (innerEnd > innerStart && lineText[innerEnd - 1] === '|') innerEnd -= 1;
+  if (innerEnd > innerStart && lineText[innerEnd - 1] === '|' && !isTableInlineEscaped(lineText, innerEnd - 1)) innerEnd -= 1;
 
-  const allSeparatorPipes = findTableRowSeparatorPipes(lineText, 0, lineText.length);
+  const allSeparatorPipes = markdownTableSeparatorPipes(lineText);
   const innerPipes = allSeparatorPipes.filter((index) => index >= innerStart && index < innerEnd);
 
   const cells: string[] = [];
@@ -2320,10 +2289,10 @@ function buildTableDataForLineRange(state: EditorState, startLineNo: number, end
 
   const dataLines = delimiterIdx >= 0 ? lines.slice(delimiterIdx + 1, lastTableLineIdx + 1) : [];
   const alignments = delimiterIdx >= 0 ? parseDelimiterAlignments(lines[delimiterIdx].text) : [];
+  // Body cells beyond the header width are ignored, rather than adding columns.
   const colCount = Math.max(
     headerLine?.cells.length ?? 0,
-    alignments.length,
-    ...dataLines.map((line) => line.cells.length)
+    alignments.length
   );
   const tableFrom = headerLine ? headerLine.from : startLine.from;
   const tableTo = delimiterIdx >= 0 && lines[lastTableLineIdx] ? lines[lastTableLineIdx].to : endLine.to;

@@ -1,4 +1,5 @@
 import { markdownHeadingAnchor } from '../foundation/markdownHeadingAnchor';
+import { splitMarkdownTableRow } from '../foundation/markdownTableRow';
 import * as path from 'node:path';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
@@ -103,6 +104,20 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     breaks: true,
     langPrefix: 'language-'
   });
+  // The bundled backtick rule strips bounding spaces even from all-space code.
+  // Preserve that CommonMark exception before the regular rule handles other spans.
+  md.inline.ruler.before('backticks', 'meo_code_space_literal', (state, silent) => {
+    if (state.src[state.pos] !== '`') return false;
+    const match = /^(`+)([ \n]+)\1(?!`)/.exec(state.src.slice(state.pos, state.posMax));
+    if (!match) return false;
+    if (!silent) {
+      const inlineCode = state.push('code_inline', 'code', 0);
+      inlineCode.markup = match[1];
+      inlineCode.content = match[2].replace(/\n/g, ' ');
+    }
+    state.pos += match[0].length;
+    return true;
+  });
   installHighlightTransform(md);
   installInlineScriptTransform(md);
   installPunctuationInlineTransform(md);
@@ -113,6 +128,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   installTableContainerTransform(md, (sourceLine) => (
     countLeadingIndentColumns(originalSourceLines[sourceLine - 1] ?? '')
   ));
+  installTableCellSourceTransform(md);
   installTableCellListTransform(md);
   installTaskListTransform(md);
   installKbdFallbackTransform(md);
@@ -588,6 +604,26 @@ function installTableContainerTransform(md: MarkdownIt, resolveIndent: (sourceLi
   );
 }
 
+function installTableCellSourceTransform(md: MarkdownIt): void {
+  // Use the resolved table rows, so pipe handling never rewrites adjacent blocks.
+  // The bundled table rule removes an escape after any slash run; cells must
+  // instead share Live's GFM boundaries before their inline contents are parsed.
+  md.core.ruler.after('block', 'meo_table_cell_source', (state) => {
+    const lines = state.src.split('\n');
+    let cells: string[] = [];
+    let column = 0;
+    for (let index = 0; index < state.tokens.length; index += 1) {
+      const node = state.tokens[index];
+      if (node.type === 'tr_open' && node.map) {
+        cells = splitMarkdownTableRow(lines[node.map[0]] ?? '');
+        column = 0;
+      } else if (node.type === 'inline' && state.tokens[index - 1]?.type === 'td_open') {
+        node.content = (cells[column++] ?? '').replace(/\\\|/g, '|');
+      }
+    }
+  });
+}
+
 function installTableCellListTransform(md: MarkdownIt): void {
   // A cell's explicit breaks delimit logical lines. Restrict these extensions
   // to cells; normal prose retains Markdown's ordered-list and lazy-quote rules.
@@ -734,9 +770,14 @@ function normalizeLooseTableDelimiters(markdownText: string, codeLines: Readonly
     const originalDelimiter = lines[index] ?? '';
     const containerPrefix = /^[ \t]*(?:>[ \t]*)*/.exec(originalDelimiter)?.[0] ?? '';
     const delimiter = originalDelimiter.slice(containerPrefix.length);
-    if (!isTableDelimiterLine(delimiter)) {
+    if (!isTableDelimiterLine(delimiter) || !isTableHeaderLine(lines[index - 1] ?? '')) {
       continue;
     }
+    // Keep even-run header pipes visible to the bundled table rule. Its cell
+    // trimming removes this separator padding; source line mapping is unchanged.
+    lines[index - 1] = lines[index - 1].replace(/(\\+)\|/g, (match, slashes: string) => (
+      slashes.length % 2 === 0 ? `${slashes} |` : match
+    ));
     const headerColumnCount = countTableCells((lines[index - 1] ?? '').replace(/^[ \t]*(?:>[ \t]*)*/, ''));
     const delimiterCells = splitTableCells(delimiter);
     if (headerColumnCount <= delimiterCells.length) {
@@ -757,8 +798,7 @@ function countTableCells(line: string): number {
 }
 
 function splitTableCells(line: string): string[] {
-  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
-  return trimmed.split(/(?<!\\)\|/).map((cell) => cell.trim());
+  return splitMarkdownTableRow(line);
 }
 
 function countLeadingIndentColumns(line: string): number {

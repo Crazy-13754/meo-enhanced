@@ -16,8 +16,13 @@ export function parseTableInlineSyntax(text: string, offset: number) {
   const spans = new Map<number, { kind: 'em' | 'strong' | 'strike' | 'highlight'; contentFrom: number; contentTo: number; to: number }>();
   const scripts = new Set<number>();
   const htmlTags = new Map<number, number>();
+  const codes = new Map<number, { contentFrom: number; contentTo: number; to: number }>();
   const links = new Map<number, { image: boolean; labelFrom: number; labelTo: number; urlFrom: number; urlTo: number; to: number }>();
   inlineParser.parse(`x ${text}`).iterate({ enter(node) {
+    if (node.name === 'InlineCode') {
+      const first = node.node.firstChild, last = node.node.lastChild;
+      if (first && last) codes.set(offset + node.from - 2, { contentFrom: offset + first.to - 2, contentTo: offset + last.from - 2, to: offset + node.to - 2 });
+    }
     if (node.name === 'Subscript' || node.name === 'Superscript') scripts.add(offset + node.from - 2);
     if (/^(?:HTMLTag|Comment|CommentBlock)$/.test(node.name)) htmlTags.set(offset + node.from - 2, offset + node.to - 2);
     if (node.name === 'Link' || node.name === 'Image') {
@@ -34,5 +39,5 @@ export function parseTableInlineSyntax(text: string, offset: number) {
     const first = node.node.firstChild, last = node.node.lastChild;
     if (first && last) spans.set(offset + node.from - 2, { kind, contentFrom: offset + first.to - 2, contentTo: offset + last.from - 2, to: offset + node.to - 2 });
   } });
-  return { spans, scripts, htmlTags, links, mathExcludedRanges: text.includes('$') ? collectInlineMathExcludedRanges(literalParser, text).map(range => ({ from: offset + range.from, to: offset + range.to })) : [] };
+  return { spans, scripts, htmlTags, codes, links, mathExcludedRanges: text.includes('$') ? collectInlineMathExcludedRanges(literalParser, text).map(range => ({ from: offset + range.from, to: offset + range.to })) : [] };
 }

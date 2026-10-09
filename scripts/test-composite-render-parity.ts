@@ -14,6 +14,40 @@ const cases = [
   '`literal<br>- not a list`', '- `literal<br>- not a list`', '- \\* escaped<br>- **bold** $x^2$',
   '> [!NOTE]<br>> - task', '- <kbd>Ctrl</kbd> [link](https://example.com)',
 ];
+const codeCases = [
+  { cell: 'before `foo` after', text: 'before foo after', codes: ['foo'] },
+  { cell: 'before `foo after', text: 'before `foo after', codes: [] },
+  { cell: 'before `foo``bar after', text: 'before `foo``bar after', codes: [] },
+  { cell: 'before ``foo```bar`` after', text: 'before foo```bar after', codes: ['foo```bar'] },
+  { cell: '```a``b`c```', text: 'a``b`c', codes: ['a``b`c'] },
+  { cell: '\\`foo\\`', text: '`foo`', codes: [] },
+  { cell: '`foo\\`bar`', text: 'foo\\bar`', codes: ['foo\\'] },
+  { cell: '`\\d`', text: '\\d', codes: ['\\d'] },
+  { cell: '`\\\\d`', text: '\\\\d', codes: ['\\\\d'] },
+  { cell: '`\\*\\_\\[\\]\\+\\.`', text: '\\*\\_\\[\\]\\+\\.', codes: ['\\*\\_\\[\\]\\+\\.'] },
+  { cell: '`` foo ` bar ``', text: 'foo ` bar', codes: ['foo ` bar'] },
+  { cell: '`  foo  `', text: ' foo ', codes: [' foo '] },
+  { cell: '`   `', text: '   ', codes: ['   '] },
+  { cell: '` `', text: ' ', codes: [' '] },
+  { cell: '`  `', text: '  ', codes: ['  '] },
+  { cell: '``   ``', text: '   ', codes: ['   '] },
+  { cell: '` foo`', text: ' foo', codes: [' foo'] },
+  { cell: '`foo `', text: 'foo ', codes: ['foo '] },
+  { cell: '`\tfoo\t`', text: '\tfoo\t', codes: ['\tfoo\t'] },
+  { cell: '`**bold** <br> $x$`', text: '**bold** <br> $x$', codes: ['**bold** <br> $x$'] },
+  { cell: '**``a`b``**', text: 'a`b', codes: ['a`b'] },
+  { cell: '[``a`b``](https://example.com)', text: 'a`b', codes: ['a`b'] },
+  { cell: '`\\|`', text: '|', codes: ['|'] },
+  { cell: '`cat\\|dog`', text: 'cat|dog', codes: ['cat|dog'] },
+  { cell: '``left\\|right ` tick``', text: 'left|right ` tick', codes: ['left|right ` tick'] },
+  { cell: '`\\\\\\|`', text: '\\\\|', codes: ['\\\\|'] },
+  { cell: '`left\\\\|right`', text: '`left\\', codes: [], other: 'right`' },
+  { cell: '`foo`', text: 'foo', codes: ['foo'], other: 'end|', rowEnd: 'end\\|' },
+  { cell: '`foo`', text: 'foo', codes: ['foo'], header: '`a\\\\|b`', third: 'tail', rowEnd: 'witness | tail |' },
+  { cell: '[a|b](https://example.com)', text: '[a', codes: [], other: 'b](https://example.com)' },
+  { cell: '`|`', text: '`', codes: [], other: '`' },
+  { cell: 'before `a|b` after', text: 'before `a', codes: [], other: 'b` after' },
+];
 const build = await Bun.build({ entrypoints: [path.join(root, 'scripts/test-list-editing-entry.ts')], target: 'browser', format: 'iife' });
 if (!build.success) throw Error(build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
@@ -46,6 +80,70 @@ try {
       const unchanged = editor.getText() === source; editor.destroy(); return { live, preview, unchanged };
     }, { source, html });
     out.push({ cell, ...observation });
+  }
+
+  for (const fixture of codeCases) {
+    const source = 'intro\n\n| ' + (fixture.header ?? 'Content') + ' | Other |\n| --- | --- |\n| ' + fixture.cell + ' | ' + (fixture.rowEnd ?? 'witness |');
+    const html = renderMarkdownToHtml({ markdownText: source, markdownFilePath: 'D:/audit.md', target: 'html' }).html;
+    const result = await page.evaluate(async ({ source, html }) => {
+      const host = document.getElementById('live')!; host.replaceChildren();
+      const editor = (window as any).ListEditingHarness.createEditor({ parent: host, text: source, initialMode: 'live', uiLanguage: 'zh-CN', onApplyChanges() { } });
+      for (let i = 0; i < 4; i++) await new Promise<void>(r => requestAnimationFrame(() => r()));
+      document.getElementById('preview')!.innerHTML = html;
+      const signature = (cells: Element[]) => cells.map(cell => ({ text: cell.textContent, codes: [...cell.querySelectorAll('code')].map(code => code.textContent) }));
+      const result = {
+        live: signature([...host.querySelectorAll('tbody .meo-md-html-table-cell-preview')]),
+        preview: signature([...document.querySelectorAll('#preview tbody td')]),
+        liveHeader: signature([...host.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) thead .meo-md-html-table-cell-preview')]),
+        previewHeader: signature([...document.querySelectorAll('#preview thead th')]),
+        unchanged: editor.getText() === source
+      };
+      editor.destroy(); return result;
+    }, { source, html });
+    const expected = [{ text: fixture.text, codes: fixture.codes }, { text: fixture.other ?? 'witness', codes: [] }];
+    if (fixture.third) expected.push({ text: fixture.third, codes: [] });
+    assert.deepEqual(result.preview, expected, 'Preview code/cell boundaries: ' + fixture.cell);
+    assert.deepEqual(result.live, expected, 'Live code/cell boundaries: ' + fixture.cell);
+    assert.ok(result.unchanged, 'code rendering must leave source unchanged: ' + fixture.cell);
+    assert.deepEqual(result.liveHeader, result.previewHeader, 'header code/cell boundaries: ' + (fixture.header ?? 'Content'));
+  }
+  console.log('PASS', codeCases.length, 'table code spans: delimiter runs, literals, whitespace and escaped pipes');
+
+  for (const cell of ['`` padded TARGET ``', '`left\\|TARGET`', '`\\\\TARGET`']) {
+    const source = 'intro\n\n| Content | Other |\n| --- | --- |\n| ' + cell + ' | witness |';
+    const point = await page.evaluate(async (source) => {
+      const host = document.getElementById('live')!; host.replaceChildren();
+      (window as any).__codeEditor = (window as any).ListEditingHarness.createEditor({ parent: host, text: source, initialMode: 'live', onApplyChanges() { } });
+      for (let i = 0; i < 4; i++) await new Promise<void>(r => requestAnimationFrame(() => r()));
+      const span = [...host.querySelectorAll('tbody code [data-meo-source-from]')].find(element => element.textContent?.includes('TARGET'))!;
+      const offset = span.textContent!.indexOf('TARGET');
+      const range = document.createRange();
+      range.setStart(span.firstChild!, offset); range.setEnd(span.firstChild!, offset + 1);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left + 0.1, y: rect.top + rect.height / 2 };
+    }, source);
+    await page.mouse.click(point.x, point.y);
+    const input = await page.evaluate(async () => {
+      for (let i = 0; i < 4; i++) await new Promise<void>(r => requestAnimationFrame(() => r()));
+      const input = document.querySelector<HTMLTextAreaElement>('#live tbody textarea')!;
+      return { focused: document.activeElement === input, value: input.value, offset: input.selectionStart };
+    });
+    assert.ok(input.focused, 'code click must enter its source cell: ' + cell);
+    assert.equal(input.value, cell, 'code click must retain raw delimiters and escapes: ' + cell);
+    assert.equal(input.offset, cell.indexOf('TARGET'), 'code click source offset: ' + cell);
+    await page.keyboard.type('X');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction((expected) => (window as any).__codeEditor.getText() === expected, {}, source.replace('TARGET', 'XTARGET'));
+    await page.evaluate(() => { (window as any).__codeEditor.destroy(); delete (window as any).__codeEditor; });
+  }
+  console.log('PASS 3 normalized code click/edit source positions');
+  for (const target of ['html', 'pdf', 'docx'] as const) {
+    const html = renderMarkdownToHtml({ markdownText: 'before ` \n ` after', markdownFilePath: 'D:/audit.md', target }).html;
+    assert.ok(html.includes('<code>   </code>'), target + ': line breaks in all-space code must become spaces without trimming');
+    const prose = renderMarkdownToHtml({ markdownText: 'Header\n---\nliteral \\\\|', markdownFilePath: 'D:/audit.md', target }).html;
+    assert.ok(prose.includes('literal \\|'), target + ': table pipe normalization must not alter ordinary prose after a setext heading');
+    const followingHtml = renderMarkdownToHtml({ markdownText: '| A |\n| --- |\n| value |\n<div>literal \\\\|</div>', markdownFilePath: 'D:/audit.md', target }).html;
+    assert.ok(followingHtml.includes('literal \\\\|'), target + ': table pipe normalization must not alter a following HTML block');
   }
 
   const fence = '\x60'.repeat(3);
