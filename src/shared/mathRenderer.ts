@@ -47,7 +47,12 @@ export function renderMathToHtml(content: string, mode: SharedMathMode): string 
       trust: false,
       output: 'html',
       errorColor: 'inherit'
-    });
+    }).replaceAll(
+      // Fitted canvases shrink to their contents. KaTeX's absolute tag would
+      // overlap that content, so include the generated number column in layout.
+      '<span class="tag">',
+      '<span class="tag" style="position:static;display:inline-block;margin-left:1em">'
+    );
     cacheMathHtml(cacheKey, html);
     return html;
   } catch (error: unknown) {

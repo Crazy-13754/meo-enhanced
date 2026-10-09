@@ -77,6 +77,15 @@ samples every animation frame while typing and deleting above rendered blocks.
 Unchanged preview heights and all downstream line numbers must stay stable;
 a settled final frame alone cannot pass this contract.
 
+`scripts/test-math-tag-layout.ts` uses real KaTeX styles and fonts to check that
+equation numbers remain visible, fit inside the formula canvas and never overlap
+the expression. It covers `\tag`, `\tag*`, long expressions and numbers, aligned,
+align and gather environments in Live Preview/Split, Preview, Source's side
+preview and HTML export, including PDF/Word formula fitting, with both themes
+and narrow/wide panes. Live zoom,
+reset and fullscreen are checked through their controls. This contract runs in
+the targeted rendered and full browser gates.
+
 `scripts/test-live-input-path-production.ts` observes inserted text's computed
 styles in the first four input frames, including IME preedit and commit. It covers
 inline format boundaries, nested formats, content replacement and history replay.
