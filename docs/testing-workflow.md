@@ -59,6 +59,16 @@ exact commands without running them.
 
 ## Daily repair loop
 
+`scripts/test-input-focus-return-production.ts` checks production Find, Replace
+and Settings search in Live, Source and Preview. It uses separate browser
+documents to exercise window focus ownership, backward/forward/collapsed ranges,
+horizontal input scrolling, immediate typing and returning to the document on
+close. New clicks, explicit Find and value changes must supersede old recovery.
+It belongs to the quick and targeted search gates. The smaller
+`scripts/test-editor-focus-window-return.ts` also checks both blur event orders,
+input invalidation, modal ownership and disposal. Browser evidence does not
+replace native Windows Alt+Tab or Workbench menu validation.
+
 `scripts/test-preview-navigation-continuity.ts` exercises the production Webview
 with real Preview rendering. Outline jumps, keyboard fragment links and return
 to top must retain the new location when returning to either Live or Source,

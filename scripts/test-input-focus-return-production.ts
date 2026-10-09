@@ -1,0 +1,234 @@
+import assert from 'node:assert/strict';
+import type { Frame, Page } from 'puppeteer-core';
+import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
+import exportRuntime from '../src/export/runtime';
+
+const text = 'alpha beta\n\nA document selection witness.\n\n| Cell |\n| --- |\n| Table selection |\n\n' + 'More reading content.\n\n'.repeat(30);
+const build = await Bun.build({ entrypoints: ['scripts/test-settings-window-production-entry.ts'], target: 'browser', format: 'iife' });
+if (!build.success) throw new Error(build.logs.map(String).join('\n'));
+const bundle = await build.outputs[0]!.text();
+const browser = await launchTestBrowser();
+let primaryError: unknown;
+
+async function chord(page: Page, key: string): Promise<void> {
+  await page.keyboard.down('Control');
+  try { await page.keyboard.press(key); } finally { await page.keyboard.up('Control'); }
+}
+
+async function leave(page: Page, frame: Frame, selector: string): Promise<void> {
+  await page.focus('#host-control');
+  assert.equal(await frame.evaluate(() => document.hasFocus()), false);
+  await frame.evaluate(selector => {
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'focusEditor' } }));
+    const input = document.querySelector<HTMLInputElement>(selector)!;
+    input.blur();
+    // Model a native activation that loses the DOM range, rather than passing
+    // merely because Chromium happened to retain it without our controller.
+    input.setSelectionRange(input.value.length, input.value.length);
+    input.scrollLeft = 0;
+  }, selector);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'host-control', 'a Host hint must not steal Workbench focus');
+}
+
+async function returnToFrame(page: Page): Promise<void> {
+  await page.evaluate(() => document.querySelector<HTMLIFrameElement>('#webview')!.contentWindow!.focus());
+}
+
+async function readInput(frame: Frame, selector: string) {
+  return frame.evaluate(selector => {
+    const input = document.querySelector<HTMLInputElement>(selector)!;
+    return { focused: document.activeElement === input, value: input.value, start: input.selectionStart, end: input.selectionEnd,
+      direction: input.selectionDirection, scrollLeft: input.scrollLeft };
+  }, selector);
+}
+
+async function readEditor(frame: Frame) {
+  return frame.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    const selection = view.state.selection.main;
+    return { anchor: selection.anchor, head: selection.head, text: view.state.doc.toString() as string, focused: view.hasFocus, scrollTop: view.scrollDOM.scrollTop };
+  });
+}
+
+try {
+  for (const mode of ['live', 'source', 'preview'] as const) {
+    const page = await browser.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(String(error)));
+    try {
+      page.setDefaultTimeout(8000);
+      await page.setViewport({ width: 1200, height: 800 });
+      await page.setContent('<button id="host-control">Workbench</button><iframe id="webview" style="width:1180px;height:740px"></iframe>');
+      const frame = await (await page.$('#webview'))!.contentFrame();
+      assert.ok(frame);
+      await frame.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
+      await frame.addStyleTag({ path: 'webview/src/styles.css' });
+      await page.exposeFunction('__renderFocusPreview', (message: any) => {
+        if (message.type !== 'requestPreviewRender') return null;
+        return { type: 'previewRenderResult', requestId: message.requestId, result: { ok: true, value: exportRuntime.renderPreviewDocument({
+          markdownText: message.text, sourceDocumentPath: 'C:/tmp/input-focus.md', uiLanguage: message.uiLanguage, styleEnvironment: message.environment
+        }) } };
+      });
+      await frame.addScriptTag({ content: `window.__messages=[];window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.__messages.push(message);parent.__renderFocusPreview(message).then(reply=>{if(reply)window.dispatchEvent(new MessageEvent('message',{data:reply}));});}});` });
+      await frame.addScriptTag({ content: bundle });
+      await frame.evaluate(({ text, mode }) => window.dispatchEvent(new MessageEvent('message', { data: {
+        type: 'init', documentId: 'file:///input-focus.md', text, version: 1, savedRevision: { version: 1, text }, diagnostics: [],
+        mode: mode === 'preview' ? 'live' : mode, uiLanguage: 'en', sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '',
+        previewSourceColoring: true, editorAppearance: 'light', gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false,
+        diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false,
+        findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260,
+        restoreReadingPositionOnOpen: false, vscodeTheme: null
+      } })), { text, mode });
+      await frame.waitForSelector('.editor-wrapper:not(.meo-preload-editor-shell) .cm-content');
+      await frame.evaluate(() => {
+        const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+        view.dispatch({ selection: { anchor: 8, head: 3 } }); view.focus();
+      });
+      if (mode === 'preview') {
+        await (await frame.$('[data-mode="preview"]'))!.click();
+        await frame.waitForFunction(() => document.querySelector<HTMLElement>('.preview-status')?.hidden === true);
+      }
+      const documentBefore = await readEditor(frame);
+
+      for (const [index, direction] of ['forward', 'backward', 'none'].entries()) {
+        await (await frame.$('[data-action="find"]'))!.click();
+        const editorBefore = await readEditor(frame);
+        for (const field of (mode === 'preview' ? ['find'] : ['find', 'replace']) as ('find' | 'replace')[]) {
+          const selector = field === 'find' ? '.find-row .find-input' : '.find-replace-row .find-input';
+          const value = 'Search selection and scrolling witness '.repeat(8);
+          const before = await frame.evaluate(({ selector, value, direction }) => {
+            const input = document.querySelector<HTMLInputElement>(selector)!;
+            input.focus(); input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
+            const start = direction === 'none' ? 170 : 160; const end = direction === 'none' ? 170 : 175;
+            input.setSelectionRange(start, end, direction as 'forward' | 'backward' | 'none'); input.scrollLeft = 700;
+            return { value, start, end, direction: input.selectionDirection, scrollLeft: input.scrollLeft };
+          }, { selector, value, direction });
+          assert.ok(before.scrollLeft > 0, `${mode}/${field}: fixture must be horizontally scrolled`);
+          // Present the user's scrolled input before leaving. Native scroll
+          // notification is delivered at the rendering opportunity.
+          await frame.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+          await leave(page, frame, selector);
+          await returnToFrame(page);
+          assert.deepEqual(await readInput(frame, selector), { focused: true, ...before }, `${mode}/${field}/${direction}: window return lost the input range`);
+          await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'focusEditor' } })));
+          assert.deepEqual(await readInput(frame, selector), { focused: true, ...before }, `${mode}/${field}: late Host recovery changed the input`);
+          await page.keyboard.type('Q');
+          const after = await readInput(frame, selector);
+          assert.equal(after.value, value.slice(0, before.start) + 'Q' + value.slice(before.end), `${mode}/${field}: first input missed the restored position`);
+          const editorAfter = await readEditor(frame);
+          assert.deepEqual(editorAfter, editorBefore, `${mode}/${field}: input recovery changed document selection or viewport`);
+        }
+        if (index === 0) await page.keyboard.press('Escape');
+        else await (await frame.$(index === 1 ? '.find-close-button' : '[data-action="find"]'))!.click();
+        await frame.waitForFunction(() => !document.querySelector('.find-panel.is-visible'));
+        const closed = await readEditor(frame);
+        assert.equal(closed.text, text);
+        assert.equal(closed.anchor, documentBefore.anchor);
+        assert.equal(closed.head, documentBefore.head);
+        assert.equal(closed.focused, mode !== 'preview', `${mode}: closing search must return to the active document surface`);
+      }
+
+      await (await frame.$('.more-tools-wrapper > .format-button'))!.click();
+      await (await frame.$('.more-tools-settings-button'))!.click();
+      await frame.evaluate(() => {
+        const input = document.querySelector<HTMLInputElement>('.settings-search')!;
+        input.value = 'Search settings witness'; input.dispatchEvent(new Event('input'));
+        input.setSelectionRange(2, 9, 'backward');
+      });
+      const settingsBefore = await readInput(frame, '.settings-search');
+      await leave(page, frame, '.settings-search'); await returnToFrame(page);
+      assert.deepEqual(await readInput(frame, '.settings-search'), settingsBefore, `${mode}: settings search did not restore its selection`);
+      await page.keyboard.type('S');
+      assert.equal((await readInput(frame, '.settings-search')).value, 'SeS' + 'Search settings witness'.slice(9));
+      await (await frame.$('.settings-close'))!.click();
+      assert.equal(await frame.$eval('.settings-window', node => (node as HTMLDialogElement).open), false);
+      const settingsClosed = await readEditor(frame);
+      assert.equal(settingsClosed.text, text); assert.equal(settingsClosed.anchor, documentBefore.anchor); assert.equal(settingsClosed.head, documentBefore.head);
+      assert.equal(settingsClosed.focused, mode !== 'preview');
+      if (mode !== 'preview') {
+        await page.keyboard.type('!');
+        assert.equal((await readEditor(frame)).text, text.slice(0, 3) + '!' + text.slice(8), `${mode}: closing an input must allow typing at the saved document selection`);
+      }
+
+      // Explicit new interaction supersedes the old input recovery.
+      await (await frame.$('[data-action="find"]'))!.click();
+      await frame.evaluate(() => {
+        const input = document.querySelector<HTMLInputElement>('.find-row .find-input')!;
+        input.value = 'old range'; input.setSelectionRange(2, 5, 'backward');
+      });
+      await leave(page, frame, '.find-row .find-input');
+      const nextInput = mode === 'preview' ? '.find-row .find-input' : '.find-replace-row .find-input';
+      await (await frame.$(nextInput))!.click();
+      await frame.evaluate(selector => {
+        const input = document.querySelector<HTMLInputElement>(selector)!;
+        input.setSelectionRange(0, 0);
+      }, nextInput);
+      await page.keyboard.type('NEW');
+      await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'focusEditor' } })));
+      assert.equal((await readInput(frame, nextInput)).value, mode === 'preview' ? 'NEWold range' : 'NEW');
+      assert.equal((await readInput(frame, nextInput)).focused, true);
+      await frame.focus('[data-action="find"]');
+      await chord(page, 'f');
+      const explicitlyOpened = await readInput(frame, '.find-row .find-input');
+      assert.equal(explicitlyOpened.start, 0); assert.equal(explicitlyOpened.end, explicitlyOpened.value.length, 'explicit Find retains select-all behavior');
+      await frame.evaluate(() => {
+        const input = document.querySelector<HTMLInputElement>('.find-row .find-input')!;
+        window.dispatchEvent(new Event('blur')); input.blur();
+        input.value = 'changed'; input.setSelectionRange(3, 3);
+        window.dispatchEvent(new Event('focus'));
+        window.dispatchEvent(new MessageEvent('message', { data: { type: 'focusEditor' } }));
+      });
+      const changed = await readInput(frame, '.find-row .find-input');
+      assert.equal(changed.value, 'changed'); assert.equal(changed.focused, true);
+      assert.equal(changed.start, changed.end, 'a value change must not reapply the old select-all range');
+      if (mode === 'live') {
+        await (await frame.$('.find-close-button'))!.click();
+        await frame.waitForSelector('tbody textarea');
+        await frame.evaluate(() => {
+          const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!;
+          input.focus(); input.setSelectionRange(2, 7, 'backward');
+        });
+        await (await frame.$('[data-action="find"]'))!.click();
+        await leave(page, frame, '.find-row .find-input'); await returnToFrame(page);
+        await page.keyboard.press('Escape');
+        assert.deepEqual(await frame.evaluate(() => {
+          const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!;
+          return {focused: document.activeElement === input, start: input.selectionStart, end: input.selectionEnd, direction: input.selectionDirection};
+        }), {focused: true, start: 2, end: 7, direction: 'backward'}, 'closing a returned search must retain the original native table selection');
+        await (await frame.$('[data-action="find"]'))!.click();
+        await frame.evaluate(() => {
+          const input = document.querySelector<HTMLInputElement>('.find-row .find-input')!;
+          input.value = 'witness.'; input.dispatchEvent(new Event('input', {bubbles: true}));
+        });
+        await page.keyboard.press('Enter');
+        const navigated = await readEditor(frame);
+        assert.equal(navigated.anchor, navigated.text.indexOf('witness.'));
+        assert.equal(navigated.head, navigated.anchor + 'witness.'.length);
+        await leave(page, frame, '.find-row .find-input'); await returnToFrame(page);
+        await page.keyboard.press('Escape');
+        const returned = await readEditor(frame);
+        assert.equal(returned.anchor, navigated.anchor, 'an explicit search must supersede the previous table return point');
+        assert.equal(returned.head, navigated.head);
+        await page.keyboard.type('FOUND');
+        assert.equal((await readEditor(frame)).text, navigated.text.slice(0, navigated.anchor) + 'FOUND' + navigated.text.slice(navigated.head));
+        await (await frame.$('[data-action="find"]'))!.click();
+        await frame.evaluate(() => {
+          const input = document.querySelector<HTMLInputElement>('.find-row .find-input')!;
+          input.value = 'Cell'; input.dispatchEvent(new Event('input', {bubbles: true}));
+        });
+        await page.keyboard.press('Enter');
+        await page.keyboard.press('Escape');
+        assert.deepEqual(await frame.evaluate(() => {
+          const input = document.querySelector<HTMLTextAreaElement>('thead textarea')!;
+          return {focused: document.activeElement === input, start: input.selectionStart, end: input.selectionEnd};
+        }), {focused: true, start: 0, end: 4}, 'searching another cell must return to that cell instead of the original one');
+      }
+      assert.deepEqual(errors, [], `${mode}: focus handlers must not throw`);
+    } finally { await page.close(); }
+  }
+  console.log('Input window-return and document handoff production checks passed in Live, Source and Preview.');
+} catch (error) { primaryError = error; }
+finally {
+  if (primaryError === undefined) await closeTestBrowser(browser);
+  else await closeTestBrowser(browser, primaryError);
+}

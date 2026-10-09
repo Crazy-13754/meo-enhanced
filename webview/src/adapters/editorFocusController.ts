@@ -5,8 +5,24 @@ type FocusableEditor = {
 };
 
 export type EditorFocusController = {
-  restoreFromHost(): boolean;
+  /**
+   * Register chrome inputs only; unregister on removal (or dispose with the Webview).
+   * The editor retains ownership of its internal inputs and document selection.
+   */
+  registerInput(input: HTMLInputElement | HTMLTextAreaElement): () => void;
+  /** Only an editor return needs the caller's editor surface refresh. */
+  restoreFromHost(): 'editor' | 'input' | false;
   dispose(): void;
+};
+
+type NativeInput = HTMLInputElement | HTMLTextAreaElement;
+type InputSelection = {
+  value: string;
+  start: number | null;
+  end: number | null;
+  direction: 'forward' | 'backward' | 'none' | null;
+  scrollLeft: number;
+  scrollTop: number;
 };
 
 const focusTakingSelector = 'input, textarea, select, [role="textbox"], [role="combobox"], [role="listbox"], [role="option"], [contenteditable]:not([contenteditable="false"])';
@@ -34,6 +50,44 @@ export function createEditorFocusController({
   let windowReturnPending = false;
   let windowReturnPointerGeneration: number | null = 0;
   let windowReturnGeneration = 0;
+  const inputs = new Map<NativeInput, InputSelection>();
+  let lastFocusedInput: NativeInput | null = null;
+  let windowReturnInput: { target: NativeInput; selection: InputSelection } | null = null;
+  let paintInput: NativeInput | null = null;
+  let restoringInput = false;
+
+  const registeredInput = (target: EventTarget | null): NativeInput | null => (
+    (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && inputs.has(target) ? target : null
+  );
+  const captureInput = (input: NativeInput, leaving = false): InputSelection => {
+    const previous = inputs.get(input);
+    // Chromium resets an input's horizontal scroll before dispatching focusout.
+    // Keep the scroll observed while focused, alongside the final native range.
+    const scroll = leaving && previous?.value === input.value ? previous : input;
+    const selection = {
+      value: input.value, start: input.selectionStart, end: input.selectionEnd,
+      direction: input.selectionDirection, scrollLeft: scroll.scrollLeft, scrollTop: scroll.scrollTop
+    };
+    inputs.set(input, selection);
+    return selection;
+  };
+  const activeModal = (): Element | undefined => (
+    [...document.querySelectorAll('dialog:modal, [aria-modal="true"]')].find(node => node.getClientRects().length > 0)
+  );
+  const inputAvailable = (input: NativeInput): boolean => {
+    const modal = activeModal();
+    return inputs.has(input) && input.isConnected && !input.disabled && !input.readOnly
+      && !input.closest('[hidden], [inert]') && input.getClientRects().length > 0
+      && getComputedStyle(input).visibility === 'visible' && (!modal || modal.contains(input));
+  };
+  const restoreInputSelection = (input: NativeInput, selection: InputSelection): void => {
+    // A clear, replacement or other value update owns its new native selection.
+    // Window return restores interaction state, never an earlier input value.
+    if (input.value !== selection.value) return;
+    if (selection.start !== null && selection.end !== null) input.setSelectionRange(selection.start, selection.end, selection.direction ?? 'none');
+    input.scrollLeft = selection.scrollLeft;
+    input.scrollTop = selection.scrollTop;
+  };
 
   const editorDom = (): HTMLElement | null => getEditor()?.view.dom ?? null;
   const inEditor = (target: EventTarget | null): boolean => (
@@ -58,7 +112,7 @@ export function createEditorFocusController({
     const pointerGeneration = documentPointerGeneration;
     transientReturnFrame = window.requestAnimationFrame(() => {
       transientReturnFrame = null;
-      if (!transientOrigin || !isEditableMode() || documentPointerGeneration !== pointerGeneration || windowReturnPending) return;
+      if (!transientOrigin || !isEditableMode() || documentPointerGeneration !== pointerGeneration || windowReturnPending || activeModal()) return;
       const active = document.activeElement;
       if (inEditor(active)) {
         transientOrigin = false;
@@ -88,6 +142,9 @@ export function createEditorFocusController({
     clearWindowReturnPaint();
     windowReturnPending = false;
     restoreOnWindowReturn = false;
+    windowReturnInput = null;
+    paintInput?.classList.remove('meo-input-focus-return-pending');
+    paintInput = null;
     root.classList.remove('meo-window-focus-return-pending');
   };
   const settleWindowReturnBeforePaint = (activationClick = false): void => {
@@ -108,35 +165,65 @@ export function createEditorFocusController({
     if (activationClick) beforePaint();
     else windowReturnPaintTimer = window.setTimeout(beforePaint, windowReturnPaintGraceMs);
   };
-  const restoreWindowReturn = (): boolean => {
-    if (!isEditableMode()) {
+  const restoreWindowReturn = (): 'editor' | 'input' | false => {
+    // Host activation alone cannot grant keyboard focus from another Webview.
+    if (!document.hasFocus()) return false;
+    const active = document.activeElement;
+    const input = registeredInput(active);
+    if (input && inputAvailable(input)) {
+      if (windowReturnInput?.target === input && documentPointerGeneration === windowReturnPointerGeneration) {
+        restoreInputSelection(input, windowReturnInput.selection);
+        windowReturnInput = null;
+      }
+      settleWindowReturnBeforePaint();
+      return 'input';
+    }
+    if (!isEditableMode() && !windowReturnInput) {
+      finishWindowReturn();
+      return false;
+    }
+    if (inEditor(active)) {
+      // Native activation or a new click already owns this selection. A late
+      // Host notification must not reapply the target saved before blur.
+      settleWindowReturnBeforePaint();
+      return isEditableMode() ? 'editor' : false;
+    }
+    if (active !== document.body && active !== document.documentElement) return false;
+    if (documentPointerGeneration !== windowReturnPointerGeneration) return false;
+    const inputReturn = windowReturnInput;
+    if (inputReturn && inputAvailable(inputReturn.target)) {
+      restoringInput = true;
+      try {
+        inputReturn.target.focus({ preventScroll: true });
+        restoreInputSelection(inputReturn.target, inputReturn.selection);
+      } finally {
+        restoringInput = false;
+      }
+      windowReturnInput = null;
+      settleWindowReturnBeforePaint();
+      return 'input';
+    }
+    // Closing or removing an input may fall back to the editable document,
+    // but never through a modal or into the hidden editor in Preview.
+    if (!isEditableMode() || activeModal()) {
       finishWindowReturn();
       return false;
     }
     const editor = getEditor();
     if (!editor) return false;
-    const active = document.activeElement;
-    if (inEditor(active)) {
-      // Native activation or a new click already owns this selection. A late
-      // Host notification must not reapply the target saved before blur.
-      settleWindowReturnBeforePaint();
-      return true;
-    }
-    if (active !== document.body && active !== document.documentElement) return false;
-    if (documentPointerGeneration !== windowReturnPointerGeneration) return false;
-    // An active VS Code panel can still leave keyboard focus in another Webview.
-    if (!document.hasFocus()) return false;
     // Input must be connected synchronously. Only painting waits for the
     // activation click's native selection to finish, never the first key.
     editor.focus();
     settleWindowReturnBeforePaint();
-    return true;
+    return 'editor';
   };
 
   const onPointerDown = (event: PointerEvent): void => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (inEditor(target)) {
+      lastFocusedInput = null;
+      windowReturnInput = null;
       documentPointerGeneration += 1;
       transientOrigin = false;
       clearTransientFrame();
@@ -148,6 +235,7 @@ export function createEditorFocusController({
       }
       return;
     }
+    lastFocusedInput = registeredInput(target);
     windowReturnPointerGeneration = null;
     finishWindowReturn();
     if (isFocusTransfer(target)) {
@@ -168,6 +256,8 @@ export function createEditorFocusController({
 
   const onFocusIn = (event: FocusEvent): void => {
     if (inEditor(event.target)) {
+      lastFocusedInput = null;
+      windowReturnInput = null;
       editorWasLastFocused = true;
       transientOrigin = false;
       clearTransientFrame();
@@ -175,15 +265,24 @@ export function createEditorFocusController({
       settleWindowReturnBeforePaint();
       return;
     }
+    const input = registeredInput(event.target);
+    lastFocusedInput = input;
+    editorWasLastFocused = false;
+    if (input && (restoringInput || (windowReturnPending && windowReturnInput?.target === input))) {
+      if (!restoringInput) restoreWindowReturn();
+      return;
+    }
     windowReturnPointerGeneration = null;
     finishWindowReturn();
+    if (input) captureInput(input);
     const target = event.target;
     if (target instanceof Element && root.contains(target) && isFocusTaking(target)) {
       if (inEditor(event.relatedTarget)) transientOrigin = true;
     }
-    editorWasLastFocused = false;
   };
   const onFocusOut = (event: FocusEvent): void => {
+    const input = registeredInput(event.target);
+    if (input) captureInput(input, true);
     if (!transientOrigin || inEditor(event.target)) return;
     restoreAfterTransient();
   };
@@ -195,11 +294,15 @@ export function createEditorFocusController({
   const onInputCapture = (event: Event): void => {
     if (event.type === 'compositionstart' && leftAltGesture) leftAltGesture.usedInCombination = true;
     if (!windowReturnPending) return;
-    if (inEditor(event.target)) {
+    if (inEditor(event.target) || registeredInput(event.target)) {
       finishWindowReturn();
     } else if (restoreWindowReturn()) {
       finishWindowReturn();
     }
+  };
+  const onInputStateChange = (event: Event): void => {
+    const input = registeredInput(event.target);
+    if (input && document.hasFocus() && document.activeElement === input) captureInput(input);
   };
   const onKeyDownCapture = (event: KeyboardEvent): void => {
     const leftAlt = event.key === 'Alt' && event.code === 'AltLeft';
@@ -243,7 +346,14 @@ export function createEditorFocusController({
     }
   };
   const onWindowBlur = (): void => {
-    restoreOnWindowReturn = getEditor()?.hasFocus() === true || editorWasLastFocused;
+    const input = registeredInput(document.activeElement) ?? lastFocusedInput;
+    const inputSelection = input && inputAvailable(input)
+      ? (document.activeElement === input ? captureInput(input, true) : inputs.get(input)) : null;
+    paintInput?.classList.remove('meo-input-focus-return-pending');
+    windowReturnInput = input && inputSelection ? { target: input, selection: inputSelection } : null;
+    paintInput = windowReturnInput?.target ?? null;
+    paintInput?.classList.add('meo-input-focus-return-pending');
+    restoreOnWindowReturn = windowReturnInput !== null || getEditor()?.hasFocus() === true || editorWasLastFocused;
     windowReturnGeneration += 1;
     clearWindowReturnPaint();
     clearTransientFrame();
@@ -265,12 +375,27 @@ export function createEditorFocusController({
   document.addEventListener('keyup', onKeyUpCapture, true);
   document.addEventListener('beforeinput', onInputCapture, true);
   document.addEventListener('compositionstart', onInputCapture, true);
+  document.addEventListener('input', onInputStateChange, true);
+  document.addEventListener('selectionchange', onInputStateChange, true);
+  document.addEventListener('scroll', onInputStateChange, true);
   document.addEventListener('keydown', onKeyDownBubble);
   window.addEventListener('blur', onWindowBlur);
   window.addEventListener('focus', onWindowFocus);
 
   return {
-    restoreFromHost(): boolean {
+    registerInput(input): () => void {
+      captureInput(input);
+      return () => {
+        inputs.delete(input);
+        if (lastFocusedInput === input) lastFocusedInput = null;
+        if (windowReturnInput?.target === input) windowReturnInput = null;
+        if (paintInput === input) {
+          input.classList.remove('meo-input-focus-return-pending');
+          paintInput = null;
+        }
+      };
+    },
+    restoreFromHost(): 'editor' | 'input' | false {
       // Panel/activity notifications may arrive after a Workbench control took
       // focus. Only a native return into this document may grant focus again.
       if (!document.hasFocus()) return false;
@@ -285,11 +410,16 @@ export function createEditorFocusController({
       document.removeEventListener('keyup', onKeyUpCapture, true);
       document.removeEventListener('beforeinput', onInputCapture, true);
       document.removeEventListener('compositionstart', onInputCapture, true);
+      document.removeEventListener('input', onInputStateChange, true);
+      document.removeEventListener('selectionchange', onInputStateChange, true);
+      document.removeEventListener('scroll', onInputStateChange, true);
       document.removeEventListener('keydown', onKeyDownBubble);
       window.removeEventListener('blur', onWindowBlur);
       window.removeEventListener('focus', onWindowFocus);
       clearTransientFrame();
       finishWindowReturn();
+      inputs.clear();
+      lastFocusedInput = null;
     }
   };
 }

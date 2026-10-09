@@ -1687,6 +1687,11 @@ export function createEditor({
       ]
     });
     scheduleLiveSearchDecorationRefresh(to);
+    // An explicit search replaces the return point saved before opening Find.
+    // Retain a native cell only when it represents the newly selected match.
+    lastFocusedEditorTarget = view.contentDOM;
+    lastTextareaSelection = null;
+    if (currentMode === 'live') restoreTableModeSelection({ anchor: from, head: to }, false);
     const isRevealCurrent = viewportController.beginNavigationReveal();
     let tableNode: SyntaxNode | null = currentMode === 'live'
       ? syntaxTree(view.state).resolveInner(from, 1)

@@ -32,6 +32,7 @@ export function createSettingsWindow(options: {
   readonly getGeneral: (language: UiLanguage) => readonly GeneralSetting[];
   readonly update: (change: EditingPreferencesChange) => Promise<{ ok: boolean; error?: { message: string } }>;
   readonly returnFocus: () => { focus(): void } | null;
+  readonly registerInput?: (input: HTMLInputElement) => () => void;
   readonly initialLanguage: UiLanguage;
   readonly imageLocation?: { element: HTMLDivElement; present(language: UiLanguage): void; refresh(): Promise<void>; flush(): void };
 }) {
@@ -80,6 +81,7 @@ export function createSettingsWindow(options: {
   const cancelReset = button(''); const confirmReset = button('', 'settings-button settings-primary');
   resetActions.append(cancelReset, confirmReset); resetPopover.append(resetTitle, resetDescription, resetActions); footer.append(resetPopover, reset);
   dialog.append(titlebar, top, status, layout, footer); document.body.append(dialog);
+  const disposeSearchFocus = options.registerInput?.(search);
   const t = (zh: string, en: string) => settingsText(language, zh, en);
   const query = () => normalizeSettingsSearch(search.value);
   const matches = (...parts: (string | undefined)[]) => settingsSearchMatches(query(), ...parts);
@@ -297,5 +299,5 @@ export function createSettingsWindow(options: {
   present();
   return { open() { if (disposed || dialog.open) return; present(); void options.imageLocation?.refresh(); dialog.showModal(); updateNavigation(); search.focus(); }, close: closeWindow,
     isOpen: () => dialog.open, present, setLanguage(next: UiLanguage) { language = next; present(); },
-    dispose() { disposed = true; abort.abort(); if (dialog.open) dialog.close(); dialog.remove(); } };
+    dispose() { disposed = true; abort.abort(); disposeSearchFocus?.(); if (dialog.open) dialog.close(); dialog.remove(); } };
 }

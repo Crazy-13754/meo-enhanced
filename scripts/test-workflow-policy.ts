@@ -146,6 +146,7 @@ function targetedCommands(
       ];
     case 'search':
       return [
+        script('scripts/test-input-focus-return-production.ts'),
         script('scripts/test-search-replace-production.ts'),
         script('scripts/test-search-overview-ruler.ts'),
         script('scripts/test-webview-search-controls.ts'),
@@ -262,6 +263,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-editing-features-production.ts'),
           script('scripts/test-slash-commands-production.ts'),
           script('scripts/test-settings-window-production.ts'),
+          script('scripts/test-input-focus-return-production.ts'),
           packageScript('test:reading-position'),
           script('scripts/test-test-workflow.ts'),
           script('scripts/test-document-auto-save-concurrency.ts'),

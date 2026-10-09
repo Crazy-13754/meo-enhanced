@@ -2420,6 +2420,10 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
   caret-color: transparent !important;
 }
 
+.meo-input-focus-return-pending {
+  caret-color: transparent !important;
+}
+
 .editor-root.meo-window-focus-return-pending .cm-editor .cm-cursorLayer {
   visibility: hidden !important;
 }

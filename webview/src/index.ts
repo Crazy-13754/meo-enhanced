@@ -1823,6 +1823,9 @@ const editorFocusController = createEditorFocusController({
   getEditor: () => editor,
   isEditableMode: () => getActiveEditorMode() !== 'preview'
 });
+// These inputs share the Webview lifetime; disposal clears their registrations.
+editorFocusController.registerInput(findPanelElements.findInput);
+editorFocusController.registerInput(findPanelElements.replaceInput);
 const isSidePreviewVisible = (): boolean => (
   sourcePreviewEnabled && getActiveEditorMode() === 'source'
 );
@@ -2381,13 +2384,16 @@ const applyRevealDocumentFragmentFromHost = (href: unknown): void => {
 };
 
 const focusEditorFromHost = () => {
+  const restored = editorFocusController.restoreFromHost();
+  if (restored) {
+    if (restored === 'editor') scheduleEditorSurfaceRecovery();
+    pendingEditorFocus = false;
+    return;
+  }
   if (!editor) {
     pendingEditorFocus = true;
     return;
   }
-  if (!editorFocusController.restoreFromHost()) return;
-  scheduleEditorSurfaceRecovery();
-  pendingEditorFocus = false;
 };
 
 const applyDiagnosticsFromHost = (diagnostics: unknown): void => {
@@ -3204,6 +3210,7 @@ const copyTableToHost = async (format: 'markdown' | 'csv') => {
 const imageStorageTransport = createImageStorageTransport(request => vscode.postMessage(request));
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
 settingsWindow = createSettingsWindow({
+  registerInput: input => editorFocusController.registerInput(input),
   imageLocation: imageLocationSettings,
   initialLanguage: activeUiLanguage, platform: /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other',
   getPreferences: () => editingPreferences, update: change => editingPreferencesTransport.update(change), returnFocus: () => getActiveEditorMode() === 'preview' ? moreToolsButton : editor ?? moreToolsButton,
