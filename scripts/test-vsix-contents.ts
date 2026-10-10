@@ -49,6 +49,12 @@ const requiredFiles = [
 for (const path of requiredFiles) {
   if (!included.has(path)) throw new Error(`VSIX listing is missing required file ${path}`);
 }
+const notices = readFileSync(resolve(repoRoot, 'THIRD_PARTY_NOTICES.md'), 'utf8');
+for (const [dependency, licensePath] of [['jsonc-parser 3.3.1', 'jsonc-parser/LICENSE.md'], ['PostCSS 8.5.6', 'postcss/LICENSE']]) {
+  if (!notices.includes(`## ${dependency}`)) throw new Error(`Bundled preset dependency is missing its license notice: ${dependency}`);
+  const licenseText = readFileSync(resolve(repoRoot, 'node_modules', licensePath), 'utf8').trim().replaceAll('\r\n', '\n');
+  if (!notices.replaceAll('\r\n', '\n').includes(licenseText)) throw new Error(`Bundled preset dependency license differs from the upstream notice: ${dependency}`);
+}
 for (const [filename, alternate] of [
   ['custom-preview-presets.md', 'custom-preview-presets.en.md'],
   ['custom-preview-presets.en.md', 'custom-preview-presets.md']
