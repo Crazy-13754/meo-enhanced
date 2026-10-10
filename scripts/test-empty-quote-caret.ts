@@ -29,6 +29,19 @@ async function main(): Promise<void> {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
     });
+    const contentLeft = () => page.evaluate(() => {
+      const line = document.querySelectorAll<HTMLElement>('#host .cm-line')[2]!;
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const offset = node.textContent!.indexOf('文');
+        if (offset < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, offset);
+        range.setEnd(node, offset + 1);
+        return range.getBoundingClientRect().left;
+      }
+      throw new Error('Quoted content is missing');
+    });
 
     for (const quote of ['> 文字', '> > 文字', '>>文字', '>>>文字', '>   >  文字', '  >\t>\t文字',
       '> # 文字', '> > ## 文字', '> - 文字', '> > - 文字', '- > 文字', '> - > 文字',
@@ -44,6 +57,7 @@ async function main(): Promise<void> {
       await settle();
       try {
         const contentOffset = quote.indexOf('文');
+        const inactiveContentLeft = await contentLeft();
         const railPoint = await page.evaluate(() => {
           const line = document.querySelectorAll<HTMLElement>('#host .cm-line')[2]!;
           const rect = line.getBoundingClientRect();
@@ -57,6 +71,10 @@ async function main(): Promise<void> {
           return view.state.selection.main.head - view.state.doc.line(3).from;
         });
         assert.equal(railOffset, contentOffset, `${JSON.stringify(quote)}: inactive quote rail must enter the content start`);
+        if (/^[ \t>]+文字$/.test(quote)) {
+          assert.ok(Math.abs(await contentLeft() - inactiveContentLeft) <= 1,
+            `${JSON.stringify(quote)}: revealing quote prefixes must not move the rendered body`);
+        }
         for (const active of [false, true]) {
           for (const side of ['left', 'right'] as const) {
             await page.evaluate(({ active, contentOffset }) => {

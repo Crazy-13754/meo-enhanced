@@ -3241,21 +3241,21 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   text-indent: 0;
 }
 
-/* Editable quote prefixes need distinct, ordered caret positions. */
-.cm-editor.meo-mode-live .meo-md-quote-marker-active {
+/* Equal prefix widths keep the body still while preserving ordered caret stops. */
+.cm-editor.meo-mode-live :is(.meo-md-quote-marker, .meo-md-quote-marker-active) {
   display: inline-block !important;
   width: var(--meo-live-container-ch);
   text-indent: 0;
+}
+
+.cm-editor.meo-mode-live .meo-md-quote-marker {
+  visibility: hidden;
 }
 
 /* Prefix spaces express nesting once; list wrapping adds only the content inset. */
 .cm-editor.meo-mode-live .cm-line.meo-md-quote-source-order.meo-md-quote:not(.meo-md-list-line):not(.meo-md-code-block):not(.meo-mermaid-block) {
   padding-left: var(--meo-live-container-ch);
   text-indent: 0;
-}
-
-.cm-editor.meo-mode-live .cm-line.meo-md-quote-source-order.meo-md-list-line.meo-md-quote-leading {
-  padding-left: calc(var(--meo-effective-list-hanging-indent) + var(--meo-live-container-ch));
 }
 
 .cm-editor .cm-line.meo-md-quote:not(.meo-md-code-block):not(.meo-mermaid-block) *,
@@ -4526,10 +4526,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .cm-editor.meo-mode-live .cm-line.meo-md-task-continuation.meo-md-list-line {
   padding-left: calc(var(--meo-effective-list-hanging-indent) + var(--meo-live-task-indent));
-}
-
-.cm-editor.meo-mode-live .cm-line.meo-md-task-continuation.meo-md-quote-source-order.meo-md-list-line.meo-md-quote-leading {
-  padding-left: calc(var(--meo-effective-list-hanging-indent) + var(--meo-live-container-ch) + var(--meo-live-task-indent));
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-container-prose:not(.meo-md-list-line):not(.meo-live-indented-block-line):not(.meo-md-code-block):not(.meo-mermaid-block) {

@@ -152,6 +152,7 @@ import {
 } from './editor/liveInputDerivedWork';
 
 const markerDeco = Decoration.mark({ class: 'meo-md-marker' });
+const quoteMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-quote-marker' });
 
 // The benchmark viewport exposes at most ~70 CodeMirror lines. Retaining 80
 // lines on either side keeps the current surface live without mapping the file.
@@ -1868,7 +1869,6 @@ function addListLineDecorations(
   builder: DecorationCollector,
   state: EditorState,
   indentSelectedLines: Set<number>,
-  activeLines: Set<number>,
   parsedContainers: ReturnType<typeof parsedListMarkersByLine>,
   frontmatter: FrontmatterInfo | null = null,
   codeBlockLines: Set<number> | null = null
@@ -1921,7 +1921,7 @@ function addListLineDecorations(
     }
     legacyOrderedCountsByLevel.length = 0;
     const inFrontmatterContent = isInsideFrontmatterContent(frontmatter, line.from);
-    let deepest: { marker: NonNullable<ReturnType<typeof listMarkerData>>; depth: number; hiddenQuoteColumns: number; showTaskListMarker: boolean } | null = null;
+    let deepest: { marker: NonNullable<ReturnType<typeof listMarkerData>>; depth: number; showTaskListMarker: boolean } | null = null;
     let previousMarkerEnd = line.from;
     for (const entry of entries) {
       const precedingQuoteMarks = (quoteMarksByLine.get(lineNo) ?? []).filter((mark) => mark.to <= entry.listMarkFrom);
@@ -1960,13 +1960,13 @@ function addListLineDecorations(
       addListMarkerDecoration(builder, state, line.from, orderedDisplayIndex, style,
         showTaskListMarker ? { showTaskListMarker: true } : null, markerOffset);
       if (!deepest || entry.depth >= deepest.depth) {
-        deepest = { marker, depth: entry.depth, hiddenQuoteColumns: activeLines.has(lineNo) ? 0 : precedingQuoteMarks.length, showTaskListMarker };
+        deepest = { marker, depth: entry.depth, showTaskListMarker };
       }
     }
     if (deepest && !inFrontmatterContent) {
-      const { marker, hiddenQuoteColumns, showTaskListMarker } = deepest;
+      const { marker, showTaskListMarker } = deepest;
       builder.push(listLineDeco(
-        marker.contentOffsetColumns - hiddenQuoteColumns,
+        marker.contentOffsetColumns,
         marker.indentColumns,
         style?.columns ?? 2,
         indentSelectedLines.has(lineNo),
@@ -2080,10 +2080,8 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
           if (parent.name === 'Blockquote') depth += 1;
           if (parent.name === 'ListItem') insideList = true;
         }
-        const firstLineMarks = parsedContainers.quoteMarks.get(line.number) ?? [];
-        // List widgets retain their source width; inactive quote glyphs collapse.
-        const initialColumn = countColumn(line.text, state.tabSize, node.from - line.from)
-          - firstLineMarks.filter((mark) => mark.from < node.from).length;
+        // Quote glyphs and list widgets retain their source column widths.
+        const initialColumn = countColumn(line.text, state.tabSize, node.from - line.from);
         const lastLine = state.doc.lineAt(Math.max(node.from, node.to - 1)).number;
         for (let lineNo = line.number; lineNo <= lastLine; lineNo += 1) {
           if (depth > 1) {
@@ -2093,7 +2091,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
           const marks = parsedContainers.quoteMarks.get(lineNo) ?? [];
           const explicitMark = marks[depth - 1];
           const column = explicitMark
-            ? countColumn(state.doc.line(lineNo).text, state.tabSize, explicitMark.from - lineStart) - (activeLines.has(lineNo) && !codeBlockLines.has(lineNo) ? 0 : depth - 1)
+            ? countColumn(state.doc.line(lineNo).text, state.tabSize, explicitMark.from - lineStart)
             : initialColumn;
           const bars = quoteBarsByLine.get(lineNo) ?? { columns: [], taskIndents: [], insideList: false };
           bars.columns.push(Math.max(0, column));
@@ -2428,7 +2426,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
       } else if (activeLines.has(line.number)) {
         addRange(ranges, node.from, node.to, node.name === 'QuoteMark' ? activeQuoteMarkerDeco : activeLineMarkerDeco);
       } else {
-        addRange(ranges, node.from, node.to, markerDeco);
+        addRange(ranges, node.from, node.to, node.name === 'QuoteMark' ? quoteMarkerDeco : markerDeco);
       }
     },
     leave: (node: SyntaxNodeRef) => {
@@ -2531,10 +2529,10 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
     ranges.push(Decoration.line({ attributes: {
       class: 'meo-md-container-prose',
       style: '--meo-live-prose-indent:' + proseIndent + ';--meo-live-prose-prefix:calc(' + proseIndent + ' - '
-        + liveTaskListIndentCssValue(taskIndent) + (prefix.quoteColumns.length ? ' - var(--meo-live-container-ch)' : '') + ');'
+        + liveTaskListIndentCssValue(taskIndent) + ');'
     } }).range(line.from));
   }
-  addListLineDecorations(ranges, state, indentSelectedLines, activeLines, parsedContainers, frontmatter, codeBlockLines);
+  addListLineDecorations(ranges, state, indentSelectedLines, parsedContainers, frontmatter, codeBlockLines);
   addMathDecorations(ranges, state, mathRanges, activeLines);
   addColorSwatchDecorations(
     ranges,
@@ -3427,7 +3425,7 @@ function projectInputBlockquoteLines(
           } }).range(from, from + match[0].length));
         }
       }
-      const markerDecoration = activeLines.has(lineNumber) ? activeQuoteMarkerDeco : markerDeco;
+      const markerDecoration = activeLines.has(lineNumber) ? activeQuoteMarkerDeco : quoteMarkerDeco;
       for (let offset = 0; offset < prefix.length; offset += 1) {
         if (prefix[offset] !== '>') continue;
         const from = line.from + offset;
@@ -3441,7 +3439,9 @@ function projectInputBlockquoteLines(
   });
 
   if (lineAdditions.size === 0 && markerAdditions.size === 0) return decorations;
-  const markerClasses = new Set([markerDeco.spec.class, activeLineMarkerDeco.spec.class, activeQuoteMarkerDeco.spec.class]);
+  const markerClasses = new Set([
+    markerDeco.spec.class, quoteMarkerDeco.spec.class, activeLineMarkerDeco.spec.class, activeQuoteMarkerDeco.spec.class
+  ]);
   return decorations.update({
     filterFrom: markerFilterFrom,
     filterTo: markerFilterTo,

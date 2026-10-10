@@ -186,6 +186,7 @@ async function verifyListContainerLayouts(browser: Awaited<ReturnType<typeof lau
               document.getElementById('lists')!.replaceChildren();
               (window as any).__listMatrix = (window as any).ListEditingHarness.createEditor({ parent: document.getElementById('lists')!, text, initialMode: 'live', onApplyChanges() {} });
             }, text);
+            let inactiveBodyLeft: number | null = null;
             for (const active of [false, true]) {
               await page.evaluate(active => {
                 const view = (window as any).__listMatrix.view;
@@ -229,8 +230,9 @@ async function verifyListContainerLayouts(browser: Awaited<ReturnType<typeof lau
                 const slot = line.querySelector<HTMLElement>('.meo-md-footnote-backref-spacer');
                 const continuationRows = new Map<number, number>();
                 for (const r of continuationRange.getClientRects()) if (r.width > 0 && r.height > 0) { const y = Math.round(r.top); continuationRows.set(y, Math.min(continuationRows.get(y) ?? Infinity, r.left)); }
-                return { continuationRows: [...continuationRows.values()], quoteWidth: parseFloat(getComputedStyle(view.dom).getPropertyValue('--meo-live-container-ch')), quoteCount: line.querySelectorAll('.meo-md-quote-marker-active').length, railRight, markerLeft: marker.getBoundingClientRect().left, markerRight: marker.getBoundingClientRect().right, bodyLeft, rows: [...rows.values()], continuationLeft: [...continuationRows.values()][0], codeLeft: code?.getBoundingClientRect().left, tableLeft: table?.getBoundingClientRect().left, slotWidth: slot?.getBoundingClientRect().width, source: text };
+                return { continuationRows: [...continuationRows.values()], railRight, markerLeft: marker.getBoundingClientRect().left, markerRight: marker.getBoundingClientRect().right, bodyLeft, rows: [...rows.values()], continuationLeft: [...continuationRows.values()][0], codeLeft: code?.getBoundingClientRect().left, tableLeft: table?.getBoundingClientRect().left, slotWidth: slot?.getBoundingClientRect().width, source: text };
               });
+              if (!active) inactiveBodyLeft = result.bodyLeft;
               count++;
               const label = [example.name, number, font.family, width, active ? 'active' : 'inactive'].join('/');
               try {
@@ -238,8 +240,9 @@ async function verifyListContainerLayouts(browser: Awaited<ReturnType<typeof lau
                 assert.ok(result.bodyLeft >= result.markerRight + (example.marker.includes('[ ]') ? 4 : -1), 'body overlaps its marker');
                 assert.ok(result.rows.length > 1 && result.rows.every(x => Math.abs(x - result.bodyLeft) <= 1), 'wrapped list body must retain its first column');
                 assert.ok(result.continuationRows.length > 1 && result.continuationRows.every(x => Math.abs(x - result.continuationLeft) <= 1), 'wrapped continuation must stay inside its containers');
-                assert.ok(Math.abs(result.continuationLeft - (result.bodyLeft - result.quoteCount * result.quoteWidth)) <= 1, 'list continuation must share its body column: ' + JSON.stringify(result));
-                assert.ok(Math.abs(result.codeLeft - (result.bodyLeft - result.quoteCount * result.quoteWidth)) <= 1 && Math.abs(result.tableLeft - (result.bodyLeft - result.quoteCount * result.quoteWidth)) <= 1, 'code and table must share the list body column: ' + JSON.stringify(result));
+                assert.ok(Math.abs(result.bodyLeft - inactiveBodyLeft!) <= 1, 'revealing syntax must preserve the list body column: ' + JSON.stringify(result));
+                assert.ok(Math.abs(result.continuationLeft - result.bodyLeft) <= 1, 'list continuation must share its body column: ' + JSON.stringify(result));
+                assert.ok(Math.abs(result.codeLeft - result.bodyLeft) <= 1 && Math.abs(result.tableLeft - result.bodyLeft) <= 1, 'code and table must share the list body column: ' + JSON.stringify(result));
                 assert.equal(result.source, text, 'layout must preserve source');
               } catch (error) { failures.push(label + ': ' + String(error).split(': {')[0]); }
             }

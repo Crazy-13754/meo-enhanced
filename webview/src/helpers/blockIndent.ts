@@ -177,7 +177,7 @@ export function getLiveBlockIndent(
   const prefix = parseBlockLinePrefix(isCode ? line.text.slice(0, syntaxNode!.from - line.from) : line.text, state.tabSize);
   const containerColumns = isCode ? getCodeContainerColumns(state, syntaxNode!) : prefix.columns;
   const baseline = definition ? 4 : 0;
-  const quoteColumns = prefix.quoteColumns.map((column, depth) => Math.max(0, column - depth - baseline));
+  const quoteColumns = prefix.quoteColumns.map((column) => Math.max(0, column - baseline));
   const listColumns = isCode ? containerColumns : getLiveListBlockIndentColumns(state, from, syntaxNode);
   const taskIndent = getLiveTaskListIndent(state, from, syntaxNode);
   const quoteTaskIndents: TaskListIndent[] = [];
@@ -187,10 +187,9 @@ export function getLiveBlockIndent(
   return {
     ...(taskIndent.checkboxes ? { taskIndent } : {}),
     ...(quoteTaskIndents.some(indent => indent.checkboxes) ? { quoteTaskIndents } : {}),
-    // Inactive quote markers collapse by one column per level. Leave one
-    // additional column between the innermost rule and the rendered content.
+    // Hidden and editable quote prefixes share the same source column widths.
     columns: quoteColumns.length
-      ? Math.max(0, containerColumns - quoteColumns.length + 1 - baseline)
+      ? Math.max(0, containerColumns - baseline)
       : definition ? Math.max(0, listColumns - baseline) : listColumns,
     footnoteNumber: definition?.number ?? null,
     ...(quoteColumns.length ? { quoteColumns } : {})
