@@ -179,7 +179,7 @@ try {
       const diagram = preview.querySelector('.meo-export-mermaid');
       const graphSource = diagram?.getAttribute('data-source-b64');
       const graphShell = host.querySelector<HTMLElement>('.meo-rendered-block-preview[data-meo-rendered-block-kind="mermaid"]')!;
-      const mathShell = host.querySelector<HTMLElement>('.meo-rendered-block-preview[data-meo-rendered-block-kind="math"]')!;
+      const mathShell = host.querySelector<HTMLElement>('.meo-md-math-fenced-display:not(.meo-math-live-result)')!;
       const graphBottom = graphShell.getBoundingClientRect().bottom;
       const mathTop = mathShell.getBoundingClientRect().top;
       const gapLines = [...graphShell.parentElement!.children].filter(element => {
@@ -253,7 +253,7 @@ try {
           const host = document.getElementById('live')!; host.replaceChildren();
           const editor = (window as any).ListEditingHarness.createEditor({ parent: host, text: source, initialMode: 'live', onApplyChanges() { } });
           for (let i = 0; i < 5; i++) await new Promise<void>(r => requestAnimationFrame(() => r()));
-          const widgets = [...host.querySelectorAll<HTMLElement>('.meo-rendered-block-preview')];
+          const widgets = [...host.querySelectorAll<HTMLElement>('.meo-rendered-block-preview, .meo-md-math-fenced-display:not(.meo-math-live-result)')];
           const first = widgets[0]!.getBoundingClientRect(), last = widgets[1]!.getBoundingClientRect();
           const siblings = [...widgets[0]!.parentElement!.children];
           const gapLines = siblings.filter(element => {

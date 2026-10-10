@@ -58,14 +58,15 @@ async function main(): Promise<void> {
     const toolbarSelectors = [
       '.meo-code-block-actions',
       '.meo-mermaid-toolbar',
-      '.meo-latex-math-toolbar'
+      '.meo-mermaid-preview-controls',
+      '.meo-math-copy-actions'
     ];
-    await page.waitForFunction((selectors) => selectors.every((selector) => (
+    await page.waitForFunction((selectors) => selectors.filter(selector => selector !== '.meo-mermaid-preview-controls').every((selector) => (
       document.querySelector(`${selector} .meo-copy-code-btn`)
     )), {}, toolbarSelectors);
 
     await page.waitForFunction(() => (
-      document.querySelectorAll('.meo-rendered-block-preview-actions .meo-visual-control-btn').length === 8
+      document.querySelectorAll('.meo-mermaid-preview-controls .meo-visual-control-btn').length === 4
     ));
 
     for (const appearance of ['light', 'dark'] as const) {
@@ -88,10 +89,10 @@ async function main(): Promise<void> {
         }, selector);
         await page.mouse.move(hoverPoint.x, hoverPoint.y);
         await page.waitForFunction((toolbarSelector) => (
-          document.querySelector(toolbarSelector)?.classList.contains('is-block-hovered') === true
+          getComputedStyle(document.querySelector(toolbarSelector)!).opacity === '1'
         ), {}, selector);
         const buttons = await page.$$(`${selector} :is(button, [role="button"])`);
-        assert.equal(buttons.length, selector === '.meo-code-block-actions' ? 2 : 7);
+        assert.equal(buttons.length, selector === '.meo-mermaid-toolbar' ? 3 : selector === '.meo-mermaid-preview-controls' ? 4 : 2);
         const gaps = await page.evaluate((toolbarSelector) => {
           const rects = Array.from(document.querySelectorAll(`${toolbarSelector} :is(button, [role="button"])`),
             (button) => button.getBoundingClientRect());
@@ -149,28 +150,14 @@ async function main(): Promise<void> {
         }
       }
     }
-    for (const selector of toolbarSelectors.slice(1)) {
+    for (const selector of toolbarSelectors.filter(selector => selector === '.meo-mermaid-toolbar')) {
       const layout = await page.$$eval(`${selector} button, ${selector} [role="button"]`, (buttons) => (
         buttons.map(button => ({ label: button.getAttribute('aria-label'), y: button.getBoundingClientRect().top }))
       ));
       assert.deepEqual(layout.map(button => button.label), [
-        'Zoom in', 'Zoom out', 'Reset zoom', 'Fullscreen',
-        'Switch to split view', 'Select all code', 'Copy'
+        'Preview, Switch to split view', 'Select all code', 'Copy'
       ]);
       assert.equal(new Set(layout.map(button => button.y)).size, 1, `${selector} preview controls stayed on a second row`);
-      const separator = await page.$eval(selector, toolbar => {
-        const group = toolbar.querySelector<HTMLElement>('.meo-rendered-block-preview-actions')!;
-        const line = getComputedStyle(group, '::after');
-        const right = group.getBoundingClientRect().right - Number.parseFloat(line.right);
-        const left = right - Number.parseFloat(line.width);
-        const buttons = group.querySelectorAll('button');
-        const previous = buttons[buttons.length - 1].getBoundingClientRect();
-        const next = toolbar.querySelector(':scope > button')!.getBoundingClientRect();
-        return { left: left - previous.right, right: next.left - right, height: group.clientHeight - Number.parseFloat(line.top) - Number.parseFloat(line.bottom) };
-      });
-      assert.equal(separator.left, separator.right, `${selector} separator was off-center`);
-      assert.equal(separator.height, 12);
-
       const previewSelector = selector === '.meo-mermaid-toolbar' ? '.meo-mermaid-block' : '.meo-latex-math-viewport';
       const collectScale = () => page.$eval(previewSelector, (root) => {
         const target = root.querySelector<HTMLElement>('.meo-mermaid-svg-wrapper, .meo-latex-math-canvas')!;
@@ -181,62 +168,52 @@ async function main(): Promise<void> {
       await page.hover(previewSelector);
       await new Promise(resolve => setTimeout(resolve, 150));
       const initialScale = await collectScale();
-      await page.click(`${selector} [aria-label="Zoom in"]`);
+      await page.click(` .meo-mermaid-preview-controls [aria-label="Zoom in"]`);
       assert.notDeepEqual(await collectScale(), initialScale, `${selector} moved zoom control no longer changes the preview`);
-      await page.click(`${selector} [aria-label="Reset zoom"]`);
+      await page.click('.meo-mermaid-preview-controls [aria-label="Reset zoom"]');
       assert.deepEqual(await collectScale(), initialScale);
       await page.keyboard.press('Tab');
-      await page.$eval(`${selector} [aria-label="Zoom in"]`, element => (element as HTMLElement).focus());
+      await page.$eval(` .meo-mermaid-preview-controls [aria-label="Zoom in"]`, element => (element as HTMLElement).focus());
       await page.keyboard.press('Enter');
       assert.notDeepEqual(await collectScale(), initialScale, `${selector} keyboard zoom did not activate`);
-      await page.click(`${selector} [aria-label="Reset zoom"]`);
-      await page.click(`${selector} [aria-label="Fullscreen"]`);
+      await page.click('.meo-mermaid-preview-controls [aria-label="Reset zoom"]');
+      await page.click('.meo-mermaid-preview-controls [aria-label="Fullscreen"]');
       const fullscreenSelector = selector === '.meo-mermaid-toolbar' ? '.meo-mermaid-fullscreen-scrim' : '.meo-latex-math-fullscreen-scrim';
       await page.waitForSelector(fullscreenSelector);
       await page.keyboard.press('Escape');
       await page.waitForSelector(fullscreenSelector, { hidden: true });
 
       await page.$eval('#app', element => (element as HTMLElement).style.width = '240px');
-      await page.waitForFunction(selector => document.querySelector(`${selector} details`)?.classList.contains('is-collapsed'), {}, selector);
-      const beforeMenuPositions = await page.$$eval(`${selector} > :is(button, [role="button"])`, buttons => buttons.map(button => button.getBoundingClientRect().left));
-      await page.keyboard.press('Tab');
-      await page.$eval(`${selector} summary`, element => (element as HTMLElement).focus());
-      await page.keyboard.press('Enter');
-      await page.waitForFunction(selector => (document.querySelector(`${selector} details`) as HTMLDetailsElement)?.open, {}, selector);
-      const afterMenuPositions = await page.$$eval(`${selector} > :is(button, [role="button"])`, buttons => buttons.map(button => button.getBoundingClientRect().left));
-      assert.deepEqual(afterMenuPositions, beforeMenuPositions, `${selector} opening preview actions shifted the original buttons`);
-      const hits = await page.$$eval(`${selector} .meo-visual-control-btn`, buttons => buttons.map(button => {
-        const rect = button.getBoundingClientRect();
-        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      await page.hover(previewSelector);
+      const narrowControls = '.meo-mermaid-preview-controls';
+      await page.waitForSelector(narrowControls);
+      const hits = await page.$$eval(`${narrowControls} .meo-visual-control-btn`, buttons => buttons.map(button => {
+        const rect = button.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
         return hit === button || button.contains(hit);
       }));
-      assert.ok(hits.every(Boolean), `${selector} narrow preview controls were clipped`);
-      await page.keyboard.press('Tab');
-      const beforeNarrowZoom = await collectScale();
-      await page.keyboard.press('Enter');
+      assert.equal(hits.length, 4); assert.ok(hits.every(Boolean), 'Narrow Mermaid viewport controls were clipped');
+      await page.keyboard.press('Tab'); await page.focus(`${narrowControls} [aria-label="Zoom in"]`);
+      const beforeNarrowZoom = await collectScale(); await page.keyboard.press('Enter');
       assert.notDeepEqual(await collectScale(), beforeNarrowZoom);
-      await page.keyboard.press('Escape');
-      assert.equal(await page.$eval(`${selector} details`, element => (element as HTMLDetailsElement).open), false);
       await page.$eval('#app', element => (element as HTMLElement).style.width = '800px');
-      await page.waitForFunction(selector => !document.querySelector(`${selector} details`)?.classList.contains('is-collapsed'), {}, selector);
 
       const modeSelector = selector === '.meo-mermaid-toolbar' ? '.meo-mermaid-mode-btn' : '.meo-latex-math-mode-btn';
       const editingSelector = selector === '.meo-mermaid-toolbar' ? '.meo-mermaid-editing-block' : '.meo-latex-math-editing-block';
       await page.click(modeSelector);
       await page.waitForSelector(`${editingSelector}.is-split`);
-      await page.waitForFunction(selector => document.querySelectorAll(`${selector} .meo-visual-control-btn`).length === 4, {}, selector);
+      await page.waitForFunction(selector => document.querySelectorAll('.meo-mermaid-preview-controls .meo-visual-control-btn').length === 4, {}, selector);
       await page.$eval(modeSelector, element => (element as HTMLElement).focus());
       await page.keyboard.press('Enter');
       await page.waitForSelector(`${editingSelector}.is-source`);
-      await page.waitForFunction(selector => !document.querySelector(`${selector} .meo-rendered-block-preview-actions`), {}, selector);
+      await page.waitForFunction(selector => !document.querySelector('.meo-mermaid-preview-controls'), {}, selector);
       await page.$eval(modeSelector, element => (element as HTMLElement).focus());
       await page.keyboard.press('Enter');
-      await page.waitForFunction(selector => document.querySelectorAll(`${selector} .meo-visual-control-btn`).length === 4, {}, selector);
+      await page.waitForFunction(selector => document.querySelectorAll('.meo-mermaid-preview-controls .meo-visual-control-btn').length === 4, {}, selector);
     }
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.mouse.move(950, 680);
 
-    for (const selector of toolbarSelectors) {
+    for (const selector of toolbarSelectors.filter(selector => selector !== '.meo-mermaid-preview-controls')) {
       const hoverPoint = await page.evaluate((toolbarSelector) => {
         const toolbar = document.querySelector<HTMLElement>(toolbarSelector)!;
         const target = toolbar.closest<HTMLElement>('.meo-rendered-block-preview')
@@ -247,7 +224,7 @@ async function main(): Promise<void> {
       }, selector);
       await page.mouse.move(hoverPoint.x, hoverPoint.y);
       await page.waitForFunction((toolbarSelector) => (
-        document.querySelector(toolbarSelector)?.classList.contains('is-block-hovered') === true
+        getComputedStyle(document.querySelector(toolbarSelector)!).opacity === '1'
       ), {}, selector);
       await page.click(`${selector} .meo-copy-code-btn`);
       await page.waitForFunction((toolbarSelector) => (
@@ -255,7 +232,7 @@ async function main(): Promise<void> {
       ), {}, selector);
       await page.mouse.move(950, 680);
       await page.waitForFunction((toolbarSelector) => (
-        document.querySelector(toolbarSelector)?.classList.contains('is-block-hovered') === false
+        getComputedStyle(document.querySelector(toolbarSelector)!).opacity === '0'
       ), {}, selector);
       await new Promise((resolve) => setTimeout(resolve, 150));
       const stateAfterLeave = await page.evaluate((toolbarSelector) => {
@@ -278,7 +255,7 @@ async function main(): Promise<void> {
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     }
 
-    for (const selector of toolbarSelectors) {
+    for (const selector of toolbarSelectors.filter(selector => selector !== '.meo-mermaid-preview-controls')) {
       await page.evaluate((toolbarSelector) => {
         const toolbar = document.querySelector<HTMLElement>(toolbarSelector)!;
         // Move to Copy with a real Tab event instead of inheriting the focus

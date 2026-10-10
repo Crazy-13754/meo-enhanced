@@ -14,6 +14,7 @@ import {
 } from '../webview/src/adapters/tableTransactionProvenance';
 import { createTableCommandTargetRegistry } from '../webview/src/editor/tableCommandTargetRegistry';
 import { installCausalFrameSettlement } from './causal-frame-settlement';
+import { applyUiTheme } from '../webview/src/helpers/uiTheme';
 
 const getTableProvenanceSnapshot = () => {
   const view = EditorView.findFromDOM(document.querySelector('.cm-editor')!);
@@ -27,6 +28,7 @@ const getTableProvenanceSnapshot = () => {
 
 (globalThis as typeof globalThis & {
   TableStabilityHarness?: {
+    applyUiTheme: typeof applyUiTheme;
     createEditor: typeof createEditor;
     handleImagePaste: typeof handleImagePaste;
     handleSavedImagePath: typeof handleSavedImagePath;
@@ -41,6 +43,7 @@ const getTableProvenanceSnapshot = () => {
     createTableCommandTargetRegistry: typeof createTableCommandTargetRegistry;
   };
 }).TableStabilityHarness = {
+  applyUiTheme,
   createEditor,
   handleImagePaste,
   handleSavedImagePath,

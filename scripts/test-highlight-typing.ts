@@ -25,7 +25,7 @@ try {
         { scope: ['keyword', 'storage'], settings: { foreground: '#ff0000' } },
         { scope: 'string', settings: { foreground: '#0000ff' } },
           { scope: 'comment', settings: { foreground: '#00ff00' } }
-        ] });
+        ] }, mode === 'source' ? 'source' : 'editor');
       const code = ['const stable = "value";',
         ...Array.from({ length: 3000 }, (_, i) => `const value${i} = "payload";`)].join('\n');
       const text = mode === 'standalone' ? code : `\`\`\`typescript\n${code}\n\`\`\``;
@@ -114,6 +114,11 @@ try {
         return getComputedStyle(node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement!).color;
       };
     }, scenario);
+    if (scenario.mode === 'source') await page.waitForFunction(() => {
+      const editor = (window as any).typingEditor;
+      const { node } = editor.view.domAtPos(editor.view.state.selection.main.head - 1);
+      return (node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement)?.closest('.meo-source-token');
+    });
     await page.waitForFunction(() => Boolean((window as any).inputColor()));
     const baselineColor = await page.evaluate(() => (window as any).inputColor() as string);
     await page.evaluate(() => {
@@ -165,6 +170,11 @@ try {
         return getComputedStyle(node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement!).color;
       };
     }, scenario);
+    if (scenario.mode === 'source') await page.waitForFunction(() => {
+      const editor = (window as any).typingEditor;
+      const { node } = editor.view.domAtPos(editor.view.state.selection.main.head - 1);
+      return (node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement)?.closest('.meo-source-token');
+    });
     await page.waitForFunction(() => Boolean((window as any).inputColor()));
     const baselineColor = await page.evaluate(() => (window as any).inputColor() as string);
     await page.evaluate(() => {

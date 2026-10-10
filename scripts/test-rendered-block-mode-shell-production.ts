@@ -94,9 +94,13 @@ async function main(): Promise<void> {
     await page.evaluate(() => {
       (window as any).RenderedBlockModeShellProductionHarness.setMathRendererProbe({ kind: 'error' });
     });
-    await page.keyboard.press('E');
-    await page.waitForSelector('.meo-math-result-status');
     const afterErrorEdit = await page.evaluate(() => {
+      // Native contenteditable input commits through CodeMirror's DOM observer.
+      // Check synchronous presentation at the document transaction boundary,
+      // without waiting for the error label or a rendering frame.
+      const view = (window as any).__renderedModeEditor.view;
+      const from = view.state.selection.main.head;
+      view.dispatch({ changes: { from, insert: 'E' }, selection: { anchor: from + 1 }, userEvent: 'input.type' });
       const source = document.querySelector<HTMLElement>(
         '#app > .cm-editor .cm-content'
       )!;
@@ -112,12 +116,28 @@ async function main(): Promise<void> {
         scrollTop: outerScroller.scrollTop
       };
     });
-    assert.equal(afterErrorEdit.errorText?.includes('last valid result'), true,
-      'Split mode must expose a synchronous renderer error before the edit completes');
     assert.equal(afterErrorEdit.sourceFocused, true, 'Synchronous renderer errors must preserve source focus');
     assert.equal(afterErrorEdit.caretInSource, true, 'Synchronous renderer errors must preserve the public DOM caret');
     assert.ok(Math.abs(afterErrorEdit.scrollTop - beforeErrorEdit.scrollTop) <= 1,
       'Synchronous renderer errors must not move the outer viewport');
+    await page.waitForFunction(() => document.querySelector('.meo-math-result-status[role="status"]')?.textContent?.includes('last valid result'));
+    for (let frame = 0; frame < 2; frame++) {
+      const settled = await page.evaluate(() => {
+        const view = (window as any).__renderedModeEditor.view;
+        const selection = window.getSelection();
+        return {
+          text: view.state.doc.toString(), focused: view.hasFocus && document.activeElement === view.contentDOM,
+          caret: !!selection?.isCollapsed && !!selection.anchorNode && view.contentDOM.contains(selection.anchorNode),
+          result: document.querySelector('.meo-math-live-result [data-rendered-math]')?.textContent,
+          scroll: view.scrollDOM.scrollTop
+        };
+      });
+      assert.equal(settled.text.includes('x = 1SE'), true);
+      assert.equal(settled.result, 'x = 1S', 'The derived error presentation must retain the last valid result');
+      assert.equal(settled.focused && settled.caret, true);
+      assert.ok(Math.abs(settled.scroll - beforeErrorEdit.scrollTop) <= 1);
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+    }
     assert.deepEqual(pageErrors, [], 'Split mode must expose source text before rendering');
   } finally {
     await browser.close();

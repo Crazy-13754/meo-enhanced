@@ -175,13 +175,23 @@ async function main(): Promise<void> {
       await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
       await page.addScriptTag({ path: path.join(tempDir, 'trace.js') });
       await page.evaluate(text => (window as any).__nativeSaveTableFlush.initialize(text), block.text);
-      await page.click(`.meo-${block.kind}-mode-btn`);
-      const selector = `.meo-${block.kind}-source-editor .cm-content`;
-      await page.waitForSelector(selector);
-      await page.click(selector);
-      await page.keyboard.down('Control');
-      await page.keyboard.press('End');
-      await page.keyboard.up('Control');
+      const math = block.kind === 'latex-math';
+      if (math) await page.click('.meo-md-math-fenced-display .katex');
+      else await page.click('.meo-mermaid-mode-btn');
+      const selector = math ? '#editor > .cm-editor .cm-content' : '.meo-mermaid-source-editor .cm-content';
+      await page.waitForSelector(math ? '.meo-math-source-line' : selector);
+      if (!math) {
+        await page.click(selector);
+        await page.keyboard.down('Control');
+        await page.keyboard.press('End');
+        await page.keyboard.up('Control');
+      } else {
+        const lines = await page.$$('.meo-math-source-line');
+        const bodyLine = (await Promise.all(lines.map(async line => ({ line, text: await line.evaluate(node => node.textContent) })))).find(candidate => candidate.text === 'x = 1');
+        assert.ok(bodyLine, 'Formula source must appear in the main document');
+        await bodyLine.line.click();
+        await page.keyboard.press('End');
+      }
       await page.keyboard.type(block.marker);
       const saved = await page.evaluate(() => (window as any).__nativeSaveTableFlush.nativeSave());
       const snapshot = await page.evaluate(() => (window as any).__nativeSaveTableFlush.snapshot());
@@ -189,9 +199,9 @@ async function main(): Promise<void> {
         ? block.text.replace('x = 1', `x = 1${block.marker}`)
         : block.text.replace(/\n([^\n]+)$/, `${block.marker}\n$1`);
       assert.deepEqual(saved.result, { ok: true, value: { text: expected } });
-      assert.equal(snapshot.diskText, expected, `${block.kind}: embedded input must reach disk`);
+      assert.equal(snapshot.diskText, expected, `${block.kind}: formula/document or Mermaid input must reach disk`);
       assert.equal(await page.$eval(selector, node => node === document.activeElement), true,
-        'saving must preserve embedded editor focus');
+        'saving must preserve the source editor focus');
       const cdp = await page.createCDPSession();
       await cdp.send('Input.imeSetComposition', { text: 'pinyin', selectionStart: 6, selectionEnd: 6 });
       await new Promise(resolve => setTimeout(resolve, 180));

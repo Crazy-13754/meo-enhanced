@@ -547,16 +547,14 @@ async function main(): Promise<void> {
       editor.view.dispatch({ selection: { anchor: position } });
       editor.view.dispatch({ effects: (window as any).EditorView?.scrollIntoView?.(position) ?? [] });
     });
-    await page.waitForSelector('.meo-latex-math-mode-btn');
-    await page.click('.meo-latex-math-mode-btn');
+    await page.waitForSelector('.meo-math-source-line');
     await page.evaluate(async () => {
       for (let index = 0; index < 6; index += 1) {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
       const editor = (window as any).__editor;
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block')!;
-      const innerView = (block as any).__meoLatexMathEditingController.innerView;
-      const head = innerView.state.doc.length;
+      const innerView = editor.view;
+      const head = innerView.state.doc.toString().indexOf('x = 1') + 'x = 1'.length;
       innerView.dispatch({ selection: { anchor: head } });
       innerView.focus();
       const coords = innerView.coordsAtPos(head);
@@ -572,8 +570,7 @@ async function main(): Promise<void> {
     });
     const formulaCaret = await page.evaluate(() => {
       const editor = (window as any).__editor;
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block')!;
-      const innerView = (block as any).__meoLatexMathEditingController.innerView;
+      const innerView = editor.view;
       const coords = innerView.coordsAtPos(innerView.state.selection.main.head);
       const viewport = editor.view.scrollDOM.getBoundingClientRect();
       return {
@@ -590,18 +587,18 @@ async function main(): Promise<void> {
 
     const formulaTopBefore = await page.evaluate(() => {
       const editor = (window as any).__editor;
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block')!;
-      const innerView = (block as any).__meoLatexMathEditingController.innerView;
-      innerView.dispatch({ selection: { anchor: 0 } });
+      const innerView = editor.view;
+      const sourceStart = innerView.state.doc.toString().indexOf('x = 1');
+      innerView.dispatch({ selection: { anchor: sourceStart } });
       innerView.focus();
       const viewport = (window as any).LiveLayoutStabilityHarness.editorViewportBounds(editor.view);
-      const caret = innerView.coordsAtPos(0);
+      const caret = innerView.coordsAtPos(sourceStart);
       if (!caret) throw new Error('Could not measure formula top caret');
       editor.view.scrollDOM.dispatchEvent(new WheelEvent('wheel', { deltaY: 60, bubbles: true }));
       editor.view.scrollDOM.scrollTop += caret.top - viewport.top + 3;
       return {
         scrollTop: editor.view.scrollDOM.scrollTop,
-        caretTop: innerView.coordsAtPos(0)?.top ?? null,
+        caretTop: innerView.coordsAtPos(sourceStart)?.top ?? null,
         viewportTop: viewport.top,
         lineHeight: editor.view.defaultLineHeight
       };
@@ -614,8 +611,7 @@ async function main(): Promise<void> {
     });
     const formulaTopAfter = await page.evaluate(() => {
       const editor = (window as any).__editor;
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block')!;
-      const innerView = (block as any).__meoLatexMathEditingController.innerView;
+      const innerView = editor.view;
       const caret = innerView.coordsAtPos(innerView.state.selection.main.head);
       const viewport = (window as any).LiveLayoutStabilityHarness.editorViewportBounds(editor.view);
       return {

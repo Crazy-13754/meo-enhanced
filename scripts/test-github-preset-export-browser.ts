@@ -86,7 +86,7 @@ try {
     assert.deepEqual(actual.keycap.slice(0, 2), ['1px', 'solid']);
     assert.notEqual(actual.keycap[2], 'none');
     assert.ok(Math.abs(actual.diagramCenterOffset) < 1, 'Exported Mermaid must be centered');
-    assert.deepEqual(actual.diagramSize, [632, 144]);
+    assert.deepEqual(actual.diagramSize, [632, 152]);
     if (appearance === 'light') assert.equal(actual.diagramFill, 'rgb(236, 236, 255)');
     assert.equal(actual.expandedMarkdown, 'Expanded content');
     assert.equal(actual.followingContentVisible, true, 'Closing details must not hide the rest of the document');

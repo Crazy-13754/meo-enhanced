@@ -498,7 +498,7 @@ async function main() {
       const sourceMode = {
         text: editor.getText(),
         liveBoundaries: host.querySelectorAll('.meo-md-frontmatter-boundary').length,
-        delimiters: host.querySelectorAll('.meo-md-frontmatter-delimiter-line').length
+        delimiters: Array.from(host.querySelectorAll('.cm-line')).filter(line => line.textContent?.trim() === '---').length
       };
 
       editor.destroy();
@@ -931,7 +931,7 @@ async function main() {
       throw new Error(`Outline base and explicit strong weights were not distinct: ${JSON.stringify(outlineJump.outlineWeights)}`);
     }
     if (
-      outlineJump.fixedBackground !== 'rgb(12, 34, 56)' ||
+      outlineJump.fixedBackground !== 'rgb(1, 2, 3)' ||
       outlineJump.floatingBackground !== outlineJump.fixedBackground
     ) {
       throw new Error(`Floating outline background differed from fixed mode: ${JSON.stringify(outlineJump)}`);

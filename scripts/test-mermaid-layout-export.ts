@@ -109,15 +109,15 @@ try {
       assert.deepEqual(result.actual, result.references[0], 'Default output must really use ELK');
       assert.notDeepEqual(result.references[0], result.references[1], 'ELK must differ from Dagre on this fixture');
       assert.deepEqual(result.explicitDagre, result.references[1], 'Author layout overrides must remain effective');
-      // Export deliberately uses a light page even when the reading snapshot is dark.
-      const palette = getMermaidPalette(false);
+      // HTML/PDF preserve the reading appearance; Word keeps its fixed light format.
+      const palette = getMermaidPalette(target !== 'docx' && appearance === 'dark');
       const rgb = (hex: string) => `rgb(${[1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16)).join(', ')})`;
       assert.equal(result.nodeFill, rgb(palette.nodeBackground), 'Export must use the shared diagram palette');
       assert.equal(result.customFill, 'rgb(255, 218, 185)', 'Author classDef colors must remain effective');
       assert.equal(result.noteFill, rgb(palette.secondaryBackground), 'Sequence notes must use a neutral surface');
       assert.equal(result.noteText, rgb(palette.foreground), 'Sequence notes must follow the reading foreground');
       assert.equal(result.sequenceLine, rgb(palette.line), 'Sequence messages must use the blue accent');
-      assert.equal(result.sequenceNumber, 'rgb(255, 255, 255)', 'Sequence numbers must contrast with the blue markers');
+      assert.equal(result.sequenceNumber, target !== 'docx' && appearance === 'dark' ? rgb(palette.chartTextColor) : 'rgb(255, 255, 255)', 'Sequence numbers must contrast with the blue markers');
       assert.deepEqual(result.pieFills, palette.chartColors.slice(0, 8).map(rgb), 'Eight categories must use eight official accent colors');
       assert.ok(result.pieText.length === 8 && result.pieText.every(color => color === rgb(palette.chartTextColor)), 'Percentage labels must remain dark on pastel slices');
       console.log(`${target}/${appearance}: ${diagrams.length} types/configurations, real ELK, author overrides and palette passed`);

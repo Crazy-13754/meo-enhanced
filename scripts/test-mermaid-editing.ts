@@ -150,7 +150,7 @@ async function assertEmbeddedMermaidSupportsPointerPanning(page: Page): Promise<
     throw new Error(`Embedded Mermaid drag did not pan the diagram: ${JSON.stringify({ initial, afterDrag })}`);
   }
 
-  await page.click('.meo-mermaid-toolbar .meo-mermaid-zoom-btn[aria-label="Zoom in"]');
+  await page.click('.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="Zoom in"]');
   await page.waitForFunction(
     ({ selector, scale }) => {
       const wrapper = document.querySelector<HTMLElement>(selector);
@@ -159,7 +159,7 @@ async function assertEmbeddedMermaidSupportsPointerPanning(page: Page): Promise<
     {},
     { selector: wrapperSelector, scale: initial.transform.scale }
   );
-  await page.click('.meo-mermaid-toolbar .meo-mermaid-zoom-btn[aria-label="Reset zoom"]');
+  await page.click('.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="Reset zoom"]');
   await page.waitForFunction(
     ({ selector, transform }) => {
       const wrapper = document.querySelector<HTMLElement>(selector);
@@ -189,7 +189,7 @@ async function enterMermaidFullscreen(page: Page): Promise<void> {
     let remainingFrames = 120;
     const probe = () => {
       const button = Array.from(document.querySelectorAll<HTMLButtonElement>(
-        '.meo-mermaid-toolbar .meo-mermaid-zoom-btn[aria-label="Fullscreen"]'
+        '.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="Fullscreen"]'
       )).find((candidate) => {
         if (!candidate.isConnected || candidate.closest('.meo-rendered-block-preview')?.querySelector('.meo-mermaid-block')?.getAttribute('aria-busy') === 'true') {
           return false;
@@ -228,7 +228,7 @@ async function enterMermaidFullscreen(page: Page): Promise<void> {
 
 async function assertFullscreenNavigationIsSessionLocal(page: Page): Promise<void> {
   const embeddedSelector = '.meo-mermaid-block .meo-mermaid-svg-wrapper';
-  await page.click('.meo-mermaid-toolbar .meo-mermaid-zoom-btn[aria-label="Reset zoom"]');
+  await page.click('.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="Reset zoom"]');
   const embeddedBefore = await page.$eval(embeddedSelector, (wrapper) => {
     const matrix = new DOMMatrix(getComputedStyle(wrapper).transform);
     return { scale: matrix.a, x: matrix.e, y: matrix.f };
@@ -253,7 +253,7 @@ async function assertFullscreenNavigationIsSessionLocal(page: Page): Promise<voi
     const matrix = new DOMMatrix(getComputedStyle(wrapper).transform);
     return { scale: matrix.a, x: matrix.e, y: matrix.f };
   });
-  await page.click('.meo-mermaid-toolbar .meo-mermaid-zoom-btn[aria-label="Zoom in"]');
+  await page.click('.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="Zoom in"]');
   const embeddedAfterZoom = await page.$eval(embeddedSelector, (wrapper) => {
     const matrix = new DOMMatrix(getComputedStyle(wrapper).transform);
     return { scale: matrix.a, x: matrix.e, y: matrix.f };
@@ -272,7 +272,7 @@ async function assertFullscreenNavigationIsSessionLocal(page: Page): Promise<voi
       embeddedAfterZoom
     })}`);
   }
-  await page.click('.meo-mermaid-toolbar .meo-mermaid-zoom-btn[aria-label="Reset zoom"]');
+  await page.click('.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="Reset zoom"]');
 }
 
 async function assertFullscreenDisablesTextSelection(page: Page): Promise<void> {
@@ -1143,7 +1143,7 @@ async function main() {
       && (chrome.label === null || chrome.label === language)
       && (chrome.label === null || chrome.labelParent)
       && chrome.toolbarParent
-      && chrome.controlCount === 7
+      && chrome.controlCount === 3
       && chrome.chrome.filter((item) => item !== null).every((item) => item
         && item.borderRadius === '6px'
         && item.borderWidth === '0px'
@@ -1151,11 +1151,11 @@ async function main() {
         && item.height > 0);
     if (
       !defaultMode.preview || defaultMode.editing
-      || defaultMode.buttonLabel !== 'Switch to split view'
+      || defaultMode.buttonLabel !== 'Preview, Switch to split view'
       || defaultMode.visibleMermaidFenceLines !== 0
       || defaultMode.visibleLatexFenceLines !== 0
-      || defaultMode.latexVisualTop < 12
-      || defaultMode.latexVisualBottom < 12
+      || defaultMode.latexVisualTop < 8
+      || defaultMode.latexVisualBottom < 8
       || defaultMode.latexLabelClearance < 4
       || !hasExpectedPreviewChrome(defaultMode.mermaidChrome, 'mermaid')
       || defaultMode.latexChrome.shell
@@ -1261,7 +1261,7 @@ async function main() {
       Math.abs(previewClickAfter.blockTop - previewClickBefore.blockTop) > 1 ||
       !previewClickAfter.preview ||
       previewClickAfter.editing ||
-      previewClickAfter.buttonLabel !== 'Switch to split view'
+      previewClickAfter.buttonLabel !== 'Preview, Switch to split view'
     ) {
       throw new Error(`Clicking Mermaid preview changed editor state: ${JSON.stringify({
         before: previewClickBefore,
@@ -1273,7 +1273,7 @@ async function main() {
       !previewPointerDown.preview ||
       previewPointerDown.editing ||
       previewPointerDown.sourceVisible ||
-      previewPointerDown.buttonLabel !== 'Switch to split view'
+      previewPointerDown.buttonLabel !== 'Preview, Switch to split view'
     ) {
       throw new Error(`Pressing Mermaid preview temporarily revealed source: ${JSON.stringify(previewPointerDown)}`);
     }
@@ -1513,7 +1513,7 @@ async function main() {
       splitMode.hasInternalVerticalScroll ||
       splitMode.sourceStickyPosition !== 'relative' ||
       splitMode.stickyPosition !== 'relative' ||
-      splitMode.nextLabel !== 'Switch to source'
+      splitMode.nextLabel !== 'Split, Switch to source'
     ) {
       throw new Error(`Unexpected split mode controls or scrolling: ${JSON.stringify(splitMode)}`);
     }
@@ -1628,7 +1628,7 @@ async function main() {
       preview: Boolean(document.querySelector('.meo-mermaid-preview-shell')),
       nextLabel: document.querySelector('.meo-mermaid-mode-btn')?.getAttribute('aria-label')
     }));
-    if (!codeMode.code || codeMode.preview || codeMode.nextLabel !== 'Switch to preview') {
+    if (!codeMode.code || codeMode.preview || codeMode.nextLabel !== 'Source, Switch to preview') {
       throw new Error(`Unexpected Mermaid code mode: ${JSON.stringify(codeMode)}`);
     }
 

@@ -385,8 +385,9 @@ async function main() {
       const widthsAfterEntry = Array.from(document.querySelectorAll<HTMLTableCellElement>('tbody td'))
         .map((cell) => cell.getBoundingClientRect().width);
 
-      caretInput.blur();
+      caretInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
       await waitFrames(1);
+      if (caretCell.closest('table')!.querySelector('.is-editing')) throw new Error('Pointer fixture must exit cell editing before a new gesture');
       const markdownCell = document.querySelector<HTMLTableCellElement>('td[data-table-row="1"][data-table-col="1"]')!;
       const markdownPreview = markdownCell.querySelector<HTMLElement>('.meo-md-html-table-cell-preview')!;
       const markdownInput = markdownCell.querySelector<HTMLTextAreaElement>('textarea')!;
@@ -421,8 +422,9 @@ async function main() {
       await waitFrames(1);
       const widthsAfterMarkdownEntry = Array.from(document.querySelectorAll<HTMLTableCellElement>('tbody td'))
         .map((cell) => cell.getBoundingClientRect().width);
-      markdownInput.blur();
+      markdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
       await waitFrames(1);
+      if (caretCell.closest('table')!.querySelector('.is-editing')) throw new Error('Pointer fixture must exit cell editing before a new gesture');
       let dragTextElement = Array.from(caretPreview.querySelectorAll<HTMLElement>('[data-meo-source-from]'))
         .find((element) => element.textContent?.includes('alpha bravo'))!;
       const dragTextNode = dragTextElement.firstChild!;
@@ -450,8 +452,9 @@ async function main() {
         cancelable: true
       }));
       const releaseOnlyDraggedText = caretInput.value.slice(caretInput.selectionStart, caretInput.selectionEnd);
-      caretInput.blur();
+      caretInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
       await waitFrames(1);
+      if (caretCell.closest('table')!.querySelector('.is-editing')) throw new Error('Pointer fixture must exit cell editing before a new gesture');
       dragTextElement = Array.from(caretPreview.querySelectorAll<HTMLElement>('[data-meo-source-from]'))
         .find((element) => element.textContent?.includes('alpha bravo'))!;
       dragTextElement.dispatchEvent(new PointerEvent('pointerdown', {
@@ -482,8 +485,9 @@ async function main() {
         cancelable: true
       }));
       const draggedText = caretInput.value.slice(caretInput.selectionStart, caretInput.selectionEnd);
-      caretInput.blur();
+      caretInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
       await waitFrames(1);
+      if (caretCell.closest('table')!.querySelector('.is-editing')) throw new Error('Pointer fixture must exit cell editing before a new gesture');
       const table = caretCell.closest('table')!;
       const dispatchSelectionStart = (pointerId: number) => {
         dragTextElement.dispatchEvent(new PointerEvent('pointerdown', {

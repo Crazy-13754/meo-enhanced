@@ -193,43 +193,25 @@ try {
     throw new Error(`Selection toolbar emphasis visuals are inconsistent: ${JSON.stringify(live.highlightVisuals)}`);
   }
 
-  const sourceModeVisuals = await page.evaluate(async () => {
-    const editor = (window as any).__highlightEditor;
-    editor.setMode('source');
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    const color = (selector: string) => {
-      const element = document.querySelector<HTMLElement>(selector);
-      return element ? getComputedStyle(element).color : null;
-    };
-    const nestedProbe = document.createElement('div');
-    nestedProbe.className = 'cm-editor meo-mode-source';
-    nestedProbe.innerHTML = '<span class="meo-md-list-prefix"><span class="cm-list-token" style="color: rgb(1, 2, 3)">1.</span></span>';
-    document.body.append(nestedProbe);
-    const nestedListMarker = color('.meo-mode-source .meo-md-list-prefix .cm-list-token');
-    nestedProbe.remove();
-    return {
-      highlightCount: document.querySelectorAll('.cm-editor.meo-mode-source .meo-md-highlight').length,
-      key: color('.meo-mode-source .meo-md-frontmatter-key'),
-      punctuation: color('.meo-mode-source .meo-md-frontmatter-punctuation'),
-      string: color('.meo-mode-source .meo-md-frontmatter-value.is-string'),
-      literal: color('.meo-mode-source .meo-md-frontmatter-value.is-literal'),
-      number: color('.meo-mode-source .meo-md-frontmatter-value.is-number'),
-      listMarker: color('.meo-mode-source .meo-md-list-prefix'),
-      nestedListMarker
-    };
+  await page.evaluate(() => {
+    (window as any).HighlightHarness.setShikiTheme({ name: 'native-markdown-scopes', type: 'dark', colors: { 'editor.foreground': '#e6edf3' }, tokenColors: [
+      { scope: 'entity.name.tag.yaml', settings: { foreground: '#112233' } },
+      { scope: 'string.unquoted.plain.out.yaml', settings: { foreground: '#223344' } },
+      { scope: 'constant.language.boolean.yaml', settings: { foreground: '#334455' } },
+      { scope: 'constant.numeric', settings: { foreground: '#445566' } },
+      { scope: 'punctuation.separator.key-value.mapping.yaml', settings: { foreground: '#556677' } },
+      { scope: 'punctuation.definition.list.begin.markdown', settings: { foreground: '#778899' } }
+    ] }, 'source');
+    (window as any).__highlightEditor.setMode('source');
   });
-  if (
-    sourceModeVisuals.highlightCount < 3
-    || sourceModeVisuals.key !== 'rgb(17, 34, 51)'
-    || sourceModeVisuals.punctuation !== 'rgb(85, 102, 119)'
-    || sourceModeVisuals.string !== 'rgb(34, 51, 68)'
-    || sourceModeVisuals.literal !== 'rgb(51, 68, 85)'
-    || sourceModeVisuals.number !== 'rgb(68, 85, 102)'
-    || sourceModeVisuals.listMarker !== 'rgb(119, 136, 153)'
-    || sourceModeVisuals.nestedListMarker !== 'rgb(119, 136, 153)'
-  ) {
-    throw new Error(`Source mode did not use VS Code token variables: ${JSON.stringify(sourceModeVisuals)}`);
-  }
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('.meo-source-token')).some(node => node.textContent === 'title'));
+  const sourceModeVisuals = await page.evaluate(() => {
+    const tokens = Array.from(document.querySelectorAll<HTMLElement>('.meo-source-token'));
+    const color = (text: string) => { const tokenNode = tokens.find(node => node.textContent?.trim() === text); return tokenNode ? getComputedStyle(tokenNode).color : null; };
+    return { richHighlightCount: document.querySelectorAll('.meo-mode-source .meo-md-highlight').length,
+      key: color('title'), punctuation: color(':'), string: color('Alpha'), literal: color('true'), number: color('2'), listMarker: color('1.') };
+  });
+  assert.deepEqual(sourceModeVisuals, { richHighlightCount: 0, key: 'rgb(17, 34, 51)', punctuation: 'rgb(85, 102, 119)', string: 'rgb(34, 51, 68)', literal: 'rgb(51, 68, 85)', number: 'rgb(68, 85, 102)', listMarker: 'rgb(119, 136, 153)' }, 'Source must use native TextMate scopes without Live highlight projection');
 
   const formattedText = await page.evaluate(() => {
     const editor = (window as any).__highlightEditor;
@@ -366,7 +348,7 @@ try {
     (window as any).__highlightEditor.destroy();
     document.getElementById('app')!.replaceChildren();
     harness.applyBuiltInVisualBaseline('dark');
-    const paletteAdapter = harness.createCodePaletteWebviewAdapter({ setShikiTheme: harness.setShikiTheme });
+    const paletteAdapter = harness.createCodePaletteWebviewAdapter({ setShikiTheme: harness.setShikiTheme, setSourceDocumentTheme: (theme: any) => harness.setShikiTheme(theme, 'source') });
     const darkPalette = paletteAdapter.resolve({
       name: 'GitHub Dark Dimmed fixture',
       type: 'dark',
@@ -450,7 +432,7 @@ try {
       return null;
     };
     const colorAtPosition = (position: number): string | null => {
-      const target = editor.view.domAtPos(position).node;
+      const target = editor.view.domAtPos(position + 1).node;
       const element = target instanceof HTMLElement ? target : target.parentElement;
       return element ? getComputedStyle(element).color : null;
     };
@@ -458,7 +440,7 @@ try {
       headingMarker: colorAtPosition(0),
       headingText: colorAtPosition(2),
       plain: colorForText('普通正文'),
-      list: getComputedStyle(document.querySelector<HTMLElement>('.meo-mode-source .meo-md-list-prefix')!).color,
+      list: colorForText('1.'),
       bold: colorForText('粗体内容'),
       italic: colorForText('斜体内容'),
       sourcePlainCode: colorForText('plainFenceToken'),

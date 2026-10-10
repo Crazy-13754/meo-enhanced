@@ -607,7 +607,7 @@ async function main(): Promise<void> {
       const mermaidMode = read('.meo-mermaid-mode-btn');
       await revealText('x^2');
       const latexControl = document.querySelector<HTMLElement>(
-        '.meo-latex-math-toolbar[role="group"]'
+        '.meo-math-copy-actions .meo-copy-code-btn'
       )?.getAttribute('aria-label');
       const latexMode = read('.meo-latex-math-mode-btn');
       await revealText('> [!NOTE]');
@@ -657,8 +657,8 @@ async function main(): Promise<void> {
         html: '显示 HTML 源码'
       },
       renderedBlocks: {
-        controls: ['第 41 行 Mermaid 块控件', '第 46 行公式块控件'],
-        modes: ['切换为分栏', '切换为分栏']
+        controls: ['第 41 行 Mermaid 块控件', '复制'],
+        modes: ['预览, 切换为分栏', null]
       }
     });
     assert.equal(result.appliedAfterCheckbox, result.afterCheckbox, 'checkbox must publish exactly its accepted text');

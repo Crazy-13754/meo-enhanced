@@ -1416,12 +1416,12 @@ async function main() {
     }
 
     await page.click('.meo-mermaid-mode-btn');
-    await page.click('.meo-latex-math-mode-btn');
+    await page.click('.meo-math-copy-actions .meo-select-all-code-btn');
     await waitForFrames(page, 12);
     const editingBlockLayout = await page.evaluate(() => {
       const top = document.querySelector<HTMLElement>('.cm-line.meo-md-code-block-start')?.getBoundingClientRect();
       const mermaid = document.querySelector<HTMLElement>('.meo-mermaid-editing-block')?.getBoundingClientRect();
-      const math = document.querySelector<HTMLElement>('.meo-latex-math-editing-block')?.getBoundingClientRect();
+      const math = document.querySelector<HTMLElement>('.meo-math-source-line')?.getBoundingClientRect();
       return {
         topLeft: top?.left ?? 0,
         topRight: top?.right ?? 0,

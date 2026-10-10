@@ -777,7 +777,7 @@ async function main() {
           nativeCancelAnimationFrame(handle);
         };
         window.clearTimeout = ((handle?: number) => {
-          if (harness.active && handle === interactionTimer) {
+          if (harness.active && interactionTimer !== undefined && handle === interactionTimer) {
             laterOwnerRan.interaction = true;
             if (faultKind === 'interaction') throw new Error('controlled interaction owner failure');
           }
@@ -793,6 +793,8 @@ async function main() {
         input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'd' }));
         window.setTimeout = nativeSetTimeout;
         window.requestAnimationFrame = nativeRequestAnimationFrame;
+
+        if (interactionTimer === undefined) throw new Error('Missing pending table edit timer before destroy');
 
         if (faultKind === 'image') {
           const image = document.createElement('span');
@@ -829,13 +831,17 @@ async function main() {
         throw new Error(`${fault} owner did not preserve first-error DOM semantics: ${JSON.stringify(ownerFault)}`);
       }
       if (
-        (fault === 'image' && Object.values(ownerFault.laterOwnerRan).some(Boolean)) ||
+        (fault === 'image' && (ownerFault.laterOwnerRan.sticky || ownerFault.laterOwnerRan.listeners || ownerFault.laterOwnerRan.frame)) ||
         (fault === 'sticky' && (
-          ownerFault.laterOwnerRan.listeners || ownerFault.laterOwnerRan.frame || ownerFault.laterOwnerRan.interaction
+          ownerFault.laterOwnerRan.listeners || ownerFault.laterOwnerRan.frame
         )) ||
-        (fault === 'listeners' && (ownerFault.laterOwnerRan.frame || ownerFault.laterOwnerRan.interaction))
+        (fault === 'listeners' && ownerFault.laterOwnerRan.frame) ||
+        (fault === 'interaction' && (ownerFault.laterOwnerRan.sticky || ownerFault.laterOwnerRan.listeners || ownerFault.laterOwnerRan.frame))
       ) {
         throw new Error(`${fault} owner ran a later destroy owner: ${JSON.stringify(ownerFault)}`);
+      }
+      if (!ownerFault.laterOwnerRan.interaction) {
+        throw new Error(`${fault} owner did not cancel the pending edit before resource disposal`);
       }
     }
 
