@@ -2781,6 +2781,8 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
   color: #ffffff;
   background: #0d0d0d;
   box-shadow: none;
+  /* Offscreen text rendering avoids Windows LCD color fringes on white hints. */
+  filter: opacity(1);
   font-family: var(--vscode-font-family, sans-serif);
   font-size: 13px;
   font-weight: 400;

@@ -427,7 +427,7 @@ try {
   }));
   assert.deepEqual(nestedHint, {
     text: 'Go to: https://example.com\nLink explanation', language: 'en', background: 'rgb(58, 58, 58)',
-    color: 'rgb(255, 255, 255)', filter: 'none', size: '13px',
+    color: 'rgb(255, 255, 255)', filter: 'opacity(1)', size: '13px',
     bodyFont: before.font, bodySize: before.size, documentTheme: before.theme
   }, 'Preview hints use the UI theme without changing the document theme or font');
   await show(find);
