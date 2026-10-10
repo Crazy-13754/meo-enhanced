@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import { mock } from 'bun:test';
+import { encodeMarkdownPath } from '../src/foundation/linkDestination';
 
 class TestUri {
   readonly scheme: string;
@@ -77,6 +78,7 @@ mock.module('vscode', () => ({
 
 const {
   collectWebviewImageResourceRoots,
+  resolveLocalLinkTargetUri,
   resolveWebviewImageSrc
 } = await import('../src/shared/documentLinks');
 
@@ -207,5 +209,30 @@ const specialDeferred = /data-meo-deferred-image-src="([^"]+)"/.exec(specialPrev
 assert(specialDeferred, 'Preview must preserve a pasted image with escaped path characters');
 assert(await resolveWebviewImageSrc(specialDeferred, documentUri as never, externalWebview.webview as never, {delivery: 'embedded'}) === 'data:image/png;base64,BAUG',
   'The encoded external image must resolve to its actual bytes');
+
+for (const relativePath of [
+  '设计资料/截图🖼️.png',
+  '设计 资料/截图(1)#50%&copy;.png',
+  '设计资料/字面%E8%AE%BE.png'
+]) {
+  const image = TestUri.file(path.join(documentDirectory, relativePath));
+  existingFiles.set(fileKey(image.fsPath), new Uint8Array([7, 8, 9]));
+  const legacyDestination = encodeURI(relativePath).replace(/[()#?&]/g, character => '%' + character.charCodeAt(0).toString(16).toUpperCase());
+  for (const destination of [encodeMarkdownPath(relativePath), legacyDestination]) {
+    const preview = exportRuntime.renderPreviewDocument({
+      markdownText: `![截图](${destination})\n\n| 图片 |\n| --- |\n| ![截图](${destination}) |`,
+      sourceDocumentPath: documentUri.fsPath,
+      uiLanguage: 'zh-CN'
+    });
+    const deferredSources = Array.from(preview.html.matchAll(/data-meo-deferred-image-src="([^"]+)"/g), match => match[1]!);
+    assert(deferredSources.length === 2, 'Unicode image destinations must render in body and table Preview');
+    for (const source of [destination, ...deferredSources]) {
+      const resolved = await resolveWebviewImageSrc(source, documentUri as never, externalWebview.webview as never, { delivery: 'embedded' });
+      assert(resolved === 'data:image/png;base64,BwgJ', 'readable and legacy destinations must load the exact image');
+      const linked = await resolveLocalLinkTargetUri(source, documentUri as never);
+      assert(linked?.fsPath === image.fsPath, 'Unicode destinations must also preserve link navigation and literal percent filenames');
+    }
+  }
+}
 
 console.log('webview image source checks passed');

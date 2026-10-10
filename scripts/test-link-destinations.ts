@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import MarkdownIt from 'markdown-it';
+import { encodeMarkdownPath, formatLinkDestination } from '../src/foundation/linkDestination';
+
+const markdown = new MarkdownIt();
+for (const [raw, destination] of [
+  ['assets/image.png', 'assets/image.png'],
+  ['设计资料/截图🖼️.png', '设计资料/截图🖼️.png'],
+  ['设计 资料/截图(1)#50%&copy;.png', '设计%20资料/截图%281%29%2350%25%26copy;.png'],
+  ['设计资料/字面%E8%AE%BE.png', '设计资料/字面%25E8%25AE%25BE.png'],
+  ['../资料/图[1]<2>|3?4.png', '../资料/图%5B1%5D%3C2%3E%7C3%3F4.png'],
+  ['目录/图\t1\n2.png', '目录/图%091%0A2.png'],
+  ['C:/设计资料/截图.png', 'C:/设计资料/截图.png'],
+  ['C:\\设计资料\\截图.png', 'C:%5C设计资料%5C截图.png'],
+  ['资料:版本/截图.png', '资料%3A版本/截图.png'],
+  ['设计资料/"引号\'与`代码`.png', '设计资料/%22引号%27与%60代码%60.png']
+]) {
+  assert.equal(encodeMarkdownPath(raw), destination);
+  for (const source of [`![截图](${destination})`, `[文件](${destination})`]) {
+    const inline = markdown.parseInline(source, {})[0]!;
+    const target = inline.children?.find(child => child.type === 'image' || child.type === 'link_open');
+    assert.ok(target, 'escaped filename must parse as a link/image destination');
+    assert.equal(decodeURIComponent(target.attrGet(target.type === 'image' ? 'src' : 'href')!), raw,
+      'Markdown parsing and one resource decode must preserve the exact filename');
+  }
+}
+
+for (const [destination, display] of [
+  ['设计资料/截图.png', '设计资料/截图.png'],
+  ['%E8%AE%BE%E8%AE%A1%E8%B5%84%E6%96%99/%E6%88%AA%E5%9B%BE.png', '设计资料/截图.png'],
+  ['设计资料/%E6%88%AA%E5%9B%BE%zz.png', '设计资料/截图%zz.png'],
+  ['%E4%B8/%E4%B8%AD.png', '%E4%B8/中.png'],
+  ['%FF%E4%B8%AD%E6%96%87%E4%B8.png', '%FF中文%E4%B8.png'],
+  ['%ED%A0%80%E4%B8%AD.png', '%ED%A0%80中.png'],
+  ['%25E4%25B8%25AD.png', '%E4%B8%AD.png'],
+  ['https://example.test/%E4%B8%AD%E6%96%87?q=%23%2F#%E6%A0%87%E9%A2%98', 'https://example.test/中文?q=%23%2F#标题']
+]) assert.equal(formatLinkDestination(destination), display);
+
+console.log('Markdown destination filename identity and readable display checks passed');

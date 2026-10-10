@@ -1,4 +1,5 @@
 import { getUiStrings } from '../application/uiLanguage';
+import { formatLinkDestination } from '../../../src/foundation/linkDestination';
 
 export type TooltipContent =
   | { readonly text: string; readonly shortcut?: string; readonly kind?: 'hint' }
@@ -395,9 +396,7 @@ export function bindTooltips(root: HTMLElement, options: {
     if (live && href && !linkButton && !element.matches('.meo-md-image-linked') && !linkModifier) return null;
     const description = element.dataset.tooltip?.trim();
     const language = doc.documentElement.dataset.meoTooltipLanguage ?? doc.documentElement.lang;
-    let displayHref = href;
-    try { if (href) displayHref = decodeURI(href); }
-    catch { /* Malformed URI escapes retain their original display text. */ }
+    const displayHref = href ? formatLinkDestination(href) : '';
     const destination = displayHref ? getUiStrings(language === 'zh-CN' ? 'zh-CN' : 'en').linkDestination(displayHref) : '';
     const text = href ? (description && description !== href ? destination + '\n' + description : destination) : description;
     if (!text) return null;

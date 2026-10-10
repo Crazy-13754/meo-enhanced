@@ -82,6 +82,30 @@ try {
   await page.keyboard.press('Escape');
   await page.mouse.move(0, 0);
 
+  for (const [href, display] of [
+    ['设计资料/%E6%88%AA%E5%9B%BE.png', '设计资料/截图.png'],
+    ['设计资料/%E6%88%AA%E5%9B%BE%zz.png', '设计资料/截图%zz.png'],
+    ['设计资料/%E6%88%AA%E5%9B%BE%FF.png', '设计资料/截图%FF.png'],
+    ['https://example.test/%E4%B8%AD%E6%96%87?q=%23%2F#%E6%A0%87%E9%A2%98', 'https://example.test/中文?q=%23%2F#标题'],
+    ['设计资料/%2520.png', '设计资料/%20.png']
+  ]) {
+    await page.evaluate(href => {
+      const button = document.createElement('button');
+      button.id = 'destination-tooltip';
+      button.textContent = 'Destination';
+      button.dataset.tooltip = href;
+      button.dataset.tooltipLinkHref = href;
+      button.style.cssText = 'position:fixed;left:400px;top:300px;z-index:700';
+      document.body.append(button);
+    }, href);
+    assert.equal((await show('#destination-tooltip')).text, 'Go to: ' + display);
+    assert.equal(await page.$eval('#destination-tooltip', element => (element as HTMLElement).dataset.tooltipLinkHref), href,
+      'display formatting preserves the exact navigation destination');
+    await page.keyboard.press('Escape');
+    await page.mouse.move(0, 0);
+    await page.$eval('#destination-tooltip', element => element.remove());
+  }
+
   const find = '[data-action="find"]';
   const timing = await page.$eval(find, element => {
     const start = performance.now();

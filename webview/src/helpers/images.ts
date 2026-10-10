@@ -10,6 +10,7 @@ import type {
   ImagePresentationHandle
 } from '../editor/imagePresentation';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
+import { encodeMarkdownPath } from '../../../src/foundation/linkDestination';
 
 const IMAGE_EXT_RE = /\.(?:avif|bmp|gif|ico|jpe?g|png|svg|tiff?|webp)(?:$|[?#])/i;
 
@@ -238,7 +239,7 @@ export const handleImagePaste = async (
           if (result.ok === false) throw new Error(result.error.message);
           savedImage = { fileName, path: result.value.path };
         }
-        const markdownPath = encodeURI(savedImage.path).replace(/[()#?]/g, character => '%' + character.charCodeAt(0).toString(16).toUpperCase());
+        const markdownPath = encodeMarkdownPath(savedImage.path);
         const imageMarkdown = `![${savedImage.fileName}](${markdownPath})`;
         if (tableInput && tableSelection && tableInput.isConnected) {
           const start = tableInput.value === tableTextAtPaste
