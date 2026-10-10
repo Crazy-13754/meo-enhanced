@@ -151,7 +151,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     if (tooltip.parentElement !== owner) owner.append(tooltip);
     tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, dialog'));
     const container = modal?.getBoundingClientRect();
-    const margin = 8, gap = 6;
+    const margin = 4, gap = 6;
     const area: Bounds = { left: Math.max(viewport.left, container?.left ?? viewport.left) + margin, top: Math.max(viewport.top, container?.top ?? viewport.top) + margin,
       right: Math.min(viewport.right, container?.right ?? viewport.right) - margin, bottom: Math.min(viewport.bottom, container?.bottom ?? viewport.bottom) - margin };
     const bounds = visibleBounds(anchor, area);
@@ -317,6 +317,9 @@ export function createTooltip(anchor: HTMLElement, options: {
     if (disposed) return;
     const changed = content.text !== next.text || content.shortcut !== next.shortcut || content.kind !== next.kind;
     content = next;
+    // Preview document language can differ from the tooltip UI language.
+    const language = doc.documentElement.dataset.meoTooltipLanguage ?? doc.documentElement.lang;
+    if (tooltip.lang !== language) tooltip.lang = language;
     if (label.textContent !== content.text) label.textContent = content.text;
     if (shortcut.textContent !== (content.shortcut ?? '')) shortcut.textContent = content.shortcut ?? '';
     if (shortcut.hidden !== !content.shortcut) shortcut.hidden = !content.shortcut;

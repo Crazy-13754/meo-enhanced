@@ -38,7 +38,7 @@ try {
     const hint = () => surface.$eval('.meo-tooltip.is-visible', element => {
       const rect = element.getBoundingClientRect();
       return { id: element.id, text: element.textContent, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
-        side: (element as HTMLElement).dataset.side, inside: rect.left >= 8 && rect.top >= 8 && rect.right <= innerWidth - 8 && rect.bottom <= innerHeight - 8,
+        side: (element as HTMLElement).dataset.side, inside: rect.left >= 4 && rect.top >= 4 && rect.right <= innerWidth - 4 && rect.bottom <= innerHeight - 4,
         pointerEvents: getComputedStyle(element).pointerEvents, background: getComputedStyle(element).backgroundColor };
     });
     await move(100, 80);
@@ -90,7 +90,9 @@ try {
     await surface.$eval('#tall', (element, height) => { (element as HTMLElement).style.top = height - 80 + 'px'; (element as HTMLElement).style.height = '60px'; }, height);
     await move(38, height - 24);
     await surface.waitForSelector('.meo-tooltip.is-visible');
-    assert.equal((await hint()).inside, true, 'bottom edges shift vertically');
+    const bottomHint = await hint();
+    assert.equal(bottomHint.inside, true, 'bottom edges shift vertically');
+    assert.equal(bottomHint.bottom, height - 4, 'bottom placement uses the 4px minimum inset');
     await move(0, 0);
     await surface.$eval('#tall', element => { (element as HTMLElement).style.top = ''; (element as HTMLElement).style.height = ''; });
     await page.keyboard.press('Tab');

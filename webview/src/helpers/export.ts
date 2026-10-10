@@ -75,10 +75,7 @@ export const getExportStyleEnvironment = (code: {
   );
 
   return {
-    editorBackgroundColor: resolvedColorVar(
-      '--meo-background',
-      colorVar('--vscode-editor-background', bodyStyles.backgroundColor || '')
-    ),
+    editorBackgroundColor: bodyStyles.backgroundColor,
     editorForegroundColor,
     codeBlockBackgroundColor: resolvedColorVar(
       '--meo-code-background',

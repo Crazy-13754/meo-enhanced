@@ -72,7 +72,7 @@ try {
         side: hint.dataset.side,
         nativeTitle: element.getAttribute('title'),
         visibleCount: document.querySelectorAll('.meo-tooltip.is-visible').length,
-        inside: rect.left >= 8 && rect.right <= innerWidth - 8 && rect.top >= 8 && rect.bottom <= innerHeight - 8
+        inside: rect.left >= 4 && rect.right <= innerWidth - 4 && rect.top >= 4 && rect.bottom <= innerHeight - 4
       };
     });
   };
@@ -416,14 +416,18 @@ try {
   }
   const nestedHint = await frame.$eval('.meo-tooltip.is-visible', element => ({
     text: element.textContent,
+    language: (element as HTMLElement).lang,
     background: getComputedStyle(element).backgroundColor,
+    color: getComputedStyle(element).color,
+    filter: getComputedStyle(element).filter,
     size: getComputedStyle(element).fontSize,
     bodyFont: getComputedStyle(document.body).fontFamily,
     bodySize: getComputedStyle(document.body).fontSize,
     documentTheme: document.documentElement.getAttribute('data-editor-appearance')
   }));
   assert.deepEqual(nestedHint, {
-    text: 'Go to: https://example.com\nLink explanation', background: 'rgb(58, 58, 58)', size: '12px',
+    text: 'Go to: https://example.com\nLink explanation', language: 'en', background: 'rgb(58, 58, 58)',
+    color: 'rgb(255, 255, 255)', filter: 'none', size: '13px',
     bodyFont: before.font, bodySize: before.size, documentTheme: before.theme
   }, 'Preview hints use the UI theme without changing the document theme or font');
   await show(find);
@@ -585,7 +589,7 @@ try {
   const narrow = await frame.$eval('.meo-tooltip.is-visible', element => {
     const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right, width: rect.width, viewport: innerWidth };
   });
-  assert.ok(narrow.width < 320 && narrow.left >= 8 && narrow.right <= narrow.viewport - 8, 'target width stays inside the available reading pane');
+  assert.ok(narrow.width < 320 && narrow.left >= 4 && narrow.right <= narrow.viewport - 4, 'target width stays inside the available reading pane');
   assert.deepEqual(errors, []);
   await page.close();
   console.log('Production tooltips: delay, stateful pointer/keyboard updates, mode focus feedback, dismissal, toolbar/menu scope, fullscreen controls, boundary placement and Preview theme isolation passed.');
