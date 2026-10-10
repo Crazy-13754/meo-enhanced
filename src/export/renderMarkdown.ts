@@ -27,7 +27,7 @@ import {
 import type { UiLanguage } from '../foundation/uiLanguage';
 import { getReadingUiStrings } from './readingUiLanguage';
 import { normalizeFenceLanguage } from './fenceLanguage';
-import { getPreviewPreset, type PreviewPresetId } from '../foundation/previewPresets';
+import { getPreviewPreset, type PreviewPresetId, type PreviewPresetDefinition } from '../foundation/previewPresets';
 import { load as loadYaml } from 'js-yaml';
 import { installWikiReferenceTransform } from './wikiReferences';
 import type { ResolvedWikiResources } from '../foundation/wikiReference';
@@ -69,6 +69,7 @@ export type RenderMarkdownOptions = {
   highlightCode?: (source: string, language: string) => string;
   /** Selects rendering semantics for Preview and HTML/PDF export. */
   preset?: PreviewPresetId;
+  presetDefinition?: PreviewPresetDefinition;
 };
 
 export type RenderMarkdownResult = {
@@ -84,7 +85,7 @@ type ExportHeading = Readonly<{
 }>;
 
 export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMarkdownResult {
-  const github = getPreviewPreset(options.preset).renderer === 'github-readme';
+  const github = (options.presetDefinition ?? getPreviewPreset(options.preset)).renderer === 'github-readme';
   const uiStrings = getReadingUiStrings(options.uiLanguage ?? 'en');
   let hasMermaid = false;
   let hasMath = false;

@@ -2,8 +2,11 @@ import defaultDefinition from '../preview/presets/default/preset.json';
 import githubDefinition from '../preview/presets/github-readme/preset.json';
 import type { UiLanguage } from './uiLanguage';
 
-export type PreviewPresetId = 'default' | 'github-readme';
+export type BuiltInPreviewPresetId = 'default' | 'github-readme';
+export type PreviewPresetId = BuiltInPreviewPresetId | `user:${string}`;
+export type PreviewPresetCodeTheme = 'light-plus' | 'dark-plus' | 'github-light-default' | 'github-dark-default';
 export type PreviewContentWidth = 'responsive' | 'reference';
+export type PreviewPresetDiagnostic = Readonly<{ preset?: PreviewPresetId; message: string }>;
 type LocalizedText = Readonly<Record<UiLanguage, string>>;
 export type PreviewControlPolicy = Readonly<{
   mode: 'editable' | 'fixed' | 'unsupported';
@@ -21,19 +24,43 @@ export type PreviewPresetDefinition = Readonly<{
   defaults: Readonly<{ appearance: 'auto' | 'light' | 'dark'; contentWidth: PreviewContentWidth }>;
   controls: Readonly<Record<'fontFamily' | 'appearance' | 'codeColoring' | 'htmlComments' | 'contentWidth', PreviewControlPolicy>>;
   notes: readonly LocalizedText[];
+  custom?: Readonly<{
+    base: BuiltInPreviewPresetId;
+    revision: string;
+    css: Readonly<Partial<Record<'common' | 'light' | 'dark', string>>>;
+    codeThemes: Readonly<Partial<Record<'light' | 'dark', PreviewPresetCodeTheme>>>;
+  }>;
 }>;
 
-export const previewPresets: readonly PreviewPresetDefinition[] = [
+const builtInPresets: readonly PreviewPresetDefinition[] = [
   defaultDefinition as PreviewPresetDefinition,
   githubDefinition as PreviewPresetDefinition
 ];
+export const previewPresets: PreviewPresetDefinition[] = [...builtInPresets];
+
+/** Only Host-validated presets enter the catalog; built-ins cannot be replaced. */
+export function replaceCustomPreviewPresets(presets: readonly PreviewPresetDefinition[]): void {
+  previewPresets.splice(0, previewPresets.length, ...builtInPresets, ...presets);
+}
 
 export function isPreviewPresetId(value: unknown): value is PreviewPresetId {
-  return previewPresets.some(preset => preset.id === value);
+  return value === 'default' || value === 'github-readme'
+    || typeof value === 'string' && /^user:[a-z][a-z0-9-]{0,63}$/.test(value);
 }
 
 export function getPreviewPreset(id: PreviewPresetId = 'default'): PreviewPresetDefinition {
-  return previewPresets.find(preset => preset.id === id) ?? previewPresets[0];
+  const preset = previewPresets.find(preset => preset.id === id);
+  if (!preset) throw new Error(`Preview preset is unavailable: ${id}`);
+  return preset;
+}
+
+export function normalizePresetAppearance(preset: PreviewPresetDefinition, preference: 'auto' | 'light' | 'dark'): 'auto' | 'light' | 'dark' {
+  return preset.controls.appearance.options?.includes(preference) ? preference : preset.defaults.appearance;
+}
+
+export function resolvePresetAppearance(preset: PreviewPresetDefinition, preference: 'auto' | 'light' | 'dark', editor: 'light' | 'dark'): 'light' | 'dark' {
+  const normalized = normalizePresetAppearance(preset, preference);
+  return normalized === 'auto' ? editor : normalized;
 }
 
 /** Fixed preset values never overwrite the user's settings for the Default preset. */
@@ -41,8 +68,8 @@ export function resolvePreviewPresetSettings(id: PreviewPresetId, settings: {
   readonly previewFontFamily: string;
   readonly previewSourceColoring?: boolean;
   readonly previewShowComments?: boolean;
-}) {
-  const { controls } = getPreviewPreset(id);
+}, definition = getPreviewPreset(id)) {
+  const { controls } = definition;
   return {
     previewFontFamily: controls.fontFamily.mode === 'editable' ? settings.previewFontFamily : '',
     previewSourceColoring: controls.codeColoring.mode === 'editable' ? settings.previewSourceColoring !== false : controls.codeColoring.mode === 'fixed' && controls.codeColoring.value === true,
@@ -69,9 +96,9 @@ export function decodePreviewPresetState(value: unknown): PreviewPresetState | n
     if (!['auto', 'light', 'dark'].includes(preference.appearance)
       || !['responsive', 'reference'].includes(preference.contentWidth)) return null;
     preferences[preset.id] = {
-      appearance: preference.appearance,
+      appearance: normalizePresetAppearance(preset, preference.appearance),
       contentWidth: preset.controls.contentWidth.mode === 'editable' ? preference.contentWidth : preset.defaults.contentWidth
     };
   }
-  return { preset: candidate.preset, preferences };
+  return { preset: previewPresets.some(preset => preset.id === candidate.preset) ? candidate.preset : 'default', preferences };
 }

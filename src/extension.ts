@@ -89,6 +89,9 @@ import { createVscodeImageStorage } from './host/vscodeImageStorage';
 import { createVscodeEditingPreferences } from './host/vscodeEditingPreferences';
 import { EDITING_PREFERENCES_SETTING } from './host/editingPreferences';
 import type { EditingPreferencesChangedEvent } from './protocol/editingPreferences';
+import { createVscodePreviewPresets } from './host/vscodePreviewPresets';
+import { getPreviewPreset, type PreviewPresetDefinition, type PreviewPresetId } from './foundation/previewPresets';
+import type { PreviewPresetsChanged } from './protocol/previewPresets';
 
 const VIEW_TYPE = 'meoEnhanced.editor';
 const ACTIVE_EDITOR_CONTEXT_KEY = 'meoEnhanced.activeEditor';
@@ -103,6 +106,7 @@ type ExportRuntimeModule = {
   renderExportHtmlDocument: (options: {
     wikiResources?: ResolvedWikiResources;
     readingSnapshot: ReadingSnapshot;
+    presetDefinition?: PreviewPresetDefinition;
     sourceDocumentPath: string;
     imageSearchRoots: readonly string[];
     outputFilePath: string;
@@ -121,6 +125,7 @@ type ExportRuntimeModule = {
     uiLanguage: ReadingSnapshot['uiLanguage'];
     styleEnvironment?: ExportStyleEnvironment;
     preset?: import('./foundation/previewPresets').PreviewPresetId;
+    presetDefinition?: PreviewPresetDefinition;
     contentWidth?: import('./foundation/previewPresets').PreviewContentWidth;
   }) => PreviewRenderResult;
   writeHtmlExport: (options: {
@@ -202,7 +207,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const editingPreferences = await createVscodeEditingPreferences(resolveUiLanguage(
     vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get('language', 'auto'), vscode.env.language
   ), context);
-  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage());
+  const customPreviewPresets = await createVscodePreviewPresets(context);
+  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage(), customPreviewPresets);
+  context.subscriptions.push(vscode.commands.registerCommand('meoEnhanced.managePreviewPresets', () => provider.managePreviewPresets()));
   void provider.initializeGitWatcher();
   provider.initializeDevelopmentStyleWatcher();
 
@@ -379,8 +386,22 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     private readonly agentReviewHandoff: AgentReviewHandoffController,
     private readonly appearanceSettings: AppearanceSettingsOwner,
     private readonly editingPreferences: Awaited<ReturnType<typeof createVscodeEditingPreferences>>,
-    private readonly imageStorage: ReturnType<typeof createVscodeImageStorage>
+    private readonly imageStorage: ReturnType<typeof createVscodeImageStorage>,
+    private readonly customPreviewPresets: Awaited<ReturnType<typeof createVscodePreviewPresets>>
   ) {}
+
+  async managePreviewPresets(panel = this.getActiveSession()?.panel): Promise<void> {
+    let selected: PreviewPresetId | undefined;
+    try {
+      const result = await this.customPreviewPresets.manage(this.getUiLanguage());
+      if (!result.changed) return;
+      selected = result.selected;
+    } catch (error) {
+      void vscode.window.showErrorMessage(`${this.getUiLanguage() === 'zh-CN' ? '自定义预设操作失败' : 'Custom preset operation failed'}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const event: PreviewPresetsChanged = { type: 'previewPresetsChanged', presets: this.customPreviewPresets.list(), diagnostics: this.customPreviewPresets.diagnostics() };
+    for (const session of this.panelSessions.values()) void session.panel.webview.postMessage({ ...event, ...(session.panel === panel && selected ? { selected } : {}) });
+  }
 
   async initializeGitWatcher(): Promise<void> {
     const watcher = await createGitApiWatcher((repoRootFsPath) => {
@@ -579,6 +600,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       context: this.context,
       editingPreferences: this.editingPreferences,
       imageStorage: this.imageStorage,
+      getCustomPreviewPresets: () => this.customPreviewPresets.list(),
+      getPreviewPresetDiagnostics: () => this.customPreviewPresets.diagnostics(),
+      managePreviewPresets: () => this.managePreviewPresets(panel),
       diagnostics: createVscodeDiagnosticsAdapter(document),
       agentReviewHandoff: this.agentReviewHandoff,
       pendingDraftRecovery: createVscodePendingDraftRecoveryAdapter({
@@ -619,8 +643,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       saveDocument: async () => document.save(),
       onExportDocument: (session, options) => this.exportSessionDocument(session, options),
       renderPreview: async (options) => {
+        const definition = options.preset?.startsWith('user:') ? this.customPreviewPresets.get(options.preset) : getPreviewPreset(options.preset);
+        if (!definition || definition.custom && definition.custom.revision !== options.presetRevision) throw new Error('Preview preset was removed or updated; select it again.');
         const exportRuntime = await loadExportRuntimeModule(this.context.extensionUri);
-        return exportRuntime.renderPreviewDocument({ ...options,
+        return exportRuntime.renderPreviewDocument({ ...options, presetDefinition: definition,
           wikiResources: await resolveDocumentWikiResources(options.markdownText, documentUri)
         });
       },
@@ -760,11 +786,16 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       format,
       uiLanguage: this.getUiLanguage()
     }, async ({ targetUri, report }) => {
+      const presetsAtStart = this.customPreviewPresets.list();
       const snapshot = await session.requestExportSnapshot();
+      const definition = format === 'docx' ? getPreviewPreset('default') : snapshot.preset?.startsWith('user:')
+        ? presetsAtStart.find(preset => preset.id === snapshot.preset && preset.custom?.revision === snapshot.presetRevision) : getPreviewPreset(snapshot.preset);
+      if (!definition) throw new Error(this.getUiLanguage() === 'zh-CN' ? '预设刚刚发生变化，请等待预览更新后重新导出。' : 'The preset changed; wait for Preview to update and export again.');
 
       const exportRuntime = await loadExportRuntimeModule(this.context.extensionUri);
       const exportRender = await this.buildExportHtmlDocument(exportRuntime, {
         readingSnapshot: snapshot,
+        presetDefinition: definition,
         sourceDocumentUri: session.documentUri,
         outputFileUri: targetUri,
         target: format,
@@ -817,6 +848,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     exportRuntime: ExportRuntimeModule,
     params: {
       readingSnapshot: ReadingSnapshot;
+      presetDefinition?: PreviewPresetDefinition;
       sourceDocumentUri: vscode.Uri;
       outputFileUri: vscode.Uri;
       target: ExportFormat;
@@ -833,6 +865,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     return exportRuntime.renderExportHtmlDocument({
       wikiResources: await resolveDocumentWikiResources(params.readingSnapshot.text, params.sourceDocumentUri),
       readingSnapshot: params.readingSnapshot,
+      presetDefinition: params.presetDefinition,
       sourceDocumentPath: params.sourceDocumentUri.fsPath,
       imageSearchRoots: await resolveImageSearchRoots(params.sourceDocumentUri),
       outputFilePath: params.outputFileUri.fsPath,

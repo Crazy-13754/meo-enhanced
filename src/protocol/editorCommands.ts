@@ -12,6 +12,7 @@ export type DiffBaselineMode = 'current-edit' | 'recent-save' | 'git-head';
 export type OutlinePosition = 'left' | 'right';
 
 export type EditorCommand =
+  | { readonly type: 'managePreviewPresets' }
   | { readonly type: 'setMode'; readonly mode: EditorMode }
   | { readonly type: 'setGitChangesGutter'; readonly visible?: boolean; readonly enabled?: boolean }
   | { readonly type: 'setGitDiffDetailsVisible'; readonly visible: boolean }
@@ -70,6 +71,7 @@ function isPositiveInteger(value: unknown): value is number {
 export function decodeEditorCommand(value: unknown): EditorCommand | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null;
   switch (value.type) {
+    case 'managePreviewPresets': return { type: 'managePreviewPresets' };
     case 'setMode':
       return value.mode === 'live' || value.mode === 'source' || value.mode === 'preview' ? value as EditorCommand : null;
     case 'setGitChangesGutter':

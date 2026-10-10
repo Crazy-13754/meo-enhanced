@@ -1,9 +1,13 @@
 import { getUiStrings } from '../application/uiLanguage';
 import { formatLinkDestination } from '../../../src/foundation/linkDestination';
+import { createElement as createIconElement, Info } from 'lucide';
 
 export type TooltipContent =
   | { readonly text: string; readonly shortcut?: string; readonly kind?: 'hint' }
-  | { readonly text: string; readonly shortcut?: never; readonly kind: 'fulltext' | 'description' | 'link' };
+  | { readonly text: string; readonly shortcut?: never; readonly kind: 'fulltext' | 'link' }
+  | { readonly text: string; readonly shortcut?: never; readonly kind: 'description';
+      readonly rows?: readonly { readonly label: string; readonly value: string }[];
+      readonly error?: { readonly title: string; readonly text: string } };
 
 export type TooltipPlacement = 'top' | 'bottom' | 'left' | 'right';
 export type TooltipPositioning = 'element' | 'pointer';
@@ -92,7 +96,9 @@ export function createTooltip(anchor: HTMLElement, options: {
   }
   const label = doc.createElement('span'); label.className = 'meo-tooltip-label';
   const shortcut = doc.createElement('kbd'); shortcut.className = 'meo-tooltip-shortcut';
-  tooltip.append(label, shortcut);
+  const details = doc.createElement('div'); details.className = 'meo-tooltip-details'; details.hidden = true;
+  const errorDetails = doc.createElement('div'); errorDetails.className = 'meo-tooltip-error'; errorDetails.hidden = true;
+  tooltip.append(label, shortcut, details, errorDetails);
   // Portal outside scrolling content, while staying inside native modal / fullscreen ownership.
   const portal = anchor.closest<HTMLElement>(modalSelector) ?? doc.fullscreenElement ?? doc.body;
   portal.append(tooltip);
@@ -316,7 +322,10 @@ export function createTooltip(anchor: HTMLElement, options: {
 
   function setContent(next: TooltipContent) {
     if (disposed) return;
-    const changed = content.text !== next.text || content.shortcut !== next.shortcut || content.kind !== next.kind;
+    const previousDetails = content.kind === 'description' ? [content.rows, content.error] : [];
+    const nextDetails = next.kind === 'description' ? [next.rows, next.error] : [];
+    const detailsChanged = JSON.stringify(previousDetails) !== JSON.stringify(nextDetails);
+    const changed = content.text !== next.text || content.shortcut !== next.shortcut || content.kind !== next.kind || detailsChanged;
     content = next;
     // Preview document language can differ from the tooltip UI language.
     const language = doc.documentElement.dataset.meoTooltipLanguage ?? doc.documentElement.lang;
@@ -325,6 +334,30 @@ export function createTooltip(anchor: HTMLElement, options: {
     if (shortcut.textContent !== (content.shortcut ?? '')) shortcut.textContent = content.shortcut ?? '';
     if (shortcut.hidden !== !content.shortcut) shortcut.hidden = !content.shortcut;
     tooltip.classList.toggle('meo-tooltip--shortcut', !!content.shortcut);
+    const rows = content.kind === 'description' ? content.rows ?? [] : [];
+    const error = content.kind === 'description' ? content.error : undefined;
+    tooltip.classList.toggle('meo-tooltip--details', rows.length > 0 || !!error);
+    if (details.hidden !== (rows.length === 0)) details.hidden = rows.length === 0;
+    if (errorDetails.hidden !== !error) errorDetails.hidden = !error;
+    if (detailsChanged) {
+      details.replaceChildren();
+      if (rows.length) {
+        const list = doc.createElement('dl');
+        for (const row of rows) {
+          const name = doc.createElement('dt'); name.textContent = row.label;
+          const value = doc.createElement('dd'); value.textContent = row.value;
+          list.append(name, value);
+        }
+        details.append(doc.createElement('hr'), list);
+      }
+      errorDetails.replaceChildren();
+      if (error) {
+        const title = doc.createElement('strong'); title.textContent = error.title;
+        title.prepend(createIconElement(Info, { width: 14, height: 14, class: 'meo-tooltip-error-icon', 'aria-hidden': 'true' }));
+        const text = doc.createElement('span'); text.textContent = error.text;
+        errorDetails.append(doc.createElement('hr'), title, text);
+      }
+    }
     const live = options.liveUpdate ?? anchor.dataset.tooltipLiveUpdate === 'true';
     if (live && changed && engaged) {
       // Reparenting a mode toolbar can temporarily clear :hover before the

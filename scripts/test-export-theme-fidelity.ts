@@ -47,7 +47,7 @@ const rendered = await exportRuntime.renderExportHtmlDocument({
       code,
       '```'
     ].join('\n'),
-    appearance: 'dark',
+    appearance: 'light',
     uiLanguage: 'en',
     codeTheme,
     environment: {

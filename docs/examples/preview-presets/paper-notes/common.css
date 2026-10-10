@@ -1,0 +1,29 @@
+.meo-export-doc {
+  max-width: 960px;
+  margin-inline: auto;
+  padding: 32px;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+}
+.meo-export-doc h1, .meo-export-doc h2, .meo-export-doc h3 {
+  color: var(--paper-accent);
+  font-family: inherit;
+}
+.meo-export-doc h1 { font-size: 30px; }
+.meo-export-doc h2 { font-size: 24px; }
+.meo-export-doc h3 { font-size: 20px; }
+.meo-export-doc pre.meo-export-code-block {
+  padding: 14px 16px;
+  background: var(--meo-code-bg);
+  font-size: 13px;
+}
+.meo-export-doc .meo-export-code-line-source { font-size: inherit; }
+.meo-export-doc .meo-export-toc { border-left: 3px solid var(--paper-accent); }
+.meo-export-doc .meo-export-toc-link { color: var(--paper-accent); }
+.meo-export-doc table { width: 100%; }
+.meo-export-doc th, .meo-export-doc td { padding: 8px 12px; }
+.meo-export-doc blockquote { border-left-color: var(--paper-accent); }
+@media (max-width: 600px) {
+  .meo-export-doc { padding: 20px; }
+}

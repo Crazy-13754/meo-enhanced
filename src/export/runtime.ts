@@ -8,13 +8,14 @@ import type { PreviewAppearance, PreviewRenderResult } from '../shared/preview';
 import type { ReadingSnapshot } from '../protocol/exportSnapshot';
 import type { CodeThemeDto } from '../protocol/hostConfigurationEvents';
 import { createExportCodeHighlighter } from './shikiCodeHighlighter';
-import { resolvePreviewPresetSettings, type PreviewPresetId, type PreviewContentWidth } from '../foundation/previewPresets';
+import { getPreviewPreset, resolvePresetAppearance, resolvePreviewPresetSettings, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
 import { buildPresetPreviewStyles } from '../preview/presetStyles';
 import type { ResolvedWikiResources } from '../foundation/wikiReference';
 
 export type ExportRuntimeBuildHtmlOptions = {
   wikiResources?: ResolvedWikiResources;
   readingSnapshot: ReadingSnapshot;
+  presetDefinition?: PreviewPresetDefinition;
   sourceDocumentPath: string;
   imageSearchRoots?: readonly string[];
   outputFilePath: string;
@@ -32,21 +33,26 @@ async function renderExportHtmlDocument(
 ): Promise<{ htmlDocument: string; hasMermaid: boolean; hasMath: boolean }> {
   const snapshot = options.readingSnapshot;
   const preset = options.target === 'docx' ? 'default' : snapshot.preset ?? 'default';
-  const githubStyle = preset === 'github-readme';
-  const exportAppearance = githubStyle ? snapshot.appearance : 'light';
-  const environment = githubStyle
-    ? { ...snapshot.environment, ...resolvePreviewPresetSettings(preset, snapshot.environment) }
-    : snapshot.environment;
-  const fallbackTheme = githubStyle
+  // Capture the definition before asynchronous highlighting; updates cannot change this export.
+  const definition = options.target === 'docx' ? getPreviewPreset('default') : options.presetDefinition ?? getPreviewPreset(preset);
+  if (definition.id !== preset) throw new Error('Export preset does not match its snapshot');
+  const githubStyle = definition.custom?.base === 'github-readme' || definition.renderer === 'github-readme';
+  const exportAppearance = options.target === 'docx' ? 'light' : resolvePresetAppearance(definition, snapshot.appearance, snapshot.appearance);
+  const environment = options.target === 'docx' ? snapshot.environment
+    : { ...snapshot.environment, ...resolvePreviewPresetSettings(preset, snapshot.environment, definition) };
+  const namedTheme = definition.custom?.codeThemes[exportAppearance];
+  const fallbackTheme = namedTheme
+    ? (await importPresetCodeTheme(namedTheme))
+    : githubStyle
     ? (exportAppearance === 'light'
       ? (await import('@shikijs/themes/github-light-default')).default
       : (await import('@shikijs/themes/github-dark-default')).default) as CodeThemeDto
     : options.target === 'docx' || !snapshot.codeTheme
-    ? (await import('@shikijs/themes/light-plus')).default as CodeThemeDto
+    ? (await importPresetCodeTheme(options.target === 'docx' || exportAppearance === 'light' ? 'light-plus' : 'dark-plus'))
     : snapshot.codeTheme;
   const highlighter = environment.previewSourceColoring === false
     ? null
-    : await createExportCodeHighlighter(snapshot.text, fallbackTheme, options.shikiLanguageAssetsRoot, !githubStyle);
+    : await createExportCodeHighlighter(snapshot.text, fallbackTheme, options.shikiLanguageAssetsRoot, !githubStyle && !namedTheme);
   let rendered: ReturnType<typeof renderMarkdownToHtml>;
   try {
     rendered = renderMarkdownToHtml({
@@ -59,6 +65,7 @@ async function renderExportHtmlDocument(
       uiLanguage: snapshot.uiLanguage,
       showComments: environment.previewShowComments === true,
       preset,
+      presetDefinition: definition,
       includeTableOfContents: options.target !== 'docx' && options.includeTableOfContents === true,
       ...(highlighter ? { highlightCode: highlighter.highlight } : {})
     });
@@ -67,9 +74,9 @@ async function renderExportHtmlDocument(
   }
   const { html: bodyHtml, hasMermaid, hasMath } = rendered;
 
-  const stylesCss = githubStyle
-    ? buildPresetPreviewStyles(preset, environment, exportAppearance)
-    : buildExportStyles(environment, exportAppearance);
+  const stylesCss = options.target === 'docx'
+    ? buildExportStyles(environment, 'light')
+    : buildPresetPreviewStyles(preset, environment, exportAppearance, 'responsive', definition);
 
   const htmlDocument = buildStandaloneExportHtmlDocument({
     title: options.title,
@@ -77,6 +84,7 @@ async function renderExportHtmlDocument(
     stylesCss,
     target: options.target,
     githubStyle,
+    githubMermaid: definition.renderer === 'github-readme',
     hasMermaid,
     hasMath,
     mermaidRuntimeSrc: options.mermaidRuntimeSrc,
@@ -94,12 +102,15 @@ function renderPreviewDocument(options: {
   uiLanguage: ReadingSnapshot['uiLanguage'];
   styleEnvironment?: ExportStyleEnvironment;
   preset?: PreviewPresetId;
+  presetDefinition?: PreviewPresetDefinition;
   contentWidth?: PreviewContentWidth;
 }): PreviewRenderResult {
   const preset = options.preset ?? 'default';
+  const definition = options.presetDefinition ?? getPreviewPreset(preset);
+  if (definition.id !== preset) throw new Error('Preview preset does not match its request');
   const environment = {
     ...options.styleEnvironment,
-    ...resolvePreviewPresetSettings(preset, options.styleEnvironment ?? { previewFontFamily: '' })
+    ...resolvePreviewPresetSettings(preset, options.styleEnvironment ?? { previewFontFamily: '' }, definition)
   };
   const rendered = renderMarkdownToHtml({
     wikiResources: options.wikiResources,
@@ -109,17 +120,28 @@ function renderPreviewDocument(options: {
     uiLanguage: options.uiLanguage,
     showComments: environment.previewShowComments === true,
     deferImages: true,
-    preset
+    preset,
+    presetDefinition: definition
   });
   return {
     html: rendered.html,
     hasMermaid: rendered.hasMermaid,
     preset,
+    ...(definition.custom ? { presetRevision: definition.custom.revision } : {}),
     styles: {
-      dark: buildPresetPreviewStyles(preset, environment, 'dark', options.contentWidth),
-      light: buildPresetPreviewStyles(preset, environment, 'light', options.contentWidth)
+      dark: buildPresetPreviewStyles(preset, environment, 'dark', options.contentWidth, definition),
+      light: buildPresetPreviewStyles(preset, environment, 'light', options.contentWidth, definition)
     }
   };
+}
+
+async function importPresetCodeTheme(name: string): Promise<CodeThemeDto> {
+  switch (name) {
+    case 'dark-plus': return (await import('@shikijs/themes/dark-plus')).default as CodeThemeDto;
+    case 'github-light-default': return (await import('@shikijs/themes/github-light-default')).default as CodeThemeDto;
+    case 'github-dark-default': return (await import('@shikijs/themes/github-dark-default')).default as CodeThemeDto;
+    default: return (await import('@shikijs/themes/light-plus')).default as CodeThemeDto;
+  }
 }
 
 const exportRuntime = {

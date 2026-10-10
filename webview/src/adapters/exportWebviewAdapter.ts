@@ -16,6 +16,7 @@ export type ExportWebviewAdapterDependencies = {
   readonly getStyleEnvironment: () => EditorStyleEnvironment;
   readonly getCodeTheme: () => CodeThemeDto;
   readonly getPreset?: () => PreviewPresetId;
+  readonly getPresetRevision?: () => string | undefined;
 };
 
 export type ExportWebviewAdapter = {
@@ -72,6 +73,7 @@ export function createExportWebviewAdapter(
         try {
           const environment = structuredClone(dependencies.getStyleEnvironment());
           const codeTheme = structuredClone(dependencies.getCodeTheme());
+          const revision = dependencies.getPresetRevision?.();
           settle(requestId, {
             ok: true,
             value: Object.freeze({
@@ -81,7 +83,8 @@ export function createExportWebviewAdapter(
               uiLanguage: dependencies.getUiLanguage(),
               environment: Object.freeze(environment),
               codeTheme: Object.freeze(codeTheme),
-              ...(dependencies.getPreset ? { preset: dependencies.getPreset() } : {})
+              ...(dependencies.getPreset ? { preset: dependencies.getPreset() } : {}),
+              ...(revision ? { presetRevision: revision } : {})
             })
           });
         } catch (error) {

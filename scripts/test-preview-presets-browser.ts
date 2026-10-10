@@ -293,7 +293,7 @@ try {
     }
     await page.evaluate(mode => window.dispatchEvent(new MessageEvent('message', { data: { type: 'requestExportSnapshot', requestId: `${mode}-export` } })), mode);
     await waitFor((mode: string) => (window as any).__presetMessages.some((message: any) => message.type === 'exportSnapshotResult' && message.requestId === `${mode}-export`), { timeout: 5000 }, mode);
-    assert.equal(await page.evaluate(mode => (window as any).__presetMessages.findLast((message: any) => message.type === 'exportSnapshotResult' && message.requestId === `${mode}-export`).result.value.preset, mode), 'default');
+    assert.equal(await page.evaluate(mode => (window as any).__presetMessages.findLast((message: any) => message.type === 'exportSnapshotResult' && message.requestId === `${mode}-export`).result.value.preset, mode), 'github-readme');
   }
   await page.close();
   await reopened.close();

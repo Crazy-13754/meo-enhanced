@@ -933,6 +933,10 @@ const exportMenuItems = exportOptionDefinitions.map(({ format, includeTableOfCon
 });
 
 const exportControl = document.createElement('div');
+const exportMenuNote = document.createElement('div');
+exportMenuNote.className = 'preview-export-note';
+exportMenuNote.textContent = activeUiStrings.exportStyleNote;
+exportMenu.append(exportMenuNote);
 exportControl.className = 'preview-export-control';
 exportControl.append(exportButton, exportMenu);
 
@@ -1182,6 +1186,7 @@ const applyUiLanguage = (language: UiLanguage): void => {
   exportButton.setAttribute('aria-label', strings.exportDocument);
   exportButtonLabel.textContent = strings.exportDocument;
   exportMenu.setAttribute('aria-label', strings.exportDocument);
+  exportMenuNote.textContent = strings.exportStyleNote;
   for (const { button, label, labelKey } of exportMenuItems) {
     button.setAttribute('aria-label', strings[labelKey]);
     label.textContent = strings[labelKey];
@@ -3171,9 +3176,9 @@ const exportAdapter = createExportWebviewAdapter({
   getPreviewAppearance: () => previewAdapter.getAppearance(),
   getUiLanguage: () => activeUiLanguage,
   getStyleEnvironment: () => previewController.getStyleEnvironment(),
-  getCodeTheme: () => themeAdapter.getCodePalette('light').sourceTheme,
-  getPreset: () => getActiveEditorMode() === 'preview' || isSidePreviewVisible()
-    ? previewController.getPresetState().preset : 'default'
+  getCodeTheme: () => themeAdapter.getCodePalette(previewController.getAppearance()).sourceTheme,
+  getPreset: () => previewController.getPresetState().preset,
+  getPresetRevision: () => previewController.getPresetRevision()
 });
 
 const themeAdapter = createAppearanceWebviewAdapter({
@@ -3282,6 +3287,10 @@ window.addEventListener('message', (event) => {
   }
 
   queueMicrotask(() => { if (settingsWindow?.isOpen()) settingsWindow.present(); });
+  if (message.type === 'previewPresetsChanged') {
+    previewController.updateCustomPresets(message.presets, message.selected, false, message.diagnostics);
+    return;
+  }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
   if (message.type === 'imageStorageChanged') { if (settingsWindow?.isOpen()) void imageLocationSettings.refresh(); return; }
   if (message.type === 'updatedEditingPreferences') { editingPreferencesTransport.accept(message); return; }
@@ -3302,6 +3311,7 @@ window.addEventListener('message', (event) => {
     // Host retries must not reset a mode change or an in-flight Preview render.
     if (initReceived) return;
     initReceived = true;
+    previewController.updateCustomPresets(message.customPreviewPresets ?? [], undefined, true, message.previewPresetDiagnostics);
     acknowledgeReadyHandshake();
     const restoredPresetState = (vscode.getState() as WebviewUiState | undefined)?.previewPresetState;
     withMessageErrorBoundary('init handler', () => {

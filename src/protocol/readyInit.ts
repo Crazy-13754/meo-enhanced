@@ -17,6 +17,9 @@ import {
 } from '../foundation/editorFontSize';
 import { decodeReadingPosition, type ReadingPositionDto } from './readingPosition';
 import { defaultInputAssistance, isEditingPreferences, type EditingPreferences } from '../foundation/editingPreferences';
+import { decodeCustomPreviewPresets } from '../foundation/customPreviewPreset';
+import type { PreviewPresetDefinition, PreviewPresetDiagnostic } from '../foundation/previewPresets';
+import { decodePreviewPresetDiagnostics } from './previewPresets';
 
 export type EditorMode = 'live' | 'source' | 'preview';
 export type PreviewAppearance = 'auto' | 'dark' | 'light';
@@ -32,6 +35,8 @@ export type SavedRevisionDto = {
 };
 
 export type InitMessage = {
+  readonly customPreviewPresets?: readonly PreviewPresetDefinition[];
+  readonly previewPresetDiagnostics?: readonly PreviewPresetDiagnostic[];
   readonly type: 'init';
   readonly documentId: string;
   readonly text: string;
@@ -90,6 +95,8 @@ export function decodeReadyMessage(value: unknown): ReadyMessage | null {
 }
 
 export function decodeInitMessage(value: unknown): InitMessage | null {
+  if (isRecord(value) && value.customPreviewPresets !== undefined && decodeCustomPreviewPresets(value.customPreviewPresets) === null) return null;
+  if (isRecord(value) && value.previewPresetDiagnostics !== undefined && decodePreviewPresetDiagnostics(value.previewPresetDiagnostics) === null) return null;
   const previewFontFamily = isRecord(value) && typeof value.previewFontFamily === 'string'
     ? normalizePreviewFontFamily(value.previewFontFamily)
     : null;
@@ -200,6 +207,8 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
   }
   return {
     ...value,
+    ...(value.customPreviewPresets === undefined ? {} : { customPreviewPresets: decodeCustomPreviewPresets(value.customPreviewPresets) ?? [] }),
+    previewPresetDiagnostics: decodePreviewPresetDiagnostics(value.previewPresetDiagnostics ?? []) ?? [],
     uiLanguagePreference: value.uiLanguagePreference ?? 'auto',
     editingPreferencesRevision: value.editingPreferencesRevision === undefined ? 0 : Number(value.editingPreferencesRevision),
     editingPreferences: value.editingPreferences ?? { input: { ...defaultInputAssistance }, shortcuts: {} },
@@ -214,7 +223,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     boldHeadingsEnabled,
     restoreReadingPositionOnOpen,
     readingPositionRestore
-  } as InitMessage;
+  } as unknown as InitMessage;
 }
 
 function isSourceLineNumberMode(value: unknown): value is SourceLineNumberMode {

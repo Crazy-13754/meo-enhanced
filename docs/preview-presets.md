@@ -15,7 +15,7 @@ Preview 的“预设”入口提供 **默认** 和 **GitHub README**。独立预
 
 固定和不支持的控件隐藏，“预设说明”气泡只用一句话提示本地近似预览可能存在差异。操作入口与 Host 渲染也执行预设规则。平台预设不会覆盖默认预览的字体、代码着色与注释设置；切回默认即可恢复。主题按预设记忆，选择与偏好通过 VS Code Webview 本地状态恢复。默认主题继续以 Host 设置为准，自动主题跟随编辑器的实际明暗状态。旧的“参考宽度”保存值归一到当前固定上限的响应式布局，其他偏好保留。GitHub 的容器上限为 1076px，其中左右内边距各 32px，正文上限为 1012px；窄面板内边距缩为 16px。
 
-预设影响独立 Preview 和分屏 Preview。其 HTML、PDF 导出沿用当前预设及已解析的明暗主题。PDF 按纸张布局，长代码与宽表格换行，避免屏幕横向滚动内容被裁切。默认预览导出继续使用原来的默认样式与浅色规则；Word 保持原有固定格式。没有分屏 Preview 的 Live / Source 导出仍使用默认规则，不继承上次选中的 GitHub 预设。
+预设影响独立 Preview 和分屏 Preview。默认、GitHub、自定义预设的 HTML、PDF 导出均沿用当前文档的预览配置及已解析的明暗主题，包括没有打开 Preview 的 Live / Source。PDF 按纸张布局，长代码与宽表格换行，避免屏幕横向滚动内容被裁切；Word 保持原有固定格式。
 
 ## 定义文件
 
@@ -31,7 +31,9 @@ Preview 的“预设”入口提供 **默认** 和 **GitHub README**。独立预
 
 示例可直接参照 `github-readme/preset.json`。字体固定表示由样式文件决定，不通过菜单设置字体值。
 
-新增内置预设时，先新增定义及需要的 CSS，再在 `src/foundation/previewPresets.ts` 注册 ID 与定义。复用现有 renderer 不需要复制工具栏逻辑；只有出现新的解析行为时才增加渲染实现。当前不加载用户输入的路径、脚本或远程样式，也未提供导入自定义预设的界面。
+新增内置预设时，先新增定义及需要的 CSS，再在 `src/foundation/previewPresets.ts` 注册 ID 与定义。复用现有 renderer 不需要复制工具栏逻辑；只有出现新的解析行为时才增加渲染实现。用户预设通过 Host 校验配置与本地 CSS 后加入同一目录，ID 使用 `user:` 前缀；写法与导入、保存规则见 [自定义预设指南](custom-preview-presets.md)。脚本与远程 CSS 不支持。
+
+自定义预设的 `base` 只继承外观和默认代码配色，统一使用 `meo` 渲染。`controls` 独立配置 HTML 注释和代码着色；省略时可切换，固定项隐藏。`codeTheme` 只选择配色，不锁定着色开关。单主题的主题控件保留并禁用；字体和正文宽度交由 CSS 控制，隐藏对应控件。默认、GitHub 和自定义预设统一显示说明入口：作者文案下方通过分隔线展示主题支持、当前主题和各项配置能力，错误时入口变红并显示详情。内置预设的规则由扩展提供，不能被用户配置文件替换。
 
 CSS 通过 `github-readme/styles.js` 的 Bun 文本导入打包进 `dist/export-runtime.js`，运行时无需读取源码目录。定义文件同时被 Host 与 Webview 使用，固定设置由 `resolvePreviewPresetSettings` 统一解析，样式由 `src/preview/presetStyles.ts` 适配现有 DOM。样式文件名也是维护索引；新增独立样式需要相应的静态导入，不能仅修改 JSON 就执行新的代码。
 

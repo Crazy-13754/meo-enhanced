@@ -21,6 +21,20 @@ export type UiStrings = Readonly<{
   previewTitle: string;
   previewPreset: string;
   previewPresetInfo: string;
+  previewPresetManage: string;
+  previewOnlyLight: string;
+  previewOnlyDark: string;
+  previewThemeSupport: string;
+  previewCurrentTheme: string;
+  previewControlEditable: string;
+  previewControlFixed: string;
+  previewControlStyles: string;
+  previewControlUnsupported: string;
+  previewPresetError: string;
+  previewFixedCodeColorsOn: string;
+  previewFixedCodeColorsOff: string;
+  previewFixedCommentsShow: string;
+  previewFixedCommentsHide: string;
   previewWidth: string;
   previewWidthResponsive: string;
   previewWidthReference: string;
@@ -41,6 +55,7 @@ export type UiStrings = Readonly<{
   previewFailed: string;
   previewTools: string;
   exportDocument: string;
+  exportStyleNote: string;
   exportHtml: string;
   exportPdf: string;
   exportDocx: string;
@@ -330,6 +345,12 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewAppearance: 'Preview theme', previewSourceColoring: 'Preview source coloring', strongColoring: 'Color bold text', boldHeadings: 'Bold headings', showComments: 'HTML comments', previewCommentsShow: 'Show', previewCommentsHide: 'Hide',
     previewCodeColors: 'Code color', previewCodeColorsOn: 'On', previewCodeColorsOff: 'Off',
     previewPreset: 'Preset', previewPresetInfo: 'Preset info', previewWidth: 'Width', previewWidthResponsive: 'Fit panel', previewWidthReference: 'Reference width',
+    previewPresetManage: 'Manage custom presets', previewOnlyLight: 'This preset only supports the light theme', previewOnlyDark: 'This preset only supports the dark theme',
+    previewThemeSupport: 'Theme support', previewCurrentTheme: 'Current theme', previewControlEditable: 'Adjustable', previewControlFixed: 'Fixed',
+    previewControlStyles: 'Set by style', previewControlUnsupported: 'Unavailable', previewPresetError: 'Preset error',
+    previewFixedCodeColorsOn: 'This preset keeps code coloring on', previewFixedCodeColorsOff: 'This preset keeps code coloring off',
+    previewFixedCommentsShow: 'This preset always shows HTML comments', previewFixedCommentsHide: 'This preset always hides HTML comments',
+    exportStyleNote: 'HTML and PDF use the current preview style.\nWord uses a fixed export style.',
     previewFontFamily: 'Font',
     previewFontPlaceholder: 'VS Code editor font',
     previewFontUnavailable: 'Local font list unavailable; type a family name',
@@ -522,6 +543,12 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewAppearance: '预览主题', previewSourceColoring: '预览源码着色', strongColoring: '粗体文字着色', boldHeadings: '标题加粗', showComments: 'HTML 注释', previewCommentsShow: '显示', previewCommentsHide: '隐藏',
     previewCodeColors: '代码着色', previewCodeColorsOn: '开', previewCodeColorsOff: '关',
     previewPreset: '预设', previewPresetInfo: '预设说明', previewWidth: '正文宽度', previewWidthResponsive: '适配面板', previewWidthReference: '参考宽度',
+    previewPresetManage: '管理自定义预设', previewOnlyLight: '此预设仅支持浅色主题', previewOnlyDark: '此预设仅支持深色主题',
+    previewThemeSupport: '主题支持', previewCurrentTheme: '当前主题', previewControlEditable: '可调整', previewControlFixed: '固定',
+    previewControlStyles: '由样式决定', previewControlUnsupported: '不支持调整', previewPresetError: '预设错误',
+    previewFixedCodeColorsOn: '此预设固定开启代码着色', previewFixedCodeColorsOff: '此预设固定关闭代码着色',
+    previewFixedCommentsShow: '此预设固定显示 HTML 注释', previewFixedCommentsHide: '此预设固定隐藏 HTML 注释',
+    exportStyleNote: 'HTML、PDF 沿用当前预览样式。\nWord 使用固定导出样式。',
     previewFontFamily: '预览字体',
     previewFontPlaceholder: 'VS Code 编辑器字体',
     previewFontUnavailable: '无法获取本地字体列表；请手动输入字体名称',

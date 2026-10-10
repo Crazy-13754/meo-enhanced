@@ -17,6 +17,7 @@ import { decodePreviewRenderRequest, decodePreviewRenderResponse, type PreviewRe
 import { decodeInitMessage, decodeReadyMessage, type InitMessage, type ReadyMessage } from './readyInit';
 import { decodeResolveWikiLinksRequest, decodeResolvedWikiLinksResponse, type ResolveWikiLinksRequest, type ResolvedWikiLinksResponse } from './wikiLinkResolution';
 import { decodeReadingPositionChangedMessage, type ReadingPositionChangedMessage } from './readingPosition';
+import { decodePreviewPresetsChanged, type PreviewPresetsChanged } from './previewPresets';
 
 import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageStorageChangedEvent, type ImageLocationRequest, type ImageLocationResponse, type ImageStorageChangedEvent } from './imageStorage';
 
@@ -40,6 +41,7 @@ export type WebviewToHostMessage =
   | ExportSnapshotResponse;
 
 export type HostToWebviewMessage =
+  | PreviewPresetsChanged
   | ImageLocationResponse
   | ImageStorageChangedEvent
   | EditorServiceResponse
@@ -83,7 +85,8 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
 }
 
 export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage | null {
-  return decodeImageLocationResponse(value)
+  return decodePreviewPresetsChanged(value)
+    ?? decodeImageLocationResponse(value)
     ?? decodeImageStorageChangedEvent(value)
     ?? decodeEditorServiceResponse(value)
     ?? decodeInitMessage(value)

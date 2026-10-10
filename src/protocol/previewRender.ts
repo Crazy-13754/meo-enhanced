@@ -18,6 +18,7 @@ export type PreviewRenderRequest = {
   readonly uiLanguage: UiLanguage;
   readonly environment: PreviewStyleEnvironment;
   readonly preset?: PreviewPresetId;
+  readonly presetRevision?: string;
   readonly contentWidth?: PreviewContentWidth;
 };
 
@@ -26,6 +27,7 @@ export type PreviewRenderValue = {
   readonly hasMermaid: boolean;
   readonly styles: PreviewStyles;
   readonly preset?: PreviewPresetId;
+  readonly presetRevision?: string;
 };
 
 export type PreviewRenderResolution = RequestResult<PreviewRenderValue>;
@@ -51,6 +53,7 @@ export function decodePreviewRenderRequest(value: unknown): PreviewRenderRequest
     || typeof value.text !== 'string'
     || !isUiLanguage(value.uiLanguage)
     || (value.preset !== undefined && !isPreviewPresetId(value.preset))
+    || (value.presetRevision !== undefined && (typeof value.presetRevision !== 'string' || !/^[a-f0-9]{64}$/.test(value.presetRevision)))
     || (value.contentWidth !== undefined && value.contentWidth !== 'responsive' && value.contentWidth !== 'reference')) return null;
   const environment = decodeEditorStyleEnvironment(value.environment);
   if (environment === null) return null;
@@ -60,6 +63,7 @@ export function decodePreviewRenderRequest(value: unknown): PreviewRenderRequest
     text: value.text,
     uiLanguage: value.uiLanguage,
     environment,
+    ...(value.presetRevision === undefined ? {} : { presetRevision: value.presetRevision as string }),
     ...(value.preset === undefined ? {} : { preset: value.preset as PreviewPresetId }),
     ...(value.contentWidth === undefined ? {} : { contentWidth: value.contentWidth as PreviewContentWidth })
   };
@@ -74,11 +78,13 @@ export function decodePreviewRenderResponse(value: unknown): PreviewRenderRespon
           || !isRecord(candidate.styles)
           || typeof candidate.styles.dark !== 'string'
           || typeof candidate.styles.light !== 'string'
-          || (candidate.preset !== undefined && !isPreviewPresetId(candidate.preset))) return null;
+          || (candidate.preset !== undefined && !isPreviewPresetId(candidate.preset))
+          || (candidate.presetRevision !== undefined && (typeof candidate.presetRevision !== 'string' || !/^[a-f0-9]{64}$/.test(candidate.presetRevision)))) return null;
         return {
           html: candidate.html,
           hasMermaid: candidate.hasMermaid,
           styles: { dark: candidate.styles.dark, light: candidate.styles.light },
+          ...(candidate.presetRevision === undefined ? {} : { presetRevision: candidate.presetRevision as string }),
           ...(candidate.preset === undefined ? {} : { preset: candidate.preset as PreviewPresetId })
         };
       })

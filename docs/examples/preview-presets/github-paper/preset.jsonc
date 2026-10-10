@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../../schemas/custom-preview-preset.schema.json",
+  "schemaVersion": 1,
+  "id": "github-paper",
+  "name": "GitHub 纸页",
+  "description": "采用 GitHub 外观的浅色阅读样式，可切换 HTML 注释，固定开启代码着色。",
+  "base": "github-readme",
+  "controls": {
+    "htmlComments": { "mode": "editable" },
+    "codeColoring": { "mode": "fixed", "value": true }
+  },
+  "themes": {
+    "light": { "css": "light.css" }
+  }
+}

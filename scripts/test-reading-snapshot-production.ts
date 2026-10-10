@@ -113,8 +113,8 @@ for (const target of ['html', 'pdf'] as const) {
   });
   assert.match(rendered.htmlDocument, /editor one current/);
   assert.doesNotMatch(rendered.htmlDocument, /later edit/);
-  assert.match(rendered.htmlDocument, /--meo-bg:\s*#ffffff/);
-  assert.doesNotMatch(rendered.htmlDocument, /#101010/);
+  assert.match(rendered.htmlDocument, target === 'docx' ? /--meo-bg:\s*#ffffff/ : /--meo-bg:\s*#101010/);
+  if (target === 'docx') assert.doesNotMatch(rendered.htmlDocument, /#101010/);
   assert.match(rendered.htmlDocument, /MEO Synthetic Sans/);
   assert.doesNotMatch(rendered.htmlDocument, /MEO Synthetic Serif/);
 }

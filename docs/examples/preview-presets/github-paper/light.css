@@ -1,0 +1,6 @@
+:root { --meo-bg: #ffffff; --meo-fg: #242424; }
+.meo-export-doc { max-width: 1000px; font-size: 17px; line-height: 1.7; }
+.meo-export-doc h1 { font-size: 32px; }
+.meo-export-doc h2 { font-size: 26px; }
+.meo-export-doc pre { font-size: 13px; padding: 12px 16px; }
+.meo-export-doc .meo-export-toc-link { color: #0969da; }

@@ -20,6 +20,7 @@ export type ReadingSnapshot = {
   readonly environment: EditorStyleEnvironment;
   readonly codeTheme?: CodeThemeDto;
   readonly preset?: PreviewPresetId;
+  readonly presetRevision?: string;
 };
 
 export type ExportSnapshotValue = ReadingSnapshot;
@@ -56,6 +57,7 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
         const environment = decodeEditorStyleEnvironment(candidate.environment);
         if (environment === null) return null;
         if (candidate.preset !== undefined && !isPreviewPresetId(candidate.preset)) return null;
+        if (candidate.presetRevision !== undefined && (typeof candidate.presetRevision !== 'string' || !/^[a-f0-9]{64}$/.test(candidate.presetRevision))) return null;
         const codeTheme = decodeCodeTheme(candidate.codeTheme);
         if (codeTheme === false || codeTheme === null) return null;
         return {
@@ -65,6 +67,7 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
           uiLanguage: candidate.uiLanguage,
           environment,
           ...(candidate.preset ? { preset: candidate.preset } : {}),
+          ...(candidate.presetRevision ? { presetRevision: candidate.presetRevision } : {}),
           ...(codeTheme ? { codeTheme } : {})
         };
       })

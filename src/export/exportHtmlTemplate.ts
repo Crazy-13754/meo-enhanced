@@ -11,6 +11,8 @@ export type BuildExportHtmlDocumentOptions = {
   katexStylesHref?: string;
   baseHref?: string;
   githubStyle?: boolean;
+  /** Only the built-in GitHub renderer fixes diagram colors; custom CSS supplies its own palette. */
+  githubMermaid?: boolean;
 };
 
 export function buildExportHtmlDocument(options: BuildExportHtmlDocumentOptions): string {
@@ -47,7 +49,7 @@ ${options.bodyHtml}
     ${mermaidScriptTag}
     ${mathViewportScriptTag}
     <script data-meo-export-runtime>
-${buildRuntimeScript(options.hasMermaid, options.githubStyle === true)}
+${buildRuntimeScript(options.hasMermaid, (options.githubMermaid ?? options.githubStyle) === true)}
     </script>
   </body>
 </html>`;

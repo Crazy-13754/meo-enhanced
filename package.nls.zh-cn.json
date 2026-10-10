@@ -6,6 +6,7 @@
   "command.exportHtml": "MEO Enhanced：导出为 HTML",
   "command.exportPdf": "MEO Enhanced：导出为 PDF",
   "command.exportDocx": "MEO Enhanced：导出为 Word 文档",
+  "command.managePreviewPresets": "MEO Enhanced：管理自定义预览预设",
   "config.language.auto": "跟随 VS Code 显示语言；仅 zh-CN 使用简体中文，其他语言使用英语。",
   "config.language.en": "使用英语。",
   "config.language.zhCN": "使用简体中文。",

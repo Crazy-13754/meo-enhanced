@@ -137,12 +137,16 @@ type PanelSessionControllerParams = {
   readingPosition: ReadingPositionPort;
   saveDocument: () => Promise<boolean>;
   onExportDocument: (session: PanelSession, options: ExportOptions) => Promise<void>;
+  getCustomPreviewPresets?: () => readonly import('../foundation/previewPresets').PreviewPresetDefinition[];
+  getPreviewPresetDiagnostics?: () => readonly import('../foundation/previewPresets').PreviewPresetDiagnostic[];
+  managePreviewPresets?: () => Promise<void>;
   renderPreview: (options: {
     markdownText: string;
     sourceDocumentPath: string;
     uiLanguage: InitMessage['uiLanguage'];
     styleEnvironment?: ExportStyleEnvironment;
     preset?: import('../foundation/previewPresets').PreviewPresetId;
+    presetRevision?: string;
     contentWidth?: import('../foundation/previewPresets').PreviewContentWidth;
   }) => Promise<PreviewRenderResult>;
   getFindOptions: () => FindOptions;
@@ -436,6 +440,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       : null;
     const message: InitMessage = {
       type: 'init',
+      customPreviewPresets: params.getCustomPreviewPresets?.() ?? [],
+      previewPresetDiagnostics: params.getPreviewPresetDiagnostics?.() ?? [],
       documentId: documentKey,
       text: initialText,
       version: document.version,
@@ -625,6 +631,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     switch (raw.type) {
+      case 'managePreviewPresets':
+        await params.managePreviewPresets?.();
+        return;
       case 'imageLocation':
         await postToWebview(params.imageStorage ? await params.imageStorage.handle(raw, documentUri.toString()) : {
           type: 'imageLocationResult', requestId: raw.requestId,
@@ -871,6 +880,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
             uiLanguage: raw.uiLanguage,
             styleEnvironment: raw.environment,
             preset: raw.preset,
+            presetRevision: raw.presetRevision,
             contentWidth: raw.contentWidth
           });
           response = {

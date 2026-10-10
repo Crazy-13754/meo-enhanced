@@ -35,7 +35,8 @@
 | 修改审阅 | 基线选择、增删改标记、修改前内容、概览与定位一致 | [一致性](../scripts/test-changes-review-consistency.ts)、[基线](../scripts/test-diff-baseline-selection.ts)、[概览](../scripts/test-git-diff-overview-ruler.ts) |
 | 保存、自动保存、外部修改、重载 | 不覆盖新修订；先提交活动单元格；失败能重试；恢复保留草稿 | [保存并发](../scripts/test-document-auto-save-concurrency.ts)、[原生保存表格](../scripts/test-native-save-table-flush.ts)、[重载重试](../scripts/test-document-reload-retry-browser.ts)、[同步恢复](../scripts/test-document-sync-recovery.ts)；最终包另验实际 VS Code 写盘 |
 | 通知、重试、另存副本 | 状态与下一步动作一致；副本内容正确；当前文档不被替换；反馈按钮可执行 | [通知](../scripts/test-editor-notice.ts)、[副本适配器](../scripts/test-vscode-document-copy-adapter.ts)、[副本反馈](../scripts/test-vscode-document-copy-feedback.ts)、[传输](../scripts/test-document-copy-transport.ts)；系统对话框另验 |
-| HTML / PDF / Word 导出与目录 | 导出内容、浅色外观、资源、高亮、公式、分页与目录正确；失败可重试 | [导出外观](../scripts/test-export-appearance.ts)、[含目录导出](../scripts/test-export-table-of-contents.ts)、[PDF 布局](../scripts/test-pdf-mermaid-layout.ts)、[Word 生成](../scripts/test-docx-export-runtime.ts)、[实际 PDF / Word 文件生成](../scripts/test-docx-export-browser.ts)；PDF 文件检查验证格式完整性，逐页视觉检查和原生保存对话框另验 |
+| 自定义 Preview 预设 | JSONC/CSS 导入、整套文件夹保存与更新、移除；CSS 实际换行；旧 JSON 迁移；切换失败回滚与启动恢复；单主题禁用切换并说明；双主题切换；仅继承样式；注释与代码着色独立可切换或固定；固定开关隐藏；内置和自定义预设统一说明字段与分隔线；导入、加载、渲染错误状态及恢复；切回后恢复用户设置；CSS 与编辑界面隔离；导出冻结样式版本 | [配置与存储](../scripts/test-custom-preview-presets.ts)、[VS Code 存储适配器](../scripts/test-vscode-preview-presets.ts)、[生产预览与实际 PDF](../scripts/test-custom-preview-presets-browser.ts)；实际原生菜单及跨窗口重载另按 [配置指南](custom-preview-presets.md) 检查 |
+| HTML / PDF / Word 导出与目录 | HTML/PDF 沿用当前预览预设和实际明暗主题，Word 使用固定样式；内容、资源、高亮、公式、分页与目录正确；失败可重试 | [导出外观](../scripts/test-export-appearance.ts)、[含目录导出](../scripts/test-export-table-of-contents.ts)、[PDF 布局](../scripts/test-pdf-mermaid-layout.ts)、[Word 生成](../scripts/test-docx-export-runtime.ts)、[实际 PDF / Word 文件生成](../scripts/test-docx-export-browser.ts)；PDF 文件检查验证格式完整性，逐页视觉检查和原生保存对话框另验 |
 | 长文档 | 固定文档、明确采样类别与未覆盖目标；编辑和历史不跳；完整阅读确实到达两端 | 发布范围选用受保护的 endurance / large-document 入口，不能把采样编辑称为每个位置都已测试 |
 
 ## 设置、输入辅助与快捷键
@@ -75,5 +76,6 @@
 | `meoEnhanced.open`、`meoEnhanced.toggleEditor` | 文件与编辑器目标正确、过期导航无效，[Host 导航](../scripts/test-host-view-navigation-lifecycle.ts)、[VS Code 导航适配器](../scripts/test-vscode-view-navigation-adapter.ts)；安装包另验编辑器关联 |
 | `meoEnhanced.toggleMode` | Live / Source 切换实际可用，Preview 经界面进入，[模式应用](../scripts/test-editor-mode-application.ts)、[生产模式运行](../scripts/test-editor-mode-runtime-browser.ts)；原生命令另验 |
 | `meoEnhanced.exportHtml`、`meoEnhanced.exportPdf`、`meoEnhanced.exportDocx` | 正确格式、取消、成功与失败反馈，[导出反馈](../scripts/test-vscode-export-feedback.ts)、[导出适配器](../scripts/test-export-webview-adapter.ts)；实际保存与文件打开另验 |
+| `meoEnhanced.managePreviewPresets` | 导入 / 更新、分享文件导出、移除、打开存储目录与按界面语言打开配置指南；取消不写入，[存储与原生对话框合同](../scripts/test-vscode-preview-presets.ts)；真实菜单另验 |
 
 发布报告必须分别列出：自动化结果、最终安装包验证、未覆盖的原生操作和已知问题。OS 焦点、原生菜单、系统剪贴板、文件对话框、支持的最低 VS Code 版本不能从无头浏览器结果推断为通过。若用户报告基础功能回归，候选立即失去验收结论；保存原证据，建立失败用例后重新检查受影响范围。

@@ -1168,6 +1168,24 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   background: var(--meo-ui-vscode-toolbar-hoverBackground);
 }
 
+.preview-preset-info.has-error { color: var(--vscode-errorForeground, #ff6b6b); }
+
+.preview-export-note {
+  max-width: 248px;
+  margin-top: 4px;
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--vscode-panel-border);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-line;
+  color: var(--vscode-descriptionForeground);
+}
+
+.preview-appearance-control .preview-setting-button:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
 @media (max-width: 960px) {
   .preview-format-group {
     gap: 4px;
@@ -2822,6 +2840,25 @@ html[data-editor-appearance='dark'] .meo-tooltip {
 .meo-tooltip--window { z-index: var(--meo-layer-window-popover); }
 .meo-tooltip--wrap { max-width: min(320px, calc(100vw - 8px)); white-space: normal; text-align: left; }
 .meo-tooltip--link { justify-content: flex-start; }
+
+.meo-tooltip--details {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: min(240px, calc(100vw - 8px));
+  gap: 0;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+.meo-tooltip-details[hidden], .meo-tooltip-error[hidden] { display: none; }
+.meo-tooltip--details hr { margin: 8px 0; border: 0; border-top: 1px solid rgba(255, 255, 255, .2); }
+.meo-tooltip-details dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 20px; margin: 0; }
+.meo-tooltip-details dt { font-weight: 400; }
+.meo-tooltip-details dd { margin: 0; text-align: right; }
+.meo-tooltip-error { display: flex; flex-direction: column; gap: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.meo-tooltip-error strong { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.meo-tooltip-error-icon { flex: none; color: #ff6b6b; }
 /* Equal top, bottom and end insets keep the nested shortcut corners concentric. */
 .meo-tooltip--shortcut { padding-right: 4px; }
 /* Center font metrics instead of the line box's extra leading. Keep Latin descenders. */

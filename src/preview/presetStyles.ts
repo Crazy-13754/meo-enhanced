@@ -1,14 +1,28 @@
 import { buildPreviewStyles, type ExportStyleEnvironment } from '../export/exportStyles';
-import { getPreviewPreset, type PreviewPresetId, type PreviewContentWidth } from '../foundation/previewPresets';
+import { getPreviewPreset, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
 import { getGithubMarkdownStyles } from './presets/github-readme/styles.js';
 
 export function buildPresetPreviewStyles(
   preset: PreviewPresetId,
   environment: ExportStyleEnvironment,
   appearance: 'light' | 'dark',
-  _contentWidth: PreviewContentWidth = 'responsive'
+  _contentWidth: PreviewContentWidth = 'responsive',
+  definition: PreviewPresetDefinition = getPreviewPreset(preset)
 ): string {
-  if (getPreviewPreset(preset).renderer === 'meo') return buildPreviewStyles(environment, appearance);
+  if (definition.custom) {
+    const custom = definition.custom;
+    const effective = custom.css[appearance] === undefined ? definition.defaults.appearance as 'light' | 'dark' : appearance;
+    return `${buildPresetPreviewStyles(custom.base, environment, effective, _contentWidth)}
+body, .meo-export-page, .meo-export-doc { background: var(--meo-bg); }
+.meo-export-doc { color: var(--meo-fg); }
+html { scrollbar-color: color-mix(in srgb, var(--meo-fg) 38%, transparent) var(--meo-bg); }
+html::-webkit-scrollbar-track, body::-webkit-scrollbar-track { background: var(--meo-bg); }
+${custom.css.common ?? ''}
+${custom.css[effective] ?? ''}
+html[data-meo-export-target='pdf'] .meo-export-doc { box-sizing: border-box; width: 100%; max-width: none; }
+`;
+  }
+  if (definition.renderer === 'meo') return buildPreviewStyles(environment, appearance);
   const background = appearance === 'light' ? '#ffffff' : '#0d1117';
   const foreground = appearance === 'light' ? '#1f2328' : '#f0f6fc';
   return `${getGithubMarkdownStyles(appearance)}

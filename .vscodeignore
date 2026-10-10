@@ -22,6 +22,9 @@ scripts/**
 releases/**
 tests/**
 docs/**
+!docs/custom-preview-presets.md
+!docs/custom-preview-presets.en.md
+!docs/examples/preview-presets/**
 assets/**
 .local/**
 .claude/
