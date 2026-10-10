@@ -222,6 +222,42 @@ try {
           const input = document.querySelector<HTMLTextAreaElement>('thead textarea')!;
           return {focused: document.activeElement === input, start: input.selectionStart, end: input.selectionEnd};
         }), {focused: true, start: 0, end: 4}, 'searching another cell must return to that cell instead of the original one');
+        for (const [query, selector] of [['Cell', 'thead textarea'], ['Table selection', 'tbody textarea']]) {
+          const immediateSearch = await frame.evaluate(({query, selector}) => {
+            const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+            // Keep input and Find in one task so the derived input refresh cannot
+            // finish first and conceal an outdated match cache or cell range.
+            view.focus();
+            view.dispatch({changes: {from: 0, insert: 'Added text\n\n'}, selection: {anchor: 12}, userEvent: 'input.type'});
+            document.querySelector<HTMLButtonElement>('[data-action="find"]')!.click();
+            const input = document.querySelector<HTMLInputElement>('.find-row .find-input')!;
+            input.value = query; input.dispatchEvent(new Event('input', {bubbles: true}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            const cell = document.querySelector<HTMLTextAreaElement>(selector)!;
+            const selection = view.state.selection.main;
+            return {focused: document.activeElement === cell, start: cell.selectionStart, end: cell.selectionEnd,
+              selected: view.state.doc.sliceString(selection.from, selection.to)};
+          }, {query, selector});
+          assert.deepEqual(immediateSearch, {focused: true, start: 0, end: query.length, selected: query},
+            'Find immediately after typing must use the accepted document and current table cell');
+          await frame.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          assert.equal(await frame.$eval(selector, cell => document.activeElement === cell), true,
+            'the derived refresh must retain the searched cell focus');
+        }
+        const unchangedQuery = await frame.evaluate(() => {
+          const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+          document.querySelector<HTMLButtonElement>('[data-action="find"]')!.click();
+          const input = document.querySelector<HTMLInputElement>('.find-row .find-input')!;
+          input.value = 'new search match'; input.dispatchEvent(new Event('input', {bubbles: true}));
+          view.dispatch({changes: {from: 0, insert: 'new search match\n\n'}, selection: {anchor: 0}, userEvent: 'input.type'});
+          input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+          input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+          const selection = view.state.selection.main;
+          return {from: selection.from, to: selection.to, focused: view.hasFocus};
+        });
+        assert.deepEqual(unchangedQuery, {from: 0, to: 'new search match'.length, focused: true},
+          'an unchanged query must find a newly typed match before the derived refresh');
       }
       assert.deepEqual(errors, [], `${mode}: focus handlers must not throw`);
     } finally { await page.close(); }

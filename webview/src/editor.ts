@@ -316,7 +316,9 @@ const searchMatchField = StateField.define<SearchMatchFieldValue>({
       }
     }
 
-    if (shouldDeferLiveInputDerivedWork(tr)) {
+    // A new Find query must read the accepted document even if typing has not
+    // flushed its decorations yet. Other input consumers retain their schedule.
+    if (!changedQuery && shouldDeferLiveInputDerivedWork(tr)) {
       if (!tr.docChanged) return value;
       const matches = value.matches.map((match) => ({
         start: tr.changes.mapPos(match.start, 1),
@@ -1104,6 +1106,9 @@ export function createEditor({
     if (view.state.selection.ranges.length !== 1) return false;
     const from = Math.min(selection.anchor, selection.head);
     const to = Math.max(selection.anchor, selection.head);
+    // The queued position projection may not have run since the last input.
+    // Native selection must use current cell ranges before Find returns focus.
+    refreshMountedTablePositions(view, currentDiagnostics, view.state.field(gitDiffLineFlagsField, false));
     const lineNumber = view.state.doc.lineAt(from).number;
     if (view.state.doc.lineAt(to).number !== lineNumber) return false;
     for (const input of view.dom.querySelectorAll<HTMLTextAreaElement>(
@@ -2045,7 +2050,8 @@ export function createEditor({
     if (
       activeQuery.text === query &&
       activeQuery.wholeWord === wholeWord &&
-      activeQuery.caseSensitive === caseSensitive
+      activeQuery.caseSensitive === caseSensitive &&
+      !isLiveInputDerivedWorkPending(view.state)
     ) {
       return view.state.field(searchMatchField).matches;
     }
