@@ -821,7 +821,9 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
   const page = await open(browser, mode);
   const input = await page.createCDPSession();
   try {
-    await page.$eval('.editor-root', (root) => (root as HTMLElement).style.setProperty('--meo-caret-color', '#ff00ff'));
+    // Source has its own native-theme caret role; mark the active mode's real
+    // caret for the pixel witness without bypassing its activation behavior.
+    await page.$eval('.editor-root', (root, mode) => (root as HTMLElement).style.setProperty(mode === 'source' ? '--meo-source-caret' : '--meo-caret-color', '#ff00ff'), mode);
     await page.click('.cm-line:nth-child(3)');
     const geometry = await page.evaluate(() => {
       const old = document.getSelection()!.getRangeAt(0).getBoundingClientRect();

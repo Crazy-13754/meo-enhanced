@@ -1632,7 +1632,7 @@ const mermaidDiagramPresentationFactory = createMermaidDiagramPresentationFactor
   }
 });
 let resolveEditorAppearanceForPreview: () => 'light' | 'dark' = () => 'dark';
-const codePaletteAdapter = createCodePaletteWebviewAdapter({ setShikiTheme });
+const codePaletteAdapter = createCodePaletteWebviewAdapter({ setShikiTheme, setSourceDocumentTheme: theme => setShikiTheme(theme, 'source') });
 let resolveCodePaletteForPreview = (appearance: 'light' | 'dark') => (
   codePaletteAdapter.resolve(undefined, appearance).preview
 );

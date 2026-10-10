@@ -3,6 +3,8 @@ export type CodeThemeDto = {
   readonly type: 'light' | 'dark';
   readonly colors: Record<string, string>;
   readonly tokenColors: unknown[];
+  readonly sourceColors?: Record<string, string>;
+  readonly sourceTokenColors?: unknown[];
 };
 
 export type HostConfigurationEvent =
@@ -38,7 +40,10 @@ export function decodeCodeTheme(value: unknown): CodeThemeDto | null | undefined
     && isRecord(value.colors)
     && Object.values(value.colors).every((color) => typeof color === 'string')
     && Array.isArray(value.tokenColors)
-    && value.tokenColors.every(isJsonValue) ? value as CodeThemeDto : false;
+    && value.tokenColors.every(isJsonValue)
+    && (value.sourceColors === undefined || isRecord(value.sourceColors) && Object.values(value.sourceColors).every(color => typeof color === 'string'))
+    && (value.sourceTokenColors === undefined || Array.isArray(value.sourceTokenColors) && value.sourceTokenColors.every(isJsonValue))
+    ? value as CodeThemeDto : false;
 }
 
 export function decodeHostConfigurationEvent(value: unknown): HostConfigurationEvent | null {

@@ -2,12 +2,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { projectRawThemeAppearance } from '../foundation/vscodeThemeTransition';
+import { resolveSourceThemeCustomizations } from '../foundation/sourceThemeCustomizations';
 
 export type RawVscodeTheme = {
   name: string;
   type: 'light' | 'dark';
   colors: Record<string, string>;
   tokenColors: unknown[];
+  sourceColors?: Record<string, string>;
+  sourceTokenColors?: unknown[];
 };
 
 type RawTheme = {
@@ -151,17 +154,23 @@ export function getActiveVscodeRawTheme(
   const themeLabel = vscode.workspace.getConfiguration('workbench').get<string>('colorTheme');
   const fallbackType = fallbackKind === vscode.ColorThemeKind.Light
     || fallbackKind === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark';
-  if (!themeLabel) return { name: '', type: fallbackType, colors: {}, tokenColors: [] };
+  const customize = (theme: RawVscodeTheme): RawVscodeTheme => ({
+    ...theme,
+    ...resolveSourceThemeCustomizations(theme,
+      vscode.workspace.getConfiguration('workbench').get('colorCustomizations', {}),
+      vscode.workspace.getConfiguration('editor').get('tokenColorCustomizations', {}))
+  });
+  if (!themeLabel) return customize({ name: '', type: fallbackType, colors: {}, tokenColors: [] });
   const found = findThemeContribution(themeLabel);
-  if (!found) return { name: themeLabel, type: fallbackType, colors: {}, tokenColors: [] };
+  if (!found) return customize({ name: themeLabel, type: fallbackType, colors: {}, tokenColors: [] });
   const merged = loadMergedTheme(found.path);
   if (!merged.tokenColors.length && !Object.keys(merged.colors).length) {
-    return { name: themeLabel, type: fallbackType, colors: {}, tokenColors: [] };
+    return customize({ name: themeLabel, type: fallbackType, colors: {}, tokenColors: [] });
   }
-  return projectRawThemeAppearance({
+  return customize(projectRawThemeAppearance({
     name: themeLabel,
     type: found.uiTheme === 'vs' || found.uiTheme === 'hc-light' ? 'light' : 'dark',
     colors: merged.colors,
     tokenColors: merged.tokenColors
-  }, fallbackType);
+  }, fallbackType));
 }

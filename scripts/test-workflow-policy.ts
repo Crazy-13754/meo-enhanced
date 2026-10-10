@@ -131,6 +131,8 @@ function targetedCommands(
       ];
     case 'appearance':
       return [
+        packageScript('test:theme-inheritance'),
+        script('scripts/test-source-theme-customizations.ts'),
         script('scripts/test-preview-preset-host.ts'),
         script('scripts/test-preview-presets-browser.ts'),
         script('scripts/test-preview-outline-viewport-browser.ts'),
@@ -259,6 +261,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
         longRunning: false,
         stages: [serialStage('Quick regression contracts', [
           packageScript('typecheck'),
+          script('scripts/test-source-theme-customizations.ts'),
           script('scripts/test-preview-presets.ts'),
           script('scripts/test-editor-shortcuts.ts'),
           script('scripts/test-editing-preferences.ts'),

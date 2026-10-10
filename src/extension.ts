@@ -208,7 +208,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('workbench.colorTheme')) {
+      if (event.affectsConfiguration('workbench.colorTheme')
+        || event.affectsConfiguration('workbench.colorCustomizations')
+        || event.affectsConfiguration('editor.tokenColorCustomizations')) {
         provider.notifyVscodeCodeThemeChanged();
       }
 

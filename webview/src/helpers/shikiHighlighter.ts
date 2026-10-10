@@ -54,7 +54,7 @@ export type ShikiThemeMeta = {
   unexpectedBracket: string;
 };
 
-export type ShikiSurface = 'editor' | 'preview';
+export type ShikiSurface = 'editor' | 'preview' | 'source';
 
 const DEFAULT_BRACKET_COLORS_DARK = ['#FFD700', '#DA70D6', '#179FFF'];
 const DEFAULT_BRACKET_COLORS_LIGHT = ['#0431FA', '#319331', '#7B3814'];
@@ -127,7 +127,8 @@ function createRuntimeState(): ShikiRuntimeState {
 // tokens may be reused only when the full Shiki theme input also matches.
 const runtimeStates: Record<ShikiSurface, ShikiRuntimeState> = {
   editor: createRuntimeState(),
-  preview: createRuntimeState()
+  preview: createRuntimeState(),
+  source: createRuntimeState()
 };
 
 // Only ready token calculations share execution order. Initialization, grammar
@@ -252,8 +253,10 @@ function toShikiTheme(theme: RawVscodeTheme) {
   return {
     name: THEME_NAME,
     type: theme.type,
-    colors: theme.colors ?? {},
-    settings: (theme.tokenColors as any[]) ?? [],
+    // Shiki inserts a default rule into settings while normalizing a theme.
+    // Sharing that array would let Live's defaults overwrite Source user colors.
+    colors: { ...theme.colors },
+    settings: structuredClone(theme.tokenColors ?? []) as any[],
     fg: theme.colors?.['editor.foreground'],
     bg: theme.colors?.['editor.background']
   };
@@ -330,6 +333,8 @@ function getMatchingSurfaceTokens(
   code: string
 ): ShikiTokenLines | null {
   const other = state === runtimeStates.editor ? runtimeStates.preview : runtimeStates.editor;
+  // Source owns customized Markdown syntax; it never borrows Live/Preview tokens.
+  if (state === runtimeStates.source) return null;
   if (
     state.tokenThemeKey === null || state.tokenThemeKey !== other.tokenThemeKey
     || state.highlighterRecord?.reuseLanguage !== lang
@@ -448,6 +453,17 @@ async function tokenizeAndCache(
       finish();
       return;
     }
+    if (state === runtimeStates.source && lang === 'markdown') {
+      const embedded = new Set(['yaml', 'html', 'html-derivative']);
+      for (const fence of code.matchAll(/^[ \t]*(?:>[ \t]*)*(?:`{3,}|~{3,})[ \t]*([^\s`~]+)/gm)) {
+        const language = resolveShikiLang(fence[1]);
+        if (language && language !== 'markdown') embedded.add(language);
+      }
+      for (const language of embedded) {
+        if (!isCurrent()) { finish(); return; }
+        await ensureLang(record, highlighter, language);
+      }
+    }
     // Yielded work must finish (or retire) before another ready block starts.
     // Otherwise matching surfaces duplicate the calculation before either can
     // publish the complete tokens that the other surface is allowed to reuse.
@@ -477,7 +493,7 @@ async function tokenizeAndCache(
       finish();
       return;
     }
-    if (state.tokenCache.size >= CACHE_LIMIT) {
+    if (state.tokenCache.size >= (state === runtimeStates.source ? 2 : CACHE_LIMIT)) {
       const oldest = state.tokenCache.keys().next().value;
       if (oldest !== undefined) state.tokenCache.delete(oldest);
     }

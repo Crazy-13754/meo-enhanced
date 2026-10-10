@@ -1418,7 +1418,7 @@ export function createPreviewController({
       frameDocument.documentElement.style.setProperty(property, window.getComputedStyle(probe)[cssProperty]);
       probe.remove();
     }
-    probe.style.backgroundColor = 'var(--meo-active-line-bg)';
+    probe.style.backgroundColor = 'var(--meo-source-line, var(--meo-active-line-bg))';
     document.body.appendChild(probe);
     const background = window.getComputedStyle(probe).backgroundColor;
     probe.remove();
@@ -1426,7 +1426,7 @@ export function createPreviewController({
       '--meo-preview-source-active-line-bg',
       background
     );
-    probe.style.backgroundColor = 'var(--vscode-list-hoverBackground, var(--meo-active-line-bg))';
+    probe.style.backgroundColor = 'var(--meo-ui-list-hover, var(--meo-active-line-bg))';
     document.body.appendChild(probe);
     const hoverBackground = window.getComputedStyle(probe).backgroundColor;
     probe.remove();

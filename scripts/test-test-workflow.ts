@@ -14,6 +14,10 @@ const quickCommands = flattenTestWorkflowCommands(quick);
 assert.equal(quick.tier, 'quick');
 assert.equal(quick.longRunning, false);
 assert.ok(quickCommands.some((command) => command.args.join(' ') === 'run typecheck'));
+assert.ok(quickCommands.some(command => command.args.includes('scripts/test-source-theme-customizations.ts')));
+assert.ok(flattenTestWorkflowCommands(
+  createTestWorkflowPlan(parseTestWorkflowRequest(['targeted', 'appearance']))
+).some(command => command.args.join(' ') === 'run test:theme-inheritance'));
 assert.ok(!quickCommands.some((command) => command.args.join(' ') === 'run test'));
 assert.doesNotThrow(() => validateTestWorkflowAuthorization(quick, false, false));
 assert.ok(quickCommands.some((command) => (
@@ -233,6 +237,9 @@ const packageJson = JSON.parse(
 ) as { scripts?: Record<string, string> };
 const packageScripts = packageJson.scripts ?? {};
 assert.equal(packageScripts['test:quick'], 'bun scripts/test-workflow.ts quick');
+assert.equal(packageScripts['test:theme-inheritance'], 'bun scripts/test-theme-inheritance.ts');
+assert.match(packageScripts['test:unit'] ?? '', /bun scripts\/test-source-theme-customizations\.ts/);
+assert.match(packageScripts['test:browser'] ?? '', /bun run test:theme-inheritance/);
 assert.equal(packageScripts['test:targeted'], 'bun scripts/test-workflow.ts targeted');
 assert.equal(packageScripts['test:release'], 'bun scripts/test-workflow.ts release');
 assert.equal(packageScripts['test:endurance'], 'bun scripts/test-workflow.ts endurance');

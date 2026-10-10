@@ -3,6 +3,8 @@ export type RawCodeTheme = Readonly<{
   type: 'light' | 'dark';
   colors: Record<string, string>;
   tokenColors: unknown[];
+  sourceColors?: Record<string, string>;
+  sourceTokenColors?: unknown[];
 }>;
 
 export type PreviewCodePalette = Readonly<{
@@ -27,6 +29,7 @@ export type PreviewCodePalette = Readonly<{
 export type FinalCodePalette = Readonly<{
   theme: RawCodeTheme | null | undefined;
   sourceTheme: RawCodeTheme;
+  sourceDocumentTheme?: RawCodeTheme;
   sourceTokens: Readonly<Record<string, string>>;
   sourceHeadingFontWeight: '400' | '700';
   preview: PreviewCodePalette;

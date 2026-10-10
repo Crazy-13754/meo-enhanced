@@ -92,8 +92,8 @@ export function createAppearanceWebviewAdapter(
         const nextAppearance = resolveAppearance();
         appearance = nextAppearance;
         dependencies.applyWithEditorViewportPreserved(() => {
-          // VS Code rewrites its CSS variables before this event. Reapply the fixed
-          // baseline even when a manual appearance itself did not change.
+          // VS Code updates native variables before this event. Reapply content
+          // isolation and UI roles even when a manual appearance did not change.
           dependencies.applyAppearance(appearance);
           dependencies.refreshMermaidTheme();
           applyCodePalette();
