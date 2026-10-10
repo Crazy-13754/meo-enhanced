@@ -240,7 +240,9 @@ export function attachLatexMathViewport(
         return false;
       }
       canvas.style.zoom = `${residualScale}`;
-      if (reflow) canvas.style.width = `${100 / residualScale}%`;
+      // CSS zoom already resolves percentage widths against the visual
+      // containing block. Compensating again enlarges the centered canvas.
+      if (reflow) canvas.style.width = '100%';
 
       let candidateHeight: string | null = null;
       if (layout.kind === 'block' && !interactive) {

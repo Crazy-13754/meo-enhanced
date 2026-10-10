@@ -94,7 +94,7 @@ try {
     layout.italicCodeStyle !== 'italic' ||
     !layout.deletedCodeDecoration.includes('line-through') ||
     layout.codeBlockRadius !== '6px' ||
-    layout.mathBlockRadius !== '6px' ||
+    layout.mathBlockRadius !== '0px' ||
     layout.tableBorderAlpha !== 255
   ) {
     throw new Error(`Unexpected Preview reading layout: ${JSON.stringify(layout)}`);

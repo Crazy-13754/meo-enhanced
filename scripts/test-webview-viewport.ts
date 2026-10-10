@@ -6,6 +6,10 @@ import { launchTestBrowser } from './browser-test-helpers';
 import { darkBuiltInVisuals } from '../src/shared/builtInVisualBaseline';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
+// The production Preview copies the host KaTeX stylesheet. Reflow requires its
+// display and base boxes, so use the same stylesheet in this browser fixture.
+const katexFixtureHref = `data:text/css;base64,${Buffer.from(fs.readFileSync(path.resolve('node_modules/katex/dist/katex.min.css'), 'utf8')).toString('base64')}`;
+
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-webview-viewport-'));
 
 async function waitForFrames(page: Page, count = 8): Promise<void> {
@@ -167,6 +171,8 @@ async function main() {
     </div></body>`);
     await page.addStyleTag({ content: ':root{--vscode-editor-background:#fff;--vscode-editor-foreground:#24292f;--vscode-sideBar-background:#f6f8fa;--vscode-panel-border:#d0d7de;--vscode-toolbar-hoverBackground:#eaeef2} html,body,#app{height:100%;margin:0} #app{display:flex;flex-direction:column}' });
     await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
+    await page.addStyleTag({ url: katexFixtureHref });
+    await page.evaluate(href => { document.body.dataset.meoKatexSrc = href; }, katexFixtureHref);
     const previewMermaidRuntimeSrc = `data:text/javascript;base64,${Buffer.from(`
       window.__mermaidInitializeConfigs = [];
       window.__mermaidConfig = null;
@@ -762,7 +768,7 @@ async function main() {
       checkIconCount: 0,
       warningIconCount: 1,
       circleWarningIconCount: 1,
-      warningColor: 'rgb(241, 76, 76)',
+      warningColor: 'rgb(204, 167, 0)',
       headerText: '无法比较·非 Git 仓库',
       triggerText: '无法比较'
     })) {
@@ -1013,7 +1019,7 @@ async function main() {
     const darkAppearanceState = await page.evaluate(() => ({
       heading: document.documentElement.style.getPropertyValue('--meo-semantic-headingForeground'),
       searchBackground: document.documentElement.style.getPropertyValue('--meo-semantic-searchMatchBackground'),
-      sidebar: document.documentElement.style.getPropertyValue('--vscode-sideBar-background')
+      sidebar: document.documentElement.style.getPropertyValue('--meo-content-sideBar-background')
     }));
     await page.click('.more-tools-wrapper > .format-button');
     await page.click('.editor-appearance-button[data-editor-appearance="light"]');
@@ -1088,7 +1094,7 @@ async function main() {
     const lightAfterHostThemeChange = await page.evaluate(() => ({
       appearance: document.documentElement.dataset.editorAppearance,
       background: getComputedStyle(document.body).backgroundColor,
-      sidebar: document.documentElement.style.getPropertyValue('--vscode-sideBar-background'),
+      sidebar: document.documentElement.style.getPropertyValue('--meo-content-sideBar-background'),
       heading: document.documentElement.style.getPropertyValue('--meo-semantic-headingForeground')
     }));
     if (JSON.stringify(lightAfterHostThemeChange) !== JSON.stringify({
@@ -1335,7 +1341,7 @@ async function main() {
     await waitForFrames(page, 2);
     const restoredDarkAppearanceState = await page.evaluate(() => ({
       appearance: document.documentElement.dataset.editorAppearance,
-      sidebar: document.documentElement.style.getPropertyValue('--vscode-sideBar-background'),
+      sidebar: document.documentElement.style.getPropertyValue('--meo-content-sideBar-background'),
       active: document.querySelector<HTMLElement>('.editor-appearance-button.is-active')?.dataset.editorAppearance,
       messages: ((window as typeof window & {
         __hostMessages?: Array<{ type?: string; appearance?: string }>;
@@ -1365,7 +1371,7 @@ async function main() {
     const darkAfterHostThemeChange = await page.evaluate(() => ({
       appearance: document.documentElement.dataset.editorAppearance,
       background: getComputedStyle(document.body).backgroundColor,
-      sidebar: document.documentElement.style.getPropertyValue('--vscode-sideBar-background')
+      sidebar: document.documentElement.style.getPropertyValue('--meo-content-sideBar-background')
     }));
     if (JSON.stringify(darkAfterHostThemeChange) !== JSON.stringify({
       appearance: 'dark',
@@ -1632,7 +1638,7 @@ async function main() {
         ))
         || (mode === 'source' && (
           before.spans.at(-1) !== '700'
-          || off.spans.at(-1) !== '400'
+          || off.spans.at(-1) !== '700'
           || restored.spans.at(-1) !== '700'
         ))
       ) {
@@ -1915,7 +1921,7 @@ async function main() {
         type: 'previewRenderResult',
         requestId,
         result: { ok: true, value: {
-          html: '<h1 id="intro" data-source-line="1">Intro</h1><div id="preview-wide-math" class="meo-export-math meo-export-math-display meo-export-math-fenced-display" data-source-line="3" data-source-end-line="5"><span class="katex-display"><span class="katex" style="display:inline-block;white-space:nowrap;font-family:serif;font-size:1.21em">WIDE_FORMULA_ALPHA_BETA_GAMMA_DELTA_EPSILON_ZETA_ETA_THETA_IOTA_KAPPA_LAMBDA_MU_NU_XI_OMICRON_PI_RHO_SIGMA_TAU</span></span></div><p>Footnote reference <a id="fnref-1" href="#fn-1">1</a></p><pre id="collapsed-long-code" data-source-line="15" data-source-end-line="36" style="height:440px">Long code block</pre><pre id="short-code" data-source-line="45" data-source-end-line="56" style="height:240px">Short code block</pre><div style="height:600px"></div><h2 id="short-mermaid" data-source-line="78">Short Mermaid</h2><div style="height:900px"></div><pre id="anchor-133" data-source-line="133" data-source-end-line="222" style="height:900px">Code block</pre><div style="height:600px"></div><h2 id="tall-mermaid" data-source-line="231">Tall Mermaid</h2><div data-source-line="232" data-source-end-line="280" style="height:900px"></div><div class="meo-export-mermaid" data-source-b64="Zmxvd2NoYXJ0IExSClN0YXJ0IC0tPiBEb25l" style="display:none"></div><ol><li id="fn-1">Footnote content <a href="#fnref-1">Back</a></li></ol>',
+          html: '<h1 id="intro" data-source-line="1">Intro</h1><div id="preview-wide-math" class="meo-export-math meo-export-math-display meo-export-math-fenced-display" data-source-line="3" data-source-end-line="5"><span class="katex-display"><span class="katex"><span class="katex-html"><span class="base" style="display:inline-block;white-space:nowrap;font-family:serif;font-size:1.21em">WIDE_FORMULA_ALPHA_BETA_GAMMA_DELTA_EPSILON_ZETA_ETA_THETA_IOTA_KAPPA_LAMBDA_MU_NU_XI_OMICRON_PI_RHO_SIGMA_TAU</span></span></span></span></div><p>Footnote reference <a id="fnref-1" href="#fn-1">1</a></p><pre id="collapsed-long-code" data-source-line="15" data-source-end-line="36" style="height:440px">Long code block</pre><pre id="short-code" data-source-line="45" data-source-end-line="56" style="height:240px">Short code block</pre><div style="height:600px"></div><h2 id="short-mermaid" data-source-line="78">Short Mermaid</h2><div style="height:900px"></div><pre id="anchor-133" data-source-line="133" data-source-end-line="222" style="height:900px">Code block</pre><div style="height:600px"></div><h2 id="tall-mermaid" data-source-line="231">Tall Mermaid</h2><div data-source-line="232" data-source-end-line="280" style="height:900px"></div><div class="meo-export-mermaid" data-source-b64="Zmxvd2NoYXJ0IExSClN0YXJ0IC0tPiBEb25l" style="display:none"></div><ol><li id="fn-1">Footnote content <a href="#fnref-1">Back</a></li></ol>',
           hasMermaid: true,
           styles: {
           dark: 'html,body{margin:0;background:#20252b;color:#fff}.meo-export-doc{padding:20px}',
@@ -2006,13 +2012,16 @@ async function main() {
       const viewport = frameDocument.querySelector<HTMLElement>('#preview-wide-math')!;
       const canvas = viewport.querySelector<HTMLElement>('.meo-latex-math-canvas')!;
       const viewportRect = viewport.getBoundingClientRect();
-      const canvasRect = canvas.getBoundingClientRect();
+      const canvasRect = canvas.querySelector<HTMLElement>('.katex-html > .base')!.getBoundingClientRect();
       const fontScale = Number.parseFloat(canvas.style.fontSize) || 1;
       const residualScale = Number.parseFloat(canvas.style.zoom) || 1;
       const renderedScale = fontScale * residualScale;
       return {
         scale: renderedScale,
         viewportWidth: viewportRect.width,
+        rootLeft: viewportRect.left, rootRight: viewportRect.right,
+        baseLeft: canvasRect.left, baseRight: canvasRect.right,
+        canvasBox: { left: canvas.getBoundingClientRect().left, right: canvas.getBoundingClientRect().right, width: canvas.getBoundingClientRect().width },
         renderedWidth: canvasRect.width,
         naturalWidth: canvasRect.width / renderedScale,
         fits: canvasRect.left >= viewportRect.left - 1 && canvasRect.right <= viewportRect.right + 1,
@@ -2145,6 +2154,7 @@ async function main() {
       const findInput = panel.querySelector<HTMLInputElement>('.find-row:first-child .find-input')!;
       const replaceInput = panel.querySelector<HTMLInputElement>('.find-replace-row .find-input')!;
       return {
+        nativePlaceholder: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-vscode-input-placeholderForeground)'; document.body.appendChild(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })(),
         findPlaceholder: getComputedStyle(findInput, '::placeholder').color,
         replacePlaceholder: getComputedStyle(replaceInput, '::placeholder').color,
         findClear: getComputedStyle(panel.querySelector<HTMLElement>('.find-row:first-child .find-clear-button')!).color,
@@ -2157,7 +2167,7 @@ async function main() {
       (element) => getComputedStyle(element).color
     );
     if (
-      findClearColors.findPlaceholder !== 'rgb(128, 136, 144)' ||
+      findClearColors.findPlaceholder !== findClearColors.nativePlaceholder ||
       findClearColors.replacePlaceholder !== findClearColors.findPlaceholder ||
       findClearColors.findClear !== findClearColors.findPlaceholder ||
       findClearColors.replaceClear !== findClearColors.replacePlaceholder ||

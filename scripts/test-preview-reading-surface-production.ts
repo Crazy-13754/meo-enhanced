@@ -12,6 +12,10 @@ import lightPlus from '@shikijs/themes/light-plus';
 import { codeToTokens } from 'shiki';
 
 const root = path.resolve(import.meta.dirname, '..');
+// The production Preview copies the host KaTeX stylesheet. Reflow requires its
+// display and base boxes, so use the same stylesheet in this browser fixture.
+const katexFixtureHref = `data:text/css;base64,${Buffer.from(fs.readFileSync(path.resolve('node_modules/katex/dist/katex.min.css'), 'utf8')).toString('base64')}`;
+
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-preview-reading-surface-'));
 const sourceDocumentPath = path.join(temp, 'preview-reading-surface.md');
 const expectedDarkPreviewKeyword = hexColorToRgb((await codeToTokens(
@@ -182,14 +186,20 @@ async function assertPreviewMathMeasurementTransaction(page: import('puppeteer-c
         zoom: canvas.style.zoom,
         height: root.style.height
       };
-      const afterCanvasStyleTransaction = (mutate: () => void) => new Promise<void>((resolve) => {
-        const observer = new MutationObserver(() => {
-          observer.disconnect();
-          resolve();
+      const afterCanvasStyleTransaction = async (mutate: () => void) => {
+        // A reflowing formula can commit a no-op style transaction. Observe
+        // layout delivery, then let the viewport's measurement frame finish.
+        await new Promise<void>(resolve => {
+          const observer = new ResizeObserver(() => { observer.disconnect(); resolve(); });
+          observer.observe(root); mutate();
         });
-        observer.observe(canvas, { attributes: true, attributeFilter: ['style'] });
-        mutate();
-      });
+        for (let frame = 0; frame < 3; frame++)
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      };
+      const bases = Array.from(canvas.querySelectorAll<HTMLElement>('.katex-html > .base, .katex-html > .tag'));
+      const baseRects = bases.map(base => base.getBoundingClientRect.bind(base));
+      bases.forEach(base => { const original = base.getBoundingClientRect.bind(base);
+        base.getBoundingClientRect = () => ({ ...original(), width: Number.NaN } as DOMRect); });
 
       canvas.getBoundingClientRect = () => ({ ...originalRect(), width: Number.NaN } as DOMRect);
       Object.defineProperty(canvas, 'scrollWidth', { configurable: true, get: () => Number.NaN });
@@ -203,6 +213,7 @@ async function assertPreviewMathMeasurementTransaction(page: import('puppeteer-c
         invalidCss: /(?:NaN|Infinity)/i.test(`${canvas.style.cssText};${root.style.cssText}`)
       };
 
+      bases.forEach((base, index) => { base.getBoundingClientRect = baseRects[index]!; });
       canvas.getBoundingClientRect = originalRect;
       delete (canvas as HTMLElement & { scrollWidth?: number }).scrollWidth;
       await afterCanvasStyleTransaction(() => {
@@ -241,7 +252,7 @@ async function assertPreviewMathMeasurementTransaction(page: import('puppeteer-c
     };
   });
 
-  for (const candidate of [transaction.display, transaction.inline]) {
+  for (const [kind, candidate] of Object.entries(transaction)) {
     assert.deepEqual(
       { fontSize: candidate.invalid.fontSize, zoom: candidate.invalid.zoom, height: candidate.invalid.height },
       candidate.stable,
@@ -249,9 +260,11 @@ async function assertPreviewMathMeasurementTransaction(page: import('puppeteer-c
     );
     assert.equal(candidate.invalid.invalidCss, false, JSON.stringify(transaction));
     assert.equal(candidate.recovered.fits, true, JSON.stringify(transaction));
-    assert.notEqual(candidate.recovered.fontSize, '1em', JSON.stringify(transaction));
+    if (kind === 'inline') assert.notEqual(candidate.recovered.fontSize, '1em', JSON.stringify(transaction));
+    else assert.equal(candidate.recovered.fontSize, candidate.stable.fontSize, 'Display math should retain its readable reflow font');
     assert.equal(candidate.final.fits, true, JSON.stringify(transaction));
-    assert.notEqual(candidate.final.fontSize, '1em', JSON.stringify(transaction));
+    if (kind === 'inline') assert.notEqual(candidate.final.fontSize, '1em', JSON.stringify(transaction));
+    else assert.equal(candidate.final.fontSize, candidate.stable.fontSize, 'Display math should recover its reflow font');
   }
 }
 
@@ -501,6 +514,8 @@ async function assertPreviewProjectionTransactions(
     await page.goto('http://localhost');
     await page.setRequestInterception(false);
     await page.addStyleTag({ path: path.join(root, 'webview', 'src', 'styles.css') });
+    await page.addStyleTag({ url: katexFixtureHref });
+    await page.evaluate(href => { document.body.dataset.meoKatexSrc = href; }, katexFixtureHref);
     await page.addScriptTag({ content: `
       window.acquireVsCodeApi=()=>({
         postMessage(message) {
@@ -651,6 +666,8 @@ async function assertPreviewProjectionTransactions(
     await page.goto('http://localhost');
     await page.setRequestInterception(false);
     await page.addStyleTag({ path: path.join(root, 'webview', 'src', 'styles.css') });
+    await page.addStyleTag({ url: katexFixtureHref });
+    await page.evaluate(href => { document.body.dataset.meoKatexSrc = href; }, katexFixtureHref);
     await page.addScriptTag({ content: `
       window.acquireVsCodeApi=()=>({
         postMessage(message) {
@@ -840,6 +857,8 @@ async function assertFontEnumerationFallbackMatrix(
       await page.goto('http://localhost');
       await page.setRequestInterception(false);
       await page.addStyleTag({ path: path.join(root, 'webview', 'src', 'styles.css') });
+    await page.addStyleTag({ url: katexFixtureHref });
+    await page.evaluate(href => { document.body.dataset.meoKatexSrc = href; }, katexFixtureHref);
       await page.addScriptTag({ content: `
         window.__meoFallbackFontQueryCount = 0;
         const scenario = ${JSON.stringify(scenario)};
@@ -984,6 +1003,8 @@ async function main(): Promise<void> {
     await page.goto('http://localhost');
     await page.setRequestInterception(false);
     await page.addStyleTag({ path: path.join(root, 'webview', 'src', 'styles.css') });
+    await page.addStyleTag({ url: katexFixtureHref });
+    await page.evaluate(href => { document.body.dataset.meoKatexSrc = href; }, katexFixtureHref);
     await page.addScriptTag({ url: deterministicMermaidRuntimeSrc });
     await page.addScriptTag({ content: `
       window.__meoSyntheticFontQueryCount = 0;
@@ -1178,6 +1199,14 @@ async function main(): Promise<void> {
         panelHidden: panel.hidden,
         panelBackground: panelStyle.backgroundColor,
         triggerBackground: triggerStyle.backgroundColor,
+        nativeDropdownBackground: (() => {
+          const probe = document.createElement('span');
+          probe.style.backgroundColor = 'var(--meo-ui-dropdown-background)';
+          document.body.append(probe);
+          const value = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return value;
+        })(),
         exportMenuBackground: exportMenuStyle.backgroundColor,
         panelRadius: Number.parseFloat(panelStyle.borderRadius),
         panelShadow: panelStyle.boxShadow,
@@ -1186,8 +1215,8 @@ async function main(): Promise<void> {
     });
     assert.equal(dropdownThemeContract.panelBackground, dropdownThemeContract.exportMenuBackground,
       'Preview font dropdown must use the export menu surface');
-    assert.equal(dropdownThemeContract.triggerBackground, dropdownThemeContract.exportMenuBackground,
-      'Preview font trigger must use the export menu surface');
+    assert.equal(dropdownThemeContract.triggerBackground, dropdownThemeContract.nativeDropdownBackground,
+      'Preview font trigger must use the native dropdown surface');
     assert.deepEqual({
       controlAppearance: dropdownThemeContract.controlAppearance,
       panelAppearance: dropdownThemeContract.panelAppearance,
@@ -1200,9 +1229,9 @@ async function main(): Promise<void> {
       panelAppearance: 'light',
       panelHidden: false,
       panelRadius: 9,
-      panelShadow: 'none',
+      panelShadow: 'rgba(31, 35, 40, 0.12) 0px 4px 12px 0px',
       triggerShadow: 'none'
-    }, 'Preview dropdown popup must keep rounded, shadowless surfaces');
+    }, 'Preview dropdown popup must keep its rounded native UI surface and shadow');
     await page.keyboard.press('Escape');
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.mouse.move(0, 0);
@@ -1504,6 +1533,7 @@ async function main(): Promise<void> {
       const rootRect = root.getBoundingClientRect();
       const canvasRect = canvas.getBoundingClientRect();
       return {
+        fontSize: Number.parseFloat(style.fontSize),
         paddingTop: Number.parseFloat(style.paddingTop),
         paddingBottom: Number.parseFloat(style.paddingBottom),
         visualTop: canvasRect.top - rootRect.top,
@@ -1511,8 +1541,8 @@ async function main(): Promise<void> {
       };
     });
     assert.ok(
-      fencedMathSpacing.visualTop >= 12 && fencedMathSpacing.visualBottom >= 12,
-      `Preview fenced math needs a visible line of vertical breathing room: ${JSON.stringify(fencedMathSpacing)}`
+      Math.abs(fencedMathSpacing.paddingTop - fencedMathSpacing.fontSize * 0.45) < 0.5 && Math.abs(fencedMathSpacing.paddingBottom - fencedMathSpacing.fontSize * 0.45) < 0.5 && Math.abs(fencedMathSpacing.visualTop - fencedMathSpacing.paddingTop) < 1 && Math.abs(fencedMathSpacing.visualBottom - fencedMathSpacing.paddingBottom) < 1,
+      `Preview fenced math must preserve the reading surface 0.45em spacing: ${JSON.stringify(fencedMathSpacing)}`
     );
 
     const initialNative = await page.evaluate(() => {
