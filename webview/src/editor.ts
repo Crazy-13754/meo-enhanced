@@ -2582,6 +2582,8 @@ export function createEditor({
         ));
         const presentationMayHaveChanged = update.docChanged
           || update.viewportChanged
+          || update.selectionSet
+          || update.geometryChanged
           || renderedPresentationChanged;
         if (update.docChanged || gitBaselineChanged || liveDerivedRefresh) {
           emitGitDiffSummary(update.state);

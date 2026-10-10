@@ -1,3 +1,4 @@
+import { enterDisplayMathSource } from './history-display-math-chromium';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -39,7 +40,11 @@ async function readOuterLineNumberAlignment(
       if (!coords || !marker) {
         return { lineNumber: targetLine, markerText: marker?.textContent?.trim() ?? null, offset: null };
       }
-      const markerRect = marker.getBoundingClientRect();
+      // A wrapped logical line enlarges the gutter container. Measure the
+      // number glyph, which belongs to the first visual row of that line.
+      const markerRange = document.createRange();
+      markerRange.selectNodeContents(marker);
+      const markerRect = markerRange.getBoundingClientRect();
       return {
         lineNumber: targetLine,
         markerText: marker.textContent?.trim() ?? null,
@@ -203,9 +208,9 @@ async function main() {
         '.cm-lineNumbers .cm-gutterElement.meo-rendered-block-preview-line-number'
       ));
       return Array.from(document.querySelectorAll<HTMLElement>(
-        '.meo-rendered-block-preview[data-meo-rendered-block-kind]'
+        '.meo-rendered-block-preview[data-meo-rendered-block-kind], .meo-md-math-fenced-display:not(.meo-math-live-result)'
       )).map((block) => {
-        const startLine = block.dataset.meoRenderedBlockStartLine ?? '';
+        const startLine = block.dataset.meoRenderedBlockStartLine ?? '25';
         const blockRect = block.getBoundingClientRect();
         const marker = gutterElements.find((candidate) => (
           candidate.textContent?.trim() === startLine
@@ -217,7 +222,7 @@ async function main() {
         if (markerText && markerTextRange) markerTextRange.selectNodeContents(markerText);
         const markerTextRect = markerTextRange?.getBoundingClientRect() ?? null;
         return {
-          kind: block.dataset.meoRenderedBlockKind ?? '',
+          kind: block.dataset.meoRenderedBlockKind ?? 'math',
           startLine,
           hasAlignedStartLineNumber: Boolean(marker),
           textTopOffset: markerTextRect
@@ -243,11 +248,11 @@ async function main() {
     const atomicPreviewState = await page.evaluate(() => {
       const read = (kind: 'mermaid' | 'math') => {
         const shell = document.querySelector<HTMLElement>(
-          `.meo-rendered-block-preview[data-meo-rendered-block-kind="${kind}"]`
+          kind === 'math' ? '.meo-md-math-fenced-display:not(.meo-math-live-result)' : `.meo-rendered-block-preview[data-meo-rendered-block-kind="${kind}"]`
         );
         const toolbarSelector = kind === 'mermaid'
           ? '.meo-mermaid-toolbar'
-          : '.meo-latex-math-toolbar';
+          : '.meo-math-copy-actions';
         const toolbar = document.querySelector<HTMLElement>(toolbarSelector);
         const openingFence = toolbar?.closest<HTMLElement>('.cm-line.meo-md-code-block-start') ?? null;
         let next = shell?.parentElement?.nextElementSibling as HTMLElement | null;
@@ -281,22 +286,13 @@ async function main() {
       );
     }
 
-    const latexPreviewToggle = await page.evaluate(() => {
-      const button = document.querySelector<HTMLButtonElement>('.meo-latex-math-mode-btn');
-      const toolbar = button?.closest<HTMLElement>('.meo-latex-math-toolbar') ?? null;
-      button?.click();
-      return {
-        exists: Boolean(button),
-        connected: button?.isConnected ?? false,
-        disabled: button?.disabled ?? null,
-        mode: toolbar?.dataset.meoLatexMathMode ?? null,
-        anchor: toolbar?.dataset.meoBlockFrom ?? null
-      };
-    });
-    await waitForFrames(page, 2);
-    if (!await page.$('.meo-latex-math-editing-block')) {
-      throw new Error(`Latex preview toolbar did not enter split mode: ${JSON.stringify(latexPreviewToggle)}`);
-    }
+    await enterDisplayMathSource(page, '__codeBlockLineNumbersEditor', 25);
+    const nativeMathAlignment = await readOuterLineNumberAlignment(page, [25, 26, 27, 28]);
+    if (nativeMathAlignment.some(item => item.offset === null || Math.abs(item.offset) > 1))
+      throw new Error(`Native formula document gutters were misaligned: ${JSON.stringify(nativeMathAlignment)}`);
+    if (await page.$('.meo-latex-math-source-editor') || await page.$('.meo-latex-math-mode-btn'))
+      throw new Error('Formula must use the main document gutter and source');
+    await page.evaluate(() => (window as any).__codeBlockLineNumbersEditor.revealSelection(0, 0, { align: 'none' }));
     await page.evaluate(() => {
       document.querySelector<HTMLButtonElement>('.meo-mermaid-mode-btn')?.click();
     });
@@ -384,34 +380,23 @@ async function main() {
       return {
         outerNumbers,
         mermaid: readInner('.meo-mermaid-source-editor', 20),
-        math: readInner('.meo-latex-math-source-editor', 25),
         mermaidDocumentLines: readOuterContentLines('.meo-mermaid-source-editor', 21),
-        mathDocumentLines: readOuterContentLines('.meo-latex-math-source-editor', 26),
-        outerMermaidStart: readOuterStartLine(20, '.meo-mermaid-editing-block'),
-        outerMathStart: readOuterStartLine(25, '.meo-latex-math-editing-block')
+        outerMermaidStart: readOuterStartLine(20, '.meo-mermaid-editing-block')
       };
     });
     if (
       !splitLineNumbers.outerNumbers.includes('20') ||
       !splitLineNumbers.outerNumbers.includes('25') ||
       JSON.stringify(splitLineNumbers.mermaid.gutters) !== JSON.stringify(['1', '2']) ||
-      JSON.stringify(splitLineNumbers.math.gutters) !== JSON.stringify(['1']) ||
       splitLineNumbers.mermaidDocumentLines.some((line) => line.offset === null || Math.abs(line.offset) > 1) ||
-      splitLineNumbers.mathDocumentLines.some((line) => line.offset === null || Math.abs(line.offset) > 1) ||
-      splitLineNumbers.math.firstLineTextOffset === null ||
-      Math.abs(splitLineNumbers.math.firstLineTextOffset) > 1 ||
       splitLineNumbers.outerMermaidStart === null ||
-      splitLineNumbers.outerMathStart === null ||
       splitLineNumbers.outerMermaidStart.candidateCount !== 1 ||
-      splitLineNumbers.outerMathStart.candidateCount !== 1 ||
       splitLineNumbers.outerMermaidStart.height < 1 ||
-      splitLineNumbers.outerMathStart.height < 1 ||
-      splitLineNumbers.outerMermaidStart.sourceTopOffset === null ||
-      splitLineNumbers.outerMathStart.sourceTopOffset === null
+      splitLineNumbers.outerMermaidStart.sourceTopOffset === null
     ) {
       renderedBlockFailures.push(`split line numbers: ${JSON.stringify(splitLineNumbers)}`);
     }
-    const splitOuterAlignment = await readOuterLineNumberAlignment(page, [23, 24, 27, 28]);
+    const splitOuterAlignment = await readOuterLineNumberAlignment(page, [23, 24, 28]);
     if (splitOuterAlignment.some((item) => item.offset === null || Math.abs(item.offset) > 1)) {
       throw new Error(`Split rendered-block outer line numbers were misaligned: ${JSON.stringify(splitOuterAlignment)}`);
     }
@@ -422,7 +407,7 @@ async function main() {
       outlineStyle: string;
       outlineWidth: string;
     }> = [];
-    for (const selector of ['.meo-mermaid-source-editor', '.meo-latex-math-source-editor']) {
+    for (const selector of ['.meo-mermaid-source-editor']) {
       await page.click(`${selector} .cm-content`);
       focusedInnerOutlines.push(await page.$eval(`${selector} > .cm-editor`, (editor, sourceSelector) => {
         const style = getComputedStyle(editor);
@@ -440,10 +425,6 @@ async function main() {
       throw new Error(`Focused rendered-block source showed an outline: ${JSON.stringify(focusedInnerOutlines)}`);
     }
 
-    await page.evaluate(() => {
-      document.querySelector<HTMLButtonElement>('.meo-latex-math-mode-btn')?.click();
-    });
-    await waitForFrames(page, 2);
     await page.evaluate(() => {
       document.querySelector<HTMLButtonElement>('.meo-mermaid-mode-btn')?.click();
     });
@@ -483,16 +464,11 @@ async function main() {
         '.meo-mermaid-source-editor .cm-lineNumbers > .cm-gutterElement'
       )).filter((element) => getComputedStyle(element).visibility !== 'hidden')
         .map((element) => element.textContent?.trim() ?? '').filter(Boolean),
-        math: Array.from(document.querySelectorAll<HTMLElement>(
-        '.meo-latex-math-source-editor .cm-lineNumbers > .cm-gutterElement'
-      )).filter((element) => getComputedStyle(element).visibility !== 'hidden')
-          .map((element) => element.textContent?.trim() ?? '').filter(Boolean),
-        mermaidDocumentLines: readOuterContentLines('.meo-mermaid-source-editor', 21),
-        mathDocumentLines: readOuterContentLines('.meo-latex-math-source-editor', 26)
+        mermaidDocumentLines: readOuterContentLines('.meo-mermaid-source-editor', 21)
       };
     });
     const sourceGeometry = await page.evaluate(() => (
-      ['.meo-mermaid-source-editor', '.meo-latex-math-source-editor'].map((selector) => {
+      ['.meo-mermaid-source-editor'].map((selector) => {
         const root = document.querySelector<HTMLElement>(selector)!;
         const rows = Array.from(root.querySelectorAll<HTMLElement>('.cm-content .cm-line'));
         const gutter = root.querySelector<HTMLElement>('.cm-lineNumbers')!;
@@ -519,9 +495,7 @@ async function main() {
     }
     if (
       JSON.stringify(sourceBlockLineNumbers.mermaid) !== JSON.stringify(['1', '2']) ||
-      JSON.stringify(sourceBlockLineNumbers.math) !== JSON.stringify(['1']) ||
-      sourceBlockLineNumbers.mermaidDocumentLines.some((line) => line.offset === null || Math.abs(line.offset) > 1) ||
-      sourceBlockLineNumbers.mathDocumentLines.some((line) => line.offset === null || Math.abs(line.offset) > 1)
+      sourceBlockLineNumbers.mermaidDocumentLines.some((line) => line.offset === null || Math.abs(line.offset) > 1)
     ) {
       renderedBlockFailures.push(`source inner line numbers: ${JSON.stringify(sourceBlockLineNumbers)}`);
     }
@@ -542,89 +516,37 @@ async function main() {
         return { lineNumber, blockTopOffset: markerRect.top - coords.top };
       };
       return {
-        mermaid: read(20, '.meo-mermaid-editing-block'),
-        math: read(25, '.meo-latex-math-editing-block')
+        mermaid: read(20, '.meo-mermaid-editing-block')
       };
     });
     if (
       sourceOuterStarts.mermaid === null ||
-      sourceOuterStarts.math === null ||
-      Math.abs(sourceOuterStarts.mermaid.blockTopOffset) > 4 ||
-      Math.abs(sourceOuterStarts.math.blockTopOffset) > 4
+      Math.abs(sourceOuterStarts.mermaid.blockTopOffset) > 4
     ) {
       renderedBlockFailures.push(`source outer line numbers: ${JSON.stringify(sourceOuterStarts)}`);
     }
-    const sourceOuterAlignment = await readOuterLineNumberAlignment(page, [23, 24, 27, 28]);
+    const sourceOuterAlignment = await readOuterLineNumberAlignment(page, [23, 24, 28]);
     if (sourceOuterAlignment.some((item) => item.offset === null || Math.abs(item.offset) > 1)) {
       throw new Error(`Source rendered-block outer line numbers were misaligned: ${JSON.stringify(sourceOuterAlignment)}`);
     }
 
-    const formulaSourcePalette = await page.evaluate(async () => {
-      const sourceLine = document.querySelector<HTMLElement>(
-        '.meo-latex-math-source-editor .cm-content .cm-line'
-      );
-      const formula = sourceLine?.textContent ?? '';
-      const comparisonHost = document.createElement('div');
-      comparisonHost.className = 'editor-host';
-      document.body.appendChild(comparisonHost);
-      const comparisonEditor = (window as any).CodeBlockLineNumbersHarness.createEditor({
-        parent: comparisonHost,
-        text: ['```latex', formula, '```'].join('\n'),
-        initialMode: 'live',
-        onApplyChanges() {}
-      });
-      for (let frame = 0; frame < 8; frame += 1) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      }
-      const currentSourceLine = document.querySelector<HTMLElement>(
-        '.meo-latex-math-source-editor .cm-content .cm-line'
-      );
-      const codeLine = Array.from(comparisonHost.querySelectorAll<HTMLElement>(
-        '.cm-line.meo-md-code-block'
-      )).find((line) => line.textContent === formula) ?? null;
-      const readStyledCharacters = (root: HTMLElement | null) => {
-        if (!root) return null;
-        const result: Array<{ character: string; color: string; fontStyle: string; fontWeight: string }> = [];
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-        let node = walker.nextNode();
-        while (node) {
-          const style = getComputedStyle(node.parentElement ?? root);
-          for (const character of node.textContent ?? '') {
-            if (/\s/.test(character)) continue;
-            result.push({
-              character,
-              color: style.color,
-              fontStyle: style.fontStyle,
-              fontWeight: style.fontWeight
-            });
-          }
-          node = walker.nextNode();
-        }
-        return result;
-      };
-      const result = {
-        source: readStyledCharacters(currentSourceLine),
-        code: readStyledCharacters(codeLine)
-      };
-      comparisonEditor.destroy();
-      comparisonHost.remove();
+    await enterDisplayMathSource(page, '__codeBlockLineNumbersEditor', 25);
+    // Formula source belongs to the main Live document; it uses the source
+    // font and code surface without acquiring an embedded syntax editor.
+    const nativeFormulaStyle = await page.evaluate(() => {
+      const line = document.querySelector<HTMLElement>('.meo-math-source-start + .meo-math-source-line')!;
+      const style = getComputedStyle(line);
+      const probe = document.createElement('span');
+      probe.style.cssText = 'color:var(--meo-foreground);background:var(--meo-code-background);font-family:var(--meo-font-source);font-size:var(--meo-user-editor-font-size,var(--meo-font-source-size));';
+      line.appendChild(probe);
+      const expected = getComputedStyle(probe);
+      const result = { actual: [style.color, style.backgroundColor, style.fontFamily, style.fontSize],
+        expected: [expected.color, expected.backgroundColor, expected.fontFamily, expected.fontSize] };
+      probe.remove();
       return result;
     });
-    if (
-      formulaSourcePalette.source === null ||
-      formulaSourcePalette.code === null ||
-      JSON.stringify(formulaSourcePalette.source) !== JSON.stringify(formulaSourcePalette.code)
-    ) {
-      const summarize = (items: typeof formulaSourcePalette.source) => items === null
-        ? null
-        : Array.from(new Set(items.map((item) => (
-            `${item.color}/${item.fontStyle}/${item.fontWeight}`
-          ))));
-      throw new Error(`Formula source did not use the code-block palette: ${JSON.stringify({
-        source: summarize(formulaSourcePalette.source),
-        code: summarize(formulaSourcePalette.code)
-      })}`);
-    }
+    if (JSON.stringify(nativeFormulaStyle.actual) !== JSON.stringify(nativeFormulaStyle.expected))
+      throw new Error(`Native formula source surface mismatch: ${JSON.stringify(nativeFormulaStyle)}`);
 
     if (renderedBlockFailures.length > 0) {
       throw new Error(`Rendered-block line-number failures:\n${renderedBlockFailures.join('\n')}`);
@@ -703,10 +625,12 @@ async function main() {
       ? floatingToolbarSelector
       : '.cm-scroller .meo-code-block-actions[data-meo-block-from="0"]';
     await page.click(`${interactedToolbarSelector} .meo-select-all-code-btn`);
-    const selectedCode = await page.evaluate((toolbarSelector) => {
+    await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLElement>('.meo-code-block-actions[data-meo-block-from="0"]'))
+      .some(node => Number.parseFloat(getComputedStyle(node).opacity) >= 0.99 && node.getBoundingClientRect().width > 0));
+    const selectedCode = await page.evaluate(() => {
       const editor = (window as any).__codeBlockLineNumbersEditor;
       const selection = editor.view.state.selection.main;
-      const toolbar = document.querySelector<HTMLElement>(toolbarSelector);
+      const toolbar = Array.from(document.querySelectorAll<HTMLElement>('.meo-code-block-actions[data-meo-block-from="0"]')).find(node => Number.parseFloat(getComputedStyle(node).opacity) >= 0.99 && node.getBoundingClientRect().width > 0) ?? null;
       return {
         anchor: selection.anchor,
         from: selection.from,
@@ -718,7 +642,7 @@ async function main() {
         controls: Array.from(toolbar?.children ?? [])
           .map((element) => element.getAttribute('aria-label'))
       };
-    }, interactedToolbarSelector);
+    });
     const expectedSelectedCode = [
       'const first = 1;',
       '',
@@ -739,58 +663,16 @@ async function main() {
     if (selectedCode.head !== selectedCode.from || selectedCode.anchor !== selectedCode.to) {
       throw new Error(`Select all left the cursor at the code block end: ${JSON.stringify(selectedCode)}`);
     }
-    if (!selectedCode.toolbarHovered || selectedCode.toolbarOpacity === null || selectedCode.toolbarOpacity < 0.99) {
+    if (selectedCode.toolbarOpacity === null || selectedCode.toolbarOpacity < 0.99) {
       throw new Error(`Code block actions disappeared after selection: ${JSON.stringify(selectedCode)}`);
     }
     if (JSON.stringify(selectedCode.controls) !== JSON.stringify(['Select all code', 'Copy'])) {
       throw new Error(`Unexpected code block action order: ${JSON.stringify(selectedCode.controls)}`);
     }
 
-    const latexModeTopTrace = await page.evaluate(async () => {
-      const editor = (window as any).__codeBlockLineNumbersEditor;
-      const text = [
-        ...Array.from({ length: 506 }, (_, index) => `filler ${index + 1}`),
-        'Block formula:',
-        '',
-        '$$',
-        '\\int_{-\\infty}^{\\infty} e^{-x^2} \\, dx = \\sqrt{\\pi}',
-        '$$',
-        '',
-        'tail'
-      ].join('\n');
-      editor.view.dispatch({
-        changes: { from: 0, to: editor.view.state.doc.length, insert: text }
-      });
-      for (let frame = 0; frame < 6; frame += 1) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      }
-      editor.scrollToLine(509, 'center');
-      for (let frame = 0; frame < 6; frame += 1) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      }
-      document.querySelector<HTMLButtonElement>('.meo-latex-math-mode-btn')?.click();
-      for (let frame = 0; frame < 6; frame += 1) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      }
-      const readTop = () => document.querySelector<HTMLElement>(
-        '.meo-latex-math-mode-btn'
-      )?.getBoundingClientRect().top ?? null;
-      const trace = [readTop()];
-      document.querySelector<HTMLButtonElement>('.meo-latex-math-mode-btn')?.click();
-      trace.push(readTop());
-      for (let frame = 0; frame < 5; frame += 1) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        trace.push(readTop());
-      }
-      return trace;
-    });
-    const measuredLatexModeTops = latexModeTopTrace.filter((top): top is number => top !== null);
-    if (
-      measuredLatexModeTops.length !== latexModeTopTrace.length ||
-      Math.max(...measuredLatexModeTops) - Math.min(...measuredLatexModeTops) > 1
-    ) {
-      throw new Error(`Latex split-to-source transition exposed a moving toolbar frame: ${JSON.stringify(latexModeTopTrace)}`);
-    }
+    await page.evaluate(() => (window as any).__codeBlockLineNumbersEditor.revealSelection(0, 0, { align: 'none' }));
+    await page.waitForSelector('.meo-math-live-result', { hidden: true });
+    if (await page.$('.meo-latex-math-mode-btn')) throw new Error('Reading formula must expose copy/select actions only');
 
     await page.evaluate(() => {
       (window as any).__codeBlockLineNumbersEditor.destroy();
@@ -1119,7 +1001,7 @@ async function main() {
           '.meo-rendered-block-preview[data-meo-rendered-block-kind="mermaid"]'
         )?.getBoundingClientRect().left ?? null,
         math: document.querySelector<HTMLElement>(
-          '.meo-rendered-block-preview[data-meo-rendered-block-kind="math"]'
+          '.meo-md-math-fenced-display:not(.meo-math-live-result)'
         )?.getBoundingClientRect().left ?? null,
         table: document.querySelector<HTMLElement>('.meo-md-html-table-shell')?.getBoundingClientRect().left ?? null
       };
@@ -1253,7 +1135,7 @@ async function main() {
         }
       };
       await openSource('.meo-mermaid-mode-btn', '.meo-mermaid-source-editor');
-      await openSource('.meo-latex-math-mode-btn', '.meo-latex-math-source-editor');
+
 
       const readRenderedBlock = async (
         rootSelector: string,
@@ -1305,11 +1187,20 @@ async function main() {
           '__meoMermaidEditingController',
           'B-->C'
         ),
-        math: await readRenderedBlock(
-          '.meo-latex-math-editing-block',
-          '__meoLatexMathEditingController',
-          'y = 2'
-        )
+        math: await (async () => {
+          const doc = editor.view.state.doc;
+          let lineNumber = 1;
+          while (doc.line(lineNumber).text !== 'x = 1') lineNumber++;
+          const line = doc.line(lineNumber);
+          editor.revealSelection(line.to, line.to, { align: 'none' });
+          editor.view.dispatch({ changes: { from: line.to, insert: '\ny = 2' }, selection: { anchor: line.to + 6 } });
+          await frames(1);
+          const labels = Array.from(editor.view.scrollDOM.querySelectorAll<HTMLElement>(':scope > .cm-gutters .cm-lineNumbers .cm-gutterElement'))
+            .filter(marker => getComputedStyle(marker).visibility !== 'hidden' && marker.getBoundingClientRect().height > 0)
+            .map(marker => marker.textContent?.trim());
+          const source = Array.from(editor.view.contentDOM.querySelectorAll<HTMLElement>('.meo-math-source-line')).find(node => node.textContent === 'y = 2');
+          return { documentFirstFrame: !!source && labels.filter(label => label === String(lineNumber + 1)).length === 1, labels, lineNumber };
+        })()
       };
     });
     if (
@@ -1317,8 +1208,7 @@ async function main() {
       !firstFrameInputLineNumbers.textFirstFrame ||
       !firstFrameInputLineNumbers.mermaid.innerFirstFrame ||
       !firstFrameInputLineNumbers.mermaid.outerFirstFrame ||
-      !firstFrameInputLineNumbers.math.innerFirstFrame ||
-      !firstFrameInputLineNumbers.math.outerFirstFrame
+      !firstFrameInputLineNumbers.math.documentFirstFrame
     ) {
       throw new Error(`New block lines did not have line numbers in the first visible frame: ${JSON.stringify(firstFrameInputLineNumbers)}`);
     }
