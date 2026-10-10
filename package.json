@@ -152,7 +152,7 @@
               "lists": true,
               "convertTables": true,
               "pasteUrl": true,
-              "pasteHtml": true,
+              "pasteHtml": false,
               "documentSuggestions": true,
               "slash": true,
               "slashPreferAbove": false,
@@ -215,7 +215,7 @@
                 },
                 "pasteHtml": {
                   "type": "boolean",
-                  "default": true
+                  "default": false
                 },
                 "documentSuggestions": {
                   "type": "boolean",

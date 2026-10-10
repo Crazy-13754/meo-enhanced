@@ -3340,7 +3340,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     const clipboard = event.clipboardData;
     if (!clipboard) return null;
     return parseMeoTableClipboard(clipboard.getData(meoTableClipboardMime))
-      ?? parseHtmlTableClipboard(clipboard.getData('text/html'), this.view?.state.facet(inputAssistanceFacet).pasteHtml ?? true)
+      ?? parseHtmlTableClipboard(clipboard.getData('text/html'), this.view?.state.facet(inputAssistanceFacet).pasteHtml ?? false)
       ?? parseTsvTableClipboard(clipboard.getData('text/plain')) ?? (() => { const table = parseMarkdownTable(clipboard.getData('text/plain')); return table ? { cells: table.cells, source: 'meo' as const } : null; })();
   }
 

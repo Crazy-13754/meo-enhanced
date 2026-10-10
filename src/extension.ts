@@ -194,7 +194,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const editingPreferences = await createVscodeEditingPreferences(resolveUiLanguage(
     vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get('language', 'auto'), vscode.env.language
-  ));
+  ), context);
   const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage());
   void provider.initializeGitWatcher();
   provider.initializeDevelopmentStyleWatcher();

@@ -40,7 +40,7 @@ export type EditingPreferencesChange =
 
 export const defaultInputAssistance: InputAssistance = {
   selectionToolbar: true, wrapSelection: true, pairMode: 'smart', skipMode: 'smart', deleteMode: 'smart', lists: true,
-  convertTables: true, pasteUrl: true, pasteHtml: true, documentSuggestions: true, slash: true, slashPreferAbove: false, emoji: false
+  convertTables: true, pasteUrl: true, pasteHtml: false, documentSuggestions: true, slash: true, slashPreferAbove: false, emoji: false
 };
 
 export function isEditorCommandId(value: unknown): value is EditorCommandId {
