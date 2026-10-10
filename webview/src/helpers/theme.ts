@@ -7,6 +7,7 @@ import {
 import type { EditorAppearance } from '../../../src/shared/editorAppearance';
 import { lightCssVariableOverrides } from '../themes/editorLightTheme';
 import { darkCssVariableOverrides } from '../themes/editorDarkTheme';
+import { applyUiTheme, contentColor, contentVariable } from './uiTheme';
 
 const vscodeEditorFontFamily = 'var(--vscode-editor-font-family)';
 const vscodeEditorFontSize = 'var(--vscode-editor-font-size, 13px)';
@@ -105,20 +106,19 @@ const applyHostAppearance = (appearance: EditorAppearance): void => {
     ? lightCssVariableOverrides
     : darkCssVariableOverrides;
   for (const [property, value] of Object.entries(overrides)) {
-    // Preserve VS Code's inline root color for the document background while
-    // keeping the existing fixed UI color scoped to controls inside the body.
-    if (property === '--vscode-editor-background') {
-      document.body.style.setProperty(property, value);
-      continue;
-    }
-    rootStyle.setProperty(property, value);
+    rootStyle.setProperty(property.startsWith('--vscode-') ? contentVariable(property) : property, contentColor(value));
   }
 };
 
 export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance, 'auto'> = 'dark'): void => {
   const editorFontWeight = resolveEditorFontWeight();
   applyHostAppearance(appearance);
-  const resolvedTheme = getBuiltInVisuals(appearance);
+  const baseline = getBuiltInVisuals(appearance);
+  const resolvedTheme = {
+    ...baseline,
+    colors: Object.fromEntries(Object.entries(baseline.colors).map(([key, value]) => [key, contentColor(value)])) as typeof baseline.colors,
+    semanticColors: Object.fromEntries(Object.entries(baseline.semanticColors).map(([key, value]) => [key, contentColor(value)])) as typeof baseline.semanticColors
+  };
 
   const rootStyle = document.documentElement.style;
   const insetBackground = getInsetBackground(resolvedTheme.backgroundColor, resolvedTheme.colors.base03);
@@ -152,7 +152,7 @@ export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance,
 
   for (const spec of SYNTAX_TAG_SPECS) {
     const tokenColor = resolvedTheme.syntaxTokens[spec.id];
-    rootStyle.setProperty(`--meo-token-${spec.id}-color`, tokenColor);
+    rootStyle.setProperty(`--meo-token-${spec.id}-color`, contentColor(tokenColor));
   }
 
   const typography = resolvedTheme.typography;
@@ -185,4 +185,5 @@ export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance,
   rootStyle.setProperty('--meo-heading-token-weight', defaultHeadingFontWeight);
   rootStyle.setProperty('--meo-line-height-live', `${liveLineHeight}`);
   rootStyle.setProperty('--meo-line-height-source', `${sourceLineHeight}`);
+  applyUiTheme(appearance, matchesHostAppearance);
 };

@@ -37,7 +37,8 @@ export const getExportStyleEnvironment = (code: {
   const editorStyles = editorEl ? getComputedStyle(editorEl) : null;
 
   const colorVar = (name: string, fallback = ''): string => {
-    const value = rootStyles.getPropertyValue(name).trim();
+    const value = rootStyles.getPropertyValue(name.replace('--vscode-', '--meo-content-')).trim()
+      || rootStyles.getPropertyValue(name).trim();
     return value || fallback;
   };
   const resolvedColorVar = (name: string, fallback = ''): string => {

@@ -17,6 +17,7 @@ export type CodePaletteWebviewAdapter = {
 /** Adapts serializable palette rules to bundled Shiki themes and Webview CSS effects. */
 export function createCodePaletteWebviewAdapter(input: {
   readonly setShikiTheme: (theme: RawCodeTheme | null | undefined) => void;
+  readonly setSourceDocumentTheme?: (theme: RawCodeTheme) => void;
   readonly sourceStyle?: Pick<CSSStyleDeclaration, 'setProperty'>;
 }): CodePaletteWebviewAdapter {
   const previewFallbackThemes = Object.freeze({
@@ -30,12 +31,24 @@ export function createCodePaletteWebviewAdapter(input: {
 
   return {
     resolve(currentVscodeTheme, appearance) {
-      return resolveFinalCodePalette(
+      const palette = resolveFinalCodePalette(
         currentVscodeTheme,
         previewFallbackThemes[appearance],
         appearance,
         sourceFallbackThemes[appearance]
       );
+      const customized = currentVscodeTheme?.type === appearance ? currentVscodeTheme : undefined;
+      const customRules = customized?.sourceTokenColors;
+      const tokenColors = customRules
+        ? customized!.tokenColors.length ? customRules : [...palette.sourceTheme.tokenColors, ...customRules]
+        : palette.sourceTheme.tokenColors;
+      return { ...palette, sourceDocumentTheme: {
+        ...palette.sourceTheme,
+        colors: customized?.sourceColors ?? palette.sourceTheme.colors,
+        // VS Code supplies its foreground/background as the default rule and
+        // ignores scopeless defaults embedded in a contributed theme.
+        tokenColors: tokenColors.filter(rule => rule && typeof rule === 'object' && 'scope' in rule && rule.scope && 'settings' in rule && rule.settings)
+      } };
     },
     apply(palette) {
       const sourceStyle = input.sourceStyle ?? document.documentElement.style;
@@ -43,10 +56,22 @@ export function createCodePaletteWebviewAdapter(input: {
         sourceStyle.setProperty(`--meo-token-${id}-color`, color);
       }
       sourceStyle.setProperty('--meo-heading-token-weight', palette.sourceHeadingFontWeight);
-      // All fenced-code surfaces share this Shiki runtime. When the editor
-      // appearance is inverse to VS Code, code tokens and Source prose switch
-      // together to the appearance-matched native fallback palette.
+      // Preserve the existing fenced-code runtime. Source prose and embedded
+      // syntax use their own customized theme below.
       input.setShikiTheme(palette.sourceTheme);
+      let documentTheme = palette.sourceDocumentTheme ?? palette.sourceTheme;
+      if (typeof document !== 'undefined') {
+        const hostIsLight = document.body.classList.contains('vscode-light') || document.body.classList.contains('vscode-high-contrast-light');
+        const matchesHost = documentTheme.type === 'light' ? hostIsLight : document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast');
+        const nativeForeground = getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-foreground').trim();
+        // The host resolves registry defaults, including a user's "default"
+        // override; raw theme JSON alone cannot reproduce those defaults.
+        if (matchesHost && /^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(nativeForeground)) {
+          documentTheme = { ...documentTheme, colors: { ...documentTheme.colors, 'editor.foreground': nativeForeground } };
+        }
+      }
+      sourceStyle.setProperty('--meo-source-foreground', documentTheme.colors['editor.foreground'] ?? (documentTheme.type === 'light' ? '#000000' : '#d4d4d4'));
+      input.setSourceDocumentTheme?.(documentTheme);
     }
   };
 }

@@ -74,7 +74,7 @@ try {
   await page.click('.editor-appearance-button[data-editor-appearance="dark"]');
   await waitBackground('rgb(36, 41, 46)');
   assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue('--vscode-editor-background')), '#f8f1e5', 'Manual appearance must leave the native root color intact');
-  assert.equal(await page.$eval('body', element => getComputedStyle(element).getPropertyValue('--vscode-editor-background').trim()), '#24292e', 'Controls must retain their existing manual appearance background');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--meo-content-editor-background').trim()), '#24292e', 'Manual appearance retains its own fallback without overwriting native variables');
   await page.click('.editor-appearance-button[data-editor-appearance="auto"]');
   await waitBackground('rgb(248, 241, 229)');
   await page.click('.more-tools-wrapper > .format-button');

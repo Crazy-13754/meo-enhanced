@@ -17,8 +17,8 @@ import type { SyntaxNode } from '@lezer/common';
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
 import { markdownKeymap } from '@codemirror/lang-markdown';
 import { editorMarkdownLanguage } from './liveMode';
-import { indentUnit, syntaxHighlighting, syntaxTree, forceParsing } from '@codemirror/language';
-import { sourceHighlightStyle } from './theme';
+import { indentUnit, syntaxTree, forceParsing } from '@codemirror/language';
+import { sourceSyntax } from './helpers/sourceSyntax';
 import { shikiCodeHighlight } from './helpers/shikiDecorations';
 import type { UiLanguage } from '../../src/foundation/uiLanguage';
 import { longCodeBlockEnabledFacet } from './helpers/longCodeBlocks';
@@ -30,13 +30,7 @@ import { detailsBlockStateExtensions } from './helpers/detailsBlocks';
 import { insertMountedTableCellBreak } from './helpers/tables';
 import { insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
 import { getCodeBlockSourceLines } from './helpers/blockIndent';
-import { sourceStrikeMarkerField } from './helpers/strikeMarkers';
 import { markdownInlineStyleTheme } from './helpers/inlineStyles';
-import { sourceHighlightField } from './helpers/highlightSyntax';
-import { sourceWikiMarkerField } from './helpers/wikiLinks';
-import { sourceFileLinkField } from './helpers/sourceRawLinks';
-import { sourceUrlBoundaryField } from './helpers/sourceUrlBoundaries';
-import { sourceFootnoteMarkerField } from './helpers/sourceFootnotes';
 import { markdownTagField } from './helpers/tags';
 import { findDocumentFragmentPosition, getLinkHrefAtPointer, getLinkHrefAtSourcePosition, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
 import {
@@ -107,7 +101,7 @@ import {
   flushMountedTableLayouts,
   tableUsableViewportBounds
 } from './helpers/tables';
-import { parseFrontmatter, parseFrontmatterCandidate, sourceFrontmatterField } from './helpers/frontmatter';
+import { parseFrontmatter, parseFrontmatterCandidate } from './helpers/frontmatter';
 import { collectLatexMathRanges } from './helpers/math';
 import { diagnosticDataField, diagnosticField, setDiagnosticsEffect, type EditorDiagnostic } from './helpers/diagnostics';
 import type { GitBaselinePayload } from '../../src/protocol/git';
@@ -323,7 +317,9 @@ const searchMatchField = StateField.define<SearchMatchFieldValue>({
       }
     }
 
-    if (shouldDeferLiveInputDerivedWork(tr)) {
+    // A new Find query must read the accepted document even if typing has not
+    // flushed its decorations yet. Other input consumers retain their schedule.
+    if (!changedQuery && shouldDeferLiveInputDerivedWork(tr)) {
       if (!tr.docChanged) return value;
       const matches = value.matches.map((match) => ({
         start: tr.changes.mapPos(match.start, 1),
@@ -1111,6 +1107,9 @@ export function createEditor({
     if (view.state.selection.ranges.length !== 1) return false;
     const from = Math.min(selection.anchor, selection.head);
     const to = Math.max(selection.anchor, selection.head);
+    // The queued position projection may not have run since the last input.
+    // Native selection must use current cell ranges before Find returns focus.
+    refreshMountedTablePositions(view, currentDiagnostics, view.state.field(gitDiffLineFlagsField, false));
     const lineNumber = view.state.doc.lineAt(from).number;
     if (view.state.doc.lineAt(to).number !== lineNumber) return false;
     for (const input of view.dom.querySelectorAll<HTMLTextAreaElement>(
@@ -2054,7 +2053,8 @@ export function createEditor({
     if (
       activeQuery.text === query &&
       activeQuery.wholeWord === wholeWord &&
-      activeQuery.caseSensitive === caseSensitive
+      activeQuery.caseSensitive === caseSensitive &&
+      !isLiveInputDerivedWorkPending(view.state)
     ) {
       return view.state.field(searchMatchField).matches;
     }
@@ -2489,11 +2489,8 @@ export function createEditor({
       mermaidDiagramPresentationFactoryFacet.of(
         mermaidDiagramPresentationConsumer
       ),
-      // One editor-scoped renderer keeps fenced-code TextMate tokens identical
-      // across Live and Source, and avoids disposing/recreating Shiki on mode switches.
-      shikiCodeHighlight,
       markdownInlineStyleTheme,
-      modeCompartment.of(startMode === 'live' ? liveModeExtensions({ largeDocument }) : sourceMode()),
+      modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument })] : sourceMode()),
       searchQueryField,
       searchAnchorField,
       Prec.high(searchMatchField),
@@ -3715,7 +3712,7 @@ export function createEditor({
               setMermaidSearchRevealEffect.of(null),
               setLatexMathSearchRevealEffect.of(null),
               modeCompartment.reconfigure(
-                nextMode === 'live' ? liveModeExtensions({ largeDocument }) : sourceMode()
+                nextMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument })] : sourceMode()
               ),
               gitGutterCompartment.reconfigure(
                 nextMode === 'live' ? gitDiffGutterLiveRenderExtensions() : gitDiffGutterRenderExtensions()
@@ -4785,18 +4782,8 @@ function sourceMode(): Extension[] {
     mermaidEditingStateField,
     latexMathEditingStateField,
     editorMarkdownLanguage,
-    syntaxHighlighting(sourceHighlightStyle),
+    sourceSyntax,
     sourceCodeBlockField,
-    sourceListMarkerField,
-    sourceStrikeMarkerField,
-    sourceHighlightField,
-    sourceWikiMarkerField,
-    sourceFileLinkField,
-    sourceUrlBoundaryField,
-    sourceFootnoteMarkerField,
-    markdownTagField,
-    sourceTableHeaderLineField,
-    sourceFrontmatterField,
     gitDiffLineHighlightsField,
     ...gitDiffDetailsExtensions(),
     ...mergeConflictSourceExtensions()

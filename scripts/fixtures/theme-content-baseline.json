@@ -1,0 +1,22 @@
+{
+  "baseCommit": "04a97074a2606d15b5477c299d188ebef96c35b4",
+  "description": "Pre-theme-inheritance Live/Preview colors, backgrounds, borders, sizes and font styles; includes the independently committed Wiki renderer.",
+  "hashes": {
+    "dark:live": "97b756fd7801962c54e9e5320455c333b7342d644f51c4bc6d9f35d41928f174",
+    "dark:preview": "1fc88ce338a6012ecd26d16f1f093f7d696051d5cbc20eb86624c67cf4ccfc72",
+    "light:live": "c1b9fae7a60e2c369f4f9f26153eec0cd41b292abf34d8bf0395455dd34375f9",
+    "light:preview": "056f4d5d13c7050d4368c7d4bb4cbda5d3ebca358416abca0b673f0c8548e242",
+    "github-dark:live": "3e4d1847efe8164dfe80a0117cccd8945ed483599236ce311b500f0efe07dd19",
+    "github-dark:preview": "fefcd462597f82f34a8f3ea532c744cab0f7991ef21c36020d80b9429018cec5",
+    "contrast-dark:live": "02c4564260ec1f446c26237a6d8125ff3bf564fa5af7d1deeef197306f7e0f4c",
+    "contrast-dark:preview": "827b375a40d4897e88e16f1fb0834e6a18d48cbeb2657722614bc961d885d40b",
+    "contrast-light:live": "44340dab4da2af0d8a81c1dd7f1616f97860f45742705bc4a197fab9e70c388f",
+    "contrast-light:preview": "056f4d5d13c7050d4368c7d4bb4cbda5d3ebca358416abca0b673f0c8548e242",
+    "dark-on-light:live": "946b984f444b1dba46fc3f0a8940f16afae52af4459758ce3f66767a594ca0a4",
+    "dark-on-light:preview": "fefcd462597f82f34a8f3ea532c744cab0f7991ef21c36020d80b9429018cec5",
+    "light-on-dark:live": "c80723e64afff65842dabb9bdf712825a757433017cb9da0513af9f31eed99cd",
+    "light-on-dark:preview": "056f4d5d13c7050d4368c7d4bb4cbda5d3ebca358416abca0b673f0c8548e242",
+    "custom-dark:live": "74b066cb0bd5d428c26c0983b66d8b13358f452201f81203f2d13aebbe54aaa9",
+    "custom-dark:preview": "b951cc6c30336fda07fa660e48adfb449fa82e9c784b0f6a8a4ca75e853583cc"
+  }
+}
