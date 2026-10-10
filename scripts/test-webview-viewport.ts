@@ -1675,7 +1675,8 @@ async function main() {
     await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('.toolbar-overflow-indicator')?.hidden === true);
     const previewToolbarLayout = await page.evaluate(() => {
       const group = document.querySelector<HTMLElement>('.preview-format-group')!;
-      const selects = Array.from(group.querySelectorAll<HTMLButtonElement>('.preview-toolbar-dropdown'));
+      const selects = Array.from(group.querySelectorAll<HTMLButtonElement>('.preview-toolbar-dropdown'))
+        .filter((select) => !select.closest<HTMLElement>('.preview-select-control')!.hidden);
       const settingsButton = document.querySelector<HTMLButtonElement>('[data-action="settings"]')!;
       return {
         mode: document.querySelector<HTMLElement>('#app')?.dataset.mode,
@@ -1685,7 +1686,10 @@ async function main() {
         selectRadii: selects.map((select) => Number.parseFloat(getComputedStyle(select).borderRadius)),
         segmentedCount: group.querySelectorAll('.preview-setting-segmented').length,
         segmentedHeights: Array.from(group.querySelectorAll('.preview-setting-segmented')).map((control) => control.getBoundingClientRect().height),
-        labels: Array.from(group.querySelectorAll('.preview-select-label')).map((label) => label.textContent?.trim()),
+        labels: Array.from(group.querySelectorAll('.preview-select-label'))
+          .filter((label) => !label.closest<HTMLElement>('.preview-select-control')!.hidden)
+          .map((label) => label.textContent?.trim()),
+        widthControlHidden: group.querySelector<HTMLElement>('.preview-width-control')!.hidden,
         appearance: group.querySelector<HTMLSelectElement>('.preview-appearance-select')?.value,
         colorSchemes: selects.map((select) => getComputedStyle(select.closest<HTMLElement>('.preview-select-control')!).colorScheme),
         oldAppearanceButtons: group.querySelectorAll('.preview-appearance-button').length,
@@ -1706,12 +1710,13 @@ async function main() {
     if (
       !previewToolbarLayout.visible ||
       Math.abs(previewToolbarLayout.toolbarHeight - initialToolbarStart.toolbarHeight) > 0.5 ||
-      previewToolbarLayout.selectCount !== 1 ||
+      previewToolbarLayout.selectCount !== 2 ||
       previewToolbarLayout.selectHeights.some((height) => height !== 26) ||
       previewToolbarLayout.selectRadii.some((radius) => radius !== 8) ||
       previewToolbarLayout.segmentedCount !== 3 ||
       previewToolbarLayout.segmentedHeights.some((height) => height !== 26) ||
-      JSON.stringify(previewToolbarLayout.labels) !== JSON.stringify(['预览字体', '预览主题', '代码着色', 'HTML 注释']) ||
+      JSON.stringify(previewToolbarLayout.labels) !== JSON.stringify(['预设', '预览字体', '预览主题', '代码着色', 'HTML 注释']) ||
+      !previewToolbarLayout.widthControlHidden ||
       previewToolbarLayout.appearance !== 'light' ||
       previewToolbarLayout.colorSchemes.some((scheme) => scheme !== 'dark') ||
       previewToolbarLayout.oldAppearanceButtons !== 0 ||
@@ -2024,7 +2029,7 @@ async function main() {
     ) {
       throw new Error(`Preview mode did not fit the block formula cleanly: ${JSON.stringify(previewMathFit)}`);
     }
-    await page.setViewport({ width: 1100, height: 720, deviceScaleFactor: 1 });
+    await page.setViewport({ width: 1600, height: 720, deviceScaleFactor: 1 });
     await waitForFrames(page, 4);
     const widePreviewToolbar = await page.evaluate((exportNode) => {
       const describe = (element: HTMLElement) => {

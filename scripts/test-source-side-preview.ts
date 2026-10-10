@@ -260,10 +260,10 @@ try {
   });
   assert.deepEqual(sideTools, {
     expanded: 'true', open: true,
-    rows: ['Font', 'Preview theme', 'Code color', 'HTML comments'],
+    rows: ['Preset', 'Font', 'Preview theme', 'Code color', 'HTML comments', 'Width'],
     hasExport: false, belowSync: true, icon: 'ellipsis', text: '',
     size: { width: 20, height: 20 }, borderRadius: '50%', boxShadow: 'none',
-    controlsVisible: [true, true, true, true], editorFocused: true
+    controlsVisible: [true, true, true, true, true, false], editorFocused: true
   });
   await page.click('.source-preview-more-button');
   assert.equal(await page.$eval('.source-preview-more-panel', panel => (panel as HTMLElement).hidden), true);

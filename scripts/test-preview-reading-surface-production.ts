@@ -1207,8 +1207,9 @@ async function main(): Promise<void> {
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.mouse.move(0, 0);
     const dropdownBorderContract = await page.evaluate(() => ({
-      segmentedBackground: getComputedStyle(document.querySelector<HTMLElement>('.preview-setting-segmented')!).backgroundColor,
-      dropdowns: Array.from(document.querySelectorAll<HTMLElement>('.preview-toolbar-dropdown'), (trigger) => {
+      presetBorder: getComputedStyle(document.querySelector<HTMLElement>('.preview-preset-dropdown')!).borderTopColor,
+      labelForeground: getComputedStyle(document.querySelector<HTMLElement>('.preview-font-family-control .preview-select-label')!).color,
+      dropdowns: Array.from(document.querySelectorAll<HTMLElement>('.preview-font-family-dropdown'), (trigger) => {
         const chevron = trigger.querySelector<HTMLElement>('.preview-toolbar-dropdown-chevron')!;
         return {
           border: getComputedStyle(trigger).borderTopColor,
@@ -1217,8 +1218,8 @@ async function main(): Promise<void> {
       })
     }));
     assert.deepEqual(dropdownBorderContract.dropdowns, [
-      { border: dropdownBorderContract.segmentedBackground, chevron: dropdownBorderContract.segmentedBackground }
-    ], 'The remaining Preview font dropdown border and chevron must share the segmented control background color');
+      { border: dropdownBorderContract.presetBorder, chevron: dropdownBorderContract.labelForeground }
+    ], 'Preview font dropdown must share the preset border and use the description foreground for its chevron');
     await page.$eval(
       '.editor-appearance-button[data-editor-appearance="dark"]',
       (button) => (button as HTMLButtonElement).click()
