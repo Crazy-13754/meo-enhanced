@@ -2240,7 +2240,7 @@ export function createPreviewController({
     preset: presetPreference,
     preferences: { ...presetPreferences, [presetPreference]: { appearance: appearancePreference, contentWidth: contentWidthPreference } }
   });
-  const setPreset = (preset: PreviewPresetId, { persist = true, force = false } = {}) => {
+  const setPreset = (preset: PreviewPresetId, { persist = true, force = false, render = true } = {}) => {
     if (disposed || !previewPresets.some(item => item.id === preset) || preset === presetPreference && !force) return;
     presetPreferences[presetPreference] = { appearance: appearancePreference, contentWidth: contentWidthPreference };
     capturePresentationScroll();
@@ -2253,7 +2253,7 @@ export function createPreviewController({
     updateThemeToggle();
     updatePresetControls();
     const text = hasPendingRequest ? pendingText : latestAcceptedText;
-    if (text !== null) void requestRender(text, { force: true, preserveViewport: true });
+    if (render && text !== null) void requestRender(text, { force: true, preserveViewport: true });
     if (persist) onPresetPreferencesChanged?.();
   };
   const restorePresetState = (value: unknown) => {
@@ -2265,13 +2265,13 @@ export function createPreviewController({
   const handlePresetChange = () => {
     if (isPreviewPresetId(presetSelect.value)) setPreset(presetSelect.value);
   };
-  const updateCustomPresets = (presets: readonly PreviewPresetDefinition[], selected?: PreviewPresetId, initial = false, diagnostics: readonly PreviewPresetDiagnostic[] = []) => {
+  const updateCustomPresets = (presets: readonly PreviewPresetDefinition[], selected?: PreviewPresetId, initial = false, diagnostics: readonly PreviewPresetDiagnostic[] = [], { render = true } = {}) => {
     presetDiagnostics = diagnostics;
     replaceCustomPreviewPresets(presets);
     refreshPresetOptions();
     if (initial) { updatePresetControls(); return; }
     const next = selected ?? (previewPresets.some(preset => preset.id === presetPreference) ? presetPreference : 'default');
-    setPreset(next, { force: true });
+    setPreset(next, { force: true, render });
   };
   const handleWidthChange = () => {
     const width = widthSelect.value;
@@ -2957,6 +2957,7 @@ export function createPreviewController({
     setPreset,
     restorePresetState,
     updateCustomPresets,
+    invalidateRender: () => { requestGeneration += 1; cancelPaintReady(); },
     getPresetRevision: () => getPreviewPreset(presetPreference).custom?.revision,
     appearanceControl,
     fontFamilyControl,

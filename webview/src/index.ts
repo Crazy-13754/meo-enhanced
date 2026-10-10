@@ -3287,10 +3287,6 @@ window.addEventListener('message', (event) => {
   }
 
   queueMicrotask(() => { if (settingsWindow?.isOpen()) settingsWindow.present(); });
-  if (message.type === 'previewPresetsChanged') {
-    previewController.updateCustomPresets(message.presets, message.selected, false, message.diagnostics);
-    return;
-  }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
   if (message.type === 'imageStorageChanged') { if (settingsWindow?.isOpen()) void imageLocationSettings.refresh(); return; }
   if (message.type === 'updatedEditingPreferences') { editingPreferencesTransport.accept(message); return; }
@@ -3311,7 +3307,6 @@ window.addEventListener('message', (event) => {
     // Host retries must not reset a mode change or an in-flight Preview render.
     if (initReceived) return;
     initReceived = true;
-    previewController.updateCustomPresets(message.customPreviewPresets ?? [], undefined, true, message.previewPresetDiagnostics);
     acknowledgeReadyHandshake();
     const restoredPresetState = (vscode.getState() as WebviewUiState | undefined)?.previewPresetState;
     withMessageErrorBoundary('init handler', () => {
@@ -3326,6 +3321,8 @@ window.addEventListener('message', (event) => {
       handleInit(message);
       previewAdapter.start({
         text: message.text,
+        customPreviewPresets: message.customPreviewPresets,
+        previewPresetDiagnostics: message.previewPresetDiagnostics,
         appearance: message.previewAppearance,
         fontFamily: message.previewFontFamily,
         sourceColoring: message.previewSourceColoring,
@@ -3523,9 +3520,7 @@ window.addEventListener('message', (event) => {
     requestWikiLinkStatuses(editor.getText());
     refreshWikiImagePresentations();
     editor.refreshDecorations();
-    void previewController.requestRender(editor.getText(), {
-      background: previewController.host.hidden, force: true, preserveViewport: true
-    });
+    previewAdapter.invalidateResources(editor.getText());
     return;
   }
 

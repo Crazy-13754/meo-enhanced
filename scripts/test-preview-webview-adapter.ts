@@ -169,6 +169,50 @@ scheduledAdapter.scheduleVisibleRefresh('ignored');
 assert.equal(scheduled.size, 0);
 scheduledAdapter.dispose();
 
+const resourceRenders: Array<{ text: string; force: boolean }> = [];
+const catalogChanges: Array<{ selected: unknown; render: unknown }> = [];
+let completeResourcePreload: (() => void) | undefined;
+let completeResourceRender: (() => void) | undefined;
+let resourceInvalidations = 0;
+const resourceAdapter = createPreviewWebviewAdapter({
+  ...surface,
+  updateCustomPresets(_presets, selected, _initial, _diagnostics, options) {
+    catalogChanges.push({ selected, render: options?.render });
+  },
+  invalidateRender() { resourceInvalidations += 1; },
+  preload() { return new Promise<void>(resolve => { completeResourcePreload = resolve; }); },
+  setVisible() {},
+  requestRender(text, options) {
+    resourceRenders.push({ text, force: options?.force === true });
+    return new Promise<void>(resolve => { completeResourceRender = resolve; });
+  },
+  dispose() {}
+});
+resourceAdapter.start({ text: 'hidden', appearance: 'auto', fontFamily: '', sourceColoring: true, showComments: false, active: false });
+resourceAdapter.invalidateResources('hidden resource update');
+resourceAdapter.accept({ type: 'previewPresetsChanged', presets: [], selected: 'default', diagnostics: [] });
+assert.deepEqual(catalogChanges.at(-1), { selected: 'default', render: false }, 'catalog changes update controls without starting a surface render');
+assert.equal(resourceRenders.length, 0, 'hidden resource and catalog changes do not race an in-flight preload');
+resourceAdapter.setActive({ active: true, text: 'active latest' });
+assert.equal(resourceRenders.length, 0);
+completeResourcePreload?.();
+await Promise.resolve(); await Promise.resolve();
+assert.deepEqual(resourceRenders, [{ text: 'active latest', force: true }], 'activation cannot reuse a preload invalidated by external resources');
+resourceAdapter.invalidateResources('resource update 1');
+resourceAdapter.invalidateResources('resource update 2');
+resourceAdapter.accept({ type: 'previewPresetsChanged', presets: [], selected: 'default', diagnostics: [] });
+assert.equal(resourceRenders.length, 1, 'in-flight resource and catalog changes share the render queue');
+completeResourceRender?.();
+await Promise.resolve(); await Promise.resolve();
+assert.deepEqual(resourceRenders.at(-1), { text: 'resource update 2', force: true }, 'only the latest text is rendered after repeated invalidations');
+resourceAdapter.dispose();
+const disposedInvalidations = resourceInvalidations;
+const disposedCatalogChanges = catalogChanges.length;
+resourceAdapter.invalidateResources('disposed');
+resourceAdapter.accept({ type: 'previewPresetsChanged', presets: [], diagnostics: [] });
+assert.equal(resourceInvalidations, disposedInvalidations);
+assert.equal(catalogChanges.length, disposedCatalogChanges);
+
 const repoRoot = path.resolve(import.meta.dir, '..');
 const bootstrap = fs.readFileSync(path.join(repoRoot, 'webview/src/index.ts'), 'utf8');
 assert.equal((bootstrap.match(/createPreviewWebviewAdapter\s*\(/g) ?? []).length, 1);

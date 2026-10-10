@@ -3,6 +3,7 @@ import type {
   PreviewRenderResponse
 } from '../../../src/protocol/previewRender';
 import type { EditorAppearance as PreviewAppearance } from '../../../src/protocol/editorCommands';
+import type { PreviewPresetDefinition, PreviewPresetDiagnostic, PreviewPresetId } from '../../../src/foundation/previewPresets';
 
 type ResolvedPreviewAppearance = Exclude<PreviewAppearance, 'auto'>;
 
@@ -12,6 +13,8 @@ export type PreviewSurface = {
   setShowComments(enabled: boolean): void;
   setFontFamily(fontFamily: string): void;
   restorePresetState?(state: unknown): void;
+  updateCustomPresets?(presets: readonly PreviewPresetDefinition[], selected?: PreviewPresetId, initial?: boolean, diagnostics?: readonly PreviewPresetDiagnostic[], options?: { render?: boolean }): void;
+  invalidateRender?(): void;
   getAppearance(): ResolvedPreviewAppearance;
   setVisible(visible: boolean): void;
   preload(text: string): void | Promise<void>;
@@ -26,13 +29,14 @@ export type PreviewSurface = {
 };
 
 export type PreviewWebviewAdapter = {
-  start(input: { text: string; appearance: PreviewAppearance; fontFamily: string; sourceColoring: boolean; showComments: boolean; active: boolean; presetState?: unknown }): void;
+  start(input: { text: string; appearance: PreviewAppearance; fontFamily: string; sourceColoring: boolean; showComments: boolean; active: boolean; presetState?: unknown; customPreviewPresets?: readonly PreviewPresetDefinition[]; previewPresetDiagnostics?: readonly PreviewPresetDiagnostic[] }): void;
   setActive(input: {
     active: boolean;
     text: string;
   }): void;
   refreshVisible(text: string, options?: { preserveViewport?: boolean; preserveFrame?: boolean }): void;
   scheduleVisibleRefresh(text: string): void;
+  invalidateResources(text?: string): void;
   accept(message: HostToWebviewMessage): boolean;
   getAppearance(): ResolvedPreviewAppearance;
   dispose(): void;
@@ -55,6 +59,8 @@ export function createPreviewWebviewAdapter(
     readonly options: { force?: boolean; preserveViewport?: boolean; preserveFrame?: boolean };
   } | null = null;
   let renderInFlight = false;
+  let currentText: string | null = null;
+  let resourcesInvalidated = false;
   const refreshDelayMs = options.refreshDelayMs ?? 300;
   const scheduleTimeout = options.scheduleTimeout ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
   const cancelTimeout = options.cancelTimeout ?? ((timeout) => globalThis.clearTimeout(timeout as ReturnType<typeof setTimeout>));
@@ -71,7 +77,12 @@ export function createPreviewWebviewAdapter(
     const request = queuedRender;
     queuedRender = null;
     renderInFlight = true;
-    const completion = surface.requestRender(request.text, request.options);
+    const forceResources = resourcesInvalidated;
+    resourcesInvalidated = false;
+    const completion = surface.requestRender(request.text, {
+      ...request.options,
+      ...(forceResources ? { force: true } : {})
+    });
     if (!completion || typeof (completion as Promise<void>).then !== 'function') {
       renderInFlight = false;
       if (!disposed && active && queuedRender !== null) runQueuedRefresh();
@@ -102,10 +113,22 @@ export function createPreviewWebviewAdapter(
     });
   };
 
+  const invalidateResources = (text?: string): void => {
+    if (disposed) return;
+    if (text !== undefined) currentText = text;
+    // Settle obsolete requests without accepting their payload; the next active
+    // render must bypass the same-text cache, including an in-flight preload.
+    surface.invalidateRender?.();
+    resourcesInvalidated = true;
+    if (active && currentText !== null) requestImmediateRender(currentText, { force: true, preserveViewport: true });
+  };
+
   return {
     start(input) {
       if (disposed) return;
       active = input.active;
+      currentText = input.text;
+      surface.updateCustomPresets?.(input.customPreviewPresets ?? [], undefined, true, input.previewPresetDiagnostics ?? [], { render: false });
       surface.setAppearance(input.appearance);
       surface.setSourceColoring(input.sourceColoring);
       surface.setShowComments(input.showComments);
@@ -116,6 +139,7 @@ export function createPreviewWebviewAdapter(
     setActive(input) {
       if (disposed) return;
       active = input.active;
+      currentText = input.text;
       surface.setVisible(input.active);
       if (!input.active) {
         queuedRender = null;
@@ -125,6 +149,7 @@ export function createPreviewWebviewAdapter(
       requestImmediateRender(input.text);
     },
     refreshVisible(text, options = {}) {
+      if (!disposed) currentText = text;
       if (disposed || !active) return;
       requestImmediateRender(text, {
         force: true,
@@ -133,6 +158,7 @@ export function createPreviewWebviewAdapter(
       });
     },
     scheduleVisibleRefresh(text) {
+      if (!disposed) currentText = text;
       if (disposed || !active) return;
       queuedRender = {
         text,
@@ -142,7 +168,15 @@ export function createPreviewWebviewAdapter(
       if (renderInFlight) return;
       scheduledRefresh = scheduleTimeout(runQueuedRefresh, refreshDelayMs);
     },
+    invalidateResources,
     accept(message) {
+      if (message.type === 'previewPresetsChanged') {
+        if (!disposed) {
+          surface.updateCustomPresets?.(message.presets, message.selected, false, message.diagnostics, { render: false });
+          invalidateResources();
+        }
+        return true;
+      }
       if (message.type === 'previewRenderResult') {
         if (!disposed) surface.acceptRenderResponse(message);
         return true;

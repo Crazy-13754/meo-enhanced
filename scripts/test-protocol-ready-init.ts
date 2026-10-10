@@ -64,7 +64,9 @@ const completeInit = {
   outlineWidth: 260,
   vscodeTheme: codeTheme,
   editingPreferences: { input: { ...defaultInputAssistance }, shortcuts: {} },
-  editingPreferencesRevision: 0
+  editingPreferencesRevision: 0,
+  customPreviewPresets: [],
+  previewPresetDiagnostics: []
 };
 
 assert.deepEqual(decodeReadyMessage({ type: 'ready', extra: true }), { type: 'ready' });
@@ -72,6 +74,7 @@ assert.equal(decodeReadyMessage(null), null);
 assert.deepEqual(decodeReadyMessage({ type: 'ready', version: 1 }), { type: 'ready' });
 
 assert.deepEqual(decodeInitMessage({ ...completeInit, editingPreferences: undefined, editingPreferencesRevision: undefined }), completeInit, 'older init messages receive the default preferences and revision');
+assert.deepEqual(decodeInitMessage({ ...completeInit, customPreviewPresets: undefined, previewPresetDiagnostics: undefined }), { ...completeInit, customPreviewPresets: undefined }, 'older init messages omit the custom catalog and receive empty diagnostics');
 assert.equal(decodeInitMessage({ ...completeInit, editingPreferencesRevision: -1 }), null);
 assert.equal(decodeInitMessage({ ...completeInit, editingPreferences: { input: {}, shortcuts: {} } }), null);
 const init = decodeInitMessage(completeInit);
