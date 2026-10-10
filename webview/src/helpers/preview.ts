@@ -1662,7 +1662,7 @@ export function createPreviewController({
       const preset = getPreviewPreset(payload.preset);
       frameDocument.documentElement.dataset.meoPreviewRenderer = preset.renderer;
       frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(preset.renderer === 'meo' && preset.custom?.base !== 'github-readme' && !preset.custom?.codeThemes[appearance]);
-      previewTableLayout = preset.renderer === 'meo' && !preset.custom ? createPreviewTableLayoutController(frameDocument) : null;
+      previewTableLayout = preset.renderer === 'meo' ? createPreviewTableLayoutController(frameDocument) : null;
       const presentationGeneration = mermaidPresentationGeneration + 1;
       mermaidPresentationGeneration = presentationGeneration;
       const isCurrent = () => (

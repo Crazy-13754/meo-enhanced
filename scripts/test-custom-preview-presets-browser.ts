@@ -18,6 +18,8 @@ const importExample = async (name: string) => {
 };
 const dual = await importExample('paper-notes');
 const single = await importExample('github-paper');
+const cssTextProbe = await library.import(JSON.stringify({ schemaVersion: 1, id: 'css-text-probe', name: 'CSS text probe', description: 'Style raw-text regression', themes: { light: { css: 'light.css' } } }), async () => `/* </StYlE><style data-meo-css-escape>body{background-image:url(https://example.invalid/css-probe)}</style><style> */
+.meo-export-doc { --meo-css-text: "</style><img data-meo-css-escape src='https://example.invalid/css-probe'><style>"; }`);
 const fixedOn = await library.import(JSON.stringify({ schemaVersion: 1, id: 'fixed-on', name: 'Fixed comments', description: 'Policy checks', base: 'github-readme',
   controls: { htmlComments: { mode: 'fixed', value: true }, codeColoring: { mode: 'fixed', value: false } }, themes: { light: { css: 'light.css', codeTheme: 'light-plus' } } }), async () => ':root { --meo-mermaid-node-background: #445566; }');
 const fixedOff = await library.import(JSON.stringify({ schemaVersion: 1, id: 'fixed-off', name: 'Fixed coloring', description: 'Policy checks', base: 'default',
@@ -54,6 +56,39 @@ try {
     await page.waitForFunction(title => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('h1')?.textContent === title, {}, markdownText.split('\n')[0]!.slice(2));
     return page;
   };
+  const narrowTablePage = await open(undefined, 'en', '# Narrow table\n\n| Alpha | Beta | Gamma | Delta | Epsilon |\n| --- | --- | --- | --- | --- |\n| 一段较长的中文内容 | long-unbroken-english-content | Value | 7 | Tail |');
+  for (const preset of ['default', dual.id, single.id]) {
+    await narrowTablePage.setViewport({ width: 1400, height: 850 });
+    if (preset !== 'default') {
+      await narrowTablePage.click('.preview-preset-dropdown');
+      await narrowTablePage.click(`.preview-preset-dropdown-panel [data-value="${preset}"]`);
+    }
+    await narrowTablePage.setViewport({ width: 360, height: 850 });
+    await narrowTablePage.waitForFunction(preset => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+      const table = doc?.querySelector('table'), wrap = table?.parentElement;
+      return doc?.documentElement.dataset.meoPreviewPreset === preset && table?.querySelector('colgroup[data-meo-preview-columns]') && wrap
+        && table.getBoundingClientRect().right <= wrap.getBoundingClientRect().left + wrap.clientLeft + wrap.clientWidth + .1;
+    }, { timeout: 5000 }, preset);
+    const layout = await narrowTablePage.$eval('.preview-frame', element => {
+      const doc = (element as HTMLIFrameElement).contentDocument!, table = doc.querySelector<HTMLTableElement>('table')!, wrap = table.parentElement!;
+      return { renderer: doc.documentElement.dataset.meoPreviewRenderer, columns: [...table.querySelectorAll<HTMLTableColElement>('colgroup[data-meo-preview-columns] > col')].map(col => col.style.width), fixed: doc.defaultView!.getComputedStyle(table).tableLayout,
+        cellsVisible: [...table.querySelectorAll('th,td')].every(cell => cell.getBoundingClientRect().width > 0), compressed: table.classList.contains('meo-preview-table-compressed'), padding: table.style.getPropertyValue('--meo-preview-table-cell-inline-padding'),
+        contained: table.getBoundingClientRect().right <= wrap.getBoundingClientRect().left + wrap.clientLeft + wrap.clientWidth + .1, overflowing: wrap.classList.contains('is-table-overflowing'), width: wrap.clientWidth };
+    });
+    assert.equal(layout.renderer, 'meo');
+    assert.equal(layout.columns.length, 5);
+    assert.ok(layout.columns.every(width => parseFloat(width) > 0));
+    assert.equal(layout.fixed, 'fixed');
+    assert.equal(layout.cellsVisible, true);
+    assert.equal(layout.contained, true, `${preset}: narrow tables stay within their visible wrapper`);
+    assert.equal(layout.overflowing, false);
+    assert.ok(layout.width < 450, `${preset}: fixture exercises a narrow wrapper`);
+    assert.equal(layout.compressed, true);
+    assert.ok(layout.padding);
+    console.log(`Narrow Preview table layout: ${preset} passed`);
+  }
+  await narrowTablePage.close();
   const page = await open();
   const choose = async (id: string) => {
     await page.click('.preview-preset-dropdown');
@@ -297,6 +332,25 @@ try {
   assert.ok((await showInfo(fallback)).includes('missing/preset.jsonc'), 'Unusable saved presets report their loading errors after fallback');
   assert.equal(await fallback.$eval('.preview-frame', frame => (frame as HTMLIFrameElement).contentDocument!.documentElement.dataset.meoPreviewPreset), 'default');
   await fallback.close();
+  const cssProbePage = await open(undefined, 'en', '# CSS remains text');
+  const initialStyleCount = await cssProbePage.$eval('.preview-frame', element => (element as HTMLIFrameElement).contentDocument!.querySelectorAll('style').length);
+  const escapedResourceRequests: string[] = [];
+  await cssProbePage.setRequestInterception(true);
+  cssProbePage.on('request', request => {
+    if (request.url().startsWith('https://example.invalid/')) {
+      escapedResourceRequests.push(request.url()); void request.abort();
+    } else { void request.continue(); }
+  });
+  await cssProbePage.click('.preview-preset-dropdown');
+  await cssProbePage.click(`.preview-preset-dropdown-panel [data-value="${cssTextProbe.id}"]`);
+  await cssProbePage.waitForFunction(preset => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === preset, {}, cssTextProbe.id);
+  const cssProbe = await cssProbePage.$eval('.preview-frame', element => {
+    const doc = (element as HTMLIFrameElement).contentDocument!;
+    return { escaped: doc.querySelectorAll('[data-meo-css-escape]').length, styleCount: doc.querySelectorAll('style').length, heading: doc.querySelector('h1')?.textContent };
+  });
+  assert.deepEqual(cssProbe, { escaped: 0, styleCount: initialStyleCount, heading: 'CSS remains text' }, 'CSS comments and strings cannot terminate the Preview style element');
+  assert.deepEqual(escapedResourceRequests, [], 'CSS raw-text cannot inject external resource requests');
+  await cssProbePage.close();
   assert.deepEqual(errors, []);
   await page.close();
   console.log('Custom presets: production Preview, themes, restoration, updates/removal, UI isolation, HTML and real multipage PDF passed.');
