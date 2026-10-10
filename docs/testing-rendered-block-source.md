@@ -1,0 +1,107 @@
+# Mermaid 与块状公式编辑测试
+
+范围包含 Mermaid 的内部源码区，以及独立 `$$` 围栏公式、`math` / `latex` / `tex` / `katex` 代码围栏的源码、即时结果和外层文档之间的交接。四个 TeX 语言别名与块状公式共用组件，公式直接使用主文档编辑器，不再使用 Mermaid 的内部编辑器和手动模式按钮。普通代码块作为留白、行号和工具栏外观的对照。公式编号的位置由其他工作树处理，本次不修改。
+
+## 可重复运行
+
+先构建本地运行资源，再执行独立的源码区测试包：
+
+```powershell
+rtk bun run build
+rtk bun run test:rendered-source
+```
+
+前缀单元测试已接入 `test:unit`；完整源码区测试包已接入 `test:browser` 和 `test:targeted rendered`。浏览器使用临时独立配置，不操作用户打开的文档，不写系统剪贴板。
+
+人工检查文档为 [rendered-block-source-uat.md](../scripts/fixtures/rendered-block-source-uat.md)，包含相邻块、普通代码对照、嵌套列表、引用内列表、脚注、清空恢复、多色饼图和公式。
+
+## 组合条件
+
+Mermaid 输入和导航矩阵为 6 种容器 × 2 个视口配置 × 2 种编辑模式，共 24 组。容器为普通段落、列表、二级列表、引用、引用内列表、脚注；视口配置为宽屏深色和窄屏浅色；编辑模式为分栏和源码。每组还切回预览核对文档未被改变。
+
+公式独立矩阵为相同 6 种容器 × 520px / 1100px，共 12 组。每组检查点击进入、四个方向进入与离开、上源码下结果、主文档选区与历史、全局模式切换、空内容、未完成 TeX、中文组合输入、Tab / Shift+Tab、多行粘贴及 hover / 键盘复制。额外检查普通长公式、宽矩阵及只有 `>` 的引用空行。
+
+`test-display-math-fences` 覆盖 4 个语言别名 × 12 种容器，共 48 组，分配宽窄视口与反引号 / 波浪号围栏。检查共用阅读组件、上源码下结果、灰色复制与全选、输入、缩进、回车、撤销、模式切换、四方向光标进入、错误结果恢复，以及 HTML / PDF / Word 共用渲染入口。可选 `$` / `$$` 包裹只用于解释公式，复制和编辑保留原正文；未闭合围栏保留可编辑源码，普通代码与其他语言不转换。导出入口断言不等同于生成并人工检查完整 PDF / Word 文件。
+
+公式编辑面板追加背景边界和引用竖线的对齐断言，包含列表续段、三层引用、列表内引用、任务列表、Tab 与脚注内引用。另有 22 组窄窗口（320px / 520px）、不同源码字号（12px / 24px）、长公式、文末、空公式和错误内容检查；背景共用 Live 容器边界，源码前缀按源码字体补偿，正文保留普通代码块的内边距。脚注的固定间隔也按 Live 字号计算，避免在源码区与结果区分别使用不同的 `em`。引用前缀可以位于面板外侧；公式正文、结果和操作按钮须留在可用内容范围内。
+
+新增围栏逐帧检查曾抓到输入时的一行偏移：普通代码的即时投影给公式源码临时加入内部行号，改变换行宽度，随后公式刷新又移除。`projectInputCodeBlockLines` 现在让完整 TeX 围栏沿用公式组件的布局归属。`test-display-math-gutter-paint` 同时覆盖原生公式、普通行内代码及公式围栏；`--fences-only` 可独立复现新增场景，观察 DOM 及实际绘制像素，不调用会主动修复测量的 `coordsAtPos`。
+
+人工对照文档：[math-fence-aliases-uat.md](../scripts/fixtures/math-fence-aliases-uat.md)。
+
+内部编辑块外观独立交叉检查深色 / 浅色 × 宽 / 窄 × 块内预览 / 分栏 / 源码，共 12 种布局。整个文档的 Preview iframe 另有深浅色 × 520px / 1100px 四种布局检查，不与块内预览混用。额外的剪贴板、组合输入、错误恢复与空内容测试覆盖普通段落、引用、脚注的两种块。
+
+| 用例 | 操作与条件 | 必须满足的结果 | 主要自动测试 |
+|---|---|---|---|
+| B01 模式切换 | Mermaid 预览 → 分栏 → 源码 → 预览；公式全局 Source / Live 切换 | 内外行号与真实文字行对齐，选区和源码保持一致；公式无手动模式按钮 | source-interactions、display-math-editing |
+| B02 容器与缩进 | 6 种容器内按 Enter、Tab、Shift+Tab、Backspace | 容器前缀只添加一次，源码空白保留，光标不被后续刷新移动 | fenced-code-source-prefix、source-interactions |
+| B03 字符编辑 | 字符输入、删除、左右移动 | 操作后的源码、光标、焦点和行号在后续帧保持稳定 | source-interactions |
+| B04 从内部离开 | 首尾方向键、公式 Ctrl+Enter | Mermaid 回到相邻围栏行；公式保留普通主文档光标，离开公式后收起源码 | source-interactions、display-math-editing |
+| B05 从外部进入 | 开围栏下移 / 右移，闭围栏上移 / 左移；点击公式结果 | 对应位置获得焦点；公式展开原始源码，只有一个 CodeMirror 编辑器 | source-interactions、display-math-editing |
+| B06 选择跨边界 | Shift+Up / Down 从内部越过边界 | 外层选区保留内部起点，选择方向与范围连续 | source-interactions |
+| B07 边界删除 | 源码开头 Backspace、末尾 Delete | 不误删围栏或块外正文 | source-interactions |
+| B08 鼠标与焦点 | 点击正文、内部文字、源码 / 预览空白与工具栏 | 点击目标接收焦点，延迟恢复不抢回焦点，不把滚动位置拉走 | source-interactions、mermaid-editing |
+| B09 选区与复制粘贴 | Ctrl+A、选区复制、多行粘贴、含中文与空行；hover 复制 | Mermaid 全选作用于内部文档；公式使用普通主文档选择；公式按钮复制当前 LaTeX、不含围栏、不改选区和历史 | source-interactions、display-math-editing、preview-code-copy |
+| B10 中文组合输入 | CDP 启动、更新并提交组合文本 | 中文只提交一次，源码与光标保留，内部仍有焦点 | source-interactions |
+| B11 历史 | 块内外编辑、Ctrl+Z / Y、公共撤销与重做、全局模式切换 | Mermaid 保留用户选择的模式；公式恢复主文档光标与内容，复制不增加历史 | block-inner-history、history-preserves-rendered-block-mode、mode-selection-continuity、display-math-editing |
+| B12 空与未完成源码 | 清空内容、重新填入；未闭合 Mermaid 节点 / TeX 花括号 | 源码仍可编辑；公式明确标注上次有效结果，复制当前未完成源码；补全后恢复 | source-interactions、display-math-editing、latex-math-scanner |
+| B13 长内容与滚动 | 多行、长行换行、首行部分被遮挡、末段虚拟化、连续输入 | 可见光标、局部行号、全局行号与下游块稳定；合理换行不丢选区 | embedded-source-font-size、mermaid-partial-line-input-viewport、line-number-rendered-block-stability |
+| B14 外观 | 12 种布局，对照普通代码块；公式长行、宽矩阵 | Mermaid 留白、行号、按钮一致；公式透明无外框、结果居中、源码原样保留；长公式按可断点换行，不可拆结构整体适应宽度 | source-appearance、display-math-editing、math-tag-layout |
+| B15 图形交互 | Mermaid 缩放、重置、拖动、全屏、窄屏 / 浮动工具栏 | Mermaid 图形交互生效；公式无缩放、拖动、全屏和浮动模式工具栏，保留复制 | mermaid-editing、block-sticky-header-production、source-appearance |
+| B16 文档 Preview 外观与更新 | 深浅色、宽窄屏；普通与引用内 Mermaid、Mermaid 数学图、公式块；连续更新与切主题 | 图块必须可见；图形画布相对整个块水平与垂直偏差不超过 1px；左上角只有一个 `mermaid` 标识，且不遮挡内容；提示层不被复用成图块 | preview-mermaid-runtime、source-position-marker、source-preview-mermaid-updates |
+| B17 Live 公式拖选 | 普通段落 / 引用内公式，正向 / 反向拖选经过结果区 | 只有源码和正文被选择，派生公式与“预览”文字不出现原生拖选高亮；复制事件取得所选 Markdown 源码 | display-math-selection |
+
+## 已复现并修复的问题
+
+1. 脚注 Mermaid 的空行保留了外层 4 个空格；每次输入刷新都会再添加一次，Enter 后光标右移 4 列。源码提取统一使用容器感知的行范围，空行也去掉外层前缀。
+2. 预览切到分栏时，外层第二个行号有一帧约 9px 的错位。外层行号先读了内部 gutter 的估算高度；现在先按真实文字行定位。
+3. Mermaid 内部首尾方向键无法离开，外层方向键跳过源码区。修复边界交接并保留跨边界选区；公式改为主文档编辑，四向进入 / 离开不经过内部编辑器。
+4. 引用内公式新行 / 多行粘贴缺少 `>`，后续输入会使公式消失。公式换行、粘贴和缩进保留容器前缀，也保留用户额外输入的空白。
+5. 清空 Mermaid 或暂时缺少 TeX 的 `}` 会让编辑块消失。源码 / 分栏保留空块；独立的 `$$` 闭围栏继续作为结构边界，补完内容可恢复预览。
+6. 补空内容兼容时曾与现有空公式兜底重复生成编辑器；这条新增路径已撤去，并保留“每块只能有一个内部编辑器”的回归断言。
+7. 文档 Preview 的按钮留白只加在顶部，Mermaid 画布偏下 12px，公式画布偏下 5px；改为上下相等的留白。Mermaid 使用普通代码块的语言标识样式，重绘 SVG 时保留标识。
+8. 文档更新时，隐藏的源码位置提示层可能被 morphdom 复用成 Mermaid，后续提示层刷新会隐藏图块。为三种提示层提供固定 DOM key，避免缓存引用指向正文块。
+9. 从 Mermaid 源码区点击公式时，旧投影选区释放可能提前替换点击目标。公式在主按钮 pointerdown 时进入主文档源码，避免等待已被移除节点的 click。
+10. TeX 行首 `+` 被列表兜底转成圆点，脚注内源码空白被替换成回链占位。公式源码行退出列表、分隔线和脚注空白替换流程，保持原字符。
+11. 公式编号不能随普通公式断点任意重排。带编号公式与矩阵等不可拆结构自动适应宽度；不使用横向滚动。
+
+## 结果与限制
+
+本轮追加的公式边界与稳定性检查：
+
+- `test-display-math-stability` 在 Live 字体 16px / Source 字体 14px 下逐帧检查：方向键、输入和删除保持结果 DOM，不出现先缩再长的预览高度；折叠公式遵守绝对、相对、间隔和关闭行号规则。引用内公式 Backspace 只删除输入的字符。
+- `test-math-boundary-recovery` 比较共享扫描器和 HTML 渲染：残缺块在标题、代码围栏、容器退出、独立同一行公式之前终止；三连及四连美元符保留为源码；空行和未闭合 TeX 花括号不会破坏已经闭合的公式块。
+- 公式编辑区使用轻灰底与分隔线，只有结果区标“预览”；复制、全选位于源码右上角并采用普通代码块的灰色按钮。阅读状态保持透明，Live 全选选中源码，文档 Preview 全选选中可见公式。
+- 行内仍采用严格边界：`$x$`、`$2+2$`、`$5$` 可识别；`$ x $` 保留原文，结束符后紧跟数字时不作为行内公式。`$$ x $$` 保留空格兼容。代码与链接的原有排除范围保持。
+- `rtk bun run test:source-diff-caret` 覆盖显示修改前内容反复开关、初始 Source / Live 转 Source、公式异常边界、删除行、旧行与当前行换行、新旧文本选区交接和即时点击：535 次当前正文点击与输入通过。原文行是只读比较内容；这些通过记录不能证明照片中的现场故障已经修复。
+- Mermaid 退出内部源码区的间歇性跳行已捕获调用栈：外层选区先正确定位，随后原生 DOM focus 暴露旧浏览器选区，DOMObserver 将光标写回第一行。改用 CodeMirror 的 `focus()` 同步原生选区；修复后 709 项交互断言通过，新增四向退出与旧原生选区交接回归也通过。
+- Source 空行新增 `test-source-empty-line-caret`：纯空行、只有空格、公式内外及文档末尾，左侧 / 中部 / 右侧点击，初始 Source、Live 转 Source、公式编辑后转 Source，修改前内容开关与实际旧文拖选后返回，共 126 次点击。除文档位置、原生 DOM 选区和输入外，截图像素检查原生光标确实绘制；仍未复现用户现场问题，未修改 Source 点击逻辑。
+- 长文档检查 `rtk bun scripts/test-source-diff-long-caret.ts` 使用 2112 行混合 Markdown，分散放置新增、修改、删除及会换行的旧段落，在文档前、中、后段反复跳转。真实浅色 / 深色主题 × 520px / 1100px × 修改前内容关闭 / 开启，共 1200 次截图像素、原生选区与文档位置检查通过；每个目标检查点击、输入、删除、回车、合并行后的光标，覆盖远离改动的空行和旧文拖选后返回。只冻结光标闪烁，不覆盖主题的实际光标颜色。该检查仍未复现用户报告的“能输入但无光标”，不能作为现场故障已修复的证据。
+- `rtk bun scripts/test-source-diff-long-caret.ts --hidpi` 追加真实深色主题、1100px、150% 显示缩放的 300 次光标绘制检查，通过。长文档共 1500 次检查；这些是独立浏览器中的生产编辑组件证据。
+- 原生 VS Code 诊断入口保留在忽略目录 `.local/probes/native-source-caret.*`，使用临时独立配置及匿名测试文档。当前入口遇到跨进程框架访问问题，以及未建立所需比较状态（界面仍显示 `Unable to Compare`、旧内容开关为关闭）；实际光标检查数为 0。不能把这些运行记为光标检查通过，也不能把测试前置条件失败直接当作用户报告的光标故障。
+- Live 公式拖选已修复：原生拖选曾高亮派生公式与“预览”文字，而复制事件只取得 Markdown 源码。现在仅对 Live 块公式结果区设置 `user-select: none`，源码仍可选择和复制；文档 Preview 保留可见公式选择。正式回归 `rtk bun scripts/test-display-math-selection.ts` 已接入 `test:rendered-source`，修改前失败、修改后普通段落 / 引用 × 正向 / 反向 4 组通过。截图在 `.local/display-math/drag-*.png`，原诊断入口保留于忽略目录 `.local/probes/`。
+- 后续已按用户截图复现 Source 空行光标遮挡：123 行附件，第 11 行中部插入文字后点击第 10 / 12 / 14 / 16 行，显示修改前内容，VS Code 1.138.0 / Chromium 148，实际 DPR 1.2。原生选区、焦点与输入正确，但原生光标位于不透明 sticky 行号栏的边缘；负边距抵消了内容区左侧留白，缩放像素舍入使行号栏盖住光标。冻结闪烁仍可复现；行号栏透明或将光标移出遮挡区可恢复，单改旧行背景无效。最终只给主文档 Source 内容区增加 2px 行首间距，保留原生光标和输入路径。原生复现从 76 项中 24 项失败变为 76 项全部通过；修复后不注入额外样式、不模拟窗口焦点。另建立实际外部文件更新历史，最近保存 / Agent 编辑前两种基线共 76 项通过。新增 gutter 与光标几何边界断言在修复前失败，修复后通过，已接入 `test:source-diff-caret`。早期其他缩放、字体和布局下的通过记录没有覆盖这处遮挡。
+
+深浅色公式截图在 `.local/display-math/editing-light.png` 与 `editing-dark.png`。文档 Preview 的中英文、按钮颜色、全选与复制，及 HTML / PDF / Word 导出内容无交互按钮检查通过；这是浏览器和导出产物层面的验证。
+
+2026-10-10 最终验证：
+
+| 检查 | 结果 |
+|---|---|
+| `test:rendered-source` | 通过：Mermaid 24 组源码 / 分栏组合，709 项交互断言；公式 12 组容器 / 宽度组合；12 种外观布局 |
+| 前缀与位置映射 | 通过：6 种容器的源码空白保持；5 种前缀的每个源码偏移往返 |
+| `test-embedded-source-font-size` | 通过；公式使用主文档源码字体与行号，Mermaid 内部编辑器字体行为保持 |
+| `test-mermaid-editing`、`test-block-sticky-header-production` | 通过；源码 / 图形点击、缩放、拖动、全屏、浮动工具栏生命周期 |
+| `test-block-inner-history`、`test-history-preserves-rendered-block-mode`、`test-mode-selection-continuity` | 通过；块内外历史、模式与选区恢复 |
+| LaTeX 扫描器及调用者集成 | 通过；未完成 TeX 不吞掉独立闭围栏 |
+| `test-preview-mermaid-runtime`、`test-source-position-marker`、`test-source-preview-mermaid-updates` | 通过；文档 Preview 四种布局的居中、语言标识和图块可见性；位置标记与反向定位；双栏连续编辑、错误恢复与阅读位置保持 |
+| 测试流程约束、`typecheck`、`build`、`git diff --check` | 通过 |
+| `test-preview-code-copy`、`test-export-math-layout`、`test-math-tag-layout` | 通过；中英文 / 深浅色 Preview 复制；HTML、PDF / Word 打印准备无交互按钮；16 组公式编号布局 |
+
+截图已检查源码留白、按钮反馈、居中与空白高度，保存在忽略目录 `.local/rendered-block-source/`。自动化使用真实 CodeMirror、离线 Mermaid 和 KaTeX；剪贴板事件测试走实际编辑处理，但使用内存数据。中文测试驱动真实浏览器组合事件，不包含 Windows 输入法候选窗的人工检查。测试证据属于生产 Webview 浏览器层，未将它表述成已安装 VSIX 的现场验证。
+
+公式编辑仅针对独立多行 `$$` 围栏，行内公式保持原有行为。普通长公式仅在 KaTeX 提供的最外层运算符 / 关系断点换行；宽矩阵和带编号公式整体缩小，极宽结构的可读性会降低。
+
+本轮运行的是上述组件检查，未运行全仓库 `test:browser`。部分历史测试仍绑定已撤下的公式内部编辑器 / 手动模式按钮，不能用它们的旧通过记录宣称当前公式通过全部编辑器测试；当前公式交互证据以 `test-display-math-editing`、块内外历史、字体与外观检查为准。自动导出检查不包含 Word 桌面应用的人工审阅。
+
+这是一组明确的条件矩阵与边界回归，不将有限测试表述为覆盖所有可能的用户文档。

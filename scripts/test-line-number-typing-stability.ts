@@ -48,6 +48,7 @@ try {
       const view = editor.view;
       view.dispatch({ selection: { anchor: view.state.doc.line(lineNumber).to } });
       view.focus();
+      await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
     }, targetLine);
 
     const samples: Array<{ key: number; frame: number; gutterTop: number; contentTop: number; editedLineHeight: number; editedLineLength: number }> = [];
@@ -56,12 +57,14 @@ try {
         const view = (window as any).__editor.view;
         const gutter = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-lineNumbers > .cm-gutterElement'))
           .find((element) => element.textContent?.trim() === String((window as any).__targetLine + 1));
-        const nextLine = view.state.doc.line((window as any).__targetLine + 1);
         const editedLine = view.state.doc.line((window as any).__targetLine);
+        const rows = Array.from(view.contentDOM.querySelectorAll<HTMLElement>(':scope > .cm-line'));
+        const sourceRow = rows.find(row => view.state.doc.lineAt(view.posAtDOM(row)).number === (window as any).__targetLine);
+        const nextRow = rows.find(row => view.state.doc.lineAt(view.posAtDOM(row)).number === (window as any).__targetLine + 1);
         return {
           gutterTop: gutter?.getBoundingClientRect().top ?? NaN,
-          contentTop: view.coordsAtPos(nextLine.from)?.top ?? NaN,
-          editedLineHeight: view.lineBlockAt(editedLine.from).height,
+          contentTop: nextRow?.getBoundingClientRect().top ?? NaN,
+          editedLineHeight: sourceRow?.getBoundingClientRect().height ?? NaN,
           editedLineLength: editedLine.length
         };
       });
@@ -72,7 +75,7 @@ try {
       for (let key = 0; key < inputCount; key++) {
         await page.keyboard.press(operation);
         for (let frame = 0; frame < 2; frame++) {
-          await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+          await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
           await sample(keyOffset + key, frame);
         }
       }

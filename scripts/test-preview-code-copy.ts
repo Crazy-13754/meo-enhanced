@@ -19,6 +19,7 @@ assert.ok(build.success, build.logs.map(String).join('\n'));
 const script = await build.outputs[0]!.text();
 const styles = fs.readFileSync('webview/src/styles.css', 'utf8');
 const source = '  const text = "中文 <&>";\n\n\treturn text;  \n';
+const sourceBody = source.slice(0, -1);
 const mermaidSource = 'flowchart LR\nA["中文 <&>"]-->B\n';
 const mathSource = '\\frac{x^2}{y} + \\text{中文}';
 const markdown = [
@@ -56,11 +57,10 @@ try {
   await page.addScriptTag({ path: 'node_modules/mermaid/dist/mermaid.min.js' });
   await page.addScriptTag({ content: script });
   await page.evaluate(() => {
-    const nativeWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
-    navigator.clipboard.writeText = async text => {
-      (window as any).__copyPayload = text;
-      await nativeWrite(text);
-    };
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      async writeText(text: string) { (window as any).__copyPayload = text; },
+      async readText() { return (window as any).__copyPayload ?? ''; }
+    } });
   });
   // Windows exposes native clipboard line breaks as CRLF; the API payload remains exact LF source.
   const readClipboard = () => page.evaluate(async () => (await navigator.clipboard.readText()).replace(/\r\n/g, '\n'));
@@ -101,6 +101,20 @@ try {
   assert.equal(await frame.$$eval('.meo-preview-code-actions', nodes => nodes.length), 7);
   assert.equal(await frame.$$eval('.meo-export-math-inline .meo-preview-code-actions', nodes => nodes.length), 0,
     'Inline equations must not acquire block copy controls');
+  assert.equal(await frame.$$eval('.meo-export-math-display .meo-select-all-code-btn', nodes => nodes.length), 3,
+    'Display formulas retain select-all, including legacy and invalid formula fences');
+  await frame.$eval('.meo-export-math-fenced-display .meo-select-all-code-btn', element => (element as HTMLElement).click());
+  const selectedFormula = await frame.evaluate(() => getSelection()!.toString());
+  assert.ok(selectedFormula.length > 0 && !selectedFormula.includes('Preview'));
+  const actionStyle = await frame.$eval('.meo-export-math-fenced-display .meo-preview-code-actions', element => {
+    const copy = element.querySelector('.meo-copy-code-btn')!;
+    const select = element.querySelector('.meo-select-all-code-btn')!;
+    return { copy: getComputedStyle(copy).color, select: getComputedStyle(select).color,
+      overlap: select.getBoundingClientRect().right > copy.getBoundingClientRect().left };
+  });
+  assert.equal(actionStyle.copy, actionStyle.select);
+  assert.equal(actionStyle.overlap, false);
+  await frame.evaluate(() => getSelection()!.removeAllRanges());
   await page.evaluate(() => {
     (window as any).__originalMathBlock = document.querySelector<HTMLIFrameElement>('iframe')!
       .contentDocument!.querySelector('.meo-export-math-display');
@@ -153,10 +167,10 @@ try {
           label: node.querySelector('.meo-tooltip-label')?.textContent ?? null,
           opacity: getComputedStyle(node).opacity
         })).catch(() => null);
-        if (visibleHint?.label === (language === 'en' ? 'Copy code' : '复制代码') && visibleHint.opacity === '1') break;
+        if (visibleHint?.label === (language === 'en' ? 'Copy' : '复制') && visibleHint.opacity === '1') break;
         await new Promise(resolve => setTimeout(resolve, 50));
       }
-      assert.equal(visibleHint?.label, language === 'en' ? 'Copy code' : '复制代码');
+      assert.equal(visibleHint?.label, language === 'en' ? 'Copy' : '复制');
       assert.equal(visibleHint?.opacity, '1');
       const hint = await frame.$eval(buttonSelector, node => ({
         label: node.getAttribute('aria-label'), tooltip: node.getAttribute('data-tooltip'),
@@ -164,7 +178,7 @@ try {
         color: getComputedStyle(node).color, bg: getComputedStyle(node).backgroundColor,
         gapCursor: getComputedStyle(node.parentElement!).cursor, hintOpacity: getComputedStyle(document.querySelector('.meo-tooltip')!).opacity
       }));
-      assert.equal(hint.label, language === 'en' ? 'Copy code' : '复制代码');
+      assert.equal(hint.label, language === 'en' ? 'Copy' : '复制');
       assert.equal(hint.tooltip, hint.label);
       assert.equal(hint.native, null);
       assert.equal(hint.cursor, 'pointer');
@@ -192,8 +206,8 @@ try {
   const requestsBefore = await page.evaluate(() => (window as any).__previewMessages.length);
   await clickCopy();
   await waitForCopied();
-  assert.equal(await page.evaluate(() => (window as any).__copyPayload), source, 'The Clipboard API receives the exact code body');
-  assert.equal(await readClipboard(), source, 'Native clipboard must preserve every line and indentation');
+  assert.equal(await page.evaluate(() => (window as any).__copyPayload), sourceBody, 'The Clipboard API receives the exact code body');
+  assert.equal(await readClipboard(), sourceBody, 'Native clipboard must preserve every line and indentation');
   assert.equal(await frame.evaluate(() => getSelection()!.toString()), selection);
   assert.equal(await page.evaluate(() => (window as any).__previewMessages.length), requestsBefore, 'Copy must not request export or editing');
   await page.evaluate(() => {
@@ -225,28 +239,28 @@ try {
   assert.equal(await frame.$eval(buttonSelector, node => node.matches(':focus-visible')), true);
   await page.keyboard.press('Enter');
   await waitForCopied();
-  assert.equal(await readClipboard(), source);
+  assert.equal(await readClipboard(), sourceBody);
   await new Promise(resolve => setTimeout(resolve, 2100));
   assert.equal(await frame.$eval(buttonSelector, node => node.classList.contains('copied')), false);
   await page.keyboard.press('Space');
   await waitForCopied();
-  assert.equal(await readClipboard(), source);
+  assert.equal(await readClipboard(), sourceBody);
 
   await render(markdown.replace('Selection remains', 'Updated prose remains'), 'zh-CN');
   assert.equal(await page.evaluate(() => (window as any).__originalMathBlock ===
     document.querySelector<HTMLIFrameElement>('iframe')!.contentDocument!.querySelector('.meo-export-math-display')), true,
   'Copy controls must not invalidate unchanged formula presentation');
   await clickCopy();
-  assert.equal(await readClipboard(), source);
+  assert.equal(await readClipboard(), sourceBody);
   const updated = source.replace('const text', 'let text');
   await render(markdown.replace(source, updated), 'en');
   await clickCopy();
   await waitForCopied();
-  assert.equal(await readClipboard(), updated, 'Incremental updates must copy the current source');
+  assert.equal(await readClipboard(), updated.slice(0, -1), 'Incremental updates must copy the current source');
   await clickCopy(1);
-  assert.equal(await readClipboard(), 'plain\n');
+  assert.equal(await readClipboard(), 'plain');
   await clickCopy(2);
-  assert.equal(await readClipboard(), 'indented\n    nested\n');
+  assert.equal(await readClipboard(), 'indented\n    nested');
   const afterGeometry = await frame.$eval('.meo-export-code-block-wrap', node => {
     const rect = node.getBoundingClientRect();
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
@@ -272,7 +286,7 @@ try {
   };
   await copyBlock('.meo-export-math-display', 'x^2');
   await copyBlock('.meo-export-math-display:has(.katex-error)', '\\invalidcommand{');
-  await copyBlock('.meo-export-mermaid', mermaidSource);
+  await copyBlock('.meo-export-mermaid', mermaidSource.slice(0, -1));
   await copyBlock(`.meo-export-math-display[data-source-b64="${Buffer.from(mathSource).toString('base64')}"]`, mathSource);
   assert.equal(await frame.$$eval('.meo-latex-math-canvas .meo-preview-code-actions', nodes => nodes.length), 0,
     'Formula fitting must never scale or pan copy controls');
@@ -281,7 +295,7 @@ try {
   await render(markdown.replace(mermaidSource, updatedMermaid).replace(mathSource, updatedMath), 'en');
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('iframe')!
     .contentDocument!.querySelector('.meo-export-mermaid')?.getAttribute('data-meo-preview-mermaid-pending') !== 'true');
-  await copyBlock('.meo-export-mermaid', updatedMermaid);
+  await copyBlock('.meo-export-mermaid', updatedMermaid.slice(0, -1));
   await copyBlock(`.meo-export-math-display[data-source-b64="${Buffer.from(updatedMath).toString('base64')}"]`, updatedMath);
   assert.equal(await frame.$$eval('.meo-export-mermaid .meo-copy-code-btn', nodes => nodes.length), 1,
     'Content and appearance changes must not duplicate Mermaid copy controls');
@@ -291,7 +305,7 @@ try {
   });
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('iframe')!
     .contentDocument!.querySelector<HTMLElement>('.meo-export-mermaid')?.dataset.meoPreviewMermaidAppearance === 'light');
-  await copyBlock('.meo-export-mermaid', updatedMermaid);
+  await copyBlock('.meo-export-mermaid', updatedMermaid.slice(0, -1));
   await copyBlock(`.meo-export-math-display[data-source-b64="${Buffer.from(updatedMath).toString('base64')}"]`, updatedMath);
 
   await render(markdown.replace('~~~\nplain\n~~~', '~~~\n~~~'), 'en');
@@ -300,6 +314,49 @@ try {
   const mermaid = exportRuntime.renderPreviewDocument({ markdownText: '~~~mermaid\nflowchart LR\nA-->B\n~~~',
     sourceDocumentPath: 'C:/preview-copy.md', uiLanguage: 'en' });
   assert.doesNotMatch(mermaid.html, /meo-export-code-block-wrap/, 'Mermaid has a separate surface excluded from ordinary code controls');
+
+  let mathCopyCases = 0;
+  const spacedMath = '\n  \\frac{x}{y} + \\text{中文}  \n\n';
+  for (const prefix of ['', '> ', '  ']) {
+    for (const language of ['$$', 'math', 'latex', 'tex', 'katex']) {
+      const before = prefix === '  ' ? '- Item\n\n' : '';
+      const opening = language === '$$' ? '$$' : '~~~~' + language;
+      const closing = language === '$$' ? '$$' : '~~~~';
+      const text = before + prefix + opening + '\n'
+        + spacedMath.split('\n').map(line => prefix + line).join('\n') + '\n' + prefix + closing;
+      try { await render(text, 'zh-CN'); }
+      catch (error) { throw new Error(`Preview render failed for ${language}/${JSON.stringify(prefix)}`, { cause: error }); }
+      const payload = Buffer.from(spacedMath).toString('base64');
+      try {
+        await page.waitForFunction(payload => document.querySelector<HTMLIFrameElement>('iframe')!
+          .contentDocument!.querySelector('.meo-export-math-display')?.getAttribute('data-source-b64') === payload, { timeout: 5000 }, payload);
+      } catch (error) {
+        const actual = await frame.$$eval('.meo-export-math-display', nodes => nodes.map(node => node.getAttribute('data-source-b64')));
+        throw new Error(`Preview copy payload failed for ${language}/${JSON.stringify(prefix)}: ${JSON.stringify(actual)}`, { cause: error });
+      }
+      await frame.$eval('.meo-export-math-display .meo-copy-code-btn', node => (node as HTMLElement).click());
+      assert.equal(await readClipboard(), spacedMath, `${language}/${JSON.stringify(prefix)}: preserve body whitespace, omit container and delimiters`);
+      mathCopyCases++;
+    }
+  }
+  for (const [body, expected] of [
+    ['$x^2$', 'x^2'], ['$$ x^2 $$', ' x^2 '], ['$$\n\n  x^2  \n\n$$', '\n  x^2  \n'],
+    ['$$x^2', '$$x^2'], ['\\invalidcommand{', '\\invalidcommand{']
+  ]) {
+    try { await render('~~~~latex\n' + body + '\n~~~~', 'en'); }
+    catch (error) { throw new Error(`Preview wrapper render failed for ${JSON.stringify(body)}`, { cause: error }); }
+    await page.waitForFunction(payload => document.querySelector<HTMLIFrameElement>('iframe')!
+      .contentDocument!.querySelector('.meo-export-math-display')?.getAttribute('data-source-b64') === payload,
+    { timeout: 5000 }, Buffer.from(expected!).toString('base64'));
+    await frame.$eval('.meo-export-math-display .meo-copy-code-btn', node => (node as HTMLElement).click());
+    assert.equal(await readClipboard(), expected, 'Only complete wrappers are omitted');
+    mathCopyCases++;
+  }
+  await render('~~~~latex\n\n~~~~', 'en');
+  await frame.$eval('.meo-copy-code-btn', node => (node as HTMLElement).click());
+  assert.equal(await readClipboard(), '', 'The empty formula source fallback copies no label or fence');
+  mathCopyCases++;
+  console.log(`Preview formula copy: ${mathCopyCases} delimiter/alias/container/blank/invalid cases passed`);
 
   for (const target of ['html', 'pdf', 'docx'] as const) {
     const exported = await exportRuntime.renderExportHtmlDocument({

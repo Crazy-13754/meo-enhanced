@@ -6,6 +6,7 @@ import { safeDecodeURIComponent } from '../agents/resourceMatching';
 import { withMarkdownExtensions } from './extensionConfig';
 import { WIKI_IMAGE_SCHEME, WIKI_LINK_SCHEME, wikiTargetFromImageSrc } from '../foundation/wikiReference';
 import { resolveWikiResource } from '../host/wikiResources';
+import { canResolveImageFromRoot, getImagePathCandidates } from './imagePaths';
 
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview:|vscode-webview-resource:|vscode-resource:)/i;
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
@@ -31,7 +32,7 @@ export async function openExternalLink(rawHref: string): Promise<void> {
 
 export async function openImageExternally(rawUrl: string, documentUri: vscode.Uri): Promise<void> {
   const wikiTarget = wikiTargetFromImageSrc(rawUrl);
-  const localImageUri = wikiTarget === null ? await resolveLocalLinkTargetUri(rawUrl, documentUri)
+  const localImageUri = wikiTarget === null ? await resolveLocalImageTargetUri(rawUrl, documentUri)
     : (await resolveWikiResource(wikiTarget, documentUri)).uri;
   if (localImageUri) {
     await openLocalImageWithSystemApp(localImageUri);
@@ -260,7 +261,7 @@ export async function resolveWebviewImageSrc(
   rawUrl: string,
   documentUri: vscode.Uri,
   webview: vscode.Webview,
-  options: { delivery?: 'embedded' } = {}
+  options: { delivery?: 'embedded'; imageSearchRoots?: readonly string[] } = {}
 ): Promise<string> {
   const trimmed = rawUrl.trim();
   if (!trimmed) {
@@ -281,9 +282,9 @@ export async function resolveWebviewImageSrc(
 
   const wikiResult = wikiTarget === null ? null : await resolveWikiResource(wikiTarget, documentUri);
   if (wikiResult?.issue) throw new Error(wikiResult.issue);
-  const imageUri = wikiResult ? wikiResult.uri : resolveLocalImageUri(trimmed, documentUri);
+  const imageUri = wikiResult ? wikiResult.uri : await resolveLocalImageTargetUri(trimmed, documentUri, options.imageSearchRoots);
 
-  if (!imageUri || !(await uriExists(imageUri))) {
+  if (!imageUri) {
     return '';
   }
 
@@ -333,6 +334,7 @@ function resolveLocalImageUri(rawUrl: string, documentUri: vscode.Uri): vscode.U
   }
 
   const [pathPart = ''] = trimmed.split(/[?#]/, 1);
+  if (!pathPart) return null;
   if (/^file:/i.test(trimmed)) {
     try {
       return vscode.Uri.parse(pathPart, true);
@@ -341,11 +343,47 @@ function resolveLocalImageUri(rawUrl: string, documentUri: vscode.Uri): vscode.U
     }
   }
 
-  const decodedPath = safeDecodeURIComponent(pathPart).replace(/\\/g, path.sep);
-  const filePath = path.isAbsolute(decodedPath)
-    ? decodedPath
-    : path.resolve(path.dirname(documentUri.fsPath), decodedPath);
+  const paths = documentUri.scheme === 'file' ? path : path.posix;
+  const documentPath = documentUri.scheme === 'file' ? documentUri.fsPath : documentUri.path;
+  const filePath = getImagePathCandidates(safeDecodeURIComponent(pathPart), documentPath, [], paths)[0];
   return toDocumentScopedUri(filePath, documentUri);
+}
+
+/** A detected vault is authoritative; otherwise use only the document's owning workspace. */
+export async function resolveImageSearchRoots(documentUri: vscode.Uri): Promise<string[]> {
+  const paths = documentUri.scheme === 'file' ? path : path.posix;
+  const documentPath = documentUri.scheme === 'file' ? documentUri.fsPath : documentUri.path;
+  for (let directory = paths.dirname(documentPath); ; directory = paths.dirname(directory)) {
+    try {
+      const marker = toDocumentScopedUri(paths.join(directory, '.obsidian'), documentUri);
+      const stat = await vscode.workspace.fs.stat(marker);
+      if (stat.type & vscode.FileType.Directory) return [directory];
+    } catch {
+      // Missing markers are expected for ordinary Markdown documents.
+    }
+    if (paths.dirname(directory) === directory) break;
+  }
+  const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri;
+  return workspaceRoot ? [workspaceRoot.scheme === 'file' ? workspaceRoot.fsPath : workspaceRoot.path] : [];
+}
+
+export async function resolveLocalImageTargetUri(
+  rawUrl: string,
+  documentUri: vscode.Uri,
+  imageSearchRoots?: readonly string[]
+): Promise<vscode.Uri | null> {
+  const local = resolveLocalImageUri(rawUrl, documentUri);
+  if (!local) return null;
+  if (await uriExists(local)) return local;
+  const [pathPart = ''] = rawUrl.trim().split(/[?#]/, 1);
+  if (/^file:/i.test(pathPart)) return null;
+  const decodedPath = safeDecodeURIComponent(pathPart);
+  const paths = documentUri.scheme === 'file' ? path : path.posix;
+  if (!canResolveImageFromRoot(decodedPath, paths)) return null;
+  const documentPath = documentUri.scheme === 'file' ? documentUri.fsPath : documentUri.path;
+  const roots = imageSearchRoots ?? await resolveImageSearchRoots(documentUri);
+  const candidates = getImagePathCandidates(decodedPath, documentPath, roots, paths);
+  return findFirstExistingUri(candidates.slice(1).map(candidate => toDocumentScopedUri(candidate, documentUri)));
 }
 
 async function readImageAsDataUri(imageUri: vscode.Uri): Promise<string> {

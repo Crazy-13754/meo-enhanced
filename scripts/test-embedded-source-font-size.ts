@@ -128,30 +128,21 @@ try {
       onApplyChanges() {}
     });
   });
-  await page.waitForSelector('.meo-latex-math-mode-btn');
-  for (const mode of ['split', 'source'] as const) {
-    if (mode === 'source') {
-      await page.evaluate(() => { document.querySelector<HTMLElement>('#app > .cm-editor > .cm-scroller')!.scrollTop = 0; });
-      await page.waitForSelector('.meo-latex-math-mode-btn');
-    }
-    await page.locator('.meo-latex-math-mode-btn').click();
-    await page.waitForSelector(`.meo-latex-math-editing-block.is-${mode}`);
-    for (const size of [15, 20, 15]) {
-      const result = await measure('latex-math', size);
-      assert.equal(result.innerFont, `${size}px`, `LaTeX ${mode} embedded source font`);
-      assert.ok(result.renderedMarkers < result.totalLines && result.visiblePairs.some((pair) => pair.number >= 50),
-        `LaTeX ${mode} should measure deep source lines: ${JSON.stringify(result)}`);
-      assert.ok(result.visiblePairs.every((pair) => pair.delta !== null && Math.abs(pair.delta) <= 2),
-        `LaTeX ${mode} outer line numbers should align with embedded source: ${JSON.stringify(result)}`);
-      assert.ok(result.visiblePairs.every((pair) => pair.documentNumber === pair.number + 2),
-        `LaTeX ${mode} outer line numbers should identify the matching document lines: ${JSON.stringify(result)}`);
-      assert.ok(result.visiblePairs.every((pair) => pair.textDelta !== null && Math.abs(pair.textDelta) <= 3),
-        `LaTeX ${mode} line number text should align with embedded source: ${JSON.stringify(result)}`);
-    }
-    const automatic = await measure('latex-math', null);
-    assert.equal(automatic.innerFont, '14px', `LaTeX ${mode} automatic source font`);
-    assert.ok(automatic.visiblePairs.every((pair) => pair.textDelta !== null && Math.abs(pair.textDelta) <= 3),
-      `LaTeX ${mode} automatic outer line numbers should align: ${JSON.stringify(automatic)}`);
+  await page.evaluate(() => { const editor = (window as any).__embeddedFontEditor;
+    editor.view.dispatch({ selection: { anchor: editor.view.state.doc.line(55).from } }); editor.view.focus(); editor.scrollToLine(55, 'center'); });
+  for (const size of [15, 20, 15, null]) {
+    await page.evaluate(value => { if (value === null) document.documentElement.style.removeProperty('--meo-user-editor-font-size');
+      else document.documentElement.style.setProperty('--meo-user-editor-font-size', value + 'px'); }, size);
+    await page.evaluate(async () => { for (let frame = 0; frame < 12; frame++) await new Promise(requestAnimationFrame); });
+    const layout = await page.evaluate(() => { const view = (window as any).__embeddedFontEditor.view;
+      const line = view.state.doc.line(55), coords = view.coordsAtPos(line.from)!;
+      const marker = Array.from(view.dom.querySelectorAll('.cm-lineNumbers > .cm-gutterElement')).find((element: any) => element.textContent.trim() === '55') as HTMLElement;
+      const node = view.domAtPos(line.from).node;
+      return { editors: view.dom.querySelectorAll('.cm-editor').length, font: getComputedStyle(node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node.parentElement!).fontSize,
+        delta: marker.getBoundingClientRect().top + marker.getBoundingClientRect().height / 2 - (coords.top + coords.bottom) / 2 }; });
+    assert.equal(layout.editors, 0, 'Formula uses the main editor');
+    assert.equal(layout.font, (size ?? 14) + 'px');
+    assert.ok(Math.abs(layout.delta) <= 3, 'Formula document line numbers align with source');
   }
   const fallbackFonts = await page.evaluate(() => {
     document.documentElement.style.setProperty('--meo-user-editor-font-size', '20px');

@@ -1,5 +1,100 @@
 import { createElement, Code2, Columns2, Ellipsis, Eye } from 'lucide';
 import type { RenderedBlockModeShellDecision } from '../editor/renderedBlockModeShell';
+import type { EditorView } from '@codemirror/view';
+import { measureFixedContainingBlockMapping } from '../editor/fixedChromeDomGeometry';
+import { projectFixedChromeGeometry, type FixedChromeRect } from '../editor/fixedChromeGeometry';
+
+/** A single preview-owned group follows the visible diagram, outside document layout.
+ * Both normal and split previews use these same controls and zoom state. */
+export function mountMermaidPreviewControls(root: HTMLElement, controls: HTMLElement, editor?: EditorView): () => void {
+  const doc = root.ownerDocument;
+  const win = doc.defaultView!;
+  const events = new win.AbortController();
+  const margin = 6;
+  let frame = 0;
+  let disposed = false;
+  const geometry = new win.MutationObserver(() => requestMeasure());
+  const observedAncestors = new WeakSet<Element>();
+  controls.classList.add('meo-mermaid-preview-controls', 'is-outside-viewport');
+  const measure = (): { rect: FixedChromeRect; columns: number } | null => {
+    if (!root.isConnected || doc.querySelector('.meo-mermaid-fullscreen-scrim')) return null;
+    // Host transforms/zoom need a fresh fixed-coordinate mapping even when
+    // ResizeObserver sees unchanged layout sizes. Never observe our own writes.
+    for (let parent = root.parentElement; parent; parent = parent.parentElement) {
+      if (!observedAncestors.has(parent)) {
+        geometry.observe(parent, { attributes: true, attributeFilter: ['style', 'class'] });
+        observedAncestors.add(parent);
+      }
+    }
+    const diagram = root.getBoundingClientRect();
+    const scroller = editor?.scrollDOM ?? root.closest<HTMLElement>('.cm-scroller');
+    let left = Math.max(0, diagram.left), right = Math.min(win.innerWidth, diagram.right);
+    let top = Math.max(0, diagram.top), bottom = Math.min(win.innerHeight, diagram.bottom);
+    if (scroller) {
+      const viewport = scroller.getBoundingClientRect();
+      const sx = viewport.width / Math.max(1, scroller.offsetWidth);
+      const sy = viewport.height / Math.max(1, scroller.offsetHeight);
+      left = Math.max(left, viewport.left + scroller.clientLeft * sx);
+      right = Math.min(right, viewport.left + (scroller.clientLeft + scroller.clientWidth) * sx);
+      top = Math.max(top, viewport.top + scroller.clientTop * sy);
+      bottom = Math.min(bottom, viewport.top + (scroller.clientTop + scroller.clientHeight) * sy);
+    }
+    const pane = root.closest<HTMLElement>('.meo-rendered-block-preview-pane');
+    if (pane) {
+      const bounds = pane.getBoundingClientRect();
+      left = Math.max(left, bounds.left); right = Math.min(right, bounds.right);
+      top = Math.max(top, bounds.top); bottom = Math.min(bottom, bounds.bottom);
+    }
+    const header = root.closest('.cm-editor')?.querySelector<HTMLElement>('.meo-block-sticky-header:not([hidden])');
+    if (header) top = Math.max(top, header.getBoundingClientRect().bottom);
+    const bounds = controls.getBoundingClientRect();
+    const twoRows = controls.dataset.meoControlsColumns === '2';
+    const sx = bounds.width / (twoRows ? 55 : 105), sy = bounds.height / (twoRows ? 51 : 28);
+    if (sx <= 0 || sy <= 0) return null;
+    const columns = right - left < 105 * sx + margin * 2 ? 2 : 4;
+    const width = (columns === 2 ? 55 : 105) * sx, height = (columns === 2 ? 51 : 28) * sy;
+    if (right - left < width + margin * 2 || bottom - top < height + margin * 2) return null;
+    const mapping = measureFixedContainingBlockMapping(controls);
+    if (!mapping) return null;
+    const projection = projectFixedChromeGeometry(mapping, {
+      rect: { left: right - width - margin, top: bottom - height - margin, width, height }, vectors: []
+    });
+    return projection.ok ? { rect: projection.geometry.rect, columns } : null;
+  };
+  const render = (value: ReturnType<typeof measure>) => {
+    if (disposed) return;
+    controls.classList.toggle('is-outside-viewport', !value);
+    if (!value) return;
+    controls.dataset.meoControlsColumns = String(value.columns);
+    const left = `${value.rect.left}px`, top = `${value.rect.top}px`;
+    if (controls.style.left !== left) controls.style.left = left;
+    if (controls.style.top !== top) controls.style.top = top;
+  };
+  const requestMeasure = () => {
+    if (disposed) return;
+    if (editor) {
+      editor.requestMeasure({ key: controls, read: measure, write: render });
+    } else if (!frame) {
+      frame = win.requestAnimationFrame(() => { frame = 0; render(measure()); });
+    }
+  };
+  const resize = new win.ResizeObserver(requestMeasure);
+  resize.observe(root); resize.observe(controls);
+  if (editor) resize.observe(editor.scrollDOM);
+  const intersection = new win.IntersectionObserver(requestMeasure);
+  intersection.observe(root);
+  const fullscreen = new win.MutationObserver(requestMeasure);
+  fullscreen.observe(doc.body, { childList: true });
+  doc.addEventListener('scroll', requestMeasure, { capture: true, passive: true, signal: events.signal });
+  win.addEventListener('resize', requestMeasure, { passive: true, signal: events.signal });
+  requestMeasure();
+  return () => {
+    disposed = true;
+    if (frame) win.cancelAnimationFrame(frame);
+    events.abort(); resize.disconnect(); intersection.disconnect(); fullscreen.disconnect(); geometry.disconnect();
+    controls.remove();
+  };
+}
 
 export function renderRenderedBlockModeButton(
   button: HTMLButtonElement,

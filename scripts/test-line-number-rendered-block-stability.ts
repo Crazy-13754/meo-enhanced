@@ -67,21 +67,22 @@ try {
   });
   await page.evaluate(() => {
     const view = (window as any).__editor.view;
-    const blockNodes = Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.meo-rendered-block-preview'));
+    const blockNodes = Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.meo-rendered-block-preview, .meo-md-math-fenced-display'));
     const read = () => ({
       scrollTop: view.scrollDOM.scrollTop,
       editedText: view.state.doc.line((window as any).__editLine).text,
-      editedHeight: view.lineBlockAt(view.state.doc.line((window as any).__editLine).from).height,
+      editedHeight: Array.from(view.contentDOM.querySelectorAll<HTMLElement>(':scope > .cm-line'))
+        .find(row => view.state.doc.lineAt(view.posAtDOM(row)).number === (window as any).__editLine)?.getBoundingClientRect().height ?? NaN,
       gutters: Array.from(view.dom.querySelectorAll<HTMLElement>(':scope > .cm-scroller > .cm-gutters > .cm-lineNumbers > .cm-gutterElement, .meo-md-html-table-line-number'))
         .filter((element) => /^\d+$/.test(element.textContent?.trim() ?? '') && element.getBoundingClientRect().height > 0 && getComputedStyle(element).visibility !== 'hidden')
         .map((element) => ({ line: element.textContent!.trim(), top: element.getBoundingClientRect().top, height: element.getBoundingClientRect().height })),
-      blocks: Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.meo-rendered-block-preview'))
+      blocks: Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.meo-rendered-block-preview, .meo-md-math-fenced-display'))
         .map((element, index) => ({ top: element.getBoundingClientRect().top, height: element.getBoundingClientRect().height, sameNode: element === blockNodes[index] }))
     });
     (window as any).__baseline = read();
     (window as any).__samples = [];
     const sample = () => {
-      (window as any).__samples.push(read());
+      setTimeout(() => { (window as any).__samples.push(read()); }, 0);
       (window as any).__sampleFrame = requestAnimationFrame(sample);
     };
     (window as any).__sampleFrame = requestAnimationFrame(sample);
@@ -132,21 +133,23 @@ try {
   if (minimalKind !== 'mermaid') {
     const changed = await page.evaluate(async () => {
       const view = (window as any).__editor.view;
-      const before = view.contentDOM.querySelector<HTMLElement>('.meo-rendered-block-preview[data-meo-rendered-block-kind="math"]')!;
+      const before = view.contentDOM.querySelector<HTMLElement>('.meo-md-math-fenced-display')!;
+      const delimiterLines = view.state.doc.toString().split('\n')
+        .flatMap((text: string, index: number) => text.trim() === '$$' ? [index + 1] : []);
       const oldHeight = before.getBoundingClientRect().height;
-      const oldNextLine = Number(before.dataset.meoRenderedBlockEndLine) + 1;
+      const oldNextLine = delimiterLines[1] + 1;
       const oldGutter = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-lineNumbers > .cm-gutterElement'))
         .find((element) => element.textContent?.trim() === String(oldNextLine))!;
       const alignmentOffset = oldGutter.getBoundingClientRect().top
         - view.coordsAtPos(view.state.doc.line(oldNextLine).from)!.top;
-      const fromLine = Number(before.dataset.meoRenderedBlockStartLine);
+      const fromLine = delimiterLines[0];
       const sourceLine = view.state.doc.line(fromLine + 1);
       const indent = sourceLine.text.match(/^\s*/)?.[0] ?? '';
       view.dispatch({ changes: { from: sourceLine.from, to: sourceLine.to,
         insert: indent + '\\begin{matrix}1\\\\2\\\\3\\\\4\\end{matrix}' } });
       for (let frame = 0; frame < 12; frame++) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const after = view.contentDOM.querySelector<HTMLElement>('.meo-rendered-block-preview[data-meo-rendered-block-kind="math"]')!;
-      const nextLine = Number(after.dataset.meoRenderedBlockEndLine) + 1;
+      const after = view.contentDOM.querySelector<HTMLElement>('.meo-md-math-fenced-display')!;
+      const nextLine = oldNextLine;
       const gutter = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-lineNumbers > .cm-gutterElement'))
         .find((element) => element.textContent?.trim() === String(nextLine))!;
       const contentTop = view.coordsAtPos(view.state.doc.line(nextLine).from)!.top;

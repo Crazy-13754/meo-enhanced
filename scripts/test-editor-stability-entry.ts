@@ -5,6 +5,8 @@ import { setGitDiffDetailsVisible } from '../webview/src/helpers/gitDiffDetails'
 import { setGitDiffLineHighlightsEnabled } from '../webview/src/helpers/gitDiffLineHighlights';
 import { EditorView } from '@codemirror/view';
 import { setDiagnosticsEffect } from '../webview/src/helpers/diagnostics';
+import { createEditorFocusController } from '../webview/src/adapters/editorFocusController';
+import { applyBuiltInVisualBaseline } from '../webview/src/helpers/theme';
 
 (globalThis as typeof globalThis & {
   EditorStabilityHarness?: {
@@ -16,6 +18,8 @@ import { setDiagnosticsEffect } from '../webview/src/helpers/diagnostics';
     setGitDiffLineHighlightsEnabled: typeof setGitDiffLineHighlightsEnabled;
     EditorView: typeof EditorView;
     setDiagnosticsEffect: typeof setDiagnosticsEffect;
+    createEditorFocusController: typeof createEditorFocusController;
+    applyBuiltInVisualBaseline: typeof applyBuiltInVisualBaseline;
   };
 }).EditorStabilityHarness = {
   createEditor,
@@ -25,5 +29,7 @@ import { setDiagnosticsEffect } from '../webview/src/helpers/diagnostics';
   setGitDiffDetailsVisible,
   setGitDiffLineHighlightsEnabled,
   EditorView,
-  setDiagnosticsEffect
+  setDiagnosticsEffect,
+  createEditorFocusController,
+  applyBuiltInVisualBaseline
 };

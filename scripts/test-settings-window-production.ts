@@ -831,28 +831,40 @@ try {
   }
   for (const fixture of [
     { kind: 'mermaid', text: 'intro\n\n```mermaid\ngraph TD\nA --> B\n```\n\ntail', selector: '.meo-mermaid-source-editor .cm-content', button: '.meo-mermaid-mode-btn' },
-    { kind: 'math', text: 'intro\n\n$$\nx^2 + y^2 = 1\n$$\n\ntail', selector: '.meo-latex-math-source-editor .cm-content', button: '.meo-latex-math-mode-btn' }
+    { kind: 'math', text: 'intro\n\n$$\nx^2 + y^2 = 1\n$$\n\ntail', selector: '.editor-host > .cm-editor .cm-content', button: null }
   ]) for (const clicks of [1, 2]) {
     await page.close(); page = await browser.newPage(); page.on('pageerror', error => errors.push(String(error)));
     await openFixture(fixture.text, 'live', fixture.kind === 'mermaid');
     await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
-    for (let count = 0; count < clicks; count++) {
-      await page.$eval(fixture.button, element => (element as HTMLButtonElement).click());
-      await settleSelection();
+    if (fixture.button) {
+      for (let count = 0; count < clicks; count++) {
+        await page.$eval(fixture.button, element => (element as HTMLButtonElement).click());
+        await settleSelection();
+      }
+    } else if (clicks === 1) {
+      await page.click('.meo-md-math-fenced-display');
+    } else {
+      await page.evaluate(() => {
+        const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+        view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('x^2') } }); view.focus();
+      });
     }
     await page.waitForSelector(fixture.selector);
     for (const method of ['button', 'backdrop', 'escape'] as const) {
-      const original = await page.evaluate(selector => {
-        const g = window as any, inner = g.EditingSettingsHarness.EditorView.findFromDOM(document.querySelector(selector));
-        inner.dispatch({ selection: { anchor: 4, head: 2 } }); inner.focus(); return inner.state.doc.toString();
-      }, fixture.selector);
+      const original = await page.evaluate(({ selector, kind }) => {
+        const g = window as any, editor = g.EditingSettingsHarness.EditorView.findFromDOM(document.querySelector(selector));
+        const source = editor.state.doc.toString(), from = kind === 'math' ? source.indexOf('x^2') : 0;
+        const anchor = from + 4, head = from + 2;
+        editor.dispatch({ selection: { anchor, head } }); editor.focus(); return { source, anchor, head };
+      }, fixture);
+      if (fixture.kind === 'math') await page.waitForSelector('.meo-math-source-line');
       await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button'); await closeSettings(method);
       assert.deepEqual(await page.evaluate(selector => {
         const inner = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector(selector));
         return { focus: inner.hasFocus, anchor: inner.state.selection.main.anchor, head: inner.state.selection.main.head };
-      }, fixture.selector), { focus: true, anchor: 4, head: 2 }, `${fixture.kind}/${clicks}/${method}: internal editor regains its reversed selection`);
+      }, fixture.selector), { focus: true, anchor: original.anchor, head: original.head }, `${fixture.kind}/${clicks}/${method}: source editor regains its reversed selection`);
       await page.keyboard.type('R');
-      const expected = fixture.text.replace(original, original.slice(0, 2) + 'R' + original.slice(4));
+      const expected = fixture.text.replace(original.source, () => original.source.slice(0, original.head) + 'R' + original.source.slice(original.anchor));
       await page.waitForFunction(text => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor')).state.doc.toString() === text, { timeout: 2000 }, expected);
       await chord('z');
       await page.waitForFunction(text => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor')).state.doc.toString() === text, {}, fixture.text);

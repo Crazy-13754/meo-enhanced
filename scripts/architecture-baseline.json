@@ -47,7 +47,7 @@
   "sharedModuleContracts": [
     {
       "module": "src/shared/latexMathScanner.ts",
-      "exactImporters": ["webview/src/helpers/math.ts", "src/export/math.ts"],
+      "exactImporters": ["webview/src/helpers/math.ts", "src/export/math.ts", "src/shared/mathFence.ts"],
       "delegates": [
         {
           "file": "webview/src/helpers/math.ts",

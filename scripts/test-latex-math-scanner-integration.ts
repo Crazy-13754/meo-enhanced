@@ -20,13 +20,7 @@ assert.deepEqual(parseLatexMathAt('prefix $x^2$', 7), {
   content: 'x^2',
   raw: '$x^2$'
 });
-assert.deepEqual(parseLatexMathAt('$$x$$', 1), {
-  from: 1,
-  to: 4,
-  mode: 'inline',
-  content: 'x',
-  raw: '$x$'
-});
+assert.equal(parseLatexMathAt('$$x$$', 1), null);
 assert.deepEqual(parseLatexMathAt('prefix\n$$\nx\n$$', 7), {
   from: 7,
   to: 14,

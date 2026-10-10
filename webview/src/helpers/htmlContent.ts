@@ -32,6 +32,9 @@ import { getDetailsBlocks, toggleDetailsBlock } from './detailsBlocks';
 import { UiLanguageSensitiveWidget, uiLanguageFacet } from '../editor/uiLanguage';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { estimateBlockWidgetHeight } from '../editor/blockWidgetHeight';
+import { formatSourceLineNumber } from '../editor/sourceLineNumbers';
+import { mountProjectedLineNumbers } from '../editor/projectedLineNumbers';
+import { RenderedBlockPreviewHeight } from './renderedBlockPreview';
 
 export interface RenderableHtmlBlock {
   from: number;
@@ -400,18 +403,15 @@ function createHtmlModeButton(className: string, label: string, icon: typeof Cod
 
 class HtmlBlockWidget extends UiLanguageSensitiveWidget {
   private imageWidgets: ImageWidget[] = [];
-  private heightObserver: ResizeObserver | null = null;
-  private measuredHeight = -1;
+  private readonly height: RenderedBlockPreviewHeight;
 
   constructor(readonly block: RenderableHtmlBlock) {
     super();
+    this.height = new RenderedBlockPreviewHeight(JSON.stringify(['html', block.source, block.detailsCollapsed]));
   }
 
   seedHeight(previous: HtmlBlockWidget): void {
-    if (previous.block.source === this.block.source &&
-        previous.block.detailsCollapsed === this.block.detailsCollapsed) {
-      this.measuredHeight = previous.measuredHeight;
-    }
+    this.height.seed(previous.height);
   }
 
   get estimatedHeight(): number {
@@ -419,7 +419,7 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
       kind: 'html-block',
       source: this.block.source,
       collapsed: this.block.detailsCollapsed === true,
-      measuredHeight: this.measuredHeight
+      measuredHeight: this.height.height
     });
   }
 
@@ -492,13 +492,7 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
       if (currentBlock) enterHtmlSource(view, currentBlock);
     });
     root.appendChild(button);
-    if (typeof ResizeObserver !== 'undefined') {
-      this.heightObserver = new ResizeObserver(() => {
-        const height = root.getBoundingClientRect().height;
-        if (height > 0) this.measuredHeight = height;
-      });
-      this.heightObserver.observe(root);
-    }
+    this.height.observe(root, view);
     return root;
   }
 
@@ -506,9 +500,8 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     return true;
   }
 
-  destroy(): void {
-    this.heightObserver?.disconnect();
-    this.heightObserver = null;
+  destroy(dom: HTMLElement): void {
+    this.height.destroy(dom);
     for (const widget of this.imageWidgets) widget.destroy();
     this.imageWidgets = [];
   }
@@ -533,7 +526,7 @@ const htmlDetailsSemanticLineSelector = [
 class HtmlBlockLineNumberMarker extends GutterMarker {
   elementClass: string;
 
-  constructor(private readonly block: RenderableHtmlBlock) {
+  constructor(private readonly block: RenderableHtmlBlock, private readonly lineNumbers: readonly string[]) {
     super();
     this.elementClass = block.detailsCollapsed === null ? '' : 'meo-md-html-details-line-numbers';
   }
@@ -542,67 +535,38 @@ class HtmlBlockLineNumberMarker extends GutterMarker {
     return other instanceof HtmlBlockLineNumberMarker &&
       other.block.startLine === this.block.startLine &&
       other.block.source === this.block.source &&
-      other.block.detailsCollapsed === this.block.detailsCollapsed;
+      other.block.detailsCollapsed === this.block.detailsCollapsed
+      && other.lineNumbers.length === this.lineNumbers.length
+      && other.lineNumbers.every((number, index) => number === this.lineNumbers[index]);
   }
 
   toDOM(view: EditorView): Node {
     if (this.block.detailsCollapsed === null) {
-      return document.createTextNode(String(this.block.startLine));
+      return document.createTextNode(this.lineNumbers[0]);
     }
 
     const column = document.createElement('div') as HtmlDetailsLineNumberColumn;
     column.className = 'meo-md-html-details-line-number-column';
-    let animationFrame = 0;
-    let observer: ResizeObserver | null = null;
-    let signature = '';
-
-    const sync = (): boolean => {
-      const outerMarker = column.closest<HTMLElement>('.cm-gutterElement');
-      const root = view.dom.querySelector<HTMLElement>(
-        `.meo-md-html-block[data-meo-rendered-block-start-line="${this.block.startLine}"]`
-      );
-      const details = root?.querySelector<HTMLDetailsElement>(':scope > .meo-md-html-content > details');
-      if (!outerMarker || !root || !details) return false;
-
-      const outerRect = outerMarker.getBoundingClientRect();
-      const positions = new Map<number, { line: number; top: number }>();
-      for (const element of Array.from(details.querySelectorAll<HTMLElement>(htmlDetailsSemanticLineSelector))) {
-        const line = Number(element.dataset.meoHtmlSourceLine);
-        const rect = element.getBoundingClientRect();
-        if (!Number.isInteger(line) || rect.height < 1 || getComputedStyle(element).display === 'none') continue;
-        const top = rect.top - outerRect.top;
-        const key = Math.round(top);
-        const previous = positions.get(key);
-        if (!previous || line >= previous.line) positions.set(key, { line, top });
-      }
-      const rows = Array.from(positions.values()).sort((left, right) => left.top - right.top);
-      const nextSignature = rows.map((row) => `${row.line}:${row.top.toFixed(2)}`).join('|');
-      if (nextSignature !== signature) {
-        signature = nextSignature;
-        column.replaceChildren(...rows.map((row) => {
-          const marker = document.createElement('span');
-          marker.className = 'meo-md-html-details-line-number';
-          marker.textContent = String(row.line);
-          marker.style.top = `${row.top}px`;
-          return marker;
-        }));
-      }
-      if (!observer && typeof ResizeObserver !== 'undefined') {
-        observer = new ResizeObserver(() => sync());
-        observer.observe(root);
-      }
-      return true;
-    };
-    const settle = (attemptsLeft: number): void => {
-      if (sync() || attemptsLeft <= 1) return;
-      animationFrame = window.requestAnimationFrame(() => settle(attemptsLeft - 1));
-    };
-    queueMicrotask(() => settle(4));
-    column.__meoHtmlDetailsLineNumberCleanup = () => {
-      if (animationFrame) window.cancelAnimationFrame(animationFrame);
-      observer?.disconnect();
-      observer = null;
-    };
+    column.__meoHtmlDetailsLineNumberCleanup = mountProjectedLineNumbers(view, column,
+      'meo-md-html-details-line-number', () => {
+        const root = view.dom.querySelector<HTMLElement>(
+          `.meo-md-html-block[data-meo-rendered-block-start-line="${this.block.startLine}"]`);
+        const details = root?.querySelector<HTMLDetailsElement>(':scope > .meo-md-html-content > details');
+        if (!root || !details) return null;
+        const top = column.getBoundingClientRect().top;
+        const positions = new Map<number, { line: number; top: number; height: number }>();
+        const elements = Array.from(details.querySelectorAll<HTMLElement>(htmlDetailsSemanticLineSelector));
+        for (const element of elements) {
+          const line = Number(element.dataset.meoHtmlSourceLine), rect = element.getBoundingClientRect();
+          if (!Number.isInteger(line) || rect.height < 1 || getComputedStyle(element).display === 'none') continue;
+          const key = Math.round(rect.top), previous = positions.get(key);
+          if (!previous || line >= previous.line) positions.set(key, { line, top: rect.top - top, height: rect.height });
+        }
+        const rows = Array.from(positions.values()).sort((left, right) => left.top - right.top)
+          .map((row, index) => ({ key: `${row.line}:${index}`, label: this.lineNumbers[row.line - this.block.startLine] ?? '',
+            top: row.top, height: row.height }));
+        return { rows, elements: [root, ...elements], mutations: [details] };
+      });
     return column;
   }
 
@@ -613,7 +577,9 @@ class HtmlBlockLineNumberMarker extends GutterMarker {
 
 const htmlBlockLineNumberMarker = lineNumberWidgetMarker.of((view, widget, block) => {
   if (!(widget instanceof HtmlBlockWidget) || block.height < 1) return null;
-  return new HtmlBlockLineNumberMarker(widget.block);
+  return new HtmlBlockLineNumberMarker(widget.block,
+    Array.from({ length: widget.block.endLine - widget.block.startLine + 1 }, (_, index) =>
+      formatSourceLineNumber(widget.block.startLine + index, view.state)));
 });
 
 class HtmlSourceControlWidget extends UiLanguageSensitiveWidget {

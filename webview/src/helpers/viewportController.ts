@@ -858,13 +858,15 @@ export class ViewportController {
       mutate();
       return;
     }
-    if (this.linkedPreviewEnabled && this.previewSurface?.readScrollTop && this.previewSurface.writeScrollTop) {
+    if (this.previewSurface?.readScrollTop && this.previewSurface.writeScrollTop) {
+      const linkedPreviewEnabled = this.linkedPreviewEnabled;
       const heldPreviewTop = this.previewSurface.readScrollTop();
       const projectionGeneration = this.linkedProjectionGeneration;
       const projectionDriver = this.linkedViewportDriver;
-      const previewGestureActive = projectionDriver === 'preview' && this.isLinkedInteractionActive();
+      const previewGestureActive = linkedPreviewEnabled && projectionDriver === 'preview' && this.isLinkedInteractionActive();
       let readingAnchor: ViewportDocumentAnchor | null = null;
-      if (!this.isUserScrolling() && !previewGestureActive) {
+      // Source scrolling cannot displace an independently scrolled Preview.
+      if ((!linkedPreviewEnabled || !this.isUserScrolling()) && !previewGestureActive) {
         if (documentChange) {
           const topAnchor = this.capturePreviewDocumentAnchor(0, undefined, documentChange.previousText);
           const changedRange = findChangedDocumentRange(
@@ -912,9 +914,9 @@ export class ViewportController {
           viewportOffset: projectedAnchor.viewportOffset,
           sourceRange: projectedAnchor.sourceRange
         }, () => (
-          !this.destroyed && this.linkedPreviewEnabled &&
+          !this.destroyed && this.linkedPreviewEnabled === linkedPreviewEnabled &&
           projectionGeneration === this.linkedProjectionGeneration &&
-          this.linkedViewportDriver === projectionDriver
+          (!linkedPreviewEnabled || this.linkedViewportDriver === projectionDriver)
         ));
       } else {
         this.previewSurface.writeScrollTop(heldPreviewTop);

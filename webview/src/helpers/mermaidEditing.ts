@@ -1,10 +1,19 @@
 import { editorViewportBounds } from '../editor/editorViewportBounds';
-import { EditorSelection, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
+import { getUiStrings } from '../application/uiLanguage';
+import { EditorSelection, EditorState, MapMode, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, lineNumbers, type DecorationSet } from '@codemirror/view';
+import { renderedBlockSourceBoundaryKeys } from './renderedBlockSourceNavigation';
+import {
+  applySourceLinePrefix as applyMermaidSourceLinePrefix,
+  outerOffsetToSourceOffset as mermaidOuterOffsetToEditorOffset,
+  sourceOffsetToOuterOffset as mermaidEditorOffsetToOuterOffset
+} from './sourceLinePrefix';
 import { defaultKeymap, indentLess, indentMore } from '@codemirror/commands';
 import {
   getCachedMermaidPreviewHeight,
-  MermaidDiagramWidget
+  MermaidDiagramWidget,
+  createMermaidViewportState,
+  type MermaidViewportState
 } from './mermaidDiagram';
 import {
   getMermaidDiagramPresentationFactory,
@@ -27,7 +36,6 @@ import {
 import { UiLanguageSensitiveWidget, uiLanguageFacet } from '../editor/uiLanguage';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
 import {
-  renderRenderedBlockModeButton,
   restoreRenderedBlockModeFocus,
   retainRenderedBlockModePointerFocus
 } from './renderedBlockModeControls';
@@ -53,6 +61,7 @@ type MermaidSearchReveal = {
 type MermaidEditingState = {
   modes: Map<number, MermaidBlockMode>;
   searchReveal: MermaidSearchReveal;
+  viewports: Map<number, MermaidViewportState>;
 };
 
 type MermaidEditingBlock = {
@@ -64,6 +73,7 @@ type MermaidEditingBlock = {
   startLine: number;
   endLine: number;
   indentColumns: LiveBlockIndentValue;
+  viewportState: MermaidViewportState;
 };
 
 export const setMermaidBlockModeEffect = StateEffect.define<MermaidModeChange>();
@@ -139,9 +149,24 @@ function resolveMermaidToolbarAnchor(
 
 export const mermaidEditingStateField = StateField.define<MermaidEditingState>({
   create() {
-    return { modes: new Map(), searchReveal: null };
+    return { modes: new Map(), searchReveal: null, viewports: new Map() };
   },
   update(value, transaction) {
+    let viewports = value.viewports;
+    if (transaction.docChanged) {
+      viewports = new Map();
+      for (const [anchor, viewport] of value.viewports) {
+        const line = transaction.startState.doc.lineAt(anchor);
+        const parsed = parseBlockLinePrefix(line.text, transaction.startState.tabSize);
+        const fence = anchor + parsed.prefix.length + parsed.content.search(/`{3,}|~{3,}/);
+        const mappedFence = transaction.changes.mapPos(fence, 1, MapMode.TrackAfter);
+        // Tracking the opening fence distinguishes a moved block from a whole
+        // block replacement, even if the replacement has identical source.
+        if (mappedFence === null) continue;
+        const mappedAnchor = transaction.state.doc.lineAt(mappedFence).from;
+        if (isMermaidAnchor(transaction.state, mappedAnchor)) viewports.set(mappedAnchor, viewport);
+      }
+    }
     const modes = new Map<number, MermaidBlockMode>();
     for (const [anchor, mode] of value.modes) {
       const mappedAnchor = transaction.changes.mapPos(anchor, 1);
@@ -182,9 +207,21 @@ export const mermaidEditingStateField = StateField.define<MermaidEditingState>({
       }
     }
 
-    return { modes, searchReveal };
+    return { modes, searchReveal, viewports };
   }
 });
+
+export function getMermaidBlockViewport(state: EditorState, anchor: number): MermaidViewportState {
+  const viewports = state.field(mermaidEditingStateField, false)?.viewports;
+  let viewport = viewports?.get(anchor);
+  if (!viewport) {
+    viewport = createMermaidViewportState();
+    // A session cache, not document/history state: camera gestures neither
+    // dispatch transactions nor invalidate gutters or source selections.
+    viewports?.set(anchor, viewport);
+  }
+  return viewport;
+}
 
 export function getMermaidBlockMode(
   state: EditorState,
@@ -248,7 +285,29 @@ function updateMermaidModeButton(
     temporaryReveal: false,
     uiLanguage
   });
-  renderRenderedBlockModeButton(button, decision);
+  const label = getUiStrings(uiLanguage)[mode];
+  const text = button.ownerDocument.createElement('span');
+  text.className = 'meo-mermaid-mode-label';
+  text.textContent = label;
+  const icon = button.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('width', '15');
+  icon.setAttribute('height', '15');
+  icon.setAttribute('fill', 'none');
+  icon.setAttribute('stroke', 'currentColor');
+  icon.setAttribute('stroke-width', '2');
+  icon.setAttribute('stroke-linecap', 'round');
+  icon.setAttribute('stroke-linejoin', 'round');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.setAttribute('focusable', 'false');
+  const path = button.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
+  // Match the adjacent Lucide icons' grid and stroke, retaining the paired return arrows.
+  path.setAttribute('d', 'M6.24 16.8a4.8 4.8 0 0 1 0-9.6h6.32M8.8 3.44l3.76 3.76-3.76 3.76M17.76 7.2a4.8 4.8 0 0 1 0 9.6h-6.32M15.2 13.04l-3.76 3.76 3.76 3.76');
+  icon.appendChild(path);
+  button.replaceChildren(icon, text);
+  button.setAttribute('aria-label', `${label}, ${decision.modeButton.label}`);
+  button.dataset.tooltip = decision.modeButton.label;
+  button.dataset.tooltipLiveUpdate = 'true';
 }
 
 function dispatchModeWhileRetainingViewport(
@@ -509,11 +568,6 @@ export function focusMermaidEditingOffset(
   return editingBlock.__meoMermaidEditingController.focusOuterOffset(offset, isCurrent);
 }
 
-function applyMermaidSourceLinePrefix(sourceText: string, prefix: string): string {
-  if (!prefix) return sourceText;
-  return sourceText.split('\n').map((line) => `${prefix}${line}`).join('\n');
-}
-
 // Mode changes replace the inner editor. Transfer its selection once and retire
 // projection locks before their deferred blur restoration can overwrite it.
 export function takeMermaidModeSelection(
@@ -583,50 +637,6 @@ function resolveMermaidSourceProjection(
     to: contentFrom + currentText.length - unchangedSuffix,
     insert: nextText.slice(unchangedPrefix, nextText.length - unchangedSuffix)
   };
-}
-
-function mermaidOuterOffsetToEditorOffset(sourceText: string, prefix: string, offset: number): number {
-  if (!prefix) return Math.max(0, Math.min(offset, sourceText.length));
-  const target = Math.max(0, offset);
-  const lines = sourceText.split('\n');
-  let outerPosition = 0;
-  let editorPosition = 0;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const outerLineEnd = outerPosition + prefix.length + line.length;
-    if (target <= outerLineEnd) {
-      return editorPosition + Math.max(0, Math.min(line.length, target - outerPosition - prefix.length));
-    }
-    outerPosition = outerLineEnd;
-    editorPosition += line.length;
-    if (index < lines.length - 1) {
-      outerPosition += 1;
-      editorPosition += 1;
-    }
-  }
-  return sourceText.length;
-}
-
-function mermaidEditorOffsetToOuterOffset(sourceText: string, prefix: string, offset: number): number {
-  if (!prefix) return Math.max(0, Math.min(offset, sourceText.length));
-  const target = Math.max(0, Math.min(offset, sourceText.length));
-  const lines = sourceText.split('\n');
-  let outerPosition = 0;
-  let editorPosition = 0;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const editorLineEnd = editorPosition + line.length;
-    if (target <= editorLineEnd) {
-      return outerPosition + prefix.length + target - editorPosition;
-    }
-    outerPosition += prefix.length + line.length;
-    editorPosition = editorLineEnd;
-    if (index < lines.length - 1) {
-      outerPosition += 1;
-      editorPosition += 1;
-    }
-  }
-  return outerPosition;
 }
 
 type MermaidSourceProjectionLock = {
@@ -823,6 +833,12 @@ class MermaidEditingController {
             }
           }),
           keymap.of([
+            ...renderedBlockSourceBoundaryKeys({
+              outerView,
+              bounds: () => this.block,
+              selection: () => this.getModeSelection(),
+              releaseProjection: () => { takeMermaidModeSelection(this.outerView, this.innerView.contentDOM); }
+            }),
             { key: 'Mod-z', run: () => consumeEditorHistoryCommand(this.outerView, 'undo') },
             { key: 'Mod-y', run: () => consumeEditorHistoryCommand(this.outerView, 'redo') },
             { key: 'Mod-Shift-z', run: () => consumeEditorHistoryCommand(this.outerView, 'redo') },
@@ -1055,7 +1071,7 @@ class MermaidEditingController {
     mode: Exclude<MermaidBlockMode, 'preview'>,
     searchReveal: MermaidSearchReveal
   ): boolean {
-    if (block.anchor !== this.block.anchor) {
+    if (block.anchor !== this.block.anchor || block.viewportState !== this.block.viewportState) {
       return false;
     }
     this.outerView = outerView;
@@ -1165,6 +1181,7 @@ class MermaidEditingController {
         this.block.endLine,
         {
           presentationFactory: this.presentationFactory,
+          viewportState: this.block.viewportState,
           cachePreviewHeight: false,
           uiLanguage: this.outerView.state.facet(uiLanguageFacet)
         }
@@ -1244,6 +1261,7 @@ export class MermaidEditingWidget extends UiLanguageSensitiveWidget {
     return other instanceof MermaidEditingWidget &&
       this.hasSameUiLanguageEpoch(other) &&
       other.block.anchor === this.block.anchor &&
+      other.block.viewportState === this.block.viewportState &&
       other.block.startLine === this.block.startLine &&
       other.block.diagramText === this.block.diagramText &&
       other.block.sourceLinePrefix === this.block.sourceLinePrefix &&

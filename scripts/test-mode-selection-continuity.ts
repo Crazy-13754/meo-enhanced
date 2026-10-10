@@ -114,9 +114,7 @@ try {
   for (const scenario of [
     { kind: 'mermaid', mode: 'split', edited: false, blurred: false, prefix: '', range: false },
     { kind: 'mermaid', mode: 'source', edited: true, blurred: false, prefix: '', range: true },
-    { kind: 'mermaid', mode: 'split', edited: true, blurred: true, prefix: '    ', range: true },
-    { kind: 'latex', mode: 'split', edited: false, blurred: false, prefix: '', range: false },
-    { kind: 'latex', mode: 'source', edited: true, blurred: true, prefix: '', range: true }
+    { kind: 'mermaid', mode: 'split', edited: true, blurred: true, prefix: '    ', range: true }
   ]) {
     const isMermaid = scenario.kind === 'mermaid';
     const block = isMermaid

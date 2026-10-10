@@ -491,6 +491,32 @@ async function main() {
         mathDocumentLines: readOuterContentLines('.meo-latex-math-source-editor', 26)
       };
     });
+    const sourceGeometry = await page.evaluate(() => (
+      ['.meo-mermaid-source-editor', '.meo-latex-math-source-editor'].map((selector) => {
+        const root = document.querySelector<HTMLElement>(selector)!;
+        const rows = Array.from(root.querySelectorAll<HTMLElement>('.cm-content .cm-line'));
+        const gutter = root.querySelector<HTMLElement>('.cm-lineNumbers')!;
+        const number = gutter.querySelector<HTMLElement>('.cm-gutterElement')!;
+        const probe = document.createElement('span');
+        probe.style.font = getComputedStyle(number).font;
+        probe.textContent = '99';
+        root.appendChild(probe);
+        const numberStyle = getComputedStyle(number);
+        const compactGutterWidth = probe.getBoundingClientRect().width
+          + Number.parseFloat(numberStyle.paddingLeft) + Number.parseFloat(numberStyle.paddingRight);
+        probe.remove();
+        return {
+          selector,
+          gutterWidth: gutter.getBoundingClientRect().width,
+          compactGutterWidth,
+          extraHeight: root.getBoundingClientRect().height
+            - (rows.at(-1)!.getBoundingClientRect().bottom - rows[0]!.getBoundingClientRect().top)
+        };
+      })
+    ));
+    if (sourceGeometry.some((item) => item.gutterWidth > item.compactGutterWidth + 1 || Math.abs(item.extraHeight) > 1)) {
+      throw new Error(`Rendered-block source added oversized gutters or blank rows: ${JSON.stringify(sourceGeometry)}`);
+    }
     if (
       JSON.stringify(sourceBlockLineNumbers.mermaid) !== JSON.stringify(['1', '2']) ||
       JSON.stringify(sourceBlockLineNumbers.math) !== JSON.stringify(['1']) ||
@@ -716,7 +742,7 @@ async function main() {
     if (!selectedCode.toolbarHovered || selectedCode.toolbarOpacity === null || selectedCode.toolbarOpacity < 0.99) {
       throw new Error(`Code block actions disappeared after selection: ${JSON.stringify(selectedCode)}`);
     }
-    if (JSON.stringify(selectedCode.controls) !== JSON.stringify(['Select all code', 'Copy code'])) {
+    if (JSON.stringify(selectedCode.controls) !== JSON.stringify(['Select all code', 'Copy'])) {
       throw new Error(`Unexpected code block action order: ${JSON.stringify(selectedCode.controls)}`);
     }
 

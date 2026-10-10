@@ -3,7 +3,7 @@ import { createPreviewSearchController, previewSearchStyles } from './previewSea
 import { createElement as createIconElement, PenLine, TextCursor, Info, Palette, FileText, Check } from 'lucide';
 import { getExportStyleEnvironment } from './export';
 import { createPreviewMermaidRenderer } from './previewMermaid';
-import { createCopyCodeButton } from './codeBlockControls';
+import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
 import { logWebviewRenderError } from './errors';
 import { normalizeDocumentText } from '../../../src/foundation/documentText';
 import { createDocumentScrollToTopController } from './scrollToTop';
@@ -244,6 +244,13 @@ const previewCopyBlockSelector = '.meo-export-code-block-wrap, .meo-export-merma
 function addPreviewCodeCopyControls(root: ParentNode, language: UiLanguage): void {
   const strings = getUiStrings(language);
   for (const block of root.querySelectorAll<HTMLElement>(previewCopyBlockSelector)) {
+    if (block.classList.contains('meo-export-mermaid')
+      && !block.querySelector(':scope > .meo-export-code-language-label')) {
+      const label = block.ownerDocument.createElement('div');
+      label.className = 'meo-export-code-language-label';
+      label.textContent = 'mermaid';
+      block.prepend(label);
+    }
     const code = block.querySelector<HTMLElement>(':scope > pre > code');
     if (!code && block.dataset.sourceB64 === undefined) continue;
     let button = block.querySelector<HTMLElement>(':scope > .meo-preview-code-actions > .meo-copy-code-btn');
@@ -253,13 +260,14 @@ function addPreviewCodeCopyControls(root: ParentNode, language: UiLanguage): voi
         const currentBlock = copyButton.closest<HTMLElement>(previewCopyBlockSelector);
         if (currentBlock?.dataset.sourceB64 !== undefined) {
           const binary = window.atob(currentBlock.dataset.sourceB64);
-          return new TextDecoder().decode(Uint8Array.from(binary, character => character.charCodeAt(0)));
+          const source = new TextDecoder().decode(Uint8Array.from(binary, character => character.charCodeAt(0)));
+          // Mermaid's render payload includes the structural newline before its fence.
+          return currentBlock.classList.contains('meo-export-mermaid') ? source.replace(/\n$/, '') : source;
         }
         const currentCode = currentBlock?.querySelector(':scope > pre > code');
         if (!currentCode) return '';
         const lines = Array.from(currentCode.querySelectorAll('.meo-export-code-line-source'));
-        const trailingNewline = currentCode.lastChild?.nodeType === 3 && currentCode.lastChild.textContent?.endsWith('\n');
-        return lines.map(line => line.textContent ?? '').join('\n') + (trailingNewline ? '\n' : '');
+        return lines.map(line => line.textContent ?? '').join('\n');
       }, language, block.ownerDocument);
       // A mouse click must not collapse the reader's existing text selection.
       copyButton.addEventListener('mousedown', event => {
@@ -273,25 +281,46 @@ function addPreviewCodeCopyControls(root: ParentNode, language: UiLanguage): voi
     }
     button.dataset.tooltip = strings.copyCode;
     button.setAttribute('aria-label', strings.copyCode);
+    if (block.classList.contains('meo-export-math-display')) {
+      const actions = button.parentElement!;
+      let select = actions.querySelector<HTMLElement>('.meo-select-all-code-btn');
+      if (!select) {
+        const selectButton = createSelectAllCodeButton(() => {
+          const current = selectButton.closest<HTMLElement>('.meo-export-math-display');
+          const visible = current?.querySelector('.katex-html') ?? current?.querySelector('.katex-error');
+          if (!visible) return;
+          const range = block.ownerDocument.createRange();
+          range.selectNodeContents(visible);
+          const selection = block.ownerDocument.getSelection();
+          selection?.removeAllRanges(); selection?.addRange(range);
+        }, language, block.ownerDocument);
+        selectButton.addEventListener('mousedown', event => event.preventDefault());
+        actions.prepend(selectButton);
+        select = selectButton;
+      }
+      const label = language === 'zh-CN' ? '全选公式' : 'Select formula';
+      select.dataset.tooltip = label;
+      select.setAttribute('aria-label', label);
+    }
   }
 }
 
 const previewCodeCopyStyles = `
 .meo-export-mermaid, .meo-export-math-display { position: relative; }
-.meo-export-mermaid { padding-top: 24px; }
+.meo-export-mermaid { padding-block: 24px; }
 .meo-preview-code-actions {
   position: absolute; top: 4px; right: 5px; z-index: 10;
-  display: inline-flex; align-items: center; cursor: default; user-select: none;
+  display: inline-flex; align-items: center; gap: 3px; cursor: default; user-select: none;
   opacity: 0; pointer-events: none;
 }
 :is(.meo-export-code-block-wrap, .meo-export-mermaid, .meo-export-math-display):hover > .meo-preview-code-actions,
 .meo-preview-code-actions:focus-within { opacity: 1; pointer-events: auto; }
-.meo-preview-code-actions > .meo-copy-code-btn {
+.meo-preview-code-actions > :is(.meo-copy-code-btn, .meo-select-all-code-btn) {
   display: inline-flex; align-items: center; justify-content: center;
   box-sizing: border-box; width: 22px; height: 20px; padding: 0; border: 0; border-radius: 6px;
   cursor: pointer; color: var(--meo-preview-code-copy-fg); background: var(--meo-preview-code-copy-bg);
 }
-.meo-preview-code-actions > .meo-copy-code-btn:is(:hover, :focus-visible) {
+.meo-preview-code-actions > :is(.meo-copy-code-btn, .meo-select-all-code-btn):is(:hover, :focus-visible) {
   color: var(--meo-preview-code-copy-hover-fg); background: var(--meo-preview-code-copy-hover-bg);
 }
 .meo-preview-code-actions > .meo-copy-code-btn:focus-visible {
@@ -340,6 +369,10 @@ function morphPreviewMain(
         getNodeKey(node) {
           if (node.nodeType !== 1) return undefined;
           const element = node as Element;
+          // Cached overlay references must never be repurposed as document blocks.
+          const overlay = ['meo-preview-source-position-marker', 'meo-preview-source-navigation-highlight', 'meo-preview-source-navigation']
+            .find(className => element.classList.contains(className));
+          if (overlay) return overlay;
           return element.getAttribute(previewPresentationMorphKeyAttribute) ?? (element.id || undefined);
         },
         onBeforeElUpdated(fromElement, toElement) {
@@ -716,10 +749,6 @@ const previewSourcePositionMarkerStyles = `
 `;
 
 const previewLatexMathViewportStyles = `
-.meo-export-math-display.meo-export-math-fenced-display {
-  padding-block: max(1em, 24px) 1em;
-}
-
 .meo-export-math-display.meo-latex-math-viewport {
   position: relative;
   display: flex;
@@ -741,6 +770,12 @@ const previewLatexMathViewportStyles = `
   width: max-content;
   margin: 0;
 }
+
+.meo-export-math-display.meo-math-reflow > .meo-latex-math-canvas { width: 100%; }
+.meo-export-math-display.meo-math-reflow > .meo-latex-math-canvas > .katex-display { width: auto; }
+.meo-export-math-display .katex-display > .katex { white-space: normal; }
+.meo-export-math-display .katex-html > .tag { white-space: nowrap; }
+.meo-export-math-display.meo-math-nowrap .katex-display > .katex { white-space: nowrap; }
 
 .meo-export-math-inline.meo-latex-math-viewport {
   align-items: baseline;
@@ -1624,7 +1659,8 @@ export function createPreviewController({
             sourceMapDirty = true;
             scrollToTopController.sync();
           },
-          isCurrent,
+          // Source input may change before the debounced next preview request.
+          () => isCurrent() && isCurrentText?.(renderedText) !== false,
           (mutate) => {
             const commit = () => {
               mutate();
@@ -1721,6 +1757,7 @@ export function createPreviewController({
       ? visualRect.top + visualRect.height * visualProgress : visualRect?.top;
     const interactionGeneration = viewportInteractionGeneration;
     const presentationGeneration = mermaidPresentationGeneration + 1;
+    const renderedText = frameRenderedText;
     mermaidPresentationGeneration = presentationGeneration;
     const isCurrent = () => (
       !disposed &&
@@ -1819,7 +1856,7 @@ export function createPreviewController({
           scrollToTopController.sync();
           keepPosition();
         },
-        isCurrent,
+        () => isCurrent() && (renderedText === null || isCurrentText?.(renderedText) !== false),
         (mutate) => {
           const commit = () => {
             mutate();

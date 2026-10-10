@@ -500,14 +500,14 @@ async function runComponentFocusReturn(browser: Browser): Promise<void> {
       text: 'intro\n\n```mermaid\ngraph TD\nA --> B\n```\n\ntail',
       selector: '.meo-mermaid-source-editor .cm-content', button: '.meo-mermaid-mode-btn', clicks,
       from: 'A --> B', to: 'A --> BR' })),
-    ...[1, 2].map((clicks) => ({ kind: `math-${clicks === 1 ? 'split' : 'source'}`,
+    ...(['live', 'source'] as const).map((mode) => ({ kind: `math-${mode}`, mode,
       text: 'intro\n\n$$\nx^2 + y^2 = 1\n$$\n\ntail',
-      selector: '.meo-latex-math-source-editor .cm-content', button: '.meo-latex-math-mode-btn', clicks,
-      from: 'x^2 + y^2 = 1', to: 'x^2 + y^2 = 1R' }))
+      selector: '.cm-content', line: 'x^2 + y^2 = 1', from: 'x^2 + y^2 = 1', to: 'x^2 + y^2 = 1R' }))
   ];
   for (const fixture of fixtures) {
-    const page = await open(browser, 'live', fixture.text, fixture.kind.startsWith('mermaid'));
+    const page = await open(browser, 'mode' in fixture ? fixture.mode : 'live', fixture.text, fixture.kind.startsWith('mermaid'));
     try {
+      if (fixture.kind === 'math-live') await page.click('.meo-md-math-fenced-display');
       if ('button' in fixture) {
         for (let step = 0; step < fixture.clicks; step += 1) {
           await page.evaluate((selector) => document.querySelector<HTMLButtonElement>(selector)!.click(), fixture.button);

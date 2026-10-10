@@ -2542,6 +2542,12 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
   box-sizing: border-box;
 }
 
+.cm-editor.meo-mode-source > .cm-scroller > .cm-content {
+  /* The native line-start caret straddles the text edge. Leave clearance from
+     the opaque sticky gutter, including fractional zoom pixel rounding. */
+  padding-left: 12px !important;
+}
+
 .editor-root.meo-window-focus-return-pending .cm-editor .cm-content,
 .editor-root.meo-window-focus-return-pending .cm-editor textarea,
 .editor-root.meo-window-focus-return-pending .cm-editor input {
@@ -3720,8 +3726,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   display: block;
   margin: 0.25em 0;
   text-align: center;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
 }
 
 .cm-editor .meo-md-math-display .katex-display {
@@ -3734,12 +3739,88 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   justify-content: center;
   width: 100%;
   margin: 0;
-  padding: 1em 0;
-  background: var(--meo-code-background);
+  padding: 8px 0;
+  background: transparent;
   border-radius: 0;
   line-height: 1;
   text-align: center;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.cm-editor.meo-mode-live .meo-md-math-fenced-display {
+  /* This is derived content; document selection and copying use the editable source. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cm-editor .meo-math-source-line {
+  background: var(--meo-code-background);
+  font-family: var(--meo-font-source);
+  font-size: var(--meo-user-editor-font-size, var(--meo-font-source-size));
+  line-height: var(--meo-line-height-source);
+}
+
+.cm-editor .meo-math-source-start {
+  position: relative;
+  border-radius: 6px 6px 0 0;
+}
+
+.cm-editor .meo-md-math-fenced-display.meo-math-live-result {
+  /* The editing result needs room for its label; reading has no label rail. */
+  padding: 24px 0;
+  background: var(--meo-code-background);
+  border-top: 1px solid color-mix(in srgb, var(--meo-foreground) 14%, transparent);
+  border-radius: 0 0 6px 6px;
+}
+
+.meo-math-copy-actions {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.meo-md-math-fenced-display:hover > .meo-math-copy-actions,
+.meo-md-math-fenced-display:focus-within > .meo-math-copy-actions,
+.meo-math-source-start:hover .meo-math-copy-actions,
+.meo-math-source-actions:focus-within,
+.cm-focused .meo-math-source-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn) {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--meo-semantic-codeCopyBackground);
+  color: var(--meo-code-action-foreground);
+}
+
+.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn):hover,
+.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn):focus-visible {
+  background: var(--meo-semantic-codeCopyHoverBackground);
+  color: var(--meo-code-action-hover-foreground);
+}
+
+.meo-math-result-status {
+  position: absolute;
+  top: 3px;
+  left: 8px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--meo-semantic-secondaryForeground);
 }
 
 .cm-editor .meo-md-math-display.meo-md-math-fenced-display .katex-display {
@@ -3762,6 +3843,21 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor .meo-latex-math-canvas > .katex-display {
   width: max-content;
 }
+
+.cm-editor .meo-math-reflow > .meo-latex-math-canvas {
+  width: 100%;
+}
+
+.cm-editor .meo-math-reflow > .meo-latex-math-canvas > .katex-display {
+  width: auto;
+}
+
+.cm-editor .meo-math-reflow .katex-display > .katex {
+  white-space: normal;
+}
+
+.cm-editor .meo-md-math-display .katex-html > .tag { white-space: nowrap; }
+.cm-editor .meo-math-nowrap .katex-display > .katex { white-space: nowrap; }
 
 .cm-editor .meo-latex-math-viewport.is-interactive {
   align-self: stretch;
@@ -3999,24 +4095,19 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   z-index: 20;
 }
 
-.cm-editor .meo-rendered-block-preview > .meo-mermaid-toolbar > .meo-code-block-pill,
-.cm-editor .meo-rendered-block-preview > .meo-latex-math-toolbar > .meo-code-block-pill,
-.cm-editor .meo-rendered-block-preview > .meo-mermaid-toolbar > .meo-mermaid-mode-btn,
-.cm-editor .meo-rendered-block-preview > .meo-latex-math-toolbar > .meo-latex-math-mode-btn {
+.cm-editor :is(.meo-code-block-actions, .meo-mermaid-toolbar, .meo-latex-math-toolbar)
+  > :is(.meo-code-block-pill, .meo-mermaid-mode-btn, .meo-latex-math-mode-btn) {
   border: 0;
   border-radius: 6px;
-  background-color: var(--meo-code-background);
+  background-color: transparent;
   background-image: none;
 }
 
-/* Layer hover feedback over the preview controls' opaque backing. */
-.cm-editor .meo-rendered-block-preview
-  > :is(.meo-mermaid-toolbar, .meo-latex-math-toolbar)
+/* The same controls also appear on source fence rows and floating headers. */
+.cm-editor :is(.meo-code-block-actions, .meo-mermaid-toolbar, .meo-latex-math-toolbar)
   > :is(.meo-code-block-pill, .meo-mermaid-mode-btn, .meo-latex-math-mode-btn):is(:hover, :focus-visible) {
-  background-image: linear-gradient(
-    var(--meo-semantic-codeCopyHoverBackground),
-    var(--meo-semantic-codeCopyHoverBackground)
-  );
+  color: var(--meo-code-action-hover-foreground);
+  background-color: var(--meo-semantic-codeCopyHoverBackground);
 }
 
 
@@ -4075,7 +4166,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   border: 0;
   border-radius: 6px;
   color: var(--meo-code-action-foreground);
-  background-color: var(--meo-code-background);
+  background-color: transparent;
   cursor: pointer;
 }
 
@@ -4091,10 +4182,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .cm-editor .meo-rendered-block-preview-actions :is(.meo-visual-control-btn, summary):is(:hover, :focus-visible) {
   color: var(--meo-code-action-hover-foreground);
-  background-image: linear-gradient(
-    var(--meo-semantic-codeCopyHoverBackground),
-    var(--meo-semantic-codeCopyHoverBackground)
-  );
+  background-color: var(--meo-semantic-codeCopyHoverBackground);
 }
 
 .cm-editor .meo-rendered-block-preview-actions.is-collapsed > .meo-visual-controls {
@@ -4123,7 +4211,9 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .cm-editor .meo-rendered-block-preview > :is(.meo-mermaid-block, .meo-md-math-fenced-display) {
+  /* Reserve equal space above and below the visual for the shared toolbar. */
   padding-top: 28px;
+  padding-bottom: 28px;
 }
 
 .cm-editor .meo-rendered-block-preview > .meo-mermaid-block .meo-visual-controls,
@@ -4928,6 +5018,79 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
     --meo-content-toolbar-activeBackground,
     rgba(31, 35, 40, 0.16)
   );
+}
+
+.cm-editor .meo-mermaid-mode-btn {
+  width: 76px;
+  gap: 4px;
+  padding: 0 4px;
+  font: 12px/20px var(--meo-font-live, sans-serif);
+  white-space: nowrap;
+}
+
+.cm-editor .meo-mermaid-toolbar[data-meo-ui-language='zh-CN'] .meo-mermaid-mode-btn {
+  width: 60px;
+}
+
+/* Fixed chrome never contributes height or line-number geometry to the document. */
+.cm-editor .meo-mermaid-preview-controls {
+  position: fixed;
+  inset: auto;
+  display: grid;
+  grid-template-columns: repeat(4, 22px);
+  gap: 3px;
+  padding: 4px;
+  z-index: 25;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--meo-code-background) 94%, transparent);
+  box-shadow: none;
+  backdrop-filter: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cm-editor .meo-mermaid-preview-controls[data-meo-controls-columns='2'] {
+  grid-template-columns: repeat(2, 22px);
+}
+
+.cm-editor .meo-mermaid-preview-controls.is-outside-viewport {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cm-editor .meo-mermaid-block:hover .meo-mermaid-preview-controls,
+.cm-editor .meo-mermaid-preview-controls:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn {
+  box-sizing: border-box;
+  width: 22px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--meo-code-action-foreground);
+  background: transparent;
+  pointer-events: inherit;
+}
+
+.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn::before {
+  display: none;
+}
+
+.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn:is(:hover, :focus-visible) {
+  color: var(--meo-code-action-hover-foreground);
+  background: var(--meo-semantic-codeCopyHoverBackground);
+}
+
+.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, currentColor);
+  outline-offset: 1px;
 }
 
 .meo-mermaid-exit-btn {
@@ -6097,7 +6260,7 @@ body.outline-resizing .preview-frame {
 .cm-editor .meo-mermaid-preview-sticky {
   display: flex;
   align-items: stretch;
-  min-height: max(180px, var(--meo-mermaid-preview-preferred-height, 0px));
+  min-height: var(--meo-mermaid-preview-preferred-height, 0px);
   overflow: hidden;
 }
 
@@ -6105,7 +6268,7 @@ body.outline-resizing .preview-frame {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: max(180px, min(100%, var(--meo-split-preview-available-height)));
+  min-height: max(var(--meo-latex-math-preview-preferred-height, 0px), min(100%, var(--meo-split-preview-available-height)));
 }
 
 .cm-editor .meo-latex-math-preview-sticky > .meo-latex-math-viewport.is-interactive {
@@ -6165,11 +6328,17 @@ body.outline-resizing .preview-frame {
 .cm-editor .meo-mermaid-source-editor .cm-scroller,
 .cm-editor .meo-latex-math-source-editor .cm-scroller {
   overflow: visible !important;
+  padding-right: 0;
+  scrollbar-gutter: auto;
   background: var(--meo-code-background);
 }
 
 .cm-editor .meo-mermaid-source-editor .cm-gutters,
 .cm-editor .meo-latex-math-source-editor .cm-gutters {
+  min-width: 0;
+  max-width: none;
+  padding-left: 1.5ch;
+  padding-right: 0.5ch;
   border: 0;
   color: var(--meo-semantic-mutedForeground);
   background: transparent;
@@ -6177,10 +6346,18 @@ body.outline-resizing .preview-frame {
   font-weight: var(--meo-font-source-weight);
 }
 
+.cm-editor :is(.meo-mermaid-source-editor, .meo-latex-math-source-editor)
+  :is(.cm-gutter.cm-lineNumbers, .cm-lineNumbers .cm-gutterElement) {
+  /* Local line counts must not inherit the document gutter's fixed width. */
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
 .cm-editor .meo-mermaid-source-editor .cm-content,
 .cm-editor .meo-latex-math-source-editor .cm-content {
   min-width: 0;
-  padding: 12px 12px 12px 4px;
+  padding: 0 12px 0 4px;
   background: var(--meo-code-background);
   caret-color: var(--meo-caret);
 }
@@ -6218,7 +6395,7 @@ body.outline-resizing .preview-frame {
   }
 
   .cm-editor .meo-rendered-block-mode-shell[data-meo-rendered-block-layout="side-by-side"] .meo-latex-math-preview-sticky {
-    min-height: clamp(160px, 35vh, 280px);
+    min-height: var(--meo-latex-math-preview-preferred-height, 0px);
   }
 }
 
@@ -7539,6 +7716,18 @@ html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-delet
   width: var(--meo-live-block-indent);
   background: var(--meo-live-block-quote-bars);
   pointer-events: none;
+}
+
+/* The panel consumes Live container spacing, while editable prefixes consume
+   source-font columns. Using the same offset for both can push TeX out of bounds. */
+.cm-editor.meo-mode-live .cm-line.meo-math-source-line {
+  padding-inline: 2ch !important;
+  text-indent: calc(-1 * var(--meo-math-source-prefix-width)) !important;
+}
+
+.cm-editor.meo-mode-live .cm-line.meo-math-source-line.meo-md-quote-source-order:is(.meo-md-quote, .meo-md-alert)::before {
+  left: calc(var(--meo-quote-first-column) - var(--meo-live-block-indent));
+  width: calc(var(--meo-live-block-indent) - var(--meo-quote-first-column));
 }
 
 /* The native modal layer keeps editor popovers below the settings window. */

@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WIKI_IMAGE_SCHEME } from '../foundation/wikiReference';
+import { getImagePathCandidates } from '../shared/imagePaths';
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const REMOTE_OR_INLINE_RE = /^(?:https?:|data:|blob:)/i;
@@ -27,6 +28,7 @@ export type RewriteExportImageSrcOptions = {
   target: ExportImageTarget;
   outputFilePath?: string;
   embeddedImageDataUrlCache?: Map<string, string | null>;
+  imageSearchRoots?: readonly string[];
 };
 
 export function isLocalImageSrc(rawSrc: string): boolean {
@@ -60,7 +62,7 @@ export function rewriteExportImageSrc(rawSrc: string, options: RewriteExportImag
     return input;
   }
 
-  const filePath = resolveLocalLikePath(pathPart, options.markdownFilePath);
+  const filePath = resolveLocalLikePath(pathPart, options.markdownFilePath, options.imageSearchRoots);
   if (!filePath) {
     return input;
   }
@@ -88,7 +90,7 @@ export function toFileUrlString(filePath: string): string {
   return pathToFileURL(filePath).toString();
 }
 
-function resolveLocalLikePath(rawPath: string, markdownFilePath: string): string | null {
+function resolveLocalLikePath(rawPath: string, markdownFilePath: string, imageSearchRoots: readonly string[] = []): string | null {
   if (/^file:/i.test(rawPath)) {
     try {
       return fileURLToPath(rawPath);
@@ -102,11 +104,8 @@ function resolveLocalLikePath(rawPath: string, markdownFilePath: string): string
     return null;
   }
 
-  if (path.isAbsolute(decoded)) {
-    return decoded;
-  }
-
-  return path.resolve(path.dirname(markdownFilePath), decoded);
+  const candidates = getImagePathCandidates(decoded, markdownFilePath, imageSearchRoots);
+  return candidates.find(candidate => fs.existsSync(candidate)) ?? candidates[0];
 }
 
 function splitPathAndSuffix(value: string): { pathPart: string; suffix: string; hash: string } {

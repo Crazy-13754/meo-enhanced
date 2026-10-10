@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import JSZip from 'jszip';
 import exportRuntime from '../src/export/runtime';
 import { renderPdfFromHtmlExport } from '../src/export/pdfRenderer';
+import { complexMermaidSamples } from './fixtures/mermaid-community-samples';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-docx-browser-'));
@@ -15,7 +16,7 @@ try {
   const rendered = await exportRuntime.renderExportHtmlDocument({
     readingSnapshot: {
       snapshotId: 'docx-rich-media',
-      text: '```mermaid\ngraph LR\n  A --> B\n```\n\n$$x^2 + y^2 = z^2$$',
+      text: `\`\`\`mermaid\n${complexMermaidSamples.find(sample => sample.id === 'flow')!.source}\n\`\`\`\n\n$$x^2 + y^2 = z^2$$`,
       appearance: 'dark',
       uiLanguage: 'en',
       environment: { previewFontFamily: '', previewSourceColoring: true }
@@ -47,6 +48,18 @@ try {
   const archive = await JSZip.loadAsync(fs.readFileSync(outputDocxPath));
   const documentXml = await archive.file('word/document.xml')?.async('string');
   assert.match(documentXml ?? '', /<w:drawing>/, 'rendered Mermaid and display math must be embedded as images');
+  const pageHeight = Number(/<w:pgSz[^>]*w:h="(\d+)"/.exec(documentXml!)?.[1]);
+  const topMargin = Number(/<w:pgMar[^>]*w:top="(\d+)"/.exec(documentXml!)?.[1]);
+  const bottomMargin = Number(/<w:pgMar[^>]*w:bottom="(\d+)"/.exec(documentXml!)?.[1]);
+  const usableHeightEmu = (pageHeight - topMargin - bottomMargin) * 635;
+  const pageWidth = Number(/<w:pgSz[^>]*w:w="(\d+)"/.exec(documentXml!)?.[1]);
+  const leftMargin = Number(/<w:pgMar[^>]*w:left="(\d+)"/.exec(documentXml!)?.[1]);
+  const rightMargin = Number(/<w:pgMar[^>]*w:right="(\d+)"/.exec(documentXml!)?.[1]);
+  const usableWidthEmu = (pageWidth - leftMargin - rightMargin) * 635;
+  const drawingHeights = Array.from(documentXml!.matchAll(/<wp:extent[^>]*cy="(\d+)"/g), match => Number(match[1]));
+  const drawingWidths = Array.from(documentXml!.matchAll(/<wp:extent[^>]*cx="(\d+)"/g), match => Number(match[1]));
+  assert.ok(drawingHeights.length >= 2 && drawingHeights.every(height => height < usableHeightEmu), 'A tall diagram must fit Word page height without clipping');
+  assert.ok(drawingWidths.every(width => width <= usableWidthEmu), 'Diagram sizing must also respect Word page width');
   assert.equal(
     Object.keys(archive.files).filter((name) => name.startsWith('word/media/')).length >= 2,
     true,

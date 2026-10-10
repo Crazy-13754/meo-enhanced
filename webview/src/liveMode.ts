@@ -75,12 +75,12 @@ import { getViewportController } from './helpers/viewportController';
 import { estimateBlockWidgetHeight } from './editor/blockWidgetHeight';
 import { collectInlineFootnoteMarkerRanges } from './helpers/inlineFootnotes';
 import {
-  collectLatexMathRanges,
   renderLatexMathToHtml,
-  resolveFencedDisplayMathInnerLineRange,
   type LatexMathRange,
   type LatexMathMode
 } from './helpers/math';
+import { collectDocumentMathRanges, getDisplayMathSource, type DocumentMathRange } from './helpers/displayMathBlocks';
+import { isMathFenceLanguage } from '../../src/shared/mathFence';
 import { diagnosticDataField, type EditorDiagnostic } from './helpers/diagnostics';
 import { gitDiffLineFlagsField } from './helpers/gitDiffGutter';
 import { markdownTagField } from './helpers/tags';
@@ -97,6 +97,10 @@ import { shikiRefreshEffect } from './helpers/shikiDecorations';
 import { addColorSwatchDecoration, hexColorAdjustmentExtension } from './helpers/colorSwatches';
 import { longCodeBlockSessionUiExtension } from './helpers/longCodeBlocks';
 import { attachLatexMathViewport, type LatexMathViewportController } from './helpers/latexMathViewport';
+import { createCopyCodeButton } from './helpers/codeBlockControls';
+import { formatSourceLineNumber } from './editor/sourceLineNumbers';
+import { mountProjectedLineNumbers } from './editor/projectedLineNumbers';
+import { createDisplayMathActions, displayMathResultField, getPreviousDisplayMathResult, isDisplayMathEditing } from './helpers/displayMathEditing';
 import {
   addHtmlContentDecorations,
   enterHtmlSource,
@@ -105,10 +109,6 @@ import {
 } from './helpers/htmlContent';
 
 import {
-  addLatexMathToolbar,
-  createLatexMathToolbarWidget,
-  collectEmptyLatexMathEditingRanges,
-  getLatexMathBlockMode,
   LatexMathEditingWidget,
   latexMathEditingStateField,
   setLatexMathBlockModeEffect,
@@ -253,7 +253,7 @@ type RenderedBlockDocumentLineNumberKind = 'mermaid' | 'math';
 class RenderedBlockPreviewLineNumberMarker extends GutterMarker {
   elementClass = 'meo-rendered-block-preview-line-number';
 
-  constructor(readonly lineNumber: number) {
+  constructor(readonly lineNumber: string) {
     super();
   }
 
@@ -278,7 +278,7 @@ class RenderedBlockDocumentLineNumbersMarker extends GutterMarker {
     readonly kind: RenderedBlockDocumentLineNumberKind,
     readonly anchor: number,
     readonly startLine: number,
-    readonly lineCount: number
+    readonly lineNumbers: readonly string[]
   ) {
     super();
   }
@@ -288,131 +288,40 @@ class RenderedBlockDocumentLineNumbersMarker extends GutterMarker {
       && other.kind === this.kind
       && other.anchor === this.anchor
       && other.startLine === this.startLine
-      && other.lineCount === this.lineCount;
+      && other.lineNumbers.length === this.lineNumbers.length
+      && other.lineNumbers.every((number, index) => number === this.lineNumbers[index]);
   }
 
   toDOM(view: EditorView): Node {
     const column = document.createElement('div') as RenderedBlockDocumentLineNumberColumn;
     column.className = 'meo-rendered-block-document-line-number-column';
-    for (let index = 0; index < this.lineCount; index += 1) {
-      const marker = document.createElement('span');
-      marker.className = 'meo-rendered-block-document-line-number';
-      marker.style.visibility = 'hidden';
-      marker.textContent = String(this.startLine + index);
-      column.appendChild(marker);
-    }
-    const lineMarkers = Array.from(column.children) as HTMLElement[];
-    let visibleMarkerIndices = new Set<number>();
-
     const rootSelector = this.kind === 'mermaid'
       ? `.meo-mermaid-editing-block[data-meo-mermaid-anchor="${this.anchor}"]`
       : `.meo-latex-math-editing-block[data-meo-latex-math-anchor="${this.anchor}"]`;
-    const sourceSelector = this.kind === 'mermaid'
-      ? '.meo-mermaid-source-editor'
-      : '.meo-latex-math-source-editor';
-    let timer = 0;
-    let observer: ResizeObserver | null = null;
-    let mutationObserver: MutationObserver | null = null;
-    let observedGutter: HTMLElement | null = null;
-    let observedElements: Element[] = [];
-    let alignmentFrame: number | null = null;
-    let alignmentFramesLeft = 0;
-    const scheduleAlignment = (): void => {
-      alignmentFramesLeft = 16;
-      if (alignmentFrame !== null) return;
-      const align = () => {
-        alignmentFrame = null;
-        if (!column.isConnected) return;
-        sync();
-        if (--alignmentFramesLeft > 0) alignmentFrame = requestAnimationFrame(align);
-      };
-      alignmentFrame = requestAnimationFrame(align);
-    };
-
-    const sync = (): boolean => {
-      const outerMarker = column.closest<HTMLElement>('.cm-gutterElement');
-      const source = view.dom.querySelector<HTMLElement>(`${rootSelector} ${sourceSelector}`);
-      const innerGutter = source?.querySelector<HTMLElement>('.cm-lineNumbers');
-      const innerMarkers = Array.from(
-        innerGutter?.querySelectorAll<HTMLElement>(':scope > .cm-gutterElement') ?? []
-      ).filter((element) => (
-        getComputedStyle(element).visibility !== 'hidden'
-        && element.getBoundingClientRect().height > 0
-        && /^\d+$/.test(element.textContent?.trim() ?? '')
-      ));
-      if (!outerMarker || !innerGutter || innerMarkers.length === 0) {
-        for (const index of visibleMarkerIndices) lineMarkers[index].style.visibility = 'hidden';
-        visibleMarkerIndices.clear();
-        return false;
-      }
-
-      const columnRect = column.getBoundingClientRect();
-      const nextVisibleIndices = new Set<number>();
-      for (const innerMarker of innerMarkers) {
-        const index = Number(innerMarker.textContent?.trim()) - 1;
-        const marker = lineMarkers[index];
-        if (!marker) continue;
-        const rect = innerMarker.getBoundingClientRect();
-        const top = `${rect.top - columnRect.top}px`;
-        const height = `${rect.height}px`;
-        if (marker.style.top !== top) marker.style.top = top;
-        if (marker.style.height !== height) marker.style.height = height;
-        if (!visibleMarkerIndices.has(index)) marker.style.visibility = 'visible';
-        nextVisibleIndices.add(index);
-      }
-      for (const index of visibleMarkerIndices) {
-        if (!nextVisibleIndices.has(index)) lineMarkers[index].style.visibility = 'hidden';
-      }
-      visibleMarkerIndices = nextVisibleIndices;
-
-      if (observedGutter !== innerGutter) {
-        mutationObserver?.disconnect();
-        mutationObserver = new MutationObserver(() => {
-          sync();
-          scheduleAlignment();
+    const sourceSelector = this.kind === 'mermaid' ? '.meo-mermaid-source-editor' : '.meo-latex-math-source-editor';
+    column.__meoRenderedBlockLineNumberCleanup = mountProjectedLineNumbers(view, column,
+      'meo-rendered-block-document-line-number', () => {
+        const source = view.dom.querySelector<HTMLElement>(`${rootSelector} ${sourceSelector}`);
+        const innerGutter = source?.querySelector<HTMLElement>('.cm-lineNumbers');
+        const content = source?.querySelector<HTMLElement>('.cm-content');
+        if (!source || !innerGutter || !content) return null;
+        const innerMarkers = Array.from(innerGutter.querySelectorAll<HTMLElement>(':scope > .cm-gutterElement'))
+          .filter(element => getComputedStyle(element).visibility !== 'hidden'
+            && element.getBoundingClientRect().height > 0 && /^\d+$/.test(element.textContent?.trim() ?? ''));
+        const sourceLines = Array.from(content.querySelectorAll<HTMLElement>(':scope > .cm-line'));
+        // Both editors own their geometry. Match visible native rows to source
+        // offsets; never estimate row positions from a font or fixed line height.
+        const measuredLines = sourceLines.length === innerMarkers.length ? sourceLines : innerMarkers;
+        const top = column.getBoundingClientRect().top;
+        const rows = innerMarkers.flatMap((marker, position) => {
+          const index = Number(marker.textContent?.trim()) - 1;
+          const label = this.lineNumbers[index];
+          if (label === undefined) return [];
+          const rect = measuredLines[position].getBoundingClientRect();
+          return [{ key: String(index), label, top: rect.top - top, height: rect.height }];
         });
-        mutationObserver.observe(innerGutter, { childList: true, characterData: true, subtree: true });
-        observedGutter = innerGutter;
-      }
-
-      if (typeof ResizeObserver !== 'undefined') {
-        const nextObserved = [source!, ...innerMarkers];
-        if (
-          !observer
-          || nextObserved.length !== observedElements.length
-          || nextObserved.some((element, index) => element !== observedElements[index])
-        ) {
-          observer?.disconnect();
-          observer = new ResizeObserver(() => {
-            sync();
-            scheduleAlignment();
-          });
-          observedElements = nextObserved;
-          for (const element of observedElements) observer.observe(element);
-        }
-      }
-      return true;
-    };
-    const settle = (attemptsLeft: number): void => {
-      if (sync() || attemptsLeft <= 1) return;
-      timer = window.setTimeout(() => settle(attemptsLeft - 1));
-    };
-    queueMicrotask(() => {
-      settle(4);
-      scheduleAlignment();
-    });
-    view.scrollDOM.addEventListener('scroll', sync, { passive: true });
-    column.__meoRenderedBlockLineNumberCleanup = () => {
-      window.clearTimeout(timer);
-      if (alignmentFrame !== null) cancelAnimationFrame(alignmentFrame);
-      view.scrollDOM.removeEventListener('scroll', sync);
-      observer?.disconnect();
-      mutationObserver?.disconnect();
-      observer = null;
-      mutationObserver = null;
-      observedGutter = null;
-      observedElements = [];
-    };
+        return { rows, elements: [source, ...measuredLines], mutations: [innerGutter, content] };
+      });
     return column;
   }
 
@@ -420,18 +329,19 @@ class RenderedBlockDocumentLineNumbersMarker extends GutterMarker {
     (dom as RenderedBlockDocumentLineNumberColumn).__meoRenderedBlockLineNumberCleanup?.();
   }
 }
-const renderedBlockLineNumberMarker = lineNumberWidgetMarker.of((_view, widget, block) => {
+const renderedBlockLineNumberMarker = lineNumberWidgetMarker.of((view, widget, block) => {
   if (block.height < 1) return null;
   const previewStartLine = getRenderedBlockPreviewStartLine(widget);
   if (previewStartLine !== null) {
-    return new RenderedBlockPreviewLineNumberMarker(previewStartLine);
+    return new RenderedBlockPreviewLineNumberMarker(formatSourceLineNumber(previewStartLine, view.state));
   }
   if (widget instanceof MermaidEditingWidget) {
     return new RenderedBlockDocumentLineNumbersMarker(
       'mermaid',
       widget.block.anchor,
       widget.block.startLine + 1,
-      widget.block.diagramText.split('\n').length
+      widget.block.diagramText.split('\n').map((_, index) =>
+        formatSourceLineNumber(widget.block.startLine + 1 + index, view.state))
     );
   }
   if (widget instanceof LatexMathEditingWidget) {
@@ -439,7 +349,8 @@ const renderedBlockLineNumberMarker = lineNumberWidgetMarker.of((_view, widget, 
       'math',
       widget.block.anchor,
       widget.block.lineNumber + 1,
-      widget.block.sourceText.split('\n').length
+      widget.block.sourceText.split('\n').map((_, index) =>
+        formatSourceLineNumber(widget.block.lineNumber + 1 + index, view.state))
     );
   }
   return null;
@@ -1873,7 +1784,7 @@ function addListLineDecorations(
   indentSelectedLines: Set<number>,
   parsedContainers: ReturnType<typeof parsedListMarkersByLine>,
   frontmatter: FrontmatterInfo | null = null,
-  codeBlockLines: Set<number> | null = null
+  literalBlockLines: Set<number> | null = null
 ): void {
   const stylesByLine = detectListIndentStylesByLine(state);
   const { markers: parsedMarkers, quoteMarks: quoteMarksByLine } = parsedContainers;
@@ -1881,7 +1792,7 @@ function addListLineDecorations(
   const legacyOrderedCountsByLevel: Array<number | null> = [];
 
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
-    if (codeBlockLines?.has(lineNo)) {
+    if (literalBlockLines?.has(lineNo)) {
       legacyOrderedCountsByLevel.length = 0;
       continue;
     }
@@ -2013,8 +1924,17 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
   } catch {
     frontmatter = null;
   }
-  addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter, codeBlockLines);
-  const mathRanges = [...collectMathRanges(state, tree, renderedTableRanges, frontmatter), ...collectEmptyLatexMathEditingRanges(state)];
+  const mathRanges = collectMathRanges(state, tree, renderedTableRanges, frontmatter);
+  // Markdown fallbacks must not turn TeX operators or indentation into prose widgets.
+  const literalBlockLines = new Set(codeBlockLines);
+  for (const math of mathRanges) {
+    if (!math.fencedDisplay) continue;
+    const lastLine = state.doc.lineAt(math.to - 1).number;
+    for (let lineNo = state.doc.lineAt(math.from).number; lineNo <= lastLine; lineNo += 1) {
+      literalBlockLines.add(lineNo);
+    }
+  }
+  addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter, literalBlockLines);
   const literalRanges = collectMarkdownLiteralRanges(state, tree);
   const htmlCodeBodies = literalRanges.flatMap(range => range.htmlCode ? [range.htmlCode] : []);
   for (const body of htmlCodeBodies) addRange(ranges, body.from, body.to, inlineStyleDecos.inlineCode);
@@ -2023,6 +1943,10 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
 
   tree.iterate({
     enter: (node: SyntaxNodeRef) => {
+      // Formula source owns the whole line prefix. Hiding only opening-line
+      // quote markers would give its delimiter a different visual source width.
+      if (node.name === 'QuoteMark' && mathRanges.some(math => math.fencedDisplay
+        && node.from >= state.doc.lineAt(math.from).from && node.to <= math.to)) return false;
       // Literal HTML code and TeX source keep their original characters when widgets reveal source.
       // Lezer can otherwise pair a TeX caret with one in a later formula or style code contents.
       if (htmlCodeBodies.some(body => node.from >= body.from && node.to <= body.to)
@@ -2471,7 +2395,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
     const taskOffsets = columns.map(column => liveTaskListIndentCssValue(bars.taskIndents[bars.columns.indexOf(column)]!));
     const first = columns[0];
     const sourceFirstColumn = definition
-      ? 'calc(' + (Math.max(0, first - 4) + String(definition.number).length + 1) + ' * var(--meo-live-container-ch) + 0.45em)'
+      ? 'calc(' + (Math.max(0, first - 4) + String(definition.number).length + 1) + ' * var(--meo-live-container-ch) + 0.45 * var(--meo-user-editor-font-size, var(--meo-font-live-size)))'
       : 'calc(' + first + ' * var(--meo-live-container-ch))';
     const firstColumn = 'calc(' + sourceFirstColumn + ' + ' + taskOffsets[0] + ')';
     const ruleColor = 'var(--meo-quote-rule-color, var(--meo-semantic-blockquoteBorder))';
@@ -2510,7 +2434,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
   addRawFileUrlDecorations(ranges, state, tree, activeLines, frontmatter);
   // Source prose and rendered blocks consume the same task-marker width delta.
   for (let lineNo = 1; lineNo <= state.doc.lines; lineNo += 1) {
-    if (codeBlockLines.has(lineNo)) continue;
+    if (literalBlockLines.has(lineNo)) continue;
     const line = state.doc.line(lineNo);
     const prefix = parseBlockLinePrefix(line.text, state.tabSize);
     if (!prefix.prefix) continue;
@@ -2534,7 +2458,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
         + liveTaskListIndentCssValue(taskIndent) + ');'
     } }).range(line.from));
   }
-  addListLineDecorations(ranges, state, indentSelectedLines, parsedContainers, frontmatter, codeBlockLines);
+  addListLineDecorations(ranges, state, indentSelectedLines, parsedContainers, frontmatter, literalBlockLines);
   addMathDecorations(ranges, state, mathRanges, activeLines);
   addColorSwatchDecorations(
     ranges,
@@ -2548,7 +2472,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
     ]
   );
   addKbdTagDecorations(ranges, state, activeLines, renderedTableRanges, mathRanges, frontmatter, codeBlockLines);
-  addFootnoteDefinitionDecorations(ranges, state, footnotes, activeLines, codeBlockLines);
+  addFootnoteDefinitionDecorations(ranges, state, footnotes, activeLines, literalBlockLines);
   const htmlEditingRange = getHtmlEditingRange(state);
   addDetailsBlockDecorations(
     ranges,
@@ -2726,7 +2650,19 @@ function getKbdWidget(keyText: string): WidgetType {
 
 type LatexMathWidgetElement = HTMLElement & {
   __meoLatexMathViewport?: LatexMathViewportController;
+  __meoLatexMathWidget?: LatexMathWidget;
 };
+
+class DisplayMathSourceActionsWidget extends UiLanguageSensitiveWidget {
+  constructor(readonly anchor: number) { super(); }
+  eq(other: WidgetType): boolean { return other instanceof DisplayMathSourceActionsWidget && other.anchor === this.anchor; }
+  toDOM(view: EditorView): HTMLElement {
+    const actions = createDisplayMathActions(view, () => this.anchor);
+    actions.classList.add('meo-math-source-actions');
+    return actions;
+  }
+  ignoreEvent(): boolean { return true; }
+}
 
 class LatexMathWidget extends UiLanguageSensitiveWidget {
   readonly [renderedBlockPreviewHeight]: RenderedBlockPreviewHeight;
@@ -2739,6 +2675,8 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
   anchor: number;
   sourceText: string;
   blockTo: number;
+  editing: boolean;
+  stale: boolean;
 
   constructor(
     html: string,
@@ -2749,11 +2687,17 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     indentColumns: LiveBlockIndentValue = 0,
     anchor = 0,
     sourceText = '',
-    blockTo = 0
+    blockTo = 0,
+    editing = false,
+    stale = false
   ) {
     super();
     this[renderedBlockPreviewHeight] = new RenderedBlockPreviewHeight(JSON.stringify([
-      'math', html, mode, fencedDisplay, liveBlockIndentKey(indentColumns)
+      // Reading and editing have different padding, so their measured heights cannot be shared.
+      // Editing updates the mounted result in place. Preserve its measured height
+      // until ResizeObserver reports new geometry, instead of painting an estimate
+      // in the gutter for each new rendered formula.
+      'math', editing ? null : html, mode, fencedDisplay, liveBlockIndentKey(indentColumns), editing
     ]));
     this.html = html;
     this.mode = mode;
@@ -2764,6 +2708,8 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     this.anchor = anchor;
     this.sourceText = sourceText;
     this.blockTo = blockTo;
+    this.editing = editing;
+    this.stale = stale;
   }
 
   get estimatedHeight(): number {
@@ -2772,7 +2718,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     return height > 0 ? height : estimateBlockWidgetHeight({
       kind: 'latex-display',
       html: this.html
-    });
+    }) + (this.editing ? 49 : 16);
   }
 
   eq(other: WidgetType): boolean {
@@ -2784,24 +2730,28 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
       other.fencedDisplay === this.fencedDisplay &&
       other.startLine === this.startLine &&
       other.endLine === this.endLine &&
-      other.indentColumns === this.indentColumns &&
+      liveBlockIndentKey(other.indentColumns) === liveBlockIndentKey(this.indentColumns) &&
       other.anchor === this.anchor &&
       other.sourceText === this.sourceText &&
-      other.blockTo === this.blockTo
+      other.blockTo === this.blockTo &&
+      other.editing === this.editing &&
+      other.stale === this.stale
     );
   }
 
   get [renderedBlockPreviewStartLine](): number | undefined {
-    return this.fencedDisplay && this.mode === 'display'
+    return this.fencedDisplay && this.mode === 'display' && !this.editing
       ? this.startLine
       : undefined;
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const wrapper = document.createElement(this.mode === 'display' ? 'div' : 'span') as LatexMathWidgetElement;
+    const wrapper = view.dom.ownerDocument.createElement(this.mode === 'display' ? 'div' : 'span') as LatexMathWidgetElement;
+    wrapper.__meoLatexMathWidget = this;
     wrapper.className = `meo-md-math meo-md-math-${this.mode}`;
     if (this.fencedDisplay && this.mode === 'display') {
       wrapper.classList.add('meo-md-math-fenced-display');
+      wrapper.classList.toggle('meo-math-live-result', this.editing);
       wrapper.addEventListener('pointerdown', (event: PointerEvent) => {
         if (event.button === 0) {
           event.preventDefault();
@@ -2810,30 +2760,55 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     }
     wrapper.innerHTML = this.html;
     if (this.fencedDisplay && this.mode === 'display') {
-      wrapper.__meoLatexMathViewport = attachLatexMathViewport(wrapper, {
-        interactive: true,
-        uiLanguage: view.state.facet(uiLanguageFacet)
+      applyLiveBlockIndent(wrapper, this.indentColumns);
+      wrapper.__meoLatexMathViewport = attachLatexMathViewport(wrapper);
+      if (!this.editing) wrapper.append(createDisplayMathActions(view, () => wrapper.__meoLatexMathWidget!.anchor));
+      this.updateResultLabel(wrapper, view);
+      // Enter before pointerdown bubbles: another embedded editor may release
+      // its projected selection and replace this DOM before a click can arrive.
+      wrapper.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const widget = wrapper.__meoLatexMathWidget!;
+        if (!widget.editing) {
+          const line = view.state.doc.line(Math.min(widget.startLine + 1, view.state.doc.lines));
+          const range = collectDocumentMathRanges(view.state).find(range => range.fencedDisplay
+            && view.state.doc.lineAt(range.from).from === widget.anchor);
+          const source = range && getDisplayMathSource(view.state, range);
+          view.dispatch({ selection: { anchor: source?.from ?? line.from }, scrollIntoView: true });
+        }
+        view.focus();
       });
-      const shell = createRenderedBlockPreviewShell({
-        kind: 'math',
-        language: 'latex',
-        startLine: this.startLine,
-        endLine: this.endLine,
-        indentColumns: this.indentColumns,
-        toolbar: createLatexMathToolbarWidget(
-          this.anchor,
-          this.startLine,
-          'preview',
-          this.sourceText,
-          this.blockTo
-        ).toDOM(view),
-        content: wrapper
-      });
-      this[renderedBlockPreviewHeight].observe(shell);
-      return shell;
+      this[renderedBlockPreviewHeight].observe(wrapper, view);
+      return wrapper;
     }
     applyLiveBlockIndent(wrapper, this.indentColumns);
     return wrapper;
+  }
+
+  private updateResultLabel(wrapper: HTMLElement, view: EditorView): void {
+    wrapper.querySelector(':scope > .meo-math-result-status')?.remove();
+    if (!this.editing) return;
+    const label = wrapper.ownerDocument.createElement('span');
+    label.className = 'meo-math-result-status';
+    const chinese = view.state.facet(uiLanguageFacet) === 'zh-CN';
+    label.textContent = this.stale ? (chinese ? '预览 · 上次有效结果' : 'Preview · last valid result') : (chinese ? '预览' : 'Preview');
+    if (this.stale) label.setAttribute('role', 'status');
+    wrapper.append(label);
+  }
+
+  updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    const wrapper = dom as LatexMathWidgetElement;
+    const previous = wrapper.__meoLatexMathWidget;
+    if (!this.fencedDisplay || !previous?.fencedDisplay || previous.editing !== this.editing) return false;
+    // Keep both DOM and its fitted height across caret/input transactions.
+    // Mounted callbacks resolve the current widget instead of a stale source range.
+    wrapper.__meoLatexMathWidget = this;
+    applyLiveBlockIndent(wrapper, this.indentColumns);
+    if (previous.html !== this.html) wrapper.__meoLatexMathViewport?.setContent(this.html);
+    this.updateResultLabel(wrapper, view);
+    this[renderedBlockPreviewHeight].observe(wrapper, view);
+    return true;
   }
 
   ignoreEvent(): boolean {
@@ -2862,11 +2837,13 @@ function getMathWidget(
   indentColumns: LiveBlockIndentValue = 0,
   anchor = 0,
   sourceText = '',
-  blockTo = 0
+  blockTo = 0,
+  editing = false,
+  stale = false
 ): WidgetType {
   // Measured block geometry must never be shared by two editor instances.
   if (fencedDisplay) {
-    return new LatexMathWidget(html, mode, true, startLine, endLine, indentColumns, anchor, sourceText, blockTo);
+    return new LatexMathWidget(html, mode, true, startLine, endLine, indentColumns, anchor, sourceText, blockTo, editing, stale);
   }
   const key = `${getUiLanguageWidgetEpoch()}:${mode}:${fencedDisplay ? 1 : 0}:${startLine}:${endLine}:${liveBlockIndentKey(indentColumns)}:${anchor}:${blockTo}:${sourceText}:${html}`;
   let widget = mathWidgetCache.get(key);
@@ -2915,88 +2892,25 @@ function collectRenderedTableRanges(
   return ranges;
 }
 
-function mergeSimpleRanges(ranges: Array<{ from: number; to: number }>): Array<{ from: number; to: number }> {
-  const filtered = ranges
-    .filter((range) => Number.isFinite(range.from) && Number.isFinite(range.to) && range.to > range.from)
-    .sort((left, right) => left.from - right.from || left.to - right.to);
-  if (!filtered.length) {
-    return [];
-  }
-
-  const merged = [filtered[0]];
-  for (let index = 1; index < filtered.length; index += 1) {
-    const current = filtered[index];
-    const previous = merged[merged.length - 1];
-    if (current.from <= previous.to) {
-      if (current.to > previous.to) {
-        previous.to = current.to;
-      }
-      continue;
-    }
-    merged.push({ from: current.from, to: current.to });
-  }
-  return merged;
-}
-
 function collectMathRanges(
   state: EditorState,
   tree: Tree,
   renderedTableRanges: ReadonlyArray<SourceRange>,
   frontmatter: FrontmatterInfo | null = null
-): LatexMathRange[] {
-  const literalRanges = collectMarkdownLiteralRanges(state, tree);
-  const excludedRanges = [
-    ...literalRanges.filter(range => !range.script),
-    ...renderedTableRanges
-  ];
+): DocumentMathRange[] {
+  const excludedRanges = [...renderedTableRanges];
 
   if (frontmatter) {
     excludedRanges.push({ from: frontmatter.openingFrom, to: frontmatter.closingTo });
   }
 
-  const text = state.doc.toString();
-  if (text.indexOf('$') === -1) {
-    return [];
-  }
-
-  const candidates = collectLatexMathRanges(text, {
-    excludedRanges: mergeSimpleRanges(excludedRanges)
-  });
-  // A TeX caret may look like a Markdown script to Lezer. Only scripts opened outside
-  // a complete formula protect their dollar signs from formula conversion.
-  const scripts = literalRanges.filter(range => range.script && !candidates.some(math => range.from >= math.from && range.from < math.to));
-  return candidates.filter(math => !scripts.some(script => math.from >= script.from && math.from < script.to));
-}
-
-function resolveFencedMathRenderSpan(
-  state: EditorState,
-  startLineNo: number,
-  endLineNo: number
-): { innerFrom: number; innerTo: number } | null {
-  const innerLineRange = resolveFencedDisplayMathInnerLineRange(
-    startLineNo,
-    endLineNo
-  );
-  if (!innerLineRange) {
-    return null;
-  }
-
-  const innerStartLine = state.doc.line(innerLineRange.innerStartLine);
-  const innerEndLine = state.doc.line(innerLineRange.innerEndLine);
-  if (innerEndLine.to < innerStartLine.from) {
-    return null;
-  }
-
-  return {
-    innerFrom: innerStartLine.from,
-    innerTo: innerEndLine.to
-  };
+  return collectDocumentMathRanges(state, tree, excludedRanges);
 }
 
 function addMathDecorations(
   builder: DecorationCollector,
   state: EditorState,
-  mathRanges: ReadonlyArray<LatexMathRange>,
+  mathRanges: ReadonlyArray<DocumentMathRange>,
   activeLines: Set<number>
 ): void {
   for (const mathRange of mathRanges) {
@@ -3014,101 +2928,50 @@ function addMathDecorations(
       const closingLine = state.doc.lineAt(Math.max(mathRange.to - 1, mathRange.from));
       const startLineNo = openingLine.number;
       const endLineNo = closingLine.number;
-      const indentColumns = getLiveBlockIndent(state, openingLine.from);
-      const renderSpan = resolveFencedMathRenderSpan(state, startLineNo, endLineNo);
-      if (renderSpan) {
-        editingBoundary =
-          rangeTouchesActiveLine(state, renderSpan.innerFrom, renderSpan.innerTo, activeLines) ||
-          overlapsSelection(state, renderSpan.innerFrom, renderSpan.innerTo);
-      }
-
-      const copyContent = renderSpan
-        ? state.doc.sliceString(renderSpan.innerFrom, renderSpan.innerTo)
-        : '';
+      const indentColumns = getLiveBlockIndent(state, mathRange.from);
+      const source = getDisplayMathSource(state, mathRange);
+      const sourceText = source?.text ?? '';
       const anchor = openingLine.from;
-      const mode = renderSpan
-        ? getLatexMathBlockMode(state, anchor, renderSpan.innerFrom, renderSpan.innerTo)
-        : null;
-      const decision = mode?.decision ?? null;
-      if (copyContent && decision) {
-        if (decision.effectiveMode !== 'preview' && !activeLines.has(openingLine.number)) {
-          addTopLinePillLabel(builder, openingLine.from, 'latex', -1);
-        }
-        if (decision.effectiveMode !== 'preview') {
-          addLatexMathToolbar(
-            builder,
-            openingLine.to,
-            anchor,
-            openingLine.number,
-            decision.effectiveMode,
-            copyContent,
-            mathRange.to
-          );
-        }
-      }
-
-      const sourceDecorationStart = builder.length;
-      addLineClass(builder, state, openingLine.from, closingLine.to, lineStyleDecos.codeBlock);
-      addBlockIndentLines(builder, state, openingLine.from, closingLine.to, indentColumns);
-      builder.push(lineStyleDecos.codeBlockStart.range(openingLine.from));
-      builder.push(lineStyleDecos.codeBlockEnd.range(closingLine.from));
-
-      addRange(
-        builder,
-        openingLine.from,
-        openingLine.to,
-        activeLines.has(openingLine.number) ? activeCodeMarkerDeco : fenceMarkerDeco
-      );
-      if (decision) {
-        addRange(
-          builder,
-          closingLine.from,
-          closingLine.to,
-          activeLines.has(closingLine.number) ? activeCodeMarkerDeco : fenceMarkerDeco
-        );
-      }
-
-      if (!renderSpan || !mode || !decision) {
-        continue;
-      }
-
-      if (decision.effectiveMode !== 'preview') {
-        builder.push(
-          Decoration.replace({
-            widget: new LatexMathEditingWidget({
-              anchor,
-              lineNumber: openingLine.number,
-              contentFrom: renderSpan.innerFrom,
-              contentTo: renderSpan.innerTo,
-              sourceText: copyContent,
-              indentColumns
-            }, decision.effectiveMode, mode.searchReveal),
-            block: true
-          }).range(renderSpan.innerFrom, renderSpan.innerTo)
-        );
-        continue;
-      }
-
-      const html = renderLatexMathToHtml(mathRange.content, mathRange.mode);
+      const editing = isDisplayMathEditing(state, startLineNo, endLineNo);
+      const currentHtml = renderLatexMathToHtml(mathRange.content, 'display');
+      const invalid = !currentHtml || currentHtml.includes('class="katex-error"');
+      const previousHtml = invalid && mathRange.content.trim()
+        ? getPreviousDisplayMathResult(state, mathRange.from, mathRange.to) : undefined;
+      const html = previousHtml ?? currentHtml ?? `<span class="meo-math-empty">${state.facet(uiLanguageFacet) === 'zh-CN'
+        ? '输入 LaTeX 公式' : 'Enter a LaTeX formula'}</span>`;
       if (!html) continue;
-      builder.splice(sourceDecorationStart, builder.length - sourceDecorationStart);
-      builder.push(lineStyleDecos.renderedBlockPreviewAnchor.range(openingLine.from));
-      builder.push(
-        Decoration.replace({
-          widget: getMathWidget(
-            html,
-            mathRange.mode,
-            true,
-            startLineNo,
-            endLineNo,
-            indentColumns,
-            anchor,
-            copyContent,
-            mathRange.to
-          ),
-          block: true
-        }).range(openingLine.from, closingLine.to)
-      );
+      const widget = getMathWidget(html, 'display', true, startLineNo, endLineNo,
+        indentColumns, anchor, sourceText, mathRange.to, editing, !!previousHtml);
+      if (editing) {
+        // Leave source, delimiters, selections and history in the main editor.
+        for (let lineNo = startLineNo; lineNo <= endLineNo; lineNo++) {
+          const line = state.doc.line(lineNo);
+          const prefix = lineNo === startLineNo ? state.doc.sliceString(line.from, mathRange.from)
+            : lineNo === endLineNo ? parseBlockLinePrefix(line.text, state.tabSize).prefix
+            : source?.prefix && line.text.startsWith(source.prefix) ? source.prefix
+            : source?.prefix && line.text === source.prefix.trimEnd() ? line.text : '';
+          const parsedPrefix = parseBlockLinePrefix(prefix, state.tabSize);
+          builder.push(Decoration.line({ attributes: {
+            class: 'meo-math-source-line' + (lineNo === startLineNo ? ' meo-math-source-start' : ''),
+            style: '--meo-math-source-prefix-width:' + (parsedPrefix.columns + (parsedPrefix.quoteColumns.length ? 1 : 0)) + 'ch;'
+          } }).range(line.from));
+          // Both halves use the same container boundary; source-font prefix
+          // compensation in CSS keeps TeX inside it without changing the text.
+          if (liveBlockIndentCssValue(indentColumns) !== null) {
+            builder.push(blockIndentLineDeco(indentColumns).range(line.from));
+          }
+        }
+        builder.push(Decoration.widget({ widget: new DisplayMathSourceActionsWidget(anchor), side: 1 }).range(openingLine.to));
+        // Keep the result on the following line boundary. Rebuilding a widget
+        // inside the closing source line discards that line's measured height,
+        // briefly estimating it with the surrounding prose font instead.
+        const followingLine = endLineNo < state.doc.lines ? state.doc.line(endLineNo + 1) : null;
+        builder.push(Decoration.widget({ widget, block: true, side: followingLine ? -1 : 1 })
+          .range(followingLine?.from ?? closingLine.to));
+      } else {
+        builder.push(lineStyleDecos.renderedBlockPreviewAnchor.range(openingLine.from));
+        builder.push(Decoration.replace({ widget, block: true }).range(openingLine.from, closingLine.to));
+      }
       continue;
     }
 
@@ -3488,6 +3351,10 @@ function projectInputCodeBlockLines(
     const hasClosingFence = node.name === 'FencedCode'
       && lastChild?.name === 'CodeMark'
       && startDocument.lineAt(lastChild.from).number === endLine.number;
+    const info = node.getChild('CodeInfo');
+    // Formula source owns its layout. Projecting ordinary code's inner line
+    // numbers changes wrap width until the deferred formula refresh removes them.
+    if (hasClosingFence && isMathFenceLanguage(info ? startDocument.sliceString(info.from, info.to) : null)) return;
     const firstContentLine = node.name === 'FencedCode' ? startLine.number + 1 : startLine.number;
     const lastContentLine = endLine.number - (hasClosingFence ? 1 : 0);
     if (firstContentLine > lastContentLine) return;
@@ -3643,10 +3510,7 @@ function isRenderedBlockPreview(state: EditorState, block: LiveRenderedBlock): b
     return getMermaidBlockMode(state, anchor, contentFrom, contentTo).decision.effectiveMode === 'preview';
   }
   if (block.kind === 'math') {
-    const span = resolveFencedMathRenderSpan(state, block.startLine, block.endLine);
-    if (!span) return false;
-    const anchor = state.doc.line(block.startLine).from;
-    return getLatexMathBlockMode(state, anchor, span.innerFrom, span.innerTo).decision.effectiveMode === 'preview';
+    return !isDisplayMathEditing(state, block.startLine, block.endLine);
   }
   return false;
 }
@@ -3660,6 +3524,7 @@ function buildLiveLineNumberMarkers(state: EditorState): RangeSet<GutterMarker> 
     }
   }
   for (const block of getLiveRenderedBlocks(state, { includeSelectedMath: true })) {
+    if (block.kind === 'math' && isDisplayMathEditing(state, block.startLine, block.endLine)) continue;
     if (isRenderedBlockPreview(state, block)) {
       const anchorLine = state.doc.line(block.startLine);
       builder.add(anchorLine.from, anchorLine.from, renderedBlockPreviewAnchorGutterMarker);
@@ -3879,6 +3744,7 @@ export function liveModeExtensions(options: { readonly largeDocument?: boolean }
     liveDocumentIdleField,
     mermaidEditingStateField,
     latexMathEditingStateField,
+    displayMathResultField,
     hexColorAdjustmentExtension(),
     ...htmlContentExtensions(),
     liveDecorationField,

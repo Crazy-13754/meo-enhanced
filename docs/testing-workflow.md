@@ -4,6 +4,10 @@ This repository separates fast feedback from release confidence. The normal
 repair loop stays narrow; broad and endurance runs are intentional events.
 
 The user-facing inventory is in [testing-feature-coverage.md](testing-feature-coverage.md).
+The Mermaid/formula inner-source matrix and findings are in
+[testing-rendered-block-source.md](testing-rendered-block-source.md). Run
+`bun run test:rendered-source` for its dedicated input, boundary and appearance
+checks; it also belongs to the targeted rendered and browser gates.
 Review its operation outcomes against the README, commands, settings and changes
 since the last release before selecting acceptance evidence. Gate membership is
 necessary, but a visible control or emitted message alone is not a successful
@@ -81,6 +85,22 @@ Find/Replace and mode switching from text and margins. Native selection, copy,
 undo, scrolling, composition and iframe input controls must keep their scope.
 It belongs to the quick and targeted history gates.
 
+`scripts/test-image-path-compatibility.ts` checks document-relative precedence,
+Obsidian vault and owning-workspace fallback, encoded image names, explicit
+relative paths, root traversal, unrelated workspaces and remote URI identity.
+It exercises the production Preview-to-Host seam and the HTML/PDF/Word export
+HTML builders for Markdown and HTML images. It runs in the image-storage and
+unit gates; final PDF/DOCX generation is separate evidence.
+
+`test:mermaid-compatibility` uses the shipped offline runtime to check Live and
+Preview, real Source split typing, stale-render rejection, focus, reading-anchor
+retention, linked editing and light/dark switches. Its export checks cover seven
+diagram types, actual ELK/Dagre geometry, author overrides and shared colors;
+the browser export check also generates final Word and PDF files. Eight-category
+pie charts are checked in both themes, Word drawing bounds against actual page
+margins, and PDF heading/description/diagram pagination. Build first.
+This focused pack typically takes less than a minute.
+
 1. Reproduce the reported behavior with the smallest relevant contract.
 2. While implementing, rerun only that contract.
 3. Once the change is coherent, run `bun run test:quick` once.
@@ -98,6 +118,24 @@ viewport, and high-risk browser gates. With real Mermaid, KaTeX and fonts, it
 samples every animation frame while typing and deleting above rendered blocks.
 Unchanged preview heights and all downstream line numbers must stay stable;
 a settled final frame alone cannot pass this contract.
+
+`scripts/test-display-math-gutter-paint.ts` also replays held-key input at about
+30ms intervals in formula source and inline code, across Live/Source and narrow
+quoted layouts. It compares source content and native gutter DOM rectangles
+after each frame's callbacks, without CodeMirror geometry queries that would
+flush pending measurements and mask a one-frame mismatch. The rendered-source
+gate includes it so both retained and changing preview heights are checked.
+It also covers browser composition input, saved/agent baselines at 120%/150%
+scale and actual screencast pixel alignment during changing formula fitting.
+
+The [line-number layout contract](line-number-layout.md) defines numbering,
+geometry, caret and lifecycle invariants. `test-line-number-layout-contract.ts`
+checks first-frame split projection, caret-relative numbering in Mermaid/HTML,
+setting changes, typing, resizing and font changes. It and the input-frame test
+run in quick and targeted viewport gates. The daily long-caret test uses
+`--sampled --hidpi`: six distributed targets in a 2,112-line document, including
+original-content display, rather than a full-document sweep. Empty-line caret
+screenshots are included in the targeted viewport and source-diff gates.
 
 `scripts/test-math-tag-layout.ts` uses real KaTeX styles and fonts to check that
 equation numbers remain visible, fit inside the formula canvas and never overlap

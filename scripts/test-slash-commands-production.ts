@@ -409,9 +409,8 @@ try {
     for (const [source, pos] of [['`text`', 3], ['```js\ncode\n```', 9], ['    code', 7], ['$x^2$', 3], ['$$\nx\n$$', 4], ['[x](url)', 7], ['[x](url "title")', 12], ['<div>text</div>', 8], ['<!-- note -->', 7], ['---\na: b\n---\n', 7], ['https:', 6]] as const) {
       await prepare(mode, source, pos);
       if (mode === 'live' && source.startsWith('$$')) {
-        await page.click('.meo-latex-math-mode-btn');
-        await page.waitForSelector('.meo-latex-math-editing-block.is-split .cm-content');
-        await page.click('.meo-latex-math-editing-block.is-split .cm-content'); await page.keyboard.press('End');
+        await page.waitForSelector('.cm-content > .meo-math-source-line');
+        assert.ok(await page.evaluate(() => (window as any).editor.view.hasFocus), 'Formula source uses the focused document editor');
       }
       await page.keyboard.type('/b'); await closed();
       assert.ok((await text()).includes('/b'), source + ': slash remains literal');

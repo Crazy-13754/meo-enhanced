@@ -3,15 +3,16 @@ import { createElement, ZoomIn, ZoomOut, RotateCcw, Maximize2, X } from 'lucide'
 import type { EditorState } from '@codemirror/state';
 import type { SyntaxNodeRef } from '@lezer/common';
 import type { MermaidConfig } from 'mermaid';
+import { getMermaidPalette } from '../../../src/shared/mermaidPalette';
 import { getViewportController } from './viewportController';
-import { applyLiveBlockIndent } from './blockIndent';
+import { applyLiveBlockIndent, getCodeBlockSourceLines } from './blockIndent';
 import type { MermaidDiagramRenderRequest } from '../application/mermaidDiagramRenderResources';
 import type {
   MermaidDiagramPresentationConsumer,
   MermaidDiagramPresentationHandle
 } from '../editor/mermaidDiagramPresentation';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
-import { mountRenderedBlockPreviewControls } from './renderedBlockModeControls';
+import { mountMermaidPreviewControls } from './renderedBlockModeControls';
 import { estimateBlockWidgetHeight } from '../editor/blockWidgetHeight';
 
 declare global {
@@ -36,6 +37,18 @@ type MermaidSvgBox = {
   readonly width: number;
   readonly height: number;
 };
+
+/** Transient camera for one block. Shared by renderers, never by source/SVG caches. */
+export type MermaidViewportState = {
+  zoom: number;
+  panX: number;
+  panY: number;
+  diagramType: string | null;
+};
+
+export function createMermaidViewportState(): MermaidViewportState {
+  return { zoom: 1, panX: 0, panY: 0, diagramType: null };
+}
 
 type MermaidFullscreenExitCause =
   | 'user-close'
@@ -277,22 +290,19 @@ function getMermaidThemeConfig(): { signature: string; config: MermaidRuntimeCon
   const fontFamily = rootStyles.getPropertyValue('--meo-font-live').trim() || bodyStyles.fontFamily;
   const background = getThemeCssColor('--meo-code-background', bodyStyles.backgroundColor || '#ffffff');
   const darkMode = isMermaidDarkTheme(background);
-  const nodeBackground = darkMode
-    ? getThemeCssColor('--meo-surface-background', '#2f343d')
-    : '#ffffff';
-  const foreground = darkMode
-    ? getThemeCssColor('--meo-foreground', '#c9d1d9', 'color')
-    : '#1f2328';
-  const border = darkMode
-    ? getThemeCssColor('--meo-foreground', '#c9d1d9', 'color')
-    : '#6e7781';
-  const accent = getThemeCssColor('--meo-color-base05', border, 'color');
+  const palette = getMermaidPalette(darkMode);
+  const { nodeBackground, foreground, border } = palette;
   const signature = [
     background,
     nodeBackground,
     foreground,
     border,
-    accent,
+    palette.secondaryBackground,
+    palette.tertiaryBackground,
+    palette.clusterBackground,
+    palette.line,
+    ...palette.chartColors,
+    palette.chartTextColor,
     fontFamily,
     darkMode ? 'dark' : 'light'
   ].join('|');
@@ -303,23 +313,41 @@ function getMermaidThemeConfig(): { signature: string; config: MermaidRuntimeCon
       startOnLoad: false,
       securityLevel: 'strict',
       theme: 'base',
+      look: 'classic',
       fontFamily,
       themeVariables: {
         background,
         mainBkg: nodeBackground,
-        secondBkg: nodeBackground,
-        tertiaryColor: nodeBackground,
+        secondBkg: palette.secondaryBackground,
+        secondaryColor: palette.secondaryBackground,
+        tertiaryColor: palette.tertiaryBackground,
         primaryColor: nodeBackground,
         primaryTextColor: foreground,
+        secondaryTextColor: foreground,
+        tertiaryTextColor: foreground,
         primaryBorderColor: border,
+        secondaryBorderColor: border,
+        tertiaryBorderColor: border,
         nodeBorder: border,
-        lineColor: border,
+        lineColor: palette.line,
+        signalColor: palette.line,
+        sequenceNumberColor: darkMode ? palette.chartTextColor : '#ffffff',
         textColor: foreground,
         nodeTextColor: foreground,
         edgeLabelBackground: background,
-        clusterBkg: background,
+        clusterBkg: palette.clusterBackground,
         clusterBorder: border,
         titleColor: foreground,
+        noteBkgColor: palette.secondaryBackground,
+        noteTextColor: foreground,
+        noteBorderColor: border,
+        ...Object.fromEntries(palette.chartColors.map((color, index) => [`pie${index + 1}`, color])),
+        pieSectionTextColor: palette.chartTextColor,
+        pieLegendTextColor: foreground,
+        pieTitleTextColor: foreground,
+        pieOpacity: 1,
+        pieStrokeColor: border,
+        pieOuterStrokeColor: border,
         fontFamily,
         darkMode
       },
@@ -544,27 +572,11 @@ export function getFencedCodeContent(state: EditorState, node: SyntaxNodeRef): s
   const hasClosingFence = lastChild?.name === 'CodeMark' &&
     state.doc.lineAt(lastChild.from).number === endLine.number;
   const lastContentLine = endLine.number - (hasClosingFence ? 1 : 0);
-  const codeTextRanges: Array<{ from: number; to: number }> = [];
-
-  for (let child = node.node.firstChild; child; child = child.nextSibling) {
-    if (child.name === 'CodeText') {
-      codeTextRanges.push({ from: child.from, to: child.to });
-    }
-  }
-
-  const lines: string[] = [];
-  for (let lineNumber = startLine.number + 1; lineNumber <= lastContentLine; lineNumber += 1) {
-    const line = state.doc.line(lineNumber);
-    const parts = codeTextRanges
-      .filter((range) => range.from <= line.to && range.to >= line.from)
-      .map((range) => state.doc.sliceString(
-        Math.max(range.from, line.from),
-        Math.min(range.to, line.to)
-      ));
-    lines.push(parts.join(''));
-  }
-
-  return lines.join('\n');
+  return getCodeBlockSourceLines(state, node.node)
+    .filter((line) => state.doc.lineAt(line.from).number > startLine.number
+      && state.doc.lineAt(line.from).number <= lastContentLine)
+    .map((line) => state.doc.sliceString(line.prefixTo, line.to))
+    .join('\n');
 }
 
 export class MermaidDiagramWidget extends WidgetType {
@@ -572,9 +584,8 @@ export class MermaidDiagramWidget extends WidgetType {
   startLine: number;
   endLine: number;
   isDisplayMath: boolean;
-  zoom: number;
-  panX: number;
-  panY: number;
+  private readonly viewportState: MermaidViewportState;
+  private readonly blockViewportState?: MermaidViewportState;
   fullscreenSession: MermaidFullscreenSession | null;
   themeSignature: string;
   cachePreviewHeight: boolean;
@@ -601,6 +612,7 @@ export class MermaidDiagramWidget extends WidgetType {
       cachePreviewHeight?: boolean;
       indentColumns?: number;
       uiLanguage?: UiLanguage;
+      viewportState?: MermaidViewportState;
     }
   ) {
     super();
@@ -608,9 +620,8 @@ export class MermaidDiagramWidget extends WidgetType {
     this.startLine = startLine;
     this.endLine = endLine;
     this.isDisplayMath = isDisplayMathDiagram(diagramText);
-    this.zoom = 1;
-    this.panX = 0;
-    this.panY = 0;
+    this.blockViewportState = options.viewportState;
+    this.viewportState = options.viewportState ?? createMermaidViewportState();
     this.fullscreenSession = null;
     this.themeSignature = getMermaidEditorPresentationIdentity().themeKey;
     this.presentationFactory = options.presentationFactory;
@@ -639,6 +650,13 @@ export class MermaidDiagramWidget extends WidgetType {
     this.initialHeightSeed = this.measuredHeight;
   }
 
+  get zoom(): number { return this.viewportState.zoom; }
+  set zoom(value: number) { this.viewportState.zoom = value; }
+  get panX(): number { return this.viewportState.panX; }
+  set panX(value: number) { this.viewportState.panX = value; }
+  get panY(): number { return this.viewportState.panY; }
+  set panY(value: number) { this.viewportState.panY = value; }
+
   get estimatedHeight(): number {
     const contentWidth = currentMermaidContentWidth();
     const measuredHeight = Math.abs(contentWidth - this.measuredContentWidth) <= 1
@@ -662,6 +680,7 @@ export class MermaidDiagramWidget extends WidgetType {
       other.indentColumns === this.indentColumns &&
       other.uiLanguage === this.uiLanguage &&
       other.themeSignature === this.themeSignature &&
+      other.blockViewportState === this.blockViewportState &&
       Math.abs(other.initialHeightSeed - this.initialHeightSeed) < 1
     );
   }
@@ -708,7 +727,7 @@ export class MermaidDiagramWidget extends WidgetType {
     if (this.isDisplayMath) {
       container.classList.add('meo-mermaid-math-block');
     }
-    if (this.staleSvg) this.renderSvg(container, this.staleSvg);
+    if (this.staleSvg) this.renderSvg(container, this.staleSvg, view, false);
     if (this.cachePreviewHeight && view && typeof ResizeObserver !== 'undefined') {
       this.previewResizeObserver = new ResizeObserver(() => {
         const height = container.getBoundingClientRect().height;
@@ -774,7 +793,7 @@ export class MermaidDiagramWidget extends WidgetType {
         }
         container.style.removeProperty('min-height');
         container.replaceChildren();
-        this.renderSvg(container, svg);
+        this.renderSvg(container, svg, view);
       },
       showError: (_source, error) => {
         finishPresentation();
@@ -851,7 +870,7 @@ export class MermaidDiagramWidget extends WidgetType {
     return container;
   }
 
-  renderSvg(container: HTMLElement, svgContent: string): void {
+  renderSvg(container: HTMLElement, svgContent: string, view?: EditorView, currentPresentation = true): void {
     this.embeddedControlsCleanup();
     const svgWrapper = document.createElement('div');
     svgWrapper.className = 'meo-mermaid-svg-wrapper';
@@ -863,13 +882,71 @@ export class MermaidDiagramWidget extends WidgetType {
       return;
     }
 
+    if (currentPresentation) {
+      // Only a successful, current render can change the diagram's identity.
+      // Incomplete source and cached stale SVGs must leave its camera intact.
+      const diagramType = svgWrapper.querySelector('svg')?.getAttribute('aria-roledescription') ?? null;
+      if (diagramType) {
+        if (this.viewportState.diagramType && this.viewportState.diagramType !== diagramType) {
+          this.zoom = 1;
+          this.panX = 0;
+          this.panY = 0;
+        }
+        this.viewportState.diagramType = diagramType;
+      }
+    }
+    this.applyTransform(svgWrapper);
+    if (currentPresentation) this.keepDiagramInReach(container, svgWrapper, view);
+
     const controls = this.createZoomControls(svgWrapper);
     container.appendChild(controls);
-    this.embeddedControlsCleanup = mountRenderedBlockPreviewControls(
-      container, controls, getUiStrings(this.uiLanguage).morePreviewControls,
-      () => this.createZoomControls(svgWrapper)
-    );
+    this.embeddedControlsCleanup = mountMermaidPreviewControls(container, controls, view);
     this.attachEmbeddedInteractions(container, svgWrapper);
+  }
+
+  private keepDiagramInReach(container: HTMLElement, wrapper: HTMLElement, view?: EditorView): void {
+    if (!this.panX && !this.panY) return;
+    const read = () => {
+      if (!wrapper.isConnected || this.fullscreenSession || (!this.panX && !this.panY)) return null;
+      const svg = wrapper.querySelector('svg');
+      if (!svg) return null;
+      const bounds = container.getBoundingClientRect();
+      let content = svg.getBoundingClientRect();
+      try {
+        const box = svg.getBBox();
+        const matrix = svg.getScreenCTM();
+        if (matrix && box.width > 0 && box.height > 0) {
+          const points = [new DOMPoint(box.x, box.y), new DOMPoint(box.x + box.width, box.y),
+            new DOMPoint(box.x, box.y + box.height), new DOMPoint(box.x + box.width, box.y + box.height)]
+            .map(point => point.matrixTransform(matrix));
+          const left = Math.min(...points.map(point => point.x));
+          const top = Math.min(...points.map(point => point.y));
+          content = new DOMRect(left, top, Math.max(...points.map(point => point.x)) - left,
+            Math.max(...points.map(point => point.y)) - top);
+        }
+      } catch {
+        // Detached or not-yet-measurable SVGs can still use their viewport box.
+      }
+      if (bounds.width <= 0 || bounds.height <= 0 || content.width <= 0 || content.height <= 0) return null;
+      const scaleX = bounds.width / (container.offsetWidth || bounds.width);
+      const scaleY = bounds.height / (container.offsetHeight || bounds.height);
+      const visible = 24;
+      // Do not recenter after ordinary edits. Move the minimum distance only
+      // when the entire diagram has fallen outside the newly sized viewport.
+      const dx = content.right <= bounds.left ? bounds.left + visible - content.right
+        : content.left >= bounds.right ? bounds.right - visible - content.left : 0;
+      const dy = content.bottom <= bounds.top ? bounds.top + visible - content.bottom
+        : content.top >= bounds.bottom ? bounds.bottom - visible - content.top : 0;
+      return { dx: dx / scaleX, dy: dy / scaleY };
+    };
+    const write = (correction: ReturnType<typeof read>) => {
+      if (!correction || !wrapper.isConnected) return;
+      this.panX += correction.dx;
+      this.panY += correction.dy;
+      this.applyTransform(wrapper);
+    };
+    if (view) view.requestMeasure({ key: wrapper, read, write });
+    else requestAnimationFrame(() => write(read()));
   }
 
   attachEmbeddedInteractions(container: HTMLElement, svgWrapper: HTMLElement): void {
@@ -1087,6 +1164,8 @@ export class MermaidDiagramWidget extends WidgetType {
     const strings = getUiStrings(this.uiLanguage);
     const controls = document.createElement('div');
     controls.className = 'meo-visual-controls meo-mermaid-zoom-controls';
+    controls.setAttribute('role', 'group');
+    controls.setAttribute('aria-label', strings.previewTools);
     applyMermaidThemeClass(controls);
 
     const zoomIn = document.createElement('button');

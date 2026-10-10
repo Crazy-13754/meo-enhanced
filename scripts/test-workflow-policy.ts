@@ -114,6 +114,7 @@ function targetedCommands(
       ];
     case 'rendered':
       return [
+        packageScript('test:rendered-source'),
         script('scripts/test-math-tag-layout.ts'),
         script('scripts/test-composite-block-layout.ts'),
         script('scripts/test-composite-render-parity.ts'),
@@ -174,6 +175,10 @@ function targetedCommands(
         script('scripts/test-line-number-typing-stability.ts'),
         script('scripts/test-line-number-no-wrap-stability.ts'),
         script('scripts/test-line-number-rendered-block-stability.ts'),
+        script('scripts/test-line-number-layout-contract.ts'),
+        script('scripts/test-display-math-gutter-paint.ts'),
+        script('scripts/test-source-empty-line-caret.ts'),
+        { args: ['scripts/test-source-diff-long-caret.ts', '--sampled', '--hidpi'] },
         script('scripts/test-fenced-block-enter-stability.ts'),
         script('scripts/test-indented-code-blocks-production.ts'),
         script('scripts/test-document-reload-mermaid-viewport.ts'),
@@ -292,6 +297,9 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-line-number-typing-stability.ts'),
           script('scripts/test-line-number-no-wrap-stability.ts'),
           script('scripts/test-line-number-rendered-block-stability.ts'),
+          script('scripts/test-line-number-layout-contract.ts'),
+          script('scripts/test-display-math-gutter-paint.ts'),
+          { args: ['scripts/test-source-diff-long-caret.ts', '--sampled', '--hidpi'] },
           script('scripts/test-fenced-block-enter-stability.ts'),
           script('scripts/test-html-enter-gutter-stability.ts'),
           script('scripts/test-uat-viewport-stability.ts'),
@@ -305,7 +313,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
         tier: 'targeted',
         area,
         title: `Targeted ${area} regression`,
-        expectedDuration: area === 'uat' ? 'about 2-5 minutes' : 'about 1-3 minutes',
+        expectedDuration: area === 'uat' ? 'about 2-5 minutes' : area === 'rendered' ? 'about 4-7 minutes' : 'about 1-3 minutes',
         longRunning: false,
         stages: [serialStage(
           `Targeted ${area} contracts`,

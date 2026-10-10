@@ -109,15 +109,7 @@ async function main(): Promise<void> {
       marker: ' HISTORY',
       previewLabel: 'Switch to split view'
     });
-    await assertPreviewModeSurvivesHistory(page, {
-      kind: 'formula',
-      text: ['before', '$$', 'x = 1', '$$', 'after'].join('\n'),
-      button: '.meo-latex-math-mode-btn',
-      block: '.meo-latex-math-editing-block',
-      controller: '__meoLatexMathEditingController',
-      marker: ' + y',
-      previewLabel: 'Switch to split view'
-    });
+    // Math presentation follows the document caret, tested in test-display-math-editing.
 
     console.log('rendered block Preview mode survives Undo/Redo');
   } catch (error) {

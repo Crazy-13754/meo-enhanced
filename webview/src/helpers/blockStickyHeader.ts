@@ -4,8 +4,8 @@ import type { SyntaxNode } from '@lezer/common';
 import { currentSyntaxTree, getFencedCodeInfo } from './markdownSyntax';
 import { createCodeBlockActionsWidget } from './codeBlocks';
 import { createFloatingMermaidToolbarWidget, getMermaidBlockMode } from './mermaidEditing';
-import { createFloatingLatexMathToolbarWidget, getLatexMathBlockMode } from './latexMathEditing';
 import { getLiveRenderedBlocks } from './liveRenderedBlocks';
+import { getFencedCodeContent } from './mermaidDiagram';
 import { getUiStrings } from '../application/uiLanguage';
 import { uiLanguageFacet } from '../editor/uiLanguage';
 import { measureFixedContainingBlockMapping } from '../editor/fixedChromeDomGeometry';
@@ -69,7 +69,7 @@ function readBlockHeader(view: EditorView, position: number): BlockHeader | null
     if (rendered.kind === 'mermaid') {
       const node = codeNodeAt(view, opening.to);
       if (!node) return null;
-      const content = state.doc.sliceString(opening.from, ending.to);
+      const content = getFencedCodeContent(state, node);
       const mode = getMermaidBlockMode(
         state, opening.from, state.doc.line(opening.number + 1).from, state.doc.line(ending.number - 1).to
       ).decision.effectiveMode;
@@ -77,14 +77,7 @@ function readBlockHeader(view: EditorView, position: number): BlockHeader | null
         languageClass: mode === 'preview' ? 'meo-rendered-block-preview-language' : 'meo-code-language-label',
         widget: createFloatingMermaidToolbarWidget(opening.from, opening.number, mode, content, ending.to) };
     }
-    if (ending.number <= opening.number + 1) return null;
-    const contentFrom = state.doc.line(opening.number + 1).from;
-    const contentTo = state.doc.line(ending.number - 1).to;
-    const content = state.doc.sliceString(contentFrom, contentTo);
-    const mode = getLatexMathBlockMode(state, opening.from, contentFrom, contentTo).decision.effectiveMode;
-    return { from: opening.from, to: ending.to, language: 'latex', kind: 'math', quoted,
-      languageClass: mode === 'preview' ? 'meo-rendered-block-preview-language' : 'meo-code-language-label',
-      widget: createFloatingLatexMathToolbarWidget(opening.from, opening.number, mode, content, ending.to) };
+    return null;
   }
   const node = codeNodeAt(view, position);
   if (!node) return null;

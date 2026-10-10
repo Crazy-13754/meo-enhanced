@@ -71,10 +71,11 @@ export function collectLatexMathRanges(
   options: {
     baseOffset?: number;
     excludedRanges?: SimpleRange[];
+    includeEmptyDisplay?: boolean;
   } = {}
 ): LatexMathRange[] {
   const { baseOffset = 0, excludedRanges = [] } = options;
-  const ranges = scanLatexMath(text, { excludedRanges });
+  const ranges = scanLatexMath(text, { excludedRanges, includeEmptyDisplay: options.includeEmptyDisplay });
   if (baseOffset === 0) {
     return ranges;
   }

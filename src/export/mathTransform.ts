@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import { parseLatexMathAt, renderLatexMathToHtml, type LatexMathMode } from './math';
+import { mathFenceBodyRange } from '../shared/mathFence';
 
 function mathSourceAttribute(content: string, mode: LatexMathMode): string {
   // KaTeX's display HTML does not retain the expression needed by Preview copy.
@@ -67,7 +68,9 @@ export function installMathTransform(
       if (!html) return false;
       const node = state.push('html_inline', '', 0);
       node.meta = { meoTrustedHtml: true, meoMathSource: math.raw };
-      node.content = `<span class="meo-export-math meo-export-math-${math.mode}"${mathSourceAttribute(math.content, math.mode)}>${html}</span>`;
+      const source = state.src.slice(math.from, math.to);
+      const body = mathFenceBodyRange(source);
+      node.content = `<span class="meo-export-math meo-export-math-${math.mode}"${mathSourceAttribute(source.slice(body.from, body.to), math.mode)}>${html}</span>`;
       options.onRenderedMath?.();
     }
     state.pos = math.to;
@@ -82,31 +85,31 @@ export function installMathTransform(
       return false;
     }
 
-    for (let line = startLine + 1; line < endLine; line += 1) {
-      const lineStart = state.bMarks[line] + state.tShift[line];
-      const lineEnd = state.eMarks[line];
-      if (options.githubStyle && !state.src.slice(lineStart, lineEnd).trim()) return false;
-      if (state.src.slice(lineStart, lineEnd).trim() !== '$$') {
-        continue;
+    // Markdown-it has already projected list/quote prefixes into bMarks.
+    // Scan that scope with the same boundaries used by the editable surface.
+    let scopeEnd = Math.min(endLine, state.lineMax);
+    for (let line = startLine + 1; line < scopeEnd; line++) {
+      if (state.sCount[line] < state.blkIndent && state.src.slice(state.bMarks[line], state.eMarks[line]).trim()) {
+        scopeEnd = line;
+        break;
       }
-      if (silent) {
-        return true;
-      }
-
-      const content = state.getLines(startLine + 1, line, state.blkIndent, false).trim();
-      if (!content) {
-        return false;
-      }
-      const mathBlock = state.push('meo_math_block', 'div', 0);
-      mathBlock.block = true;
-      mathBlock.content = content;
-      mathBlock.map = [startLine, line + 1];
-      mathBlock.markup = '$$';
-      state.line = line + 1;
-      return true;
     }
-
-    return false;
+    const source = state.getLines(startLine, scopeEnd, state.blkIndent, false);
+    const math = parseLatexMathAt(source, source.indexOf('$$'));
+    if (!math?.fencedDisplay || (options.githubStyle && /\n[ \t]*\n/.test(math.raw))) return false;
+    if (silent) return true;
+    const line = startLine + source.slice(0, math.to).split('\n').length - 1;
+    const content = math.content;
+    const mathBlock = state.push('meo_math_block', 'div', 0);
+    mathBlock.block = true;
+    mathBlock.content = content;
+    const copySource = source.slice(math.from, math.to);
+    const body = mathFenceBodyRange(copySource);
+    mathBlock.meta = { copySource: copySource.slice(body.from, body.to) };
+    mathBlock.map = [startLine, line + 1];
+    mathBlock.markup = '$$';
+    state.line = line + 1;
+    return true;
   });
 
   md.renderer.rules.meo_math_block = (tokens, idx, _options, _env, self) => {
@@ -116,6 +119,6 @@ export function installMathTransform(
       return `<pre>${md.utils.escapeHtml(`$$\n${mathBlock.content}\n$$`)}</pre>\n`;
     }
     options.onRenderedMath?.();
-    return `<div class="meo-export-math meo-export-math-display meo-export-math-fenced-display"${mathSourceAttribute(String(mathBlock.content ?? ''), 'display')}${self.renderAttrs(mathBlock)}>${renderedMath}</div>\n`;
+    return `<div class="meo-export-math meo-export-math-display meo-export-math-fenced-display"${mathSourceAttribute(String(mathBlock.meta?.copySource ?? mathBlock.content ?? ''), 'display')}${self.renderAttrs(mathBlock)}>${renderedMath}</div>\n`;
   };
 }

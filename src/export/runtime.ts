@@ -16,6 +16,7 @@ export type ExportRuntimeBuildHtmlOptions = {
   wikiResources?: ResolvedWikiResources;
   readingSnapshot: ReadingSnapshot;
   sourceDocumentPath: string;
+  imageSearchRoots?: readonly string[];
   outputFilePath: string;
   target: 'html' | 'pdf' | 'docx';
   mermaidRuntimeSrc: string;
@@ -52,6 +53,7 @@ async function renderExportHtmlDocument(
       wikiResources: options.wikiResources,
       markdownText: snapshot.text,
       markdownFilePath: options.sourceDocumentPath,
+      imageSearchRoots: options.imageSearchRoots,
       outputFilePath: options.outputFilePath,
       target: options.target,
       uiLanguage: snapshot.uiLanguage,

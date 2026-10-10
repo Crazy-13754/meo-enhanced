@@ -52,15 +52,15 @@ export function createCopyCodeButton(
   return button;
 }
 
-export function createSelectAllCodeButton(onSelectAll: () => void, language: UiLanguage): HTMLSpanElement {
+export function createSelectAllCodeButton(onSelectAll: () => void, language: UiLanguage, ownerDocument: Document = document): HTMLSpanElement {
   const strings = getUiStrings(language);
-  const button = document.createElement('span');
+  const button = ownerDocument.createElement('span');
   button.className = 'meo-code-block-pill meo-select-all-code-btn';
   button.setAttribute('aria-label', strings.selectAllCode);
   button.dataset.tooltip = strings.selectAllCode;
   button.setAttribute('role', 'button');
   button.setAttribute('tabindex', '0');
-  button.appendChild(createElement(TextCursorInput, { width: 15, height: 15, 'aria-hidden': 'true' }));
+  button.appendChild(ownerDocument.importNode(createElement(TextCursorInput, { width: 15, height: 15, 'aria-hidden': 'true' }), true));
 
   const selectAll = (event: Event) => {
     event.preventDefault();
