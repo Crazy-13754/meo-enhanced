@@ -30,55 +30,27 @@ function parseComputedColor(value: string): ComputedColor {
   throw new Error(`Unsupported computed color: ${value}`);
 }
 
-function colorBrightness(value: string): number {
-  const color = parseComputedColor(value);
-  return (color.red + color.green + color.blue) / 3;
-}
-
-function colorDistance(left: string, right: string): number {
-  const a = parseComputedColor(left);
-  const b = parseComputedColor(right);
-  return Math.max(
-    Math.abs(a.red - b.red),
-    Math.abs(a.green - b.green),
-    Math.abs(a.blue - b.blue)
-  );
-}
-
 function assertOpaqueColor(value: string, label: string): void {
   assert.equal(parseComputedColor(value).alpha, 1, `${label} must be fully opaque: ${value}`);
 }
 
 function assertTableActionsAppearance(
   appearance: Record<string, string>,
-  editorBackground: string,
-  label: string,
-  direction: 'darker' | 'lighter'
+  native: { background: string; selected: string; foreground: string; selectedForeground: string; hoverForeground: string; border: string },
+  label: string
 ): void {
-  for (const key of [
-    'triggerBackground',
-    'triggerActiveBackground',
-    'menuBackground',
-    'moreButtonBackground',
-    'moreButtonActiveBackground'
-  ]) {
-    assertOpaqueColor(appearance[key], `${label} ${key}`);
-  }
   for (const key of ['triggerBackground', 'menuBackground', 'moreButtonBackground']) {
-    const delta = colorBrightness(appearance[key]) - colorBrightness(editorBackground);
-    assert.ok(
-      direction === 'darker' ? delta < -1 : delta > 1,
-      `${label} ${key} must move ${direction} than the editor background: ${JSON.stringify(appearance)}`
-    );
+    assertOpaqueColor(appearance[key], `${label} ${key}`);
+    assert.equal(appearance[key], native.background, `${label} ${key} must use menu.background`);
   }
-  assert.ok(
-    colorDistance(appearance.triggerActiveBackground, appearance.triggerBackground) >= 14,
-    `${label} trigger active state must stand out from its surface`
-  );
-  assert.ok(
-    colorDistance(appearance.moreButtonActiveBackground, appearance.moreButtonBackground) >= 14,
-    `${label} more-button active state must stand out from its surface`
-  );
+  for (const key of ['triggerActiveBackground', 'moreButtonActiveBackground']) {
+    assert.equal(appearance[key], native.selected, `${label} ${key} must use radio.activeBackground`);
+    assert.notEqual(appearance[key], native.background, `${label} active state must remain distinguishable`);
+  }
+  assert.equal(appearance.moreButtonColor, native.foreground, `${label} must use menu.foreground`);
+  assert.equal(appearance.moreButtonActiveColor, native.selectedForeground, `${label} selected state must use radio.activeForeground`);
+  assert.equal(appearance.triggerActiveColor, native.selectedForeground, `${label} expanded trigger must use radio.activeForeground`);
+  assert.equal(appearance.menuBorder, native.border, `${label} must use menu.border`);
 }
 
 async function waitForFrames(page: import('puppeteer-core').Page, count = 6): Promise<void> {
@@ -105,6 +77,13 @@ async function main(): Promise<void> {
     await page.setViewport({ width: 900, height: 620, deviceScaleFactor: 1 });
     await page.setContent(`<!doctype html><style>
       :root {
+        --vscode-menu-background: #182c40;
+        --vscode-menu-foreground: #d7e9fb;
+        --vscode-menu-border: #46617c;
+        --vscode-menu-selectionBackground: #3b526b;
+        --vscode-menu-selectionForeground: #f8d2ab;
+        --vscode-radio-activeBackground: #235176;
+        --vscode-radio-activeForeground: #a9f3c6;
         --vscode-editor-font-family: monospace;
         --vscode-editor-font-size: 14px;
         --vscode-editor-line-height: 20px;
@@ -476,27 +455,41 @@ async function main(): Promise<void> {
         (cell) => cell.getBoundingClientRect().width
       );
       const root = document.documentElement;
+      (window as any).TableStabilityHarness.applyUiTheme('dark', true);
       const darkTrigger = document.querySelector<HTMLElement>('.meo-md-html-table-context-trigger')!;
       const darkMoreButton = document.querySelector<HTMLElement>('.meo-md-html-table-context-next')!;
+      if (document.querySelector<HTMLDivElement>('.meo-md-html-table-context-menu')!.hidden) pointer(darkTrigger);
+      await frames(2);
       const darkTriggerBackground = getComputedStyle(darkTrigger).backgroundColor;
       const darkMenuBackground = getComputedStyle(document.querySelector('.meo-md-html-table-context-menu')!).backgroundColor;
       const darkMoreButtonBackground = getComputedStyle(darkMoreButton).backgroundColor;
+      const darkMoreButtonColor = getComputedStyle(darkMoreButton).color;
       darkTrigger.setAttribute('aria-expanded', 'true');
       darkMoreButton.classList.add('is-active');
       const darkAppearance = {
         triggerBackground: darkTriggerBackground,
         triggerActiveBackground: getComputedStyle(darkTrigger).backgroundColor,
         menuBackground: darkMenuBackground,
-        moreButtonColor: getComputedStyle(darkMoreButton).color,
+        menuBorder: getComputedStyle(document.querySelector('.meo-md-html-table-context-menu')!).borderTopColor,
+        moreButtonColor: darkMoreButtonColor,
+        moreButtonActiveColor: getComputedStyle(darkMoreButton).color,
+        triggerActiveColor: getComputedStyle(darkTrigger).color,
         moreButtonBackground: darkMoreButtonBackground,
         moreButtonActiveBackground: getComputedStyle(darkMoreButton).backgroundColor
       };
       darkTrigger.setAttribute('aria-expanded', 'false');
       darkMoreButton.classList.remove('is-active');
+      darkMoreButton.blur();
       root.dataset.editorAppearance = 'light';
       root.style.setProperty('--meo-background', '#f2f3f5');
       root.style.setProperty('--meo-foreground', '#1f2328');
       root.style.setProperty('--meo-color-base02', '#57606a');
+      for (const [name, value] of Object.entries({
+        'menu-background': '#eaf2fa', 'menu-foreground': '#182c40', 'menu-border': '#8ba3ba',
+        'menu-selectionBackground': '#c4ddf5', 'menu-selectionForeground': '#654321',
+        'radio-activeBackground': '#aac9e8', 'radio-activeForeground': '#184c2d'
+      })) root.style.setProperty('--vscode-' + name, value);
+      (window as any).TableStabilityHarness.applyUiTheme('light', true);
       const lightTrigger = document.querySelector<HTMLElement>('.meo-md-html-table-context-trigger')!;
       const lightMoreButton = document.querySelector<HTMLElement>('.meo-md-html-table-context-next')!;
       const lightTriggerBackground = getComputedStyle(lightTrigger).backgroundColor;
@@ -509,12 +502,16 @@ async function main(): Promise<void> {
         triggerBackground: lightTriggerBackground,
         triggerActiveBackground: getComputedStyle(lightTrigger).backgroundColor,
         menuBackground: lightMenuBackground,
+        menuBorder: getComputedStyle(document.querySelector('.meo-md-html-table-context-menu')!).borderTopColor,
         moreButtonColor: lightMoreButtonColor,
+        moreButtonActiveColor: getComputedStyle(lightMoreButton).color,
+        triggerActiveColor: getComputedStyle(lightTrigger).color,
         moreButtonBackground: lightMoreButtonBackground,
         moreButtonActiveBackground: getComputedStyle(lightMoreButton).backgroundColor
       };
       lightTrigger.setAttribute('aria-expanded', 'false');
       lightMoreButton.classList.remove('is-active');
+      lightMoreButton.blur();
       root.dataset.editorAppearance = 'dark';
       root.style.setProperty('--meo-background', '#22272e');
       root.style.setProperty('--meo-foreground', '#d7dde5');
@@ -785,8 +782,23 @@ async function main(): Promise<void> {
     );
     assert.equal(result.constrainedFits, true, 'preferred cell width must yield when the table reaches its available width');
     assert.equal(result.constrainedOverflow, false, 'a feasible constrained table must not gain horizontal overflow');
-    assertTableActionsAppearance(result.darkAppearance, 'rgb(34, 39, 46)', 'dark table actions', 'darker');
-    assertTableActionsAppearance(result.lightAppearance, 'rgb(242, 243, 245)', 'light table actions', 'lighter');
+    // Use actual pointer hover on a visible menu probe; the command fixture's
+    // current page may be hidden after its geometry/command checks.
+    for (const [appearance, foreground] of [['dark', '#f8d2ab'], ['light', '#654321']] as const) {
+      await page.evaluate(({ appearance, foreground }) => {
+        document.documentElement.style.setProperty('--vscode-menu-selectionForeground', foreground);
+        (window as any).TableStabilityHarness.applyUiTheme(appearance, true);
+        const menu = document.createElement('div'); menu.className = 'meo-md-html-table-context-menu';
+        menu.style.cssText = 'position:fixed;left:100px;top:100px;z-index:9999';
+        menu.innerHTML = '<button id="menu-foreground-probe" class="meo-md-html-table-context-btn meo-md-html-table-context-page-btn">Action</button>';
+        document.querySelector('.cm-editor')!.append(menu);
+      }, { appearance, foreground });
+      await page.mouse.move(0, 0); await page.hover('#menu-foreground-probe');
+      assert.equal(await page.$eval('#menu-foreground-probe', button => getComputedStyle(button).color), appearance === 'dark' ? 'rgb(248, 210, 171)' : 'rgb(101, 67, 33)');
+      await page.$eval('#menu-foreground-probe', button => button.parentElement!.remove());
+    }
+    assertTableActionsAppearance(result.darkAppearance, { background: 'rgb(24, 44, 64)', selected: 'rgb(35, 81, 118)', foreground: 'rgb(215, 233, 251)', selectedForeground: 'rgb(169, 243, 198)', hoverForeground: 'rgb(248, 210, 171)', border: 'rgb(70, 97, 124)' }, 'dark table actions');
+    assertTableActionsAppearance(result.lightAppearance, { background: 'rgb(234, 242, 250)', selected: 'rgb(170, 201, 232)', foreground: 'rgb(24, 44, 64)', selectedForeground: 'rgb(24, 76, 45)', hoverForeground: 'rgb(101, 67, 33)', border: 'rgb(139, 163, 186)' }, 'light table actions');
     console.log('table context menu production checks passed');
   } finally {
     await browser.close();

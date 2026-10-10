@@ -25,6 +25,9 @@ async function main(): Promise<void> {
         await page.setContent(`<html data-editor-appearance="${appearance}"><body class="vscode-${appearance}"><div id="app"></div></body></html>`);
         await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
         await page.addStyleTag({ content: `:root {
+          --vscode-menu-background: ${dark ? '#1c3448' : '#eef6ff'};
+          --vscode-menu-foreground: ${dark ? '#e6f3ff' : '#18202a'};
+          --vscode-menu-border: ${dark ? '#46617c' : '#8ba3ba'};
           --vscode-editor-background: ${dark ? '#24292f' : '#f7f8fa'};
           --vscode-editor-foreground: ${dark ? '#f0f2f4' : '#22262b'};
           --vscode-editorWidget-background: ${dark ? '#ffffff' : '#20252b'};
@@ -33,7 +36,7 @@ async function main(): Promise<void> {
           --vscode-font-family: sans-serif;
           --vscode-focusBorder: #2680c2;
           --vscode-button-background: ${dark ? '#0e639c' : '#2e7d32'};
-          --vscode-button-foreground: ${dark ? '#ffffff' : '#24292f'};
+          --vscode-button-foreground: #ffffff;
           --vscode-button-hoverBackground: ${dark ? '#1177bb' : '#388e3c'};
         }` });
         await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
@@ -74,6 +77,8 @@ async function main(): Promise<void> {
             dialogs.push({
               background: getComputedStyle(dialog).backgroundColor,
               foreground: getComputedStyle(dialog).color,
+              labelForegrounds: Array.from(dialog.querySelectorAll<HTMLElement>('.meo-hex-color-adjustment-row > span, .meo-hex-color-adjustment-row > output'), (element) => getComputedStyle(element).color),
+              closeForeground: getComputedStyle(dialog.querySelector<HTMLElement>('.meo-hex-color-adjustment-close')!).color,
               border: getComputedStyle(dialog).borderTopColor,
               toolbarBackground: getComputedStyle(toolbarProbe).backgroundColor,
               toolbarBorder: getComputedStyle(toolbarProbe).borderTopColor,
@@ -134,10 +139,11 @@ async function main(): Promise<void> {
           throw new Error(`${appearance}/${language} must preserve the original sample while updating the new sample: ${JSON.stringify(result)}`);
         }
         const editorBackground = dark ? 'rgb(36, 41, 47)' : 'rgb(247, 248, 250)';
-        const targetForeground = dark ? 'rgb(210, 216, 223)' : 'rgb(34, 38, 43)';
+        const targetForeground = dark ? 'rgb(230, 243, 255)' : 'rgb(24, 32, 42)';
         if (result.some((dialog) => dialog.background !== dialog.toolbarBackground ||
           dialog.border !== dialog.toolbarBorder || dialog.background === editorBackground ||
-          dialog.foreground !== targetForeground)) {
+          dialog.foreground !== targetForeground || dialog.closeForeground !== targetForeground ||
+          dialog.labelForegrounds.length !== 8 || dialog.labelForegrounds.some((color) => color !== targetForeground))) {
           throw new Error(`${appearance}/${language} popover must share the table toolbar surface: ${JSON.stringify(result)}`);
         }
         const luminance = (color: string) => {

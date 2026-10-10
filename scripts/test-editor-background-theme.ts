@@ -42,7 +42,7 @@ try {
         && doc?.body && doc.defaultView!.getComputedStyle(doc.body).backgroundColor === expected;
     }, { timeout: 4000 }, expected);
   };
-  const checkModes = async (expected: string, selectedBackground: string, toolbarBackground: string) => {
+  const checkModes = async (expected: string, selectedBackground: number[], toolbarBackground: string) => {
     await waitBackground(expected);
     for (const mode of ['live', 'source', 'preview']) {
       await page.click(`button[data-mode="${mode}"]`);
@@ -51,10 +51,15 @@ try {
       if (mode !== 'preview') assert.equal(await page.$eval('.cm-editor', element => getComputedStyle(element).backgroundColor), expected);
     }
     await waitBackground(expected);
-    const indicator = await page.$eval('.segmented-control-button.is-active .segmented-control-button-indicator', element => getComputedStyle(element).backgroundColor);
+    const indicator = await page.$eval('.segmented-control-button.is-active .segmented-control-button-indicator', element => {
+      const context = document.createElement('canvas').getContext('2d')!;
+      context.fillStyle = getComputedStyle(element).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+    });
     const toolbar = await page.$eval('.mode-toolbar', element => getComputedStyle(element).backgroundColor);
     assert.equal(toolbar, toolbarBackground, 'The toolbar must retain its fixed appearance palette');
-    assert.equal(indicator, selectedBackground, 'The selected segment must retain its fixed contrast color independently of the document background');
+    assert.deepEqual(indicator, selectedBackground, 'The selected segment must retain its native UI contrast independently of the document background');
   };
   const changeHost = async (appearance: 'light' | 'dark', background: string) => {
     await page.evaluate(({ appearance, background }) => {
@@ -65,11 +70,11 @@ try {
     }, { appearance, background });
   };
   assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue('--vscode-editor-background')), '#1b2430', 'Theme initialization must preserve the native inline background variable');
-  await checkModes('rgb(27, 36, 48)', 'rgb(39, 44, 48)', 'rgb(31, 36, 40)');
+  await checkModes('rgb(27, 36, 48)', [42, 47, 51], 'rgb(31, 36, 40)');
   await changeHost('dark', '#242138');
-  await checkModes('rgb(36, 33, 56)', 'rgb(39, 44, 48)', 'rgb(31, 36, 40)');
+  await checkModes('rgb(36, 33, 56)', [42, 47, 51], 'rgb(31, 36, 40)');
   await changeHost('light', '#f8f1e5');
-  await checkModes('rgb(248, 241, 229)', 'rgb(255, 255, 255)', 'rgb(246, 248, 250)');
+  await checkModes('rgb(248, 241, 229)', [255, 255, 255], 'rgb(246, 248, 250)');
   await page.click('.more-tools-wrapper > .format-button');
   await page.click('.editor-appearance-button[data-editor-appearance="dark"]');
   await waitBackground('rgb(36, 41, 46)');

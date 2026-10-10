@@ -127,7 +127,7 @@ try {
     assert.notEqual(actual.keycap[2], 'none', 'Keyboard keycaps keep their bottom shadow');
     for (const link of actual.links) assert.deepEqual(link, [linkColor, 'underline', false, true], 'Bound Preview links retain GitHub colors and decoration');
     assert.ok(Math.abs(actual.centerOffset) < 1, `Mermaid must be centered: ${actual.centerOffset}`);
-    assert.deepEqual(actual.diagramSize, [440, 144]);
+    assert.deepEqual(actual.diagramSize, [440, 152]);
     assert.equal(actual.diagramPadding, '0px');
     if (appearance === 'light') assert.equal(actual.nodeFill, 'rgb(236, 236, 255)');
     assert.ok(actual.scrollbar.endsWith(background), 'The scrollbar track must not expose the differently themed host');

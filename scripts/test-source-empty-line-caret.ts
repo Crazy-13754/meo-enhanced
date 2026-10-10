@@ -12,7 +12,7 @@ try {
   await page.setViewport({ width: 950, height: 900 });
   await page.setContent('<!doctype html><style>html,body{height:100%;margin:0}.editor-root,#app{height:100%}#outside{position:fixed;right:0;top:0}</style><div class="editor-root"><button id="outside">Outside</button><div id="app" class="editor-host"></div></div>');
   await page.addStyleTag({ path: 'webview/src/styles.css' });
-  await page.addStyleTag({ content: ':root{--meo-background:white;--meo-foreground:#24292e;--meo-caret-color:#ff00ff;--meo-font-live:Arial;--meo-font-live-size:16px;--meo-font-source:monospace;--meo-font-source-size:14px;--git-added:#4caf7d;--git-deleted:#e05252}.cm-content{caret-animation:manual}' });
+  await page.addStyleTag({ content: ':root{--meo-background:white;--meo-foreground:#24292e;--meo-caret-color:#ff00ff;--vscode-editorCursor-foreground:#ff00ff;--meo-font-live:Arial;--meo-font-live-size:16px;--meo-font-source:monospace;--meo-font-source-size:14px;--git-added:#4caf7d;--git-deleted:#e05252}.cm-content{caret-animation:manual}' });
   await page.addScriptTag({ content: await build.outputs[0]!.text() });
   const settle = () => page.evaluate(async () => { for (let i = 0; i < 4; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
   let clicks = 0;

@@ -3484,7 +3484,7 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 
 /* CodeMirror's light tooltip skin can remain active while the Webview editor uses a dark appearance. */
 body .cm-tooltip.meo-hex-color-adjustment {
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-menu-foreground);
   background: var(--meo-table-context-surface);
 }
 
@@ -3601,7 +3601,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .meo-hex-color-adjustment-row > span,
 .meo-hex-color-adjustment-row > output {
   overflow: hidden;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-menu-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3811,6 +3811,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .meo-math-copy-actions {
+  cursor: default;
   position: absolute;
   top: 4px;
   right: 5px;
@@ -5084,6 +5085,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   backdrop-filter: none;
   opacity: 0;
   pointer-events: none;
+  cursor: default;
 }
 
 .cm-editor .meo-mermaid-preview-controls[data-meo-controls-columns='2'] {
@@ -7122,12 +7124,12 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .cm-editor .meo-md-html-table-context-trigger:hover {
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-menu-hover-foreground);
   background: var(--meo-table-context-hover-surface);
 }
 
 .cm-editor .meo-md-html-table-context-trigger[aria-expanded='true'] {
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-selected-foreground);
   background: var(--meo-table-context-selected-surface);
 }
 
@@ -7235,7 +7237,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .cm-editor .meo-md-html-table-context-page-btn {
   width: 22px;
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-menu-foreground);
   background: var(--meo-table-context-surface);
 }
 
@@ -8067,7 +8069,8 @@ html[data-editor-appearance='light'] .segmented-control-button.is-active .segmen
 html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):is(:hover, :focus-visible) { color: var(--meo-ui-foreground); background: transparent; }
 .segmented-control-button:focus-visible .segmented-control-button-indicator { box-shadow: inset 0 0 0 1px var(--meo-ui-focus); }
 .preview-select-control { --preview-select-background: var(--meo-ui-dropdown-background); --preview-select-foreground: var(--meo-ui-dropdown-foreground); --preview-select-border: var(--meo-ui-dropdown-border); --preview-select-hover-border: var(--meo-ui-focus); }
-.preview-preset-dropdown, html[data-editor-appearance='dark'] .preview-preset-dropdown { --preview-preset-accent: var(--meo-ui-vscode-icon-foreground); }
+.preview-preset-dropdown, html[data-editor-appearance='dark'] .preview-preset-dropdown { --preview-preset-accent: var(--meo-ui-vscode-icon-foreground); border-color: var(--meo-ui-dropdown-border); }
+.preview-preset-control .preview-preset-dropdown:is(:hover, [aria-expanded='true'], :focus-visible) { border-color: var(--meo-ui-focus); background: var(--meo-ui-dropdown-background); outline-color: var(--meo-ui-focus); }
 .preview-dropdown-panel, html[data-editor-appearance='dark'] .preview-preset-dropdown-panel { color: var(--meo-ui-dropdown-foreground); background: var(--meo-ui-dropdown-list); border-color: var(--meo-ui-dropdown-border); box-shadow: var(--meo-ui-shadow); }
 .preview-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible, .is-selected) { color: var(--meo-ui-menu-hover-foreground); background: var(--meo-ui-menu-hover); outline: 1px solid var(--meo-ui-menu-selection-border); outline-offset: -1px; }
 .preview-preset-dropdown-panel .preview-dropdown-option.is-selected .preview-preset-option-name { color: inherit; }
@@ -8090,6 +8093,7 @@ html[data-editor-appearance='light'] :is(.selection-inline-menu, .cm-editor .meo
 }
 :is(.selection-inline-menu, .cm-editor .meo-md-html-table-context-trigger, .cm-editor .meo-md-html-table-context-menu) { color: var(--meo-ui-menu-foreground); }
 .cm-editor .meo-md-html-table-context-menu :is(button:hover, button:focus-visible) { color: var(--meo-ui-menu-hover-foreground); }
+.cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-btn.is-active { color: var(--meo-ui-selected-foreground); }
 .cm-editor .meo-md-html-table-context-delete-btn { color: var(--meo-ui-error); }
 .cm-editor .meo-md-html-table-context-delete-btn:is(:hover, :focus-visible) { color: var(--meo-ui-menu-hover-foreground); }
 .cm-tooltip.meo-hex-color-adjustment { box-shadow: var(--meo-ui-shadow); }

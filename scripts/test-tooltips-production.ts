@@ -265,11 +265,11 @@ try {
   await page.$eval(stateful, element => element.remove());
   assert.equal(await page.$('#' + statefulHintId), null, 'disposing a stateful control removes its hint');
 
-  for (const kind of ['mermaid', 'latex-math']) {
+  for (const kind of ['mermaid']) {
     const selector = `.meo-${kind}-mode-btn`;
     await page.mouse.move(0, 0);
     const restingStyle = await page.$eval(selector, element => ({
-      background: getComputedStyle(element).backgroundImage, color: getComputedStyle(element).color
+      background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color
     }));
     await page.hover(kind === 'mermaid' ? '.meo-mermaid-block' : '.meo-latex-math-viewport');
     await show(selector);
@@ -284,7 +284,7 @@ try {
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await page.mouse.move(0, 0);
     const afterPointerLeave = await page.$eval(selector, element => ({
-      hovered: element.matches(':hover'), background: getComputedStyle(element).backgroundImage, color: getComputedStyle(element).color
+      hovered: element.matches(':hover'), background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color
     }));
     assert.equal(afterPointerLeave.hovered, false);
     assert.deepEqual({ background: afterPointerLeave.background, color: afterPointerLeave.color }, restingStyle, 'pointer mode changes must not retain focus highlighting after leaving');
@@ -296,7 +296,7 @@ try {
       const button = document.querySelector(selector)!;
       return document.getElementById(button.getAttribute('aria-describedby')!)?.classList.contains('is-visible');
     }, {}, selector);
-    assert.equal(await page.$eval(selector, element => element.matches(':focus-visible') && getComputedStyle(element).backgroundImage !== 'none'), true, 'keyboard navigation retains visible focus feedback');
+    assert.equal(await page.$eval(selector, (element, resting) => element.matches(':focus-visible') && getComputedStyle(element).backgroundColor !== resting, restingStyle.background), true, 'keyboard navigation retains visible focus feedback');
     const previous = await page.$eval(selector, element => (element as HTMLElement).dataset.tooltip);
     await page.keyboard.press('Enter');
     await page.waitForFunction(({ selector, previous }) => (document.querySelector(selector) as HTMLElement)?.dataset.tooltip !== previous, {}, { selector, previous });
@@ -316,10 +316,24 @@ try {
       const button = document.querySelector(selector) as HTMLElement;
       return button?.dataset.tooltip !== previous && button.matches(':focus-visible');
     }, {}, { selector, previous: sourceHint });
-    assert.equal(await page.$eval(selector, element => getComputedStyle(element).backgroundImage !== 'none'), true, 'keyboard return to preview retains the focused button highlight');
+    assert.equal(await page.$eval(selector, (element, resting) => getComputedStyle(element).backgroundColor !== resting, restingStyle.background), true, 'keyboard return to preview retains the focused button highlight');
   }
+  phase = 'native formula actions';
+  assert.equal(await page.$('.meo-latex-math-mode-btn'), null, 'formula editing uses the main document');
+  const formulaCopy = '.meo-math-copy-actions .meo-copy-code-btn';
+  assert.equal((await show(formulaCopy)).text, 'Copy');
+  await page.mouse.move(0, 0);
+  await page.keyboard.press('Tab');
+  await page.mouse.move(0, 0);
+  const formulaSelect = '.meo-math-copy-actions .meo-select-all-code-btn';
+  await page.focus(formulaSelect);
+  await page.waitForFunction(() => !!document.querySelector('.meo-tooltip.is-visible'));
+  assert.equal(await page.$eval(formulaSelect, element => document.getElementById(element.getAttribute('aria-describedby')!)?.querySelector('.meo-tooltip-label')?.textContent), 'Select formula source');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.meo-math-source-line');
+  assert.equal(await page.$('.meo-tooltip.is-visible'), null, 'entering formula source dismisses the action hint');
   await page.hover('.meo-mermaid-block');
-  await page.click('.meo-mermaid-toolbar [aria-label="Fullscreen"]');
+  await page.click('.meo-mermaid-preview-controls [aria-label="Fullscreen"]');
   await page.waitForSelector('.meo-mermaid-fullscreen-controls');
   for (const label of ['Zoom in', 'Zoom out', 'Reset zoom', 'Exit fullscreen']) {
     const selector = `.meo-mermaid-fullscreen-controls [aria-label="${label}"]`;
