@@ -155,6 +155,7 @@
               "pasteHtml": true,
               "documentSuggestions": true,
               "slash": true,
+              "slashPreferAbove": false,
               "emoji": false
             },
             "shortcuts": {}
@@ -223,6 +224,10 @@
                 "slash": {
                   "type": "boolean",
                   "default": true
+                },
+                "slashPreferAbove": {
+                  "type": "boolean",
+                  "default": false
                 },
                 "emoji": {
                   "type": "boolean",

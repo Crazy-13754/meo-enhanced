@@ -72,6 +72,7 @@ export function createInputSuggestions(options: {
     };
     fields: { from: number; to: number }[] = []; fieldIndex = 0; templateEnd = 0;
     composing = false;
+    get reverseSlashOrder() { return this.context?.type === 'slash' && this.view.state.facet(inputAssistanceFacet).slashPreferAbove; }
     items: readonly Suggestion[] = []; context: SuggestionContext | null = null; head = 0;
     constructor(readonly view: EditorView) {
       this.popup.className = 'meo-input-suggestions'; this.popup.hidden = true; this.popup.setAttribute('role', 'listbox');
@@ -182,7 +183,7 @@ export function createInputSuggestions(options: {
       this.head = this.cellInput && this.cellFrom !== null ? this.cellInput.selectionStart : this.view.state.selection.main.head;
       if (unchanged) {
         // Automatic cell commits must not replace a candidate pressed by the pointer.
-        this.popup.querySelectorAll('[role="option"]').forEach((row, index) => row.setAttribute('aria-disabled', String(!!this.items[index]?.slash?.disabled || this.composing || this.view.compositionStarted)));
+        this.popup.querySelectorAll<HTMLElement>('[role="option"]').forEach(row => row.setAttribute('aria-disabled', String(!!this.items[Number(row.dataset.suggestionIndex)]?.slash?.disabled || this.composing || this.view.compositionStarted)));
         this.reposition();
       } else this.render();
     }
@@ -208,6 +209,7 @@ export function createInputSuggestions(options: {
       this.items.forEach((item, index) => {
         const row = document.createElement('button'); row.type = 'button'; row.className = 'meo-input-suggestion'; row.setAttribute('role', 'option');
         row.id = this.popup.id + '-' + index; row.setAttribute('aria-selected', String(index === this.index)); row.tabIndex = -1; row.setAttribute('aria-disabled', String(!!item.slash?.disabled || this.composing || this.view.compositionStarted));
+        row.dataset.suggestionIndex = String(index);
         const marker = document.createElement('span'); marker.className = 'meo-suggestion-marker'; marker.setAttribute('aria-hidden', 'true');
         const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); icon.setAttribute('viewBox', '0 0 20 16');
         const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'path'); chevron.setAttribute('d', 'M3 3L8 8L3 13M10 3L15 8L10 13');
@@ -244,7 +246,7 @@ export function createInputSuggestions(options: {
           if (this.index === index) return;
           this.select(index, false);
         });
-        list.append(row);
+        if (this.reverseSlashOrder) list.prepend(row); else list.append(row);
       });
       this.popup.hidden = false; this.ariaInput = this.cellInput ?? this.view.contentDOM;
       this.ariaInput.setAttribute('aria-controls', this.popup.id); this.ariaInput.setAttribute('aria-activedescendant', this.popup.id + '-' + this.index);
@@ -254,7 +256,7 @@ export function createInputSuggestions(options: {
     select(index: number, scroll: boolean) {
       this.index = index;
       if (this.items[index]?.slash) this.selectedCommand = this.items[index].slash!.id;
-      this.popup.querySelectorAll('[role="option"]').forEach((row, selected) => row.setAttribute('aria-selected', String(selected === index)));
+      this.popup.querySelectorAll<HTMLElement>('[role="option"]').forEach(row => row.setAttribute('aria-selected', String(Number(row.dataset.suggestionIndex) === index)));
       this.ariaInput?.setAttribute('aria-activedescendant', this.popup.id + '-' + index);
       if (scroll) this.scrollSelection();
       this.position();
@@ -320,11 +322,22 @@ export function createInputSuggestions(options: {
       const first = list.firstElementChild!.getBoundingClientRect(), last = list.lastElementChild!.getBoundingClientRect();
       const chrome = this.popup.getBoundingClientRect().height - previous.height;
       // Measure content without enlarging the list: a temporary resize clamps its scroll position.
-      const preferred = Math.min(parseFloat(getComputedStyle(this.popup).getPropertyValue('--meo-suggestion-preferred-height')), last.bottom - first.top + chrome);
+      const minimumRows = slash ? Math.min(6, this.items.length) : 0;
+      const preferredHeight = parseFloat(getComputedStyle(this.popup).getPropertyValue('--meo-suggestion-preferred-height'));
+      const preferred = Math.min(slash ? Math.max(preferredHeight, minimumRows * first.height + chrome) : preferredHeight, last.bottom - first.top + chrome);
       const below = Math.max(0, bottom - coords.bottom - 4), above = Math.max(0, coords.top - top - 4);
-      if (this.above === null) this.above = below < preferred && above > below;
-      else if ((this.above ? above : below) < preferred && (this.above ? below : above) >= preferred) this.above = !this.above;
-      else if (above < preferred && below < preferred) this.above = above > below;
+      if (slash) {
+        const aboveRows = Math.max(0, Math.floor((above - chrome + 0.001) / first.height));
+        const belowRows = Math.max(0, Math.floor((below - chrome + 0.001) / first.height));
+        if (this.above === null) this.above = this.reverseSlashOrder;
+        // Stay on this side while it meets the target; equal row capacities must not cause a flip.
+        const currentRows = this.above ? aboveRows : belowRows, otherRows = this.above ? belowRows : aboveRows;
+        if (currentRows < minimumRows && otherRows > currentRows) this.above = !this.above;
+      } else {
+        if (this.above === null) this.above = below < preferred && above > below;
+        else if ((this.above ? above : below) < preferred && (this.above ? below : above) >= preferred) this.above = !this.above;
+        else if (above < preferred && below < preferred) this.above = above > below;
+      }
       const available = this.above ? above : below;
       const rows = Math.floor((Math.min(preferred, available) - chrome + 0.001) / first.height);
       if (rows < 1) { close(); return; }
@@ -410,7 +423,12 @@ export function createInputSuggestions(options: {
       if (event.key === 'Escape' && (this.slashFrom !== null || this.cellFrom !== null || !this.popup.hidden || this.fields.length)) { event.preventDefault(); this.slashFrom = null; this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); return true; }
       if (this.popup.hidden) return false;
       if (event.key === 'Escape') { event.preventDefault(); this.slashFrom = null; this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); return true; }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); this.select((this.index + (event.key === 'ArrowDown' ? 1 : this.items.length - 1)) % this.items.length, true); return true; }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const direction = event.key === 'ArrowDown' ? 1 : -1;
+        this.select((this.index + (this.reverseSlashOrder ? -direction : direction) + this.items.length) % this.items.length, true);
+        return true;
+      }
       if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
         if (this.items[this.index]?.slash?.disabled) return false;
         event.preventDefault(); this.choose(this.index); return true;

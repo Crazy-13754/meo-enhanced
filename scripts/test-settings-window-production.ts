@@ -159,7 +159,19 @@ try {
   await page.click('[data-setting="fontSize"] [data-value="auto"]');
   assert.equal(await page.$eval(fontStepper + ' output', element => Number(element.textContent)), fontValue + 1, 'automatic mode preserves the last custom size');
   await page.click('.settings-tab[data-tab="typing"]');
-  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 13);
+  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 14);
+  const slashSwitch = '[data-setting="slash"] [role="switch"]';
+  const slashAboveSwitch = '[data-setting="slashPreferAbove"] [role="switch"]';
+  assert.equal(await page.$eval('[data-setting="slashPreferAbove"] .settings-description', e => e.textContent), '优先在输入行上方显示，推荐输入法用户开启。');
+  await page.click(slashAboveSwitch);
+  await page.waitForFunction(() => (window as any).__preferences.input.slashPreferAbove === true);
+  await page.click(slashSwitch);
+  await page.waitForFunction(() => (document.querySelector('[data-setting="slashPreferAbove"] [role="switch"]') as HTMLButtonElement)?.disabled);
+  assert.equal(await page.$eval(slashAboveSwitch, e => e.getAttribute('aria-checked')), 'true', 'disabling slash commands retains the above-menu preference');
+  await page.click(slashSwitch);
+  await page.waitForFunction(() => !(document.querySelector('[data-setting="slashPreferAbove"] [role="switch"]') as HTMLButtonElement)?.disabled);
+  await page.click(slashAboveSwitch);
+  await page.waitForFunction(() => (window as any).__preferences.input.slashPreferAbove === false);
   assert.deepEqual(await page.$$eval('.settings-paste-contexts dt', elements => elements.map(e => e.textContent)), ['正文', '已有表格', '代码']);
   assert.ok(await page.$eval('.settings-paste-contexts dd:nth-of-type(2)', e => e.textContent?.includes('不受这个开关影响')));
   const wrap = '.settings-item[data-setting="wrapSelection"]';
@@ -588,7 +600,7 @@ try {
         query: element.querySelector('.settings-item-title')!.textContent!,
         values: [...element.querySelectorAll('.settings-key, .image-location-mode-title, .image-location-field-label, .image-location-picker, .image-location-token')].map(control => control.getAttribute('aria-label') ?? control.textContent!)
       })));
-      assert.equal(items.length, tab === 'general' ? 11 : tab === 'typing' ? 13 : editorCommandIds.length, 'search inventory includes every setting and command');
+      assert.equal(items.length, tab === 'general' ? 11 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
       searchCases.push(...items.flatMap(item => [item.query, ...item.values].map(query => ({tab, id: item.id, query}))));
     }
     await page.click('.settings-close');

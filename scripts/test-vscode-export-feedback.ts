@@ -84,7 +84,7 @@ mock.module('vscode', () => ({
 const { runVscodeExportWithFeedback } = await import('../src/host/vscodeExportFeedback');
 const sourceDocumentUri = { fsPath: 'D:/docs/note.md' } as never;
 
-selectedAction = '直接打开';
+selectedAction = '打开';
 let releaseSaveDialog: (() => void) | undefined;
 saveDialogBarrier = new Promise<void>((resolve) => { releaseSaveDialog = resolve; });
 let exportTaskStarted = false;
@@ -120,7 +120,7 @@ assert.deepEqual(progressMessages, [
 ]);
 assert.deepEqual(informationMessages.at(-1), {
   message: 'PDF 导出完成。',
-  actions: ['直接打开', '打开所在文件夹']
+  actions: ['打开', '打开所在文件夹']
 });
 await new Promise<void>((resolve) => setTimeout(resolve, 0));
 assert.deepEqual(openedUris, [targetUri]);
@@ -167,7 +167,7 @@ assert.deepEqual(progressMessages, [
   '正在生成 Word 文档…'
 ]);
 
-selectedAction = '直接打开';
+selectedAction = '打开';
 for (const [format, extension] of [['pdf', 'pdf'], ['docx', 'docx'], ['html', 'html']] as const) {
   const nonAsciiTarget = fileUri(`D:/海螺岛一期_PPTMaster模板/templates/design_specdeckhailuodao_phase1.${extension}`);
   saveDialogResult = nonAsciiTarget;

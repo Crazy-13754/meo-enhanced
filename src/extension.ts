@@ -192,7 +192,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   void agentReviewOverrides.syncNow();
 
-  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, createVscodeEditingPreferences(), createVscodeImageStorage());
+  const editingPreferences = await createVscodeEditingPreferences(resolveUiLanguage(
+    vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get('language', 'auto'), vscode.env.language
+  ));
+  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage());
   void provider.initializeGitWatcher();
   provider.initializeDevelopmentStyleWatcher();
 
@@ -366,7 +369,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     private readonly context: vscode.ExtensionContext,
     private readonly agentReviewHandoff: AgentReviewHandoffController,
     private readonly appearanceSettings: AppearanceSettingsOwner,
-    private readonly editingPreferences: ReturnType<typeof createVscodeEditingPreferences>,
+    private readonly editingPreferences: Awaited<ReturnType<typeof createVscodeEditingPreferences>>,
     private readonly imageStorage: ReturnType<typeof createVscodeImageStorage>
   ) {}
 

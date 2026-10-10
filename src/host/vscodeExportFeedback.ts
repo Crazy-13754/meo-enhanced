@@ -241,7 +241,7 @@ function getStrings(uiLanguage: UiLanguage, format: VscodeExportFormat): VscodeE
       alreadyRunning: '当前已有导出正在进行，请稍候…',
       failed: (message) => `${label} 导出失败：${message}`,
       completionActionFailed: (message) => `${label} 已导出，但无法执行完成操作：${message}`,
-      open: '直接打开',
+      open: '打开',
       reveal: '打开所在文件夹',
       progress: {
         selectingDestination: '等待选择保存位置…',
