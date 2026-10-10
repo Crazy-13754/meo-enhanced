@@ -5,7 +5,9 @@ import lightPlus from '@shikijs/themes/light-plus';
 import { setShikiTheme, type RawVscodeTheme } from '../webview/src/helpers/shikiHighlighter';
 
 function applyCodeTheme(appearance: 'light' | 'dark'): void {
-  setShikiTheme((appearance === 'light' ? lightPlus : darkPlus) as RawVscodeTheme);
+  const theme = (appearance === 'light' ? lightPlus : darkPlus) as RawVscodeTheme;
+  setShikiTheme(theme);
+  setShikiTheme(theme, 'source');
 }
 
 (globalThis as typeof globalThis & {

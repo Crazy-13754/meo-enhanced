@@ -9,6 +9,9 @@ import { createMermaidDiagramPresentationApplication } from '../webview/src/appl
 import { createMermaidDiagramPresentationRuntime } from '../webview/src/adapters/mermaidDiagramPresentationRuntime';
 import { createMermaidDiagramPresentationEffectAdapter } from '../webview/src/editor/mermaidDiagramPresentationAdapter';
 import { createMermaidDiagramPresentationFactory } from '../webview/src/editor/mermaidDiagramPresentation';
+import darkPlus from '@shikijs/themes/dark-plus';
+import { applyUiTheme } from '../webview/src/helpers/uiTheme';
+import { isShikiThemeReady, setShikiTheme } from '../webview/src/helpers/shikiHighlighter';
 
 const resources = createMermaidDiagramRenderPool({
   initialize: initializeMermaidEditorRuntime,
@@ -38,6 +41,14 @@ const factory = createMermaidDiagramPresentationFactory({
 });
 
 export function createEditor(options: Parameters<typeof createProductionEditor>[0]) {
+  // Standalone browser fixtures bypass the webview bootstrap. Initialize its
+  // native UI and Source surfaces without overwriting a fixture's explicit theme.
+  if (!document.documentElement.style.getPropertyValue('--meo-ui-menu-background')) {
+    const light = document.documentElement.dataset.editorAppearance === 'light'
+      || document.body.classList.contains('vscode-light');
+    applyUiTheme(light ? 'light' : 'dark', true);
+  }
+  if (!isShikiThemeReady('source')) setShikiTheme(darkPlus, 'source');
   return createProductionEditor({
     ...options,
     mermaidDiagramPresentationFactory: factory

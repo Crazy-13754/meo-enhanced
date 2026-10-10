@@ -111,14 +111,15 @@ async function main(): Promise<void> {
         history: editor.getHistoryDepth(),
         focused: editor.hasFocus(),
         viewport: editor.getTopVisiblePosition(),
-        visibleHighlight: Boolean(document.querySelector('#source .meo-md-highlight')),
+        richHighlightCount: document.querySelectorAll('#source .meo-md-highlight').length,
         offscreenPosition: text.indexOf('OFFSCREEN SYNTAX'),
         calls: structuredClone((window as any).__meoSyntaxParseCalls)
       };
     }, largeText);
     assert.equal(initialSource.mode, 'source');
     assert.equal(initialSource.text, largeText);
-    assert.equal(initialSource.visibleHighlight, true, 'Source must keep visible basic Markdown presentation');
+    assert.equal(initialSource.richHighlightCount, 0, 'Source uses native syntax rather than Live highlight decorations');
+    await page.waitForFunction(() => Boolean(document.querySelector('#source .meo-source-token')));
     assert.ok(initialSource.offscreenPosition > 3_000);
     assert.deepEqual(initialSource.history, { undo: 0, redo: 0 });
     assert.equal(initialSource.focused, true);
@@ -132,11 +133,11 @@ async function main(): Promise<void> {
       const lines = Array.from(document.querySelectorAll<HTMLElement>('#source .cm-line'));
       const headerLine = lines.find((line) => line.textContent === '| A | B |');
       const bodyLine = lines.find((line) => line.textContent === '| one | two |');
-      const headerCell = headerLine?.querySelector<HTMLElement>('.meo-md-source-table-header-cell') ?? null;
-      const headerText = headerCell?.querySelector<HTMLElement>('span') ?? headerCell;
+      const headerText = Array.from(headerLine?.querySelectorAll<HTMLElement>('.meo-source-token') ?? []).find(node => node.textContent?.includes('A')) ?? headerLine;
       if (!headerLine || !bodyLine || !headerText) return null;
       const headerStyle = getComputedStyle(headerText);
-      const bodyStyle = getComputedStyle(bodyLine);
+      const bodyText = Array.from(bodyLine.querySelectorAll<HTMLElement>('.meo-source-token')).find(node => node.textContent?.includes('one')) ?? bodyLine;
+      const bodyStyle = getComputedStyle(bodyText);
       return {
         headerColor: headerStyle.color,
         bodyColor: bodyStyle.color,
@@ -436,9 +437,9 @@ async function main(): Promise<void> {
     assert.equal(publicationDecorations.text, publicationText);
     assert.deepEqual(publicationDecorations.history, publicationInitial.history);
     assert.deepEqual(publicationDecorations.calls, [], 'parser publication must not add explicit ensure/force calls');
-    assert.equal(publicationDecorations.realHeader.tableLine, true, 'published legal table header must stay decorated');
-    assert.ok(publicationDecorations.realHeader.tableCells > 0);
-    assert.equal(publicationDecorations.validTag.tags, 1, 'published legal Source tag must stay decorated');
+    assert.equal(publicationDecorations.realHeader.tableLine, false, 'Native Source must not retain Live table header decorations');
+    assert.equal(publicationDecorations.realHeader.tableCells, 0);
+    assert.equal(publicationDecorations.validTag.tags, 0, 'Native Source must use TextMate tag syntax instead of Live decorations');
     for (const [label, line] of Object.entries({
       fenceStart: publicationDecorations.fenceStart,
       fakeHeader: publicationDecorations.fakeHeader,

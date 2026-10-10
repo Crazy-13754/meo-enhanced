@@ -256,9 +256,9 @@ async function main(): Promise<void> {
         `${label} must preserve text, selection, history, focus and viewport while the parser publishes`
       );
       assert.deepEqual(result.calls, [], `${label} must not call ensureSyntaxTree/forceParsing`);
-      assert.equal(result.realHeader.tableLine, true, `${label} must keep the legal table header`);
-      assert.ok(result.realHeader.tableCells > 0, `${label} must keep legal table cells`);
-      assert.equal(result.validTag.tags, 1, `${label} must keep the legal Source tag`);
+      assert.equal(result.realHeader.tableLine, false, `${label} must not retain Live table header decorations`);
+      assert.equal(result.realHeader.tableCells, 0, `${label} must not retain Live table cell decorations`);
+      assert.equal(result.validTag.tags, 0, `${label} must keep native Source tags as TextMate syntax`);
       for (const [lineLabel, line] of Object.entries({
         fenceStart: result.fenceStart,
         fakeHeader: result.fakeHeader,
@@ -296,7 +296,7 @@ async function main(): Promise<void> {
       });
       editor.focus();
     }, targetLine);
-    await page.waitForFunction(() => Boolean(document.querySelector('#app .meo-md-highlight')));
+    await page.waitForSelector('#app .meo-source-token');
     await waitForFrames(page);
 
     const before = await page.evaluate(() => {

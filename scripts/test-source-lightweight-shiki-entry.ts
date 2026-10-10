@@ -15,6 +15,7 @@ import { setShikiTheme, activateShikiCodeHighlighting, requestShikiTokens, getSh
   verifyBatchedTokens,
   applyTheme() {
     setShikiTheme(darkPlus);
+    setShikiTheme(darkPlus, 'source');
   },
   pasteText(editor, from, to, text) {
     editor.view.dispatch({

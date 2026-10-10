@@ -16,16 +16,20 @@ export const sourceSyntax = Prec.highest(ViewPlugin.fromClass(class {
   private generation = -1;
   private document: EditorView['state']['doc'] | undefined;
   private text = '';
+  private inView: boolean;
 
   constructor(view: EditorView) {
+    this.inView = view.inView;
     this.release = activateShikiCodeHighlighting('source');
     this.build(view);
     this.unsubscribe = subscribeShikiRefresh(() => view.dispatch({ effects: refreshSourceSyntax.of(null) }), 'source');
   }
 
   update(update: ViewUpdate): void {
+    const becameVisible = !this.inView && update.view.inView;
+    this.inView = update.view.inView;
     if (update.docChanged) this.decorations = this.decorations.map(update.changes);
-    if (update.docChanged || update.viewportChanged || update.transactions.some(tr => tr.effects.some(effect => effect.is(refreshSourceSyntax)))) {
+    if (update.docChanged || update.viewportChanged || becameVisible || update.transactions.some(tr => tr.effects.some(effect => effect.is(refreshSourceSyntax)))) {
       this.build(update.view);
     }
   }
@@ -42,9 +46,11 @@ export const sourceSyntax = Prec.highest(ViewPlugin.fromClass(class {
       this.text = view.state.doc.toString();
     }
     const doc = this.document;
+    // Hidden revisions supersede pending work; tokenize only the latest document on reveal.
+    if (!view.inView) return;
     const tokens = getShikiTokens('markdown', this.text, 'source');
     if (!tokens) {
-      requestShikiTokens('markdown', this.text, 'source', () => !this.destroyed && this.document === doc);
+      requestShikiTokens('markdown', this.text, 'source', () => !this.destroyed && view.inView && this.document === doc);
       return;
     }
     const builder = new RangeSetBuilder<Decoration>();

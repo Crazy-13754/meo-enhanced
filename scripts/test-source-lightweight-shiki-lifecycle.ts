@@ -14,6 +14,8 @@ type ShikiMetrics = {
     readonly loadCalls: number;
     readonly tokenizeCalls: number;
     readonly disposeCalls: number;
+    readonly loadedLanguages: string[];
+    readonly tokenizedCodes: string[];
   }>;
 };
 
@@ -47,7 +49,8 @@ const fakeCore = `
       id: metrics.instances.length + 1,
       loadCalls: 0,
       tokenizeCalls: 0,
-      disposeCalls: 0
+      disposeCalls: 0, loadedLanguages: [], tokenizedCodes: [],
+      baseColor: globalThis.__lifecycleColor ?? "#aa2255"
     };
     metrics.initCalls += 1;
     metrics.instances.push(instance);
@@ -56,10 +59,12 @@ const fakeCore = `
         instance.loadCalls += 1;
         metrics.loadCalls += 1;
         loaded.add(grammar.name);
+        instance.loadedLanguages.push(grammar.name);
       },
       codeToTokens(code, options) {
         instance.tokenizeCalls += 1;
         metrics.tokenizeCalls += 1;
+        instance.tokenizedCodes.push(code);
         globalThis.__onShikiTokenize?.(code);
         if (!loaded.has(options.lang)) {
           throw new Error('tokenization attempted without an instance-owned grammar');
@@ -68,7 +73,7 @@ const fakeCore = `
           tokens: [[{
             offset: 0,
             content: code,
-            color: code.includes('latest_second_') ? '#338855' : instance.id % 2 === 0 ? '#2255aa' : '#aa2255',
+            color: code.includes('latest_second_') ? '#338855' : instance.baseColor,
             fontStyle: 0
           }]]
         };
@@ -166,18 +171,12 @@ async function main(): Promise<void> {
         secondText: second
       };
     }, { first: firstText, second: secondText });
-    await waitForFrames(page);
-    assert.deepEqual(
-      await readMetrics(page),
-      {
-        initCalls: 1,
-        loadCalls: 1,
-        tokenizeCalls: 1,
-        disposeCalls: 0,
-        instances: [{ id: 1, loadCalls: 1, tokenizeCalls: 1, disposeCalls: 0 }]
-      },
-      'Source must lazily initialize the shared native code-token renderer when a supported block is present'
-    );
+    await page.waitForSelector('#first .meo-source-token');
+    let initial = await readMetrics(page);
+    assert.equal(initial.initCalls, 1);
+    assert.equal(initial.tokenizeCalls, 1, 'Source tokenizes the whole Markdown document once');
+    assert.deepEqual(initial.instances[0].loadedLanguages.sort(), ['html', 'html-derivative', 'markdown', 'typescript', 'yaml']);
+    assert.deepEqual(initial.instances[0].tokenizedCodes, [firstText]);
 
     await page.evaluate(() => (window as any).__shikiEditors.first.setMode('live'));
     await page.waitForFunction(() => document.querySelectorAll('#first span[style*="color:"]').length > 0);
@@ -193,10 +192,11 @@ async function main(): Promise<void> {
     await page.waitForFunction(() => document.querySelectorAll('#second span[style*="color:"]').length > 0);
 
     let metrics = await readMetrics(page);
-    assert.equal(metrics.initCalls, 1, 'two Live editors must share one HighlighterCore');
-    assert.equal(metrics.loadCalls, 1, 'one HighlighterCore must load one shared grammar once');
-    assert.equal(metrics.tokenizeCalls, 2);
-    assert.equal(metrics.disposeCalls, 0);
+    assert.equal(metrics.initCalls, 2, 'Live owns a separate shared runtime');
+    assert.equal(metrics.instances[0].disposeCalls, 1, 'Source 1→0 releases its runtime');
+    assert.deepEqual(metrics.instances[1].loadedLanguages, ['typescript']);
+    assert.equal(metrics.instances[1].tokenizeCalls, 2, 'Two Live consumers share grammar and tokenize each distinct fence');
+    assert.equal(metrics.instances[1].disposeCalls, 0);
 
     const latestSecondCode = Array.from(
       { length: 24 },
@@ -229,14 +229,12 @@ async function main(): Promise<void> {
       .some((node) => node.children.length === 0 && node.textContent?.includes('latest_second_23')
         && getComputedStyle(node).color === 'rgb(51, 136, 85)'));
     metrics = await readMetrics(page);
-    assert.equal(metrics.initCalls, 1);
-    assert.equal(metrics.loadCalls, 1);
-    assert.equal(metrics.tokenizeCalls, 3, 'remaining Live consumer must keep producing current tokens');
-    assert.equal(metrics.disposeCalls, 0, '2→1 consumers must not dispose');
-    assert.ok(
-      await page.evaluate(() => document.querySelectorAll('#first span[style*="color:"]').length) > 0,
-      'Source and Live must retain the same editor-scoped token presentation'
-    );
+    await page.waitForSelector('#first .meo-source-token');
+    metrics = await readMetrics(page);
+    assert.equal(metrics.initCalls, 3, 'Returning to a zero-consumer Source creates a new runtime');
+    assert.equal(metrics.instances[1].tokenizeCalls, 3, 'The remaining Live consumer produces latest code tokens');
+    assert.equal(metrics.instances[1].disposeCalls, 0, 'Live 2→1 consumers keeps its runtime');
+    assert.deepEqual(metrics.instances[2].tokenizedCodes, [firstText], 'Source does not borrow the Live fence cache');
 
     await page.evaluate(() => {
       const state = (window as any).__shikiEditors;
@@ -245,8 +243,34 @@ async function main(): Promise<void> {
     });
     await waitForFrames(page);
     metrics = await readMetrics(page);
-    assert.equal(metrics.disposeCalls, 0, 'mode switches must not dispose the editor-scoped highlighter');
-    assert.equal(metrics.instances[0].disposeCalls, 0);
+    assert.equal(metrics.instances[1].disposeCalls, 1, 'Last Live consumer releases that surface');
+    assert.equal(metrics.instances[2].disposeCalls, 0, 'Two Source consumers retain their shared runtime');
+    assert.deepEqual(metrics.instances[2].tokenizedCodes, [firstText, latestSecondText]);
+
+    // Hidden Source owns a whole-document scope stack, but must defer all work
+    // until reveal and publish only the latest revision.
+    await page.evaluate(() => {
+      document.getElementById('first')!.hidden = true;
+      (window as any).__shikiEditors.first.view.requestMeasure();
+    });
+    await page.waitForFunction(() => !(window as any).__shikiEditors.first.view.inView);
+    const beforeHiddenSource = (await readMetrics(page)).tokenizeCalls;
+    const sourceRevision = (name: string) => '# Source ' + name + '\n\n' + Array.from({ length: 30 }, (_, index) =>
+      '```typescript\nconst source_' + name + '_' + index + ' = 1;\n```').join('\n\n');
+    for (const revision of ['old', 'latest']) {
+      await page.evaluate(text => (window as any).__shikiEditors.first.setText(text), sourceRevision(revision));
+      await waitForFrames(page);
+      assert.equal((await readMetrics(page)).tokenizeCalls, beforeHiddenSource, 'Hidden Source must do zero token work');
+    }
+    await page.evaluate(() => {
+      document.getElementById('first')!.hidden = false;
+      (window as any).__shikiEditors.first.view.requestMeasure();
+    });
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('#first .meo-source-token')).some(node => node.textContent?.includes('source_latest_0')));
+    await page.waitForFunction(() => (window as any).__shikiLifecycleMetrics.instances[2].tokenizedCodes.some((code: string) => code.includes('source_latest_0')));
+    metrics = await readMetrics(page);
+    assert.ok(metrics.instances[2].tokenizedCodes.some(code => code.includes('source_latest_0')));
+    assert.equal(metrics.instances[2].tokenizedCodes.some(code => code.includes('source_old_0')), false);
 
     const rapidText = '# Rapid latest\n\n```typescript\nconst rapid_latest = 4;\n```';
     await page.evaluate((latest) => {
@@ -260,10 +284,9 @@ async function main(): Promise<void> {
       .some((node) => node.textContent?.includes('rapid_latest')));
     await waitForFrames(page);
     metrics = await readMetrics(page);
-    assert.equal(metrics.instances.length, 1, 'mode switches must keep one shared HighlighterCore');
-    assert.equal(metrics.instances[0].disposeCalls, 0);
-    assert.equal(metrics.instances[0].loadCalls, 1);
-    assert.equal(metrics.instances[0].tokenizeCalls, 4, 'the shared instance must render only each distinct latest code source');
+    assert.equal(metrics.instances[2].disposeCalls, 0, 'The remaining Source consumer retains its independent runtime');
+    assert.equal(metrics.instances.filter(instance => instance.disposeCalls === 0).length, 2,
+      'Rapid changes leave exactly one active runtime per live surface');
     assert.equal(
       await page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>('#first span[style*="color:"]'))
         .some((node) => node.textContent?.includes('first_value'))),
@@ -327,11 +350,12 @@ async function main(): Promise<void> {
     assert.ok(languageChangeCalls >= 1 && languageChangeCalls <= 2,
       'A language change must refresh the known block and prepare at most one unseen block');
 
-    const beforeThemeChange = (await readMetrics(page)).tokenizeCalls;
-    await page.evaluate(() => (window as any).SourceLightweightShikiHarness.applyTheme());
+    const beforeTheme = await readMetrics(page);
+    const beforeThemeChange = beforeTheme.tokenizeCalls;
+    await page.evaluate(() => { (window as any).__lifecycleColor = '#2255aa'; (window as any).SourceLightweightShikiHarness.applyTheme(); });
     await waitForFrames(page);
     metrics = await readMetrics(page);
-    assert.equal(metrics.initCalls, 2);
+    assert.equal(metrics.initCalls, beforeTheme.initCalls + 2, 'Theme invalidation refreshes both active surfaces');
     assert.ok(metrics.tokenizeCalls > beforeThemeChange
       && metrics.tokenizeCalls < beforeThemeChange + 31,
     'A theme change must refresh known presentations without requesting every hidden fence');
@@ -342,7 +366,7 @@ async function main(): Promise<void> {
     await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLElement>('#first span[style*="color:"]'))
       .some(node => node.textContent?.includes('hidden_latest_0')
         && getComputedStyle(node).color === 'rgb(34, 85, 170)'));
-    await page.evaluate(() => (window as any).__shikiEditors.second.setText('# No code yet'));
+    await page.evaluate(() => { const editor = (window as any).__shikiEditors.second; editor.setMode('live'); editor.setText('# No code yet'); });
     await waitForFrames(page);
     await page.evaluate(() => {
       document.getElementById('second')!.hidden = true;
