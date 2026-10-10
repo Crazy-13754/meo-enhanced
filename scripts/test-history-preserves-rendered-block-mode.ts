@@ -107,7 +107,7 @@ async function main(): Promise<void> {
       block: '.meo-mermaid-editing-block',
       controller: '__meoMermaidEditingController',
       marker: ' HISTORY',
-      previewLabel: 'Switch to split view'
+      previewLabel: 'Preview, Switch to split view'
     });
     // Math presentation follows the document caret, tested in test-display-math-editing.
 

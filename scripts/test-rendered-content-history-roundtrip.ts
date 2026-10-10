@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { launchTestBrowser } from './browser-test-helpers';
+import { enterDisplayMathSource } from './history-display-math-chromium';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-rendered-content-history-'));
@@ -112,11 +113,12 @@ async function main(): Promise<void> {
     ), {}, afterMermaid);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const modeLabel = await page.$eval('.meo-mermaid-mode-btn', (button) => button.getAttribute('aria-label'));
-      if (modeLabel === 'Switch to split view') break;
+      if (modeLabel === 'Preview, Switch to split view') break;
       await page.click('.meo-mermaid-mode-btn');
       await waitForFrames(page, 3);
     }
     await page.waitForSelector('.meo-mermaid-block');
+    await page.waitForFunction(() => document.querySelector('.meo-mermaid-mode-btn')?.getAttribute('aria-label') === 'Preview, Switch to split view');
     const clippedBeforeMermaidUndo = await page.evaluate(() => {
       const editor = (window as any).__historyEditor;
       const block = document.querySelector<HTMLElement>('.meo-mermaid-block');
@@ -194,22 +196,12 @@ async function main(): Promise<void> {
       });
     }, formulaBaseline);
     await page.evaluate(() => (window as any).__historyEditor.scrollToLine(121, 'center'));
-    await page.waitForSelector('.meo-latex-math-mode-btn');
-    await page.click('.meo-latex-math-mode-btn');
-    await page.waitForSelector('.meo-latex-math-editing-block');
-    await page.evaluate(() => {
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block')! as any;
-      const innerView = block.__meoLatexMathEditingController.innerView;
-      block.__meoLatexMathEditingController.focusOffset(innerView.state.doc.length);
-    });
+    await enterDisplayMathSource(page, '__historyEditor', 121, 'end');
     await page.keyboard.type(' + FORMULA_EDIT');
     await page.waitForFunction(() => (window as any).__historyEditor.getText().includes('FORMULA_EDIT'));
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const modeLabel = await page.$eval('.meo-latex-math-mode-btn', (button) => button.getAttribute('aria-label'));
-      if (modeLabel === 'Switch to split view') break;
-      await page.click('.meo-latex-math-mode-btn');
-      await waitForFrames(page, 3);
-    }
+    await page.evaluate(() => (window as any).__historyEditor.revealSelection(0, 0, { align: 'none' }));
+    await page.waitForSelector('.meo-math-live-result', { hidden: true });
+    await page.evaluate(() => (window as any).__historyEditor.scrollToLine(121, 'center'));
     await page.waitForSelector('.meo-md-math-fenced-display');
     const clippedBeforeFormulaUndo = await page.evaluate(() => {
       const editor = (window as any).__historyEditor;
@@ -234,6 +226,8 @@ async function main(): Promise<void> {
       const rect = block?.getBoundingClientRect() ?? null;
       return {
         height: rect?.height ?? null,
+        focused: editor.view.hasFocus && document.activeElement === editor.view.contentDOM,
+        caretVisible: (() => { const caret = editor.view.coordsAtPos(editor.view.state.selection.main.head); return !!caret && caret.top >= viewport.top && caret.bottom <= viewport.bottom; })(),
         visibleHeight: rect
           ? Math.min(rect.bottom, viewport.bottom) - Math.max(rect.top, viewport.top)
           : 0
@@ -243,7 +237,7 @@ async function main(): Promise<void> {
     if (
       clippedBeforeFormulaUndo.visibleHeight < 20 ||
       clippedBeforeFormulaUndo.visibleHeight > 32 ||
-      clippedAfterFormulaUndo.visibleHeight < requiredFormulaVisibleHeight
+      !clippedAfterFormulaUndo.focused || !clippedAfterFormulaUndo.caretVisible
     ) {
       throw new Error(`Clipped formula history did not reveal the changed block: ${JSON.stringify({
         clippedBeforeFormulaUndo,

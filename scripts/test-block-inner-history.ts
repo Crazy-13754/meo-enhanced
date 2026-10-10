@@ -404,7 +404,7 @@ async function main() {
     const sourceModeAction = await page.evaluate(() => (
       (window as any).__mermaidBlockReceipt.currentModeButton?.getAttribute('aria-label') ?? null
     ));
-    if (sourceModeAction === 'Switch to split view') {
+    if (sourceModeAction === 'Preview, Switch to split view') {
       await page.evaluate(() => {
         const receipt = (window as any).__mermaidBlockReceipt;
         receipt.publish();
@@ -412,11 +412,11 @@ async function main() {
         if (!button?.isConnected) throw new Error('Current Mermaid mode button was not connected');
         button.click();
         receipt.publish();
-        if (receipt.currentModeButton?.getAttribute('aria-label') === 'Switch to split view') {
+        if (receipt.currentModeButton?.getAttribute('aria-label') === 'Preview, Switch to split view') {
           throw new Error('Current Mermaid mode button did not publish source mode');
         }
       });
-    } else if (sourceModeAction !== 'Switch to source' && sourceModeAction !== 'Switch to preview') {
+    } else if (sourceModeAction !== 'Split, Switch to source' && sourceModeAction !== 'Source, Switch to preview') {
       throw new Error(`Unexpected Mermaid mode receipt: ${JSON.stringify(sourceModeAction)}`);
     }
     await page.evaluate(async () => {

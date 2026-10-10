@@ -1831,11 +1831,21 @@ export function createEditor({
     }
 
     if (block.kind === 'math') {
-      const wasVisible = targetLineNumber >= previousViewport.selection.visibleFromLineNumber
-        && targetLineNumber <= previousViewport.selection.visibleToLineNumber;
-      view.dispatch({ selection: { anchor: targetPosition } });
+      const contentFrom = view.state.doc.line(block.startLine + 1).from;
+      const contentTo = Math.max(contentFrom, view.state.doc.line(block.endLine).from - 1);
+      // A newline edit can map the history end to the closing fence. Keep the
+      // restored caret in the editable formula body, as for embedded Mermaid.
+      const mathTargetPosition = Math.max(contentFrom, Math.min(targetPosition, contentTo));
+      view.dispatch({ selection: { anchor: mathTargetPosition } });
+      // Opening native formula source can move its caret beyond the old reading
+      // viewport even when the logical line was visible in the collapsed result.
+      const coords = view.coordsAtPos(mathTargetPosition);
+      const viewport = editorViewportBounds(view);
+      const scrollDelta = view.scrollDOM.scrollTop - previousViewport.scrollTop;
+      const wasVisible = coords !== null && coords.top + scrollDelta >= viewport.top
+        && coords.bottom + scrollDelta <= viewport.bottom;
       if (wasVisible) viewportController.lockScrollTop(previousViewport.scrollTop, isCurrent);
-      else viewportController.revealPositionUntilStable(targetPosition, { y: 'center', geometry: 'line-block' }, isCurrent);
+      else viewportController.revealPositionUntilStable(mathTargetPosition, { y: 'center-if-outside' }, isCurrent);
       return () => {
         if (!isCurrent()) return false;
         view.contentDOM.focus({ preventScroll: true });

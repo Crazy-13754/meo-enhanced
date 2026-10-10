@@ -1,3 +1,4 @@
+import { enterDisplayMathSource, findDisplayMathOpening, readDisplayMathHistoryTarget } from './history-display-math-chromium';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,10 +16,17 @@ type NeedleOccurrence = 'first' | 'last';
 type HistoryTarget =
   | { kind: 'outer'; lineNeedle: string }
   | { kind: 'table'; undoValue: string; redoValue: string }
-  | { kind: 'mermaid' | 'math'; marker: string; mode: Exclude<BlockMode, 'preview'> };
+  | { kind: 'mermaid'; marker: string; mode: Exclude<BlockMode, 'preview'> }
+  | { kind: 'math'; marker: string; needle: string; occurrence?: NeedleOccurrence };
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-history-matrix-'));
+
+async function waitForFrames(page: any, count = 6) {
+  await page.evaluate(async (count: number) => {
+    for (let index = 0; index < count; index++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+  }, count);
+}
 
 async function pressHistoryShortcut(page: any, key: 'z' | 'y') {
   await page.keyboard.down('Control');
@@ -198,6 +206,14 @@ async function editRenderedBlock(
   injectPreDownReplacement = false,
   injectDetachedOldEvents = false
 ) {
+  if (kind === 'math') {
+    const opening = await findDisplayMathOpening(page, '__historyMatrixEditor', lineNeedle, occurrence);
+    await enterDisplayMathSource(page, '__historyMatrixEditor', opening, 'end');
+    await page.keyboard.type(marker);
+    await waitForFrames(page);
+    if (finalMode === 'preview') await page.evaluate(() => (window as any).__historyMatrixEditor.revealSelection(0, 0, { align: 'none' }));
+    return;
+  }
   const modeButton = kind === 'mermaid' ? '.meo-mermaid-mode-btn' : '.meo-latex-math-mode-btn';
   const blockSelector = kind === 'mermaid' ? '.meo-mermaid-editing-block' : '.meo-latex-math-editing-block';
   let targetLineNumber = 0;
@@ -301,15 +317,15 @@ async function editRenderedBlock(
       const labels = blockKind === 'mermaid'
         ? {
             controls: `Mermaid block controls at line ${lineNumber}`,
-            preview: 'Switch to split view',
-            split: 'Switch to source',
-            source: 'Switch to preview'
+            preview: 'Preview, Switch to split view',
+            split: 'Split, Switch to source',
+            source: 'Source, Switch to preview'
           }
         : {
             controls: `Formula block controls at line ${lineNumber}`,
-            preview: 'Switch to split view',
-            split: 'Switch to source',
-            source: 'Switch to preview'
+            preview: 'Preview, Switch to split view',
+            split: 'Split, Switch to source',
+            source: 'Source, Switch to preview'
           };
       const group = document.querySelector<HTMLElement>(`[role="group"][aria-label="${labels.controls}"]`);
       const button = Array.from(group?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? [])
@@ -365,9 +381,9 @@ async function editRenderedBlock(
     const safeReleaseLabel = 'History pointer safe release target';
     try {
       const targetMode: HistoryRenderedBlockTargetMode = transition.expectedLabel === (
-        kind === 'mermaid' ? 'Switch to split view' : 'Switch to split view'
+        kind === 'mermaid' ? 'Split, Switch to source' : 'Split, Switch to source'
       ) ? 'split' : transition.expectedLabel === (
-        kind === 'mermaid' ? 'Switch to source' : 'Switch to source'
+        kind === 'mermaid' ? 'Source, Switch to preview' : 'Source, Switch to preview'
       ) ? 'source' : 'preview';
       await runHistoryRenderedBlockInteraction({ kind, lineNumber: targetLineNumber, targetMode }, {
       isCurrent: async () => true,
@@ -765,7 +781,7 @@ async function editRenderedBlock(
         const controlsLabel = blockKind === 'mermaid'
           ? `Mermaid block controls at line ${lineNumber}`
           : `Formula block controls at line ${lineNumber}`;
-        const expectedLabel = blockKind === 'mermaid' ? 'Switch to preview' : 'Switch to preview';
+        const expectedLabel = blockKind === 'mermaid' ? 'Source, Switch to preview' : 'Source, Switch to preview';
         const group = document.querySelector<HTMLElement>(`[role="group"][aria-label="${controlsLabel}"]`);
         const settledBeforePointer = Array.from(group?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? [])
           .some((button) => button.getAttribute('aria-label') === expectedLabel);
@@ -786,15 +802,15 @@ async function editRenderedBlock(
       const labels = blockKind === 'mermaid'
         ? {
             controls: `Mermaid block controls at line ${lineNumber}`,
-            preview: 'Switch to split view',
-            split: 'Switch to source',
-            source: 'Switch to preview'
+            preview: 'Preview, Switch to split view',
+            split: 'Split, Switch to source',
+            source: 'Source, Switch to preview'
           }
         : {
             controls: `Formula block controls at line ${lineNumber}`,
-            preview: 'Switch to split view',
-            split: 'Switch to source',
-            source: 'Switch to preview'
+            preview: 'Preview, Switch to split view',
+            split: 'Split, Switch to source',
+            source: 'Source, Switch to preview'
           };
       const group = document.querySelector<HTMLElement>(`[role="group"][aria-label="${labels.controls}"]`);
       const currentLabel = Array.from(group?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? [])
@@ -829,7 +845,7 @@ async function assertFirstMermaidModeClickAfterAdjacentEdit(page: any, lineNeedl
   const hitPoint = await page.evaluate((label) => {
     const group = document.querySelector<HTMLElement>(`[role="group"][aria-label="${label}"]`);
     const button = Array.from(group?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? [])
-      .find((candidate) => candidate.getAttribute('aria-label') === 'Switch to split view');
+      .find((candidate) => candidate.getAttribute('aria-label') === 'Preview, Switch to split view');
     if (!button) throw new Error(`Missing preview mode control: ${label}`);
     const rect = button.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -838,7 +854,7 @@ async function assertFirstMermaidModeClickAfterAdjacentEdit(page: any, lineNeedl
   await page.waitForFunction((controlsLabel) => Array.from(
     document.querySelector<HTMLElement>(`[role="group"][aria-label="${controlsLabel}"]`)
       ?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? []
-  ).some((candidate) => candidate.getAttribute('aria-label') === 'Switch to source'), {}, controlsLabel);
+  ).some((candidate) => candidate.getAttribute('aria-label') === 'Split, Switch to source'), {}, controlsLabel);
 
   const regionLabel = `Mermaid editor at line ${targetLineNumber}`;
   await page.waitForFunction((label) => {
@@ -882,7 +898,7 @@ async function assertFirstMermaidModeClickAfterAdjacentEdit(page: any, lineNeedl
     document.querySelector<HTMLElement>(
       `[role="group"][aria-label="Mermaid block controls at line ${lineNumber}"]`
     )?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? []
-  ).some((candidate) => candidate.getAttribute('aria-label') === 'Switch to split view'), {}, repeatedLineNumber);
+  ).some((candidate) => candidate.getAttribute('aria-label') === 'Preview, Switch to split view'), {}, repeatedLineNumber);
 }
 
 async function assertHistoryTarget(
@@ -924,6 +940,13 @@ async function assertHistoryTarget(
     return;
   }
 
+  if (target.kind === 'math') {
+    const opening = await findDisplayMathOpening(page, '__historyMatrixEditor', target.needle, target.occurrence ?? 'first');
+    const state = await readDisplayMathHistoryTarget(page, '__historyMatrixEditor', opening);
+    if (!state.focused || !state.caretAtEnd || !state.visible || !state.resultPresent || state.source.includes(target.marker) !== (direction === 'redo'))
+      throw new Error(`${direction} step ${step} missed native formula: ${JSON.stringify({ target, state })}`);
+    return;
+  }
   const markerExpected = direction === 'redo';
   await page.waitForFunction(({ kind, marker, mode, expected }) => {
     const kindLabel = kind === 'mermaid' ? 'Mermaid' : 'Formula';
@@ -935,14 +958,14 @@ async function assertHistoryTarget(
     const lineNumber = block.getAttribute('aria-label')?.match(/ at line (\d+)$/)?.[1] ?? null;
     const labels = kind === 'mermaid'
       ? {
-          preview: 'Switch to split view',
-          split: 'Switch to source',
-          source: 'Switch to preview'
+          preview: 'Preview, Switch to split view',
+          split: 'Split, Switch to source',
+          source: 'Source, Switch to preview'
         }
       : {
-          preview: 'Switch to split view',
-          split: 'Switch to source',
-          source: 'Switch to preview'
+          preview: 'Preview, Switch to split view',
+          split: 'Split, Switch to source',
+          source: 'Source, Switch to preview'
         };
     const buttonLabel = lineNumber
       ? Array.from(document.querySelector<HTMLElement>(
@@ -1438,11 +1461,11 @@ async function main() {
       'preview',
       fixture.mathPreviewOccurrence
     );
-    await record({ kind: 'math', marker: realFixtureText ? '555' : 'MATH_PREVIEW_EDIT', mode: 'split' });
+    await record({ kind: 'math', marker: realFixtureText ? '555' : 'MATH_PREVIEW_EDIT', needle: fixture.mathPreview, occurrence: fixture.mathPreviewOccurrence });
     await editRenderedBlock(page, 'math', fixture.mathSplit, ' + MATH_SPLIT_EDIT', 'split');
-    await record({ kind: 'math', marker: 'MATH_SPLIT_EDIT', mode: 'split' });
+    await record({ kind: 'math', marker: 'MATH_SPLIT_EDIT', needle: fixture.mathSplit });
     await editRenderedBlock(page, 'math', fixture.mathSource, ' + MATH_SOURCE_EDIT', 'source');
-    await record({ kind: 'math', marker: 'MATH_SOURCE_EDIT', mode: 'source' });
+    await record({ kind: 'math', marker: 'MATH_SOURCE_EDIT', needle: fixture.mathSource });
 
     await editTableCell(page, fixture.table2Line, fixture.table2FirstBefore, fixture.table2FirstAfter);
     await record({ kind: 'table', undoValue: fixture.table2FirstBefore, redoValue: fixture.table2FirstAfter });
@@ -1461,9 +1484,9 @@ async function main() {
     await editRenderedBlock(page, 'mermaid', fixture.extraMermaid2, ' M_EXTRA_TWO', 'split');
     await record({ kind: 'mermaid', marker: 'M_EXTRA_TWO', mode: 'split' });
     await editRenderedBlock(page, 'math', fixture.extraMath1, ' MATH_EXTRA_ONE', 'source');
-    await record({ kind: 'math', marker: 'MATH_EXTRA_ONE', mode: 'source' });
+    await record({ kind: 'math', marker: 'MATH_EXTRA_ONE', needle: fixture.extraMath1 });
     await editRenderedBlock(page, 'math', fixture.extraMath2, ' MATH_EXTRA_TWO', 'split');
-    await record({ kind: 'math', marker: 'MATH_EXTRA_TWO', mode: 'split' });
+    await record({ kind: 'math', marker: 'MATH_EXTRA_TWO', needle: fixture.extraMath2 });
 
     for (let index = targets.length - 1; index >= 0; index -= 1) {
       await runSettledHistoryCommand(page, 'undo');
@@ -1596,18 +1619,13 @@ async function main() {
       { kind: 'mermaid', lineNumber: shiftedSemanticLines.mermaidLine, targetMode: 'split' },
       '__historyMatrixEditor'
     );
-    await runHistoryRenderedBlockChromiumInteraction(
-      page,
-      { kind: 'math', lineNumber: shiftedSemanticLines.formulaLine, targetMode: 'split' },
-      '__historyMatrixEditor'
-    );
+    await enterDisplayMathSource(page, '__historyMatrixEditor', shiftedSemanticLines.formulaLine);
     await page.evaluate(async () => {
       const applied = await (window as any).__historyMatrixEditor.undo();
       if (!applied) throw new Error('Equal-length line shift undo was not applied');
     });
     for (const [kind, lineNumber] of [
-      ['Mermaid', semanticLines.mermaidLine],
-      ['Formula', semanticLines.formulaLine]
+      ['Mermaid', semanticLines.mermaidLine]
     ] as const) {
       await page.evaluate((line) => (window as any).__historyMatrixEditor.scrollToLine(line, 'center'), lineNumber);
       await page.waitForFunction(({ groupLabel, regionLabel }) => Boolean(
@@ -1618,6 +1636,10 @@ async function main() {
         regionLabel: `${kind} editor at line ${lineNumber}`
       });
     }
+
+    await enterDisplayMathSource(page, '__historyMatrixEditor', semanticLines.formulaLine);
+    const relocatedMath = await readDisplayMathHistoryTarget(page, '__historyMatrixEditor', semanticLines.formulaLine);
+    if (!relocatedMath.focused || !relocatedMath.visible) throw new Error('Relocated formula lost its main document target');
 
     console.log(`history matrix checks passed (${targets.length} undo + ${targets.length} redo steps + held-Control mixed stress)`);
   } finally {

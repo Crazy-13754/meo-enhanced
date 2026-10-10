@@ -1,3 +1,4 @@
+import { enterDisplayMathSource, displayMathSourceBounds, findDisplayMathOpening } from './history-display-math-chromium';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -15,8 +16,68 @@ async function waitForFrames(page: any, count = 8): Promise<void> {
   }, count);
 }
 
+async function assertTallNativeFormulaHistory(page: any): Promise<void> {
+  const text = [...Array.from({ length: 200 }, () => 'History viewport spacer.'), '$$', 'x = 1',
+    ...Array.from({ length: 75 }, (_, index) => `% formula spacer ${index}`), '$$'].join('\n');
+  const opening = 201;
+  await page.evaluate(text => {
+    (window as any).__historyProductionEditor?.destroy(); document.getElementById('app')!.replaceChildren();
+    (window as any).__historyProductionEditor = (window as any).MermaidEditingHarness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+  }, text);
+  await enterDisplayMathSource(page, '__historyProductionEditor', opening);
+  await page.keyboard.press('Enter'); await page.keyboard.press('ArrowUp');
+  await page.keyboard.type('% HISTORY_MARKER'); await waitForFrames(page, 12);
+  const edited = await page.evaluate(() => (window as any).__historyProductionEditor.getText());
+  assert.ok(edited.includes('HISTORY_MARKER'));
+  await page.evaluate(() => (window as any).__historyProductionEditor.undo());
+  for (const visible of [true, false]) {
+    await page.evaluate(({ opening, visible }) => (window as any).__historyProductionEditor.scrollToLine(visible ? opening : 1, 'center'), { opening, visible });
+    await waitForFrames(page, 20);
+    const result = await page.evaluate(async expected => {
+      const editor = (window as any).__historyProductionEditor, view = editor.view;
+      const samples = [view.scrollDOM.scrollTop]; let sampling = true;
+      const sample = () => { if (sampling) { samples.push(view.scrollDOM.scrollTop); requestAnimationFrame(sample); } };
+      requestAnimationFrame(sample); await editor.redo();
+      for (let frame = 0; frame < 20; frame++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      sampling = false;
+      const head = view.state.selection.main.head, coords = view.coordsAtPos(head), viewport = view.scrollDOM.getBoundingClientRect();
+      return { span: Math.max(...samples) - Math.min(...samples), textMatches: editor.getText() === expected,
+        focused: view.hasFocus && document.activeElement === view.contentDOM,
+        headMatches: head === expected.indexOf('HISTORY_MARKER') + 'HISTORY_MARKER'.length,
+        lineVisible: !!coords && coords.top >= viewport.top && coords.bottom <= viewport.bottom };
+    }, edited);
+    assert.ok(result.textMatches && result.focused && result.headMatches && result.lineVisible, JSON.stringify(result));
+    if (visible) assert.ok(result.span <= 2, `Visible formula history moved: ${JSON.stringify(result)}`);
+    else assert.ok(result.span > 20, 'Offscreen formula history must reveal the native caret');
+    await page.evaluate(() => (window as any).__historyProductionEditor.undo());
+  }
+  await enterDisplayMathSource(page, '__historyProductionEditor', opening, 'end');
+  await page.keyboard.press('Enter'); await page.keyboard.type('% DEEP_MARKER'); await waitForFrames(page, 12);
+  const deepEdited = await page.evaluate(() => (window as any).__historyProductionEditor.getText());
+  await page.evaluate(() => (window as any).__historyProductionEditor.undo());
+  await page.evaluate(opening => (window as any).__historyProductionEditor.scrollToLine(opening, 'center'), opening);
+  await waitForFrames(page, 20);
+  const bounds = await displayMathSourceBounds(page, '__historyProductionEditor', opening);
+  const beforeDeep = await page.evaluate(bounds => {
+    const view = (window as any).__historyProductionEditor.view, viewport = view.scrollDOM.getBoundingClientRect();
+    const first = view.coordsAtPos(bounds.from);
+    const bottom = view.documentTop + view.lineBlockAt(bounds.to).bottom;
+    return { top: view.scrollDOM.scrollTop, rootVisible: !!first && first.top < viewport.bottom && bottom > viewport.top, bottomOffscreen: bottom > viewport.bottom + 500 };
+  }, bounds);
+  assert.ok(beforeDeep.rootVisible && beforeDeep.bottomOffscreen, 'Tall formula source fixture must span beyond the viewport');
+  await page.evaluate(() => (window as any).__historyProductionEditor.redo()); await waitForFrames(page, 20);
+  const deepState = await page.evaluate(() => {
+    const view = (window as any).__historyProductionEditor.view, coords = view.coordsAtPos(view.state.selection.main.head), viewport = view.scrollDOM.getBoundingClientRect();
+    return { top: view.scrollDOM.scrollTop, text: view.state.doc.toString(), caretVisible: !!coords && coords.top >= viewport.top && coords.bottom <= viewport.bottom };
+  });
+  assert.equal(deepState.text, deepEdited); assert.ok(deepState.caretVisible && Math.abs(deepState.top - beforeDeep.top) > 20);
+  await page.keyboard.type('Z'); await waitForFrames(page);
+  assert.equal(await page.evaluate(() => (window as any).__historyProductionEditor.getText()), deepEdited.replace('DEEP_MARKER', 'DEEP_MARKERZ'));
+}
+
 async function assertTallRenderedHistoryViewport(page: any): Promise<void> {
   for (const kind of ['mermaid', 'math'] as const) {
+    if (kind === 'math') { await assertTallNativeFormulaHistory(page); continue; }
     const prefix = Array.from({ length: 100 }, () => 'History viewport spacer.\n').join('\n');
     const body = kind === 'mermaid'
       ? ['flowchart TB', ...Array.from({ length: 75 }, (_, i) => `N${i} --> N${i + 1}`)]
@@ -136,18 +197,7 @@ async function assertDistantNestedFormulaHistory(page: any): Promise<void> {
     editor.scrollToLine(opening, 'center');
   }, { text, opening });
   await waitForFrames(page, 20);
-  await page.evaluate(() => (document.querySelector('.meo-latex-math-mode-btn') as HTMLButtonElement).click());
-  await page.waitForSelector('.meo-latex-math-source-editor .cm-content');
-  await waitForFrames(page, 12);
-  await page.evaluate(() => {
-    const content = document.querySelector('.meo-latex-math-source-editor .cm-content')! as HTMLElement;
-    const range = document.createRange();
-    range.selectNodeContents(content);
-    range.collapse(true);
-    window.getSelection()!.removeAllRanges();
-    window.getSelection()!.addRange(range);
-    content.focus({ preventScroll: true });
-  });
+  await enterDisplayMathSource(page, '__historyProductionEditor', opening);
   await page.keyboard.press('End');
   await page.keyboard.type(' % NESTED_HISTORY');
   await waitForFrames(page, 12);
@@ -161,12 +211,12 @@ async function assertDistantNestedFormulaHistory(page: any): Promise<void> {
     const before = editor.view.scrollDOM.scrollTop;
     await editor.undo();
     for (let i = 0; i < 12; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-    const content = document.querySelector('.meo-latex-math-source-editor .cm-content');
+    const content = editor.view.contentDOM;
     return { before, after: editor.view.scrollDOM.scrollTop, focused: content === document.activeElement, text: editor.getText() };
   });
   assert.ok(result.before - result.after > 20000, 'Nested fixture must exercise distant history navigation');
   assert.equal(result.text, text);
-  assert.ok(result.focused, 'Distant nested formula history must restore inner focus without falling back');
+  assert.ok(result.focused, 'Distant nested formula history must restore main document focus and source');
 }
 
 async function assertFormulaToolbarHistoryHitability(page: any): Promise<void> {
@@ -196,145 +246,49 @@ async function assertFormulaToolbarHistoryHitability(page: any): Promise<void> {
     if (lineNumber > 0) return lineNumber;
     throw new Error('Missing Formula opening line in History hitability fixture');
   });
-  const readTarget = () => page.evaluate((lineNumber) => {
-    const group = document.querySelector<HTMLElement>(
-      `[role="group"][aria-label="Formula block controls at line ${lineNumber}"]`
-    );
-    const button = Array.from(group?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? [])
-      .find((candidate) => {
-        const label = candidate.getAttribute('aria-label');
-        return label === 'Switch to split view'
-          || label === 'Switch to source'
-          || label === 'Switch to preview';
-      }) ?? null;
-    const rect = button?.getBoundingClientRect() ?? null;
-    return {
-      connected: Boolean(group?.isConnected && button?.isConnected),
-      mode: button?.getAttribute('aria-label') ?? null,
-      point: rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null
-    };
-  }, formulaLine);
-  const readMode = () => page.evaluate((lineNumber) => {
-    const group = document.querySelector<HTMLElement>(
-      `[role="group"][aria-label="Formula block controls at line ${lineNumber}"]`
-    );
-    return Array.from(group?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? [])
-      .map((button) => button.getAttribute('aria-label'))
-      .find((label) => label === 'Switch to split view'
-        || label === 'Switch to source'
-        || label === 'Switch to preview') ?? null;
-  }, formulaLine);
-
-  await page.evaluate((lineNumber) => (window as any).__historyProductionEditor.scrollToLine(lineNumber, 'center'), formulaLine);
-  await waitForFrames(page, 8);
-  const firstButton = await readTarget();
-  if (!firstButton.connected || !firstButton.point) throw new Error('Formula toolbar disappeared after initial scroll');
-  await page.click('.cm-content');
-  await page.keyboard.down('Control');
-  await page.keyboard.press('End');
-  await page.keyboard.up('Control');
-  await page.keyboard.type(' HISTORY_EDIT');
-  await waitForFrames(page, 8);
-  const editedText = await page.evaluate(() => (window as any).__historyProductionEditor.getText());
-  if (!editedText.endsWith('formula history tail HISTORY_EDIT')) {
-    throw new Error(`Formula History fixture did not accept the real outer edit: ${JSON.stringify(editedText.slice(-48))}`);
-  }
-  const replay = await page.evaluate(async () => {
-    const editor = (window as any).__historyProductionEditor;
-    const undone = await editor.undo();
-    const redone = await editor.redo();
-    return { undone, redone };
+  const readTarget = () => page.$eval('.meo-math-copy-actions .meo-select-all-code-btn', button => {
+    const rect = button.getBoundingClientRect();
+    return { connected: button.isConnected, point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } };
   });
-  assert.deepEqual(replay, { undone: true, redone: true }, 'Formula History chain did not replay through the public editor contract');
-  await waitForFrames(page, 12);
-  await page.evaluate((lineNumber) => (window as any).__historyProductionEditor.scrollToLine(lineNumber, 'center'), formulaLine);
-  await waitForFrames(page, 8);
+  const showReading = async () => {
+    await page.evaluate(line => {
+      const editor = (window as any).__historyProductionEditor;
+      editor.scrollToLine(line, 'center');
+    }, formulaLine);
+    await waitForFrames(page, 8);
+    await page.evaluate(() => (window as any).__historyProductionEditor.revealSelection(0, 0, { align: 'none' }));
+    await waitForFrames(page, 8);
+  };
+  await showReading();
+  assert.equal((await readTarget()).connected, true);
+  await page.click('.cm-content'); await page.keyboard.down('Control'); await page.keyboard.press('End'); await page.keyboard.up('Control');
+  await page.keyboard.type(' HISTORY_EDIT'); await waitForFrames(page);
+  assert.equal(await page.evaluate(() => (window as any).__historyProductionEditor.getText().endsWith('formula history tail HISTORY_EDIT')), true);
+  assert.deepEqual(await page.evaluate(async () => {
+    const editor = (window as any).__historyProductionEditor; return { undone: await editor.undo(), redone: await editor.redo() };
+  }), { undone: true, redone: true });
+  await showReading(); await page.mouse.move(5, 5); await waitForFrames(page, 2);
+  const fresh = await readTarget(); assert.equal(fresh.connected, true);
+  const hit = () => page.evaluate(point => {
+    const button = document.querySelector('.meo-math-copy-actions .meo-select-all-code-btn')!, target = document.elementFromPoint(point.x, point.y);
+    return button === target || button.contains(target);
+  }, fresh.point);
+  assert.equal(await hit(), false, 'Hidden formula action must not intercept a pointer');
+  await page.mouse.move(fresh.point.x, fresh.point.y); assert.equal(await hit(), true, 'The fresh action must become the browser hit target on hover');
+  await page.mouse.down(); await page.mouse.up(); await waitForFrames(page);
+  const readSelection = () => page.evaluate(() => {
+    const view = (window as any).__historyProductionEditor.view;
+    return { source: view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to), focused: view.hasFocus && document.activeElement === view.contentDOM, legacyMode: !!document.querySelector('.meo-latex-math-mode-btn') };
+  });
+  assert.deepEqual(await readSelection(), { source: 'x = 1', focused: true, legacyMode: false });
+  await showReading(); await page.focus('.meo-math-copy-actions .meo-select-all-code-btn');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('meo-copy-code-btn')), true,
+    'The formula Copy action must follow Select in keyboard order');
+  await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
+  await page.keyboard.press('Enter'); await waitForFrames(page);
+  assert.deepEqual(await readSelection(), { source: 'x = 1', focused: true, legacyMode: false });
 
-  await page.mouse.move(5, 5);
-  await waitForFrames(page, 2);
-  const freshBeforeMove = await readTarget();
-  if (!freshBeforeMove.connected || !freshBeforeMove.point) {
-    throw new Error('Formula toolbar did not fresh-reacquire after History replay');
-  }
-  const hiddenState = await page.evaluate((point) => {
-    const group = document.querySelector<HTMLElement>('[role="group"][aria-label^="Formula block controls at line "]');
-    const hit = document.elementFromPoint(point.x, point.y);
-    const stack = document.elementsFromPoint(point.x, point.y).slice(0, 8).map((element) => ({
-      tag: element.tagName.toLowerCase(),
-      ariaLabel: element.getAttribute('aria-label'),
-      role: element.getAttribute('role'),
-      actualGroup: element.closest<HTMLElement>('[role="group"]')?.getAttribute('aria-label') ?? null
-    }));
-    return {
-      targetHit: Boolean(group && hit && group.contains(hit)),
-      stack
-    };
-  }, freshBeforeMove.point);
-  if (hiddenState.targetHit) {
-    throw new Error(`Hidden Formula toolbar intercepted a pointer before hover: ${JSON.stringify(hiddenState)}`);
-  }
-
-  await page.mouse.move(freshBeforeMove.point.x, freshBeforeMove.point.y);
-  const hitAfterMove = await page.evaluate(({ lineNumber, point }) => {
-    const group = document.querySelector<HTMLElement>(
-      `[role="group"][aria-label="Formula block controls at line ${lineNumber}"]`
-    );
-    const button = Array.from(group?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? [])
-      .find((candidate) => {
-        const label = candidate.getAttribute('aria-label');
-        return label === 'Switch to split view'
-          || label === 'Switch to source'
-          || label === 'Switch to preview';
-      }) ?? null;
-    const currentButton = button?.closest<HTMLElement>('[role="group"]') === group ? button : null;
-    const hit = document.elementFromPoint(point.x, point.y);
-    const stack = document.elementsFromPoint(point.x, point.y).slice(0, 10).map((element) => ({
-      tag: element.tagName.toLowerCase(),
-      ariaLabel: element.getAttribute('aria-label'),
-      role: element.getAttribute('role'),
-      actualGroup: element.closest<HTMLElement>('[role="group"]')?.getAttribute('aria-label') ?? null
-    }));
-    return {
-      connected: Boolean(group?.isConnected && button?.isConnected),
-      currentButton: button === currentButton,
-      targetHit: Boolean(button && hit && (hit === button || button.contains(hit))),
-      stack
-    };
-  }, { lineNumber: formulaLine, point: freshBeforeMove.point });
-  if (!hitAfterMove.connected || !hitAfterMove.currentButton || !hitAfterMove.targetHit) {
-    throw new Error(`Fresh Formula toolbar did not become the browser hit target after real mouse movement: ${JSON.stringify(hitAfterMove)}`);
-  }
-
-  const beforeClick = await readMode();
-  await page.mouse.down();
-  await page.mouse.up();
-  await waitForFrames(page, 8);
-  const afterMouseClick = await readMode();
-  if (!beforeClick || !afterMouseClick || beforeClick === afterMouseClick) {
-    throw new Error(`Real Formula toolbar click did not advance its mode: ${JSON.stringify({ beforeClick, afterMouseClick })}`);
-  }
-
-  const keyboardBefore = await readTarget();
-  if (!keyboardBefore.connected) throw new Error('Formula toolbar disappeared before keyboard semantic check');
-  await page.evaluate((lineNumber) => {
-    const group = document.querySelector<HTMLElement>(
-      `[role="group"][aria-label="Formula block controls at line ${lineNumber}"]`
-    );
-    const button = Array.from(group?.querySelectorAll<HTMLButtonElement>('button[aria-label]') ?? [])
-      .find((candidate) => {
-        const label = candidate.getAttribute('aria-label');
-        return label === 'Switch to split view'
-          || label === 'Switch to source'
-          || label === 'Switch to preview';
-      });
-    button?.focus();
-  }, formulaLine);
-  await page.keyboard.press('Enter');
-  await waitForFrames(page, 8);
-  const keyboardAfter = await readMode();
-  if (!keyboardAfter || keyboardAfter === afterMouseClick) {
-    throw new Error(`Keyboard activation did not advance the Formula toolbar mode: ${JSON.stringify({ afterMouseClick, keyboardAfter })}`);
-  }
 }
 
 async function assertHistoryViewportPolicy(page: any): Promise<void> {

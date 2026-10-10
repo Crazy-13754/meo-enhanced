@@ -1,3 +1,4 @@
+import { enterDisplayMathSource, findDisplayMathOpening, readDisplayMathHistoryTarget } from './history-display-math-chromium';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -207,32 +208,20 @@ async function main() {
       }
     });
     await waitForFrames(page);
-    await page.click('.meo-latex-math-mode-btn');
+    const mathOpening = await findDisplayMathOpening(page, '__mixedHistoryEditor', 'x = 1');
+    const mathBounds = await enterDisplayMathSource(page, '__mixedHistoryEditor', mathOpening);
+    const mathFocusReturn = await page.evaluate(({ from }) => {
+      const editor = (window as any).__mixedHistoryEditor, view = editor.view;
+      view.dispatch({ selection: { anchor: from + 3 } });
+      view.focus(); document.getElementById('outside')!.focus(); editor.focus();
+      return { focused: view.hasFocus && document.activeElement === view.contentDOM, offset: view.state.selection.main.head - from };
+    }, mathBounds);
+    if (!mathFocusReturn.focused || mathFocusReturn.offset !== 3)
+      throw new Error(`Formula main document focus was not restored: ${JSON.stringify(mathFocusReturn)}`);
+    await enterDisplayMathSource(page, '__mixedHistoryEditor', mathOpening, 'end');
+    await page.keyboard.type(' + y = 2');
     await waitForFrames(page);
-    const mathFocusReturn = await page.evaluate(() => {
-      const editor = (window as any).__mixedHistoryEditor;
-      const innerView = (document.querySelector<HTMLElement>('.meo-latex-math-editing-block') as any)
-        .__meoLatexMathEditingController.innerView;
-      innerView.dispatch({ selection: { anchor: 3 } });
-      innerView.focus();
-      document.getElementById('outside')!.focus();
-      editor.focus();
-      return { focused: innerView.hasFocus, offset: innerView.state.selection.main.head };
-    });
-    if (!mathFocusReturn.focused || mathFocusReturn.offset !== 3) {
-      throw new Error(`Formula editing focus was not restored: ${JSON.stringify(mathFocusReturn)}`);
-    }
-    await page.evaluate(() => {
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block')! as any;
-      const innerView = block.__meoLatexMathEditingController.innerView;
-      const from = innerView.state.doc.length;
-      innerView.dispatch({ changes: { from, insert: '\ny = 2' }, selection: { anchor: from + 6 } });
-    });
-    await waitForFrames(page);
-    await page.click('.meo-latex-math-mode-btn');
-    await waitForFrames(page, 2);
-    await page.click('.meo-latex-math-mode-btn');
-    await waitForFrames(page);
+    await page.evaluate(() => (window as any).__mixedHistoryEditor.revealSelection(0, 0, { align: 'none' }));
 
     await page.evaluate(() => {
       const editor = (window as any).__mixedHistoryEditor;
@@ -250,25 +239,10 @@ async function main() {
 
     await pressHistoryShortcut(page, 'z');
     await pressHistoryShortcut(page, 'z');
-    const afterSecondUndo = await page.evaluate(() => {
-      const editor = (window as any).__mixedHistoryEditor;
-      const button = document.querySelector<HTMLButtonElement>('.meo-latex-math-mode-btn');
-      const rect = button?.getBoundingClientRect();
-      const viewport = editor.view.scrollDOM.getBoundingClientRect();
-      return {
-        text: editor.view.state.doc.toString(),
-        mode: button?.getAttribute('aria-label') ?? null,
-        outerFocused: editor.view.hasFocus,
-        targetVisible: Boolean(rect && rect.bottom > viewport.top && rect.top < viewport.bottom)
-      };
-    });
-    if (
-      afterSecondUndo.text.includes('y = 2') ||
-      afterSecondUndo.mode !== 'Switch to split view' ||
-      !afterSecondUndo.outerFocused || !afterSecondUndo.targetVisible
-    ) {
-      throw new Error(`Second mixed undo did not restore the formula Preview target: ${JSON.stringify(afterSecondUndo)}`);
-    }
+    const afterSecondUndo = await readDisplayMathHistoryTarget(page, '__mixedHistoryEditor',
+      await findDisplayMathOpening(page, '__mixedHistoryEditor', 'x = 1'));
+    if (afterSecondUndo.source.includes('y = 2') !== false || !afterSecondUndo.focused || !afterSecondUndo.caretAtEnd || !afterSecondUndo.visible || !afterSecondUndo.resultPresent)
+      throw new Error(`Mixed formula history missed its document target: ${JSON.stringify(afterSecondUndo)}`);
 
     await pressHistoryShortcut(page, 'z');
     const afterThirdUndo = await page.evaluate(() => {
@@ -286,7 +260,7 @@ async function main() {
     });
     if (
       afterThirdUndo.text.includes('C --> D') ||
-      afterThirdUndo.mode !== 'Switch to split view' ||
+      afterThirdUndo.mode !== 'Preview, Switch to split view' ||
       !afterThirdUndo.outerFocused ||
       !afterThirdUndo.mermaidVisible
     ) {
@@ -382,32 +356,17 @@ async function main() {
     });
     if (
       !afterMermaidRedo.text.includes('C --> D') ||
-      afterMermaidRedo.mode !== 'Switch to split view' ||
+      afterMermaidRedo.mode !== 'Preview, Switch to split view' ||
       !afterMermaidRedo.outerFocused || !afterMermaidRedo.targetVisible
     ) {
       throw new Error(`Mixed redo did not restore the Mermaid Preview target: ${JSON.stringify(afterMermaidRedo)}`);
     }
 
     await pressHistoryShortcut(page, 'y');
-    const afterMathRedo = await page.evaluate(() => {
-      const editor = (window as any).__mixedHistoryEditor;
-      const button = document.querySelector<HTMLButtonElement>('.meo-latex-math-mode-btn');
-      const rect = button?.getBoundingClientRect();
-      const viewport = editor.view.scrollDOM.getBoundingClientRect();
-      return {
-        text: editor.view.state.doc.toString(),
-        mode: button?.getAttribute('aria-label') ?? null,
-        outerFocused: editor.view.hasFocus,
-        targetVisible: Boolean(rect && rect.bottom > viewport.top && rect.top < viewport.bottom)
-      };
-    });
-    if (
-      !afterMathRedo.text.includes('y = 2') ||
-      afterMathRedo.mode !== 'Switch to split view' ||
-      !afterMathRedo.outerFocused || !afterMathRedo.targetVisible
-    ) {
-      throw new Error(`Mixed redo did not restore the formula Preview target: ${JSON.stringify(afterMathRedo)}`);
-    }
+    const afterMathRedo = await readDisplayMathHistoryTarget(page, '__mixedHistoryEditor',
+      await findDisplayMathOpening(page, '__mixedHistoryEditor', 'x = 1'));
+    if (afterMathRedo.source.includes('y = 2') !== true || !afterMathRedo.focused || !afterMathRedo.caretAtEnd || !afterMathRedo.visible || !afterMathRedo.resultPresent)
+      throw new Error(`Mixed formula history missed its document target: ${JSON.stringify(afterMathRedo)}`);
 
     await pressHistoryShortcut(page, 'y');
     const afterTailRedo = await readOuterLineFocus('TAIL_TARGET');
