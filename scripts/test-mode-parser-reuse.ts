@@ -11,12 +11,14 @@ try {
   await page.addStyleTag({ path: 'webview/src/styles.css' });
   await page.addStyleTag({ content: ':root{--meo-token-heading-color:rgb(11,22,33);--meo-token-processingInstruction-color:rgb(44,55,66)}' });
   await page.addScriptTag({ content: await build.outputs[0]!.text() });
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate(async () => {
     const h = (window as any).ModeParserReuse;
+    h.setShikiTheme({ name: 'native-source', type: 'dark', colors: { 'editor.foreground': '#dddddd' }, tokenColors: [{ scope: 'punctuation.definition.heading.markdown', settings: { foreground: '#0b1621' } }] }, 'source');
     const text = '# Heading\n\n' + 'ordinary paragraph with **strong** text\n\n'.repeat(1000) + '## Final heading';
     const editor = h.createEditor({ parent: document.getElementById('app'), text, initialMode: 'source', onApplyChanges() {} });
     try {
       h.forceParsing(editor.view, text.length, 5000);
+      for (let attempt = 0; attempt < 300 && !editor.view.dom.querySelector('.meo-source-token'); attempt++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       const marker = Array.from(editor.view.dom.querySelectorAll('.cm-line span'))
         .find((element: any) => element.textContent === '#') as HTMLElement;
       const sourceMarkerColor = marker ? getComputedStyle(marker).color : null;
@@ -55,7 +57,7 @@ try {
   assert.deepEqual(result.after, result.before, 'Parser reuse must preserve Document, History and Selection');
   assert.equal(result.changedRetained, true, 'An updated Document parse must also survive switching');
   assert.equal(result.changedText, result.expectedChangedText);
-  assert.equal(result.sourceMarkerColor, 'rgb(11, 22, 33)', 'Source heading punctuation must retain heading coloring');
+  assert.equal(result.sourceMarkerColor, 'rgb(11, 22, 33)', 'Source heading punctuation must use the native TextMate heading token');
   assert.equal(result.emptyRetained, true, 'An empty transaction must reuse Live decorations');
   assert.equal(result.identicalSelectionRebuilt, true, 'An explicit selection must update editing/search reveal state even at the same position');
   assert.deepEqual(result.stableAfter, result.stableBefore, 'Decoration reuse must preserve Document, History and Selection');

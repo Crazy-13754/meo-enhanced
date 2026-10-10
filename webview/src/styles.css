@@ -3871,6 +3871,11 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   isolation: isolate;
 }
 
+.cm-editor .meo-md-math-fenced-display.meo-latex-math-viewport:not(.is-interactive) {
+  /* Match MIN_PREVIEW_HEIGHT before the viewport's first measurement. */
+  min-height: 24px;
+}
+
 .cm-editor .meo-latex-math-canvas {
   position: relative;
   flex: 0 0 auto;

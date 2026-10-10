@@ -1,3 +1,4 @@
+import { setShikiTheme } from '../webview/src/helpers/shikiHighlighter';
 import { forceParsing } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
 import { createEditor } from './test-editor-factory';
@@ -19,4 +20,4 @@ function captureLiveProjectionWork(editor: ReturnType<typeof createEditor>): () 
   return () => current() !== before;
 }
 
-(globalThis as any).ModeParserReuse = { createEditor, currentSyntaxTree, forceParsing, captureLiveProjectionWork };
+(globalThis as any).ModeParserReuse = { createEditor, currentSyntaxTree, forceParsing, captureLiveProjectionWork, setShikiTheme };
