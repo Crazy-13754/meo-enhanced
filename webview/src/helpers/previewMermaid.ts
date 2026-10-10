@@ -1,4 +1,5 @@
 import type { EditorAppearance } from '../../../src/protocol/editorCommands';
+import { getMermaidPalette } from '../../../src/shared/mermaidPalette';
 
 type PreviewAppearance = Exclude<EditorAppearance, 'auto'>;
 import {
@@ -19,9 +20,14 @@ const previewMermaidSvgCache = new Map<string, string>();
 type PreviewMermaidPalette = {
   background: string;
   nodeBackground: string;
+  secondaryBackground: string;
+  tertiaryBackground: string;
+  clusterBackground: string;
   foreground: string;
   border: string;
   line: string;
+  chartColors: string[];
+  chartTextColor: string;
 };
 
 export function createPreviewMermaidRenderer(
@@ -118,22 +124,40 @@ async function renderMermaidBlocks(
     startOnLoad: false,
     securityLevel: 'strict',
     theme: 'base',
+    look: 'classic',
     themeVariables: {
       background: palette.background,
       mainBkg: palette.nodeBackground,
-      secondBkg: palette.nodeBackground,
-      tertiaryColor: palette.nodeBackground,
+      secondBkg: palette.secondaryBackground,
+      secondaryColor: palette.secondaryBackground,
+      tertiaryColor: palette.tertiaryBackground,
       primaryColor: palette.nodeBackground,
       primaryTextColor: palette.foreground,
+      secondaryTextColor: palette.foreground,
+      tertiaryTextColor: palette.foreground,
       primaryBorderColor: palette.border,
+      secondaryBorderColor: palette.border,
+      tertiaryBorderColor: palette.border,
       nodeBorder: palette.border,
       lineColor: palette.line,
+      signalColor: palette.line,
+      sequenceNumberColor: appearance === 'dark' ? palette.chartTextColor : '#ffffff',
       textColor: palette.foreground,
       nodeTextColor: palette.foreground,
       edgeLabelBackground: palette.background,
-      clusterBkg: palette.background,
+      clusterBkg: palette.clusterBackground,
       clusterBorder: palette.border,
       titleColor: palette.foreground,
+      noteBkgColor: palette.secondaryBackground,
+      noteTextColor: palette.foreground,
+      noteBorderColor: palette.border,
+      ...Object.fromEntries(palette.chartColors.map((color, index) => [`pie${index + 1}`, color])),
+      pieSectionTextColor: palette.chartTextColor,
+      pieLegendTextColor: palette.foreground,
+      pieTitleTextColor: palette.foreground,
+      pieOpacity: 1,
+      pieStrokeColor: palette.border,
+      pieOuterStrokeColor: palette.border,
       darkMode: appearance === 'dark'
     },
     htmlLabels: true,
@@ -158,9 +182,14 @@ async function renderMermaidBlocks(
       appearance,
       palette.background,
       palette.nodeBackground,
+      palette.secondaryBackground,
+      palette.tertiaryBackground,
+      palette.clusterBackground,
       palette.foreground,
       palette.border,
       palette.line,
+      ...palette.chartColors,
+      palette.chartTextColor,
       `block:${documentIndex}`,
       source
     ].join('\n');
@@ -196,7 +225,9 @@ async function renderMermaidBlocks(
       delete block.dataset.meoPreviewMermaidPending;
       block.dataset.meoPreviewMermaidAppearance = appearance;
       const copyActions = block.querySelector(':scope > .meo-preview-code-actions');
+      const languageLabel = block.querySelector(':scope > .meo-export-code-language-label');
       block.innerHTML = `<div class="meo-export-mermaid-svg">${svg}</div>`;
+      if (languageLabel) block.prepend(languageLabel);
       if (copyActions) block.append(copyActions);
     }
     for (const block of failed) {
@@ -211,6 +242,7 @@ function readPreviewMermaidPalette(
   frameDocument: Document,
   appearance: PreviewAppearance
 ): PreviewMermaidPalette {
+  const palette = getMermaidPalette(appearance === 'dark');
   const rootStyles = frameDocument.defaultView?.getComputedStyle(frameDocument.documentElement);
   const readColor = (name: string, fallback: string) => {
     const value = rootStyles?.getPropertyValue(name).trim() || fallback;
@@ -224,10 +256,15 @@ function readPreviewMermaidPalette(
 
   return {
     background: readColor('--meo-mermaid-background', appearance === 'dark' ? '#20252b' : '#ffffff'),
-    nodeBackground: readColor('--meo-mermaid-node-background', appearance === 'dark' ? '#2b333b' : '#f6f8fa'),
-    foreground: readColor('--meo-mermaid-foreground', appearance === 'dark' ? '#e6edf3' : '#24292f'),
-    border: readColor('--meo-mermaid-border', appearance === 'dark' ? '#768390' : '#8c959f'),
-    line: readColor('--meo-mermaid-line', appearance === 'dark' ? '#8b949e' : '#57606a')
+    nodeBackground: readColor('--meo-mermaid-node-background', palette.nodeBackground),
+    secondaryBackground: readColor('--meo-mermaid-secondary-background', palette.secondaryBackground),
+    tertiaryBackground: readColor('--meo-mermaid-tertiary-background', palette.tertiaryBackground),
+    clusterBackground: readColor('--meo-mermaid-cluster-background', palette.clusterBackground),
+    foreground: readColor('--meo-mermaid-foreground', palette.foreground),
+    border: readColor('--meo-mermaid-border', palette.border),
+    line: readColor('--meo-mermaid-line', palette.line),
+    chartColors: palette.chartColors.map((color, index) => readColor(`--meo-mermaid-chart-${index + 1}`, color)),
+    chartTextColor: readColor('--meo-mermaid-chart-text', palette.chartTextColor)
   };
 }
 

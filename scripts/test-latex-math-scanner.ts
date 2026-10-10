@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { scanLatexMath, scanLatexMathAt } from '../src/shared/latexMathScanner';
 
+for (const prefix of ['', '> ', '    ']) {
+  const unfinished = [prefix + '$$', prefix + '\\frac{', prefix + '$$'].join('\n');
+  const range = scanLatexMath(unfinished)[0];
+  assert.equal(range?.fencedDisplay, true, 'A structural display fence survives unfinished TeX braces');
+  assert.equal(range?.content, '\\frac{');
+}
+
 assert.deepEqual(scanLatexMath('before $x^2$ after'), [
   {
     from: 7,
@@ -27,7 +34,7 @@ assert.deepEqual(scanLatexMath('escaped \\$not$ then $a$ and $b_2$'), [
   { from: 28, to: 33, mode: 'inline', content: 'b_2', raw: '$b_2$' }
 ]);
 
-assert.deepEqual(scanLatexMath('$12.50$ $hello world$ $x'), []);
+assert.deepEqual(scanLatexMath('$12.50$ $hello world$ $x').map(range => range.content), ['12.50']);
 assert.deepEqual(scanLatexMath('$\\text{a $ b}$'), [
   {
     from: 0,
@@ -61,13 +68,7 @@ assert.deepEqual(
   }]
 );
 
-assert.deepEqual(scanLatexMathAt('$$x$$', 1), {
-  from: 1,
-  to: 4,
-  mode: 'inline',
-  content: 'x',
-  raw: '$x$'
-});
+assert.equal(scanLatexMathAt('$$x$$', 1), null, 'A delimiter cannot start inside a dollar run');
 assert.deepEqual(scanLatexMathAt('prefix\n$$\nx\n$$', 7), {
   from: 7,
   to: 14,

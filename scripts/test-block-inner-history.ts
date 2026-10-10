@@ -108,12 +108,6 @@ async function main() {
       '__meoMermaidEditingController',
       '\nB --> IMMEDIATE_MODE_PROBE'
     );
-    await assertImmediateModeSwitchAfterProjectedInput(
-      '.meo-latex-math-mode-btn',
-      '.meo-latex-math-editing-block',
-      '__meoLatexMathEditingController',
-      '。。。'
-    );
 
     const assertCanExitSplitAfterInput = async (
       modeButton: string,
@@ -187,12 +181,6 @@ async function main() {
       '__meoMermaidEditingController',
       '\nB --> C'
     );
-    await assertCanExitSplitAfterInput(
-      '.meo-latex-math-mode-btn',
-      '.meo-latex-math-editing-block',
-      '__meoLatexMathEditingController',
-      '。。。'
-    );
 
     await page.evaluate(() => {
       const editor = (window as any).__blockHistoryEditor;
@@ -201,22 +189,14 @@ async function main() {
       });
     });
     await waitForFrames(page);
-    await page.click('.meo-latex-math-mode-btn');
+    await page.click('.meo-md-math-fenced-display .katex');
     await waitForFrames(page);
-    const shiftedFormulaSwitch = await page.evaluate(() => {
-      const firstBlock = document.querySelector<HTMLElement>('.meo-latex-math-editing-block') as any;
-      const firstController = firstBlock?.__meoLatexMathEditingController;
-      const secondButton = document.querySelectorAll<HTMLButtonElement>('.meo-latex-math-mode-btn')[1];
-      if (!firstController || !secondButton) throw new Error('Missing two-formula mode-switch fixture');
-      const innerView = firstController.innerView;
-      innerView.dispatch({ changes: { from: innerView.state.doc.length, insert: 'SHIFT' } });
-      secondButton.click();
-      return [...document.querySelectorAll<HTMLElement>('.meo-latex-math-editing-block')]
-        .map((block) => block.dataset.meoRenderedBlockMode);
-    });
-    if (shiftedFormulaSwitch.length !== 2 || shiftedFormulaSwitch.some((mode) => mode !== 'split')) {
-      throw new Error(`A shifted formula toolbar targeted its stale anchor: ${JSON.stringify(shiftedFormulaSwitch)}`);
-    }
+    await page.keyboard.press('End'); await page.keyboard.type(' + SHIFT');
+    await page.locator('.meo-md-math-fenced-display:not(.meo-math-live-result) .katex').click();
+    await waitForFrames(page);
+    const switched = await page.evaluate(() => { const view = (window as any).__blockHistoryEditor.view;
+      return { line: view.state.doc.lineAt(view.state.selection.main.head).text, focused: view.hasFocus }; });
+    if (!switched.line.includes('z = 3') || !switched.focused) throw new Error('Switching between formulas lost the main caret');
     if (process.argv.includes('--mode-switch-only')) {
       console.log('rendered block mode switching after projected input passed');
       return;
@@ -316,13 +296,9 @@ async function main() {
       throw new Error(`Mermaid Ctrl+Y was blocked inside its source editor: ${JSON.stringify(mermaidRedo)}`);
     }
 
-    await page.click('.meo-latex-math-mode-btn');
+    await page.click('.meo-md-math-fenced-display .katex');
     await waitForFrames(page);
-    await page.evaluate(() => {
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block')! as any;
-      const innerView = block.__meoLatexMathEditingController.innerView;
-      block.__meoLatexMathEditingController.focusOffset(innerView.state.doc.length);
-    });
+    await page.keyboard.press('End');
     await page.keyboard.type('MATH_ONE');
     await roundTripLatestHistory(page);
     await page.keyboard.type('_TWO');
@@ -331,11 +307,10 @@ async function main() {
     await pressShortcut(page, 'z');
     const mathFirstUndo = await page.evaluate(() => {
       const editor = (window as any).__blockHistoryEditor;
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block');
-      const innerView = (block as any)?.__meoLatexMathEditingController?.innerView;
+      const innerView = editor.view;
       return {
         text: editor.view.state.doc.toString(),
-        source: innerView?.state.doc.toString() ?? null,
+        source: innerView?.state.doc.lineAt(innerView.state.selection.main.head).text ?? null,
         focused: Boolean(innerView?.hasFocus)
       };
     });
@@ -346,11 +321,10 @@ async function main() {
     await pressShortcut(page, 'z');
     const mathSecondUndo = await page.evaluate(() => {
       const editor = (window as any).__blockHistoryEditor;
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block');
-      const innerView = (block as any)?.__meoLatexMathEditingController?.innerView;
+      const innerView = editor.view;
       return {
         text: editor.view.state.doc.toString(),
-        source: innerView?.state.doc.toString() ?? null,
+        source: innerView?.state.doc.lineAt(innerView.state.selection.main.head).text ?? null,
         focused: Boolean(innerView?.hasFocus)
       };
     });
@@ -362,11 +336,10 @@ async function main() {
     await pressShortcut(page, 'y');
     const mathRedo = await page.evaluate(() => {
       const editor = (window as any).__blockHistoryEditor;
-      const block = document.querySelector<HTMLElement>('.meo-latex-math-editing-block');
-      const innerView = (block as any)?.__meoLatexMathEditingController?.innerView;
+      const innerView = editor.view;
       return {
         text: editor.view.state.doc.toString(),
-        source: innerView?.state.doc.toString() ?? null,
+        source: innerView?.state.doc.lineAt(innerView.state.selection.main.head).text ?? null,
         focused: Boolean(innerView?.hasFocus)
       };
     });

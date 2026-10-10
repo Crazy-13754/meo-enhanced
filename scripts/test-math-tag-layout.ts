@@ -125,9 +125,7 @@ try {
               } }));
             }, { text: markdown, mode: surface, appearance });
             if (surface === 'live') {
-              await page.waitForSelector('.meo-latex-math-mode-btn');
-              await page.click('.meo-latex-math-mode-btn');
-              await page.waitForSelector('.meo-latex-math-editing-block.is-split .katex-html .tag');
+              await page.waitForSelector('.meo-md-math-fenced-display .katex-html .tag');
             } else {
               if (surface === 'source') {
                 await page.waitForSelector('.source-preview-button');
@@ -151,19 +149,9 @@ try {
             assert.ok(printLayout.every(item => item.fitsContainer), JSON.stringify({ context, printLayout }));
           }
           if (surface === 'live') {
-            const split = '.meo-latex-math-editing-block.is-split';
-            const toolbar = '.meo-latex-math-toolbar[data-meo-block-from="0"]:not([data-meo-floating])';
-            const selector = `${split} .katex-html > .tag`;
-            for (const action of ['Zoom in', 'Zoom out', 'Reset zoom']) {
-              await page.click(`${toolbar} .meo-latex-math-zoom-btn[aria-label="${action}"]`);
-              assertTagLayout(await page.evaluate(readTagLayout, { surface, selector }), 1, `${context}, ${action}`);
-            }
-            await page.click(`${toolbar} .meo-latex-math-zoom-btn[aria-label="Fullscreen"]`);
-            await page.waitForSelector('.meo-latex-math-fullscreen .katex-html > .tag');
-            assertTagLayout(await page.evaluate(readTagLayout, {
-              surface, selector: '.meo-latex-math-fullscreen .katex-html > .tag'
-            }), 1, `${context}, fullscreen`);
-            await page.click('.meo-latex-math-fullscreen-exit-controls .meo-latex-math-zoom-btn');
+            await page.click('.meo-md-math-fenced-display .katex');
+            await page.waitForSelector('.meo-math-live-result .katex-html > .tag');
+            assertTagLayout(await page.evaluate(readTagLayout, { surface }), expectedTagCount, context + ', source above result');
           }
           assert.deepEqual(errors, [], context);
           console.log(`Math tags fit without overlap: ${context} (${expectedTagCount} formulas)`);

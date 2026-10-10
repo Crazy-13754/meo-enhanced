@@ -103,6 +103,7 @@ export type UiStrings = Readonly<{
   markdownMode: string;
   live: string;
   source: string;
+  split: string;
   preview: string;
   sidePreview: string;
   sidePreviewMore: string;
@@ -357,7 +358,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     outlineExpand: 'Expand', outlineCollapse: 'Collapse', outlineNoHeadings: 'No headings', untitled: 'Untitled',
     backToTop: 'Back to top',
     editorToolbar: 'Editor toolbar', formatting: 'Formatting', markdownMode: 'Markdown mode',
-    live: 'Live', source: 'Source', preview: 'Preview',
+    live: 'Live', source: 'Source', split: 'Split', preview: 'Preview',
     sidePreview: 'Split preview', sidePreviewMore: 'Preview options', exitSidePreview: 'Exit split',
     showSidePreview: 'Show side preview', hideSidePreview: 'Hide side preview',
     disableSynchronizedScrolling: 'Disable scroll sync',
@@ -373,7 +374,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     jumpToFootnote: (number: number) => `Jump to footnote ${number}`,
     jumpToFootnoteReference: (number: number) => `Jump to footnote reference ${number}`,
     indentedCodeBlockLabel: 'Indented code block',
-    copyCode: 'Copy code', copied: 'copied', copy: 'copy', selectAllCode: 'Select all code', all: 'all',
+    copyCode: 'Copy', copied: 'copied', copy: 'copy', selectAllCode: 'Select all code', all: 'all',
     codeLines: (count: number) => `${count} lines`,
     showMoreCode: (count: number) => `Show ${count} more lines of code`,
     showMoreLines: (count: number) => `Show ${count} more lines`, showLessCode: 'Show less code', showLess: 'Show less',
@@ -549,7 +550,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     outlineExpand: '展开', outlineCollapse: '折叠', outlineNoHeadings: '暂无标题', untitled: '未命名',
     backToTop: '回到顶部',
     editorToolbar: '编辑器工具栏', formatting: '格式', markdownMode: 'Markdown 模式',
-    live: '实时', source: '源码', preview: '预览',
+    live: '实时', source: '源码', split: '分栏', preview: '预览',
     sidePreview: '分栏预览', sidePreviewMore: '预览选项', exitSidePreview: '退出分栏',
     showSidePreview: '显示侧边预览', hideSidePreview: '关闭侧边预览',
     disableSynchronizedScrolling: '关闭同步滚动',
@@ -565,7 +566,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     jumpToFootnote: (number: number) => `跳转到脚注 ${number}`,
     jumpToFootnoteReference: (number: number) => `跳转到脚注引用 ${number}`,
     indentedCodeBlockLabel: '缩进代码块',
-    copyCode: '复制代码', copied: '已复制', copy: '复制', selectAllCode: '全选代码', all: '全选',
+    copyCode: '复制', copied: '已复制', copy: '复制', selectAllCode: '全选代码', all: '全选',
     codeLines: (count: number) => `${count} 行`,
     showMoreCode: (count: number) => `显示其余 ${count} 行代码`,
     showMoreLines: (count: number) => `显示其余 ${count} 行`, showLessCode: '收起代码', showLess: '收起',

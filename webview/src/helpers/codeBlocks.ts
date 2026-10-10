@@ -21,9 +21,10 @@ import {
   addMermaidToolbar,
   createMermaidToolbarWidget,
   getMermaidBlockMode,
+  getMermaidBlockViewport,
   MermaidEditingWidget
 } from './mermaidEditing';
-import { getCodeBlockSourceLines, getLiveBlockIndent, liveBlockIndentKey, type LiveBlockIndentValue } from './blockIndent';
+import { getCodeBlockSourceLines, getLiveBlockIndent, liveBlockIndentKey, parseBlockLinePrefix, type LiveBlockIndentValue } from './blockIndent';
 import { getViewportController } from './viewportController';
 import { getMermaidDiagramPresentationFactory } from '../editor/mermaidDiagramPresentation';
 import { currentSyntaxTree, getFencedCodeInfo, syntaxTreeChanged } from './markdownSyntax';
@@ -805,7 +806,8 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
     readonly endLine: number,
     readonly indentColumns: LiveBlockIndentValue,
     presentationFactory: ReturnType<typeof getMermaidDiagramPresentationFactory>,
-    uiLanguage: UiLanguage
+    uiLanguage: UiLanguage,
+    viewportState: ReturnType<typeof getMermaidBlockViewport>
   ) {
     super();
     this[renderedBlockPreviewHeight] = new RenderedBlockPreviewHeight(JSON.stringify([
@@ -813,6 +815,7 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
     ]));
     this.diagramWidget = new MermaidDiagramWidget(diagramText, startLine, endLine, {
       presentationFactory,
+      viewportState,
       indentColumns: 0,
       uiLanguage
     });
@@ -820,7 +823,7 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
       anchor,
       startLine,
       'preview',
-      fullBlockText,
+      diagramText,
       blockTo
     );
   }
@@ -866,7 +869,7 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
       toolbar: this.toolbarWidget.toDOM(view),
       content
     });
-    this[renderedBlockPreviewHeight].observe(shell);
+    this[renderedBlockPreviewHeight].observe(shell, view);
     (shell as MermaidPreviewShellElement).__meoMermaidPreviewDiagramWidget = this.diagramWidget;
     return shell;
   }
@@ -921,21 +924,17 @@ function addMermaidDiagramBlock(
     activeLines: ReadonlySet<number>;
   }
 ): boolean {
-  if (!block.diagramText.trim()) {
-    return false;
-  }
-
   const startLine = state.doc.line(block.startLine);
   const endLine = state.doc.line(block.endLine);
 
-  if (startLine.number >= endLine.number) {
+  if (endLine.number <= startLine.number + 1) {
     return false;
   }
 
   const contentStartLine = state.doc.line(startLine.number + 1);
   const contentEndLine = state.doc.line(endLine.number - 1);
 
-  if (contentStartLine.from >= contentEndLine.to) {
+  if (contentStartLine.from > contentEndLine.to) {
     return false;
   }
 
@@ -945,7 +944,7 @@ function addMermaidDiagramBlock(
   const diagramFirstLine = block.diagramText.split('\n')[0] ?? '';
   const sourceLinePrefix = diagramFirstLine && rawFirstLine.endsWith(diagramFirstLine)
     ? rawFirstLine.slice(0, rawFirstLine.length - diagramFirstLine.length)
-    : /^[ \t]*/.exec(startLine.text)?.[0] ?? '';
+    : parseBlockLinePrefix(startLine.text, state.tabSize).prefix;
   const mode = getMermaidBlockMode(
     state,
     anchor,
@@ -953,6 +952,7 @@ function addMermaidDiagramBlock(
     contentEndLine.to
   );
   const decision = mode.decision;
+  if (!block.diagramText.trim() && decision.effectiveMode === 'preview') return false;
   if (decision.effectiveMode !== 'preview' && !block.activeLines.has(startLine.number)) {
     addTopLinePillLabel(builder, startLine.from, 'mermaid', -1);
   }
@@ -963,7 +963,7 @@ function addMermaidDiagramBlock(
       anchor,
       startLine.number,
       decision.effectiveMode,
-      block.fullBlockText,
+      block.diagramText,
       endLine.to
     );
   }
@@ -978,7 +978,8 @@ function addMermaidDiagramBlock(
         endLine.number,
         indentColumns,
         getMermaidDiagramPresentationFactory(state),
-        state.facet(uiLanguageFacet)
+        state.facet(uiLanguageFacet),
+        getMermaidBlockViewport(state, anchor)
       )
     : new MermaidEditingWidget({
       anchor,
@@ -986,6 +987,7 @@ function addMermaidDiagramBlock(
       contentTo: contentEndLine.to,
       diagramText: block.diagramText,
       sourceLinePrefix,
+      viewportState: getMermaidBlockViewport(state, anchor),
       startLine: startLine.number,
       endLine: endLine.number,
       indentColumns

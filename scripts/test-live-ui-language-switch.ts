@@ -53,8 +53,8 @@ function expectedLabels(language: UiLanguage, mermaidLine: number, formulaLine: 
     ],
     mermaidControls: strings.mermaidBlockControls(mermaidLine),
     mermaidMode: strings.editMermaidSplit,
-    formulaControls: strings.formulaBlockControls(formulaLine),
-    formulaMode: strings.editFormulaSplit,
+    formulaControls: strings.copyCode,
+    formulaMode: null,
     color: strings.adjustColor('#ff0000')
   };
 }
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
       document.querySelectorAll('.meo-code-block-actions [aria-label]').length >= 4
       && Boolean(document.querySelector('.meo-md-long-code-placeholder .meo-long-code-action'))
       && Boolean(document.querySelector('.meo-mermaid-mode-btn'))
-      && Boolean(document.querySelector('.meo-latex-math-mode-btn'))
+      && Boolean(document.querySelector('.meo-math-copy-actions .meo-copy-code-btn'))
       && Boolean(document.querySelector('.meo-md-html-source-toggle'))
       && Boolean(document.querySelector('.meo-md-html-table-context-menu'))
     ));
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
         ],
         mermaidControls: readLabel('.meo-mermaid-toolbar'),
         mermaidMode: readLabel('.meo-mermaid-mode-btn'),
-        formulaControls: readLabel('.meo-latex-math-toolbar'),
+        formulaControls: readLabel('.meo-math-copy-actions .meo-copy-code-btn'),
         formulaMode: readLabel('.meo-latex-math-mode-btn'),
         color: readLabel('.meo-md-color-swatch')
       });

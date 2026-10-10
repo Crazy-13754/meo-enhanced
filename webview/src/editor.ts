@@ -23,6 +23,8 @@ import { shikiCodeHighlight } from './helpers/shikiDecorations';
 import type { UiLanguage } from '../../src/foundation/uiLanguage';
 import { longCodeBlockEnabledFacet } from './helpers/longCodeBlocks';
 import type { SourceLineNumberMode } from '../../src/protocol/readyInit';
+import { formatSourceLineNumber, sourceLineNumberModeFacet } from './editor/sourceLineNumbers';
+import { flushEditorLayout } from './editor/layoutMeasurement';
 import { assessLargeDocument } from '../../src/foundation/largeDocument';
 import { uiLanguageFacet } from './editor/uiLanguage';
 import { liveModeExtensions, preserveLiveDecorationsForSearchEffect, refreshLiveDecorationsAfterSearchEffect, setLiveDocumentIdleEffect, setLivePointerSelectionActiveEffect } from './liveMode';
@@ -122,6 +124,8 @@ import {
   takeLatexMathModeSelection
 } from './helpers/latexMathEditing';
 import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
+import { parseBlockLinePrefix } from './helpers/blockIndent';
+import { displayMathPasteText, indentDisplayMathSource, insertDisplayMathNewline, selectedDisplayMathBody } from './helpers/displayMathEditing';
 import {
   ViewportController,
   visualLineContextMargin,
@@ -363,21 +367,9 @@ function lineNumberExtensions(
   _mode: EditableEditorMode,
   sourceMode: SourceLineNumberMode
 ): Extension {
-  const lineNumberMode = sourceMode;
-  if (lineNumberMode === 'off') return [];
-
-  const formatNumber = lineNumberMode === 'relative'
-    ? (lineNo: number, state: EditorState) => {
-      const currentLine = state.doc.lineAt(state.selection.main.head).number;
-      return String(lineNo === currentLine ? lineNo : Math.abs(lineNo - currentLine));
-    }
-    : lineNumberMode === 'interval'
-      ? (lineNo: number, state: EditorState) => {
-        const currentLine = state.doc.lineAt(state.selection.main.head).number;
-        return lineNo === currentLine || lineNo % 10 === 0 ? String(lineNo) : '';
-      }
-      : undefined;
-  return [lineNumbers(formatNumber ? { formatNumber } : undefined), highlightActiveLineGutter()];
+  const preference = sourceLineNumberModeFacet.of(sourceMode);
+  return sourceMode === 'off' ? preference
+    : [preference, lineNumbers({ formatNumber: formatSourceLineNumber }), highlightActiveLineGutter()];
 }
 
 export function createEditor({
@@ -888,6 +880,50 @@ export function createEditor({
     }
 
     return false;
+  };
+
+  const tryEnterRenderedBlockSource = (editorView: EditorView, forward: boolean, vertical: boolean) => {
+    if (currentMode !== 'live') return false;
+    const selection = editorView.state.selection.main;
+    if (!selection.empty) return false;
+    const line = editorView.state.doc.lineAt(selection.head);
+    if (!vertical && selection.head !== (forward ? line.to : line.from)) return false;
+    const block = getLiveRenderedBlocks(editorView.state, { includeSelectedMath: true }).find(block =>
+      block.kind === 'math'
+        ? forward ? line.number === block.startLine || line.number === block.startLine - 1
+          : line.number === block.endLine || line.number === block.endLine + 1
+        : block.kind === 'mermaid' && (forward ? line.number === block.startLine : line.number === block.endLine));
+    if (!block || block.endLine <= block.startLine + 1) return false;
+    const opening = editorView.state.doc.line(block.startLine);
+    const first = editorView.state.doc.line(block.startLine + 1);
+    const last = editorView.state.doc.line(block.endLine - 1);
+    const target = forward ? first : last;
+    const column = selection.head - line.from;
+    if (block.kind === 'math') {
+      const prefix = parseBlockLinePrefix(editorView.state.doc.line(block.endLine).text, editorView.state.tabSize).prefix.length;
+      const targetColumn = vertical ? Math.min(target.length, Math.max(prefix, column)) : forward ? Math.min(prefix, target.length) : target.length;
+      editorView.dispatch({ selection: { anchor: target.from + targetColumn }, scrollIntoView: true });
+      return true;
+    }
+    const offset = target.from - first.from + (vertical ? Math.min(column, target.length) : forward ? 0 : target.length);
+    // These helpers only focus a mounted Source/Split editor. Preview retains
+    // the document's normal navigation and does not change presentation.
+    return focusMermaidEditingOffset(editorView, opening.from, offset);
+  };
+
+  const finishDisplayMathEditing = (editorView: EditorView) => {
+    if (currentMode !== 'live') return false;
+    const lineNo = editorView.state.doc.lineAt(editorView.state.selection.main.head).number;
+    const block = getLiveRenderedBlocks(editorView.state, { includeSelectedMath: true })
+      .find(block => block.kind === 'math' && block.startLine <= lineNo && block.endLine >= lineNo);
+    if (!block) return false;
+    if (block.endLine < editorView.state.doc.lines) {
+      editorView.dispatch({ selection: { anchor: editorView.state.doc.line(block.endLine + 1).from }, scrollIntoView: true });
+    } else {
+      editorView.dispatch({ changes: { from: editorView.state.doc.length, insert: '\n' },
+        selection: { anchor: editorView.state.doc.length + 1 }, scrollIntoView: true });
+    }
+    return true;
   };
 
   const syncModeClasses = () => {
@@ -1762,6 +1798,19 @@ export function createEditor({
       return null;
     }
 
+    if (block.kind === 'math') {
+      const wasVisible = targetLineNumber >= previousViewport.selection.visibleFromLineNumber
+        && targetLineNumber <= previousViewport.selection.visibleToLineNumber;
+      view.dispatch({ selection: { anchor: targetPosition } });
+      if (wasVisible) viewportController.lockScrollTop(previousViewport.scrollTop, isCurrent);
+      else viewportController.revealPositionUntilStable(targetPosition, { y: 'center', geometry: 'line-block' }, isCurrent);
+      return () => {
+        if (!isCurrent()) return false;
+        view.contentDOM.focus({ preventScroll: true });
+        return view.hasFocus;
+      };
+    }
+
     const openingLine = view.state.doc.line(block.startLine);
     const contentFrom = view.state.doc.line(block.startLine + 1).from;
     const closingLine = view.state.doc.line(block.endLine);
@@ -1882,6 +1931,15 @@ export function createEditor({
         selection: { anchor: targetLine.from },
         effects: setHtmlEditingRangeEffect.of({ from: htmlBlock.from, to: htmlBlock.to })
       });
+      viewportController.revealPosition(targetLine.from, {
+        y: isPositionVisible(openingLine.from) ? 'nearest' : 'center'
+      }, isRevealCurrent);
+      view.focus();
+      return true;
+    }
+    if (block.kind === 'math') {
+      const isRevealCurrent = viewportController.beginNavigationReveal();
+      view.dispatch({ selection: { anchor: targetLine.from } });
       viewportController.revealPosition(targetLine.from, {
         y: isPositionVisible(openingLine.from) ? 'nearest' : 'center'
       }, isRevealCurrent);
@@ -2198,18 +2256,14 @@ export function createEditor({
       inputAssistanceCompartment.of(inputAssistanceFacet.of(initialInputAssistance)),
       Prec.highest(htmlCommentEditing),
       Prec.highest(typingAssistance),
-      Prec.highest(pasteAssistance),
+      Prec.highest(pasteAssistance(displayMathPasteText)),
       Prec.highest(createInputSuggestions({ inputContext, requestLinks: requestLinkCandidates, currentHeadings: () => currentHeadingSuggestions(view.state.doc.toString()),
         cellCoords: measureTextareaSelectionStart,
         focusTable: focusInsertedTable,
         focusMath: () => {
-          if (currentMode !== 'live') return true;
-          const caret = view.state.selection.main.head, content = view.state.doc.lineAt(caret);
-          if (content.number <= 1) return true;
-          const opening = view.state.doc.line(content.number - 1);
-          if (!opening.text.includes('$$')) return true;
-          view.dispatch({ effects: [supersedeLiveInputDerivedWork(), setLatexMathBlockModeEffect.of({ anchor: opening.from, mode: 'source' })] });
-          return focusLatexMathEditingOffset(view, opening.from, caret - content.from);
+          view.dispatch({ effects: supersedeLiveInputDerivedWork() });
+          view.focus();
+          return true;
         },
         replaceCell: (input, value, anchor, head) => {
           if (input !== getActiveTableInput()) return false;
@@ -2228,16 +2282,17 @@ export function createEditor({
       keymap.of([
         { key: 'Mod-/', run: () => runCommentCommand(true) },
         { key: 'Alt-A', run: () => runCommentCommand(false) },
-        { key: 'Tab', run: (view) => indentListByTwoSpaces(view) || indentMore(view) },
-        { key: 'Shift-Tab', run: (view) => outdentListByTwoSpaces(view) || indentLess(view) },
+        { key: 'Tab', run: (view) => indentDisplayMathSource(view, false) || indentListByTwoSpaces(view) || indentMore(view) },
+        { key: 'Shift-Tab', run: (view) => indentDisplayMathSource(view, true) || outdentListByTwoSpaces(view) || indentLess(view) },
         { key: 'Alt-]', run: indentListByTwoSpaces },
         { key: 'Alt-[', run: outdentListByTwoSpaces },
         { key: 'Backspace', run: deleteBackwardSmart },
-        { key: 'ArrowLeft', run: (view) => isLiveMode(view) && handleArrowLeftAtListContentStart(view) },
-        { key: 'ArrowRight', run: (view) => isLiveMode(view) && handleArrowRightAtListLineStart(view) },
+        { key: 'ArrowLeft', run: (view) => tryEnterRenderedBlockSource(view, false, false) || isLiveMode(view) && handleArrowLeftAtListContentStart(view) },
+        { key: 'ArrowRight', run: (view) => tryEnterRenderedBlockSource(view, true, false) || isLiveMode(view) && handleArrowRightAtListLineStart(view) },
         {
           key: 'Enter',
           run: (view) =>
+            insertDisplayMathNewline(view) ||
             handleEnterContinueContainedCodeBlock(view) ||
             (view.state.facet(inputAssistanceFacet).lists && (
               handleEnterOnEmptyListItem(view) ||
@@ -2246,11 +2301,13 @@ export function createEditor({
               handleEnterBeforeNestedList(view)))
         },
         { key: 'Shift-Enter', run: insertTableCellLineBreak },
-        { key: 'Ctrl-Enter', run: insertTableCellLineBreak },
-        { key: 'ArrowUp', run: (view) => tryEnterAdjacentTable(view, 'up') },
-        { key: 'ArrowDown', run: (view) => tryEnterAdjacentTable(view, 'down') },
+        { key: 'Ctrl-Enter', run: (view) => finishDisplayMathEditing(view) || insertTableCellLineBreak(view) },
+        { key: 'ArrowUp', run: (view) => tryEnterAdjacentTable(view, 'up') || tryEnterRenderedBlockSource(view, false, true) },
+        { key: 'ArrowDown', run: (view) => tryEnterAdjacentTable(view, 'down') || tryEnterRenderedBlockSource(view, true, true) },
         ...markdownKeymap.map(binding => ({ ...binding, run: (view: EditorView) =>
-          binding.key === 'Enter' && !view.state.facet(inputAssistanceFacet).lists ? false : binding.run?.(view) ?? false })),
+          (binding.key === 'Backspace' && selectedDisplayMathBody(view.state))
+          || (binding.key === 'Enter' && !view.state.facet(inputAssistanceFacet).lists)
+            ? false : binding.run?.(view) ?? false })),
         ...defaultKeymap,
         ...editorHistoryKeymap
       ]),
@@ -3162,7 +3219,7 @@ export function createEditor({
       }
       if (editorDestroyed || currentMode !== presentationMode) return;
       if (presentationMode === 'live' && flushMountedTableLayouts(view)) {
-        (view as EditorView & { measure(flush?: boolean): void }).measure(false);
+        flushEditorLayout(view);
       }
       let viewportSettled = false;
       const viewportReady = viewportController.whenPresentationSettled(
@@ -3191,7 +3248,7 @@ export function createEditor({
       const imageSettledAfterViewport = viewportSettled;
       const tableLayoutChanged = presentationMode === 'live' && flushMountedTableLayouts(view);
       if (tableLayoutChanged) {
-        (view as EditorView & { measure(flush?: boolean): void }).measure(false);
+        flushEditorLayout(view);
       }
       await viewportReady;
       if (imageSettledAfterViewport) {
@@ -3704,9 +3761,9 @@ export function createEditor({
         syncModeClasses();
         // Reconfiguration invalidates CodeMirror's height map. Finish its queued
         // measurement before the browser can paint the unanchored intermediate frame.
-        (view as EditorView & { measure(flush?: boolean): void }).measure(false);
+        flushEditorLayout(view);
         if (nextMode === 'live' && flushMountedTableLayouts(view)) {
-          (view as EditorView & { measure(flush?: boolean): void }).measure(false);
+          flushEditorLayout(view);
         }
         // Restore the current source selection in its new editable owner. Source
         // navigation wins over the discarded widget, and viewport ownership stays here.
@@ -3816,7 +3873,7 @@ export function createEditor({
       if (command === 'cellBreak') { if (getActiveTableInput()) return insertMountedTableCellBreak(view); return insertTableCellLineBreak(view); }
       return runEditorCommand(view, command);
     },
-    pastePlainText(text: string) { return insertPlainClipboardText(view, text); },
+    pastePlainText(text: string) { return insertPlainClipboardText(view, text, displayMathPasteText); },
     setInputAssistance(preferences: InputAssistance) {
       view.dispatch({ effects: inputAssistanceCompartment.reconfigure(inputAssistanceFacet.of(preferences)) });
     },
@@ -4203,6 +4260,7 @@ function deleteTableCellLineBreakBackward(view: EditorView): boolean {
 }
 
 function deleteBackwardSmart(view: EditorView): boolean {
+  if (selectedDisplayMathBody(view.state)) return false;
   return handleBackspaceAtListContentStart(view) || deleteTableCellLineBreakBackward(view);
 }
 

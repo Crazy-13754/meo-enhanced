@@ -75,7 +75,7 @@ assert.equal(chinese.untitled, '未命名');
 assert.equal(chinese.backToTop, '回到顶部');
 assert.equal(chinese.markTaskComplete, '标记任务为已完成');
 assert.equal(chinese.jumpToFootnoteReference(2), '跳转到脚注引用 2');
-assert.equal(chinese.copyCode, '复制代码');
+assert.equal(chinese.copyCode, '复制');
 assert.equal(chinese.showMoreCode(9), '显示其余 9 行代码');
 assert.deepEqual(
   [chinese.loading, chinese.zoomIn, chinese.zoomOut, chinese.resetZoom, chinese.fullscreen, chinese.exitFullscreen],

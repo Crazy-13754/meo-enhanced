@@ -40,6 +40,9 @@ try {
           </ul>
           <h2 class="paired-heading">Paired diagram</h2>
           ${svg('paired', 482, 1734)}
+          <h2>Diagram with a short description</h2>
+          <p class="paired-description">The heading and this description must stay with the diagram.</p>
+          ${svg('described', 482, 1734)}
         </main></div>
       </body>
     </html>`);
@@ -58,6 +61,9 @@ try {
       tall: read('.tall svg'),
       wide: read('.wide svg'),
       paired: read('.paired svg'),
+      described: read('.described svg'),
+      describedWithHeading: document.querySelector('.described')?.hasAttribute('data-meo-pdf-heading-pair'),
+      descriptionBreakAfter: getComputedStyle(document.querySelector('.paired-description')!).breakAfter,
       shortBreakable: document.querySelector('.short-block')?.hasAttribute('data-meo-pdf-allow-break'),
       longBreakable: document.querySelector('.long-block')?.hasAttribute('data-meo-pdf-allow-break'),
       simpleItemBreakable: document.querySelector('.simple-item')?.hasAttribute('data-meo-pdf-allow-break'),
@@ -74,6 +80,9 @@ try {
     Math.abs(tallRatio - expectedRatio) > 0.01 ||
     layout.wide.width > layout.documentWidth + 1 ||
     layout.paired.height > 900 ||
+    layout.described.height >= layout.paired.height ||
+    layout.describedWithHeading !== true ||
+    !['avoid', 'avoid-page'].includes(layout.descriptionBreakAfter) ||
     layout.shortBreakable !== false ||
     layout.longBreakable !== true ||
     layout.simpleItemBreakable !== false ||

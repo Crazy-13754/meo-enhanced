@@ -155,7 +155,7 @@ async function main(): Promise<void> {
       ));
       assert.deepEqual(layout.map(button => button.label), [
         'Zoom in', 'Zoom out', 'Reset zoom', 'Fullscreen',
-        'Switch to split view', 'Select all code', 'Copy code'
+        'Switch to split view', 'Select all code', 'Copy'
       ]);
       assert.equal(new Set(layout.map(button => button.y)).size, 1, `${selector} preview controls stayed on a second row`);
       const separator = await page.$eval(selector, toolbar => {

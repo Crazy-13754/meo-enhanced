@@ -70,20 +70,19 @@ async function main(): Promise<void> {
       const harness = (window as any).RenderedBlockModeShellProductionHarness;
       (window as any).__renderedModeEditor = harness.createEditor({
         parent: document.getElementById('app')!,
-        text: '$$\nx = 1\n$$',
+        text: 'before\n\n$$\nx = 1\n$$\n\nafter',
         initialMode: 'live',
         onApplyChanges() {}
       });
     });
-    await page.waitForSelector('.meo-latex-math-mode-btn');
-
-    await page.click('.meo-latex-math-mode-btn');
-    await page.waitForSelector('.meo-latex-math-editing-block.is-split');
-    await page.click('.meo-latex-math-editing-block.is-split .cm-content');
+    await page.waitForSelector('.meo-md-math-fenced-display');
+    await page.click('.meo-md-math-fenced-display [data-rendered-math]');
+    await page.waitForSelector('.meo-math-live-result');
     await page.keyboard.press('End');
     await page.keyboard.press('S');
+    await page.waitForFunction(() => document.querySelector('.meo-math-live-result')?.textContent?.includes('x = 1S'));
     const renderedImmediately = await page.evaluate(() =>
-      document.querySelector('.meo-latex-math-editing-block.is-split [data-rendered-math]')
+      document.querySelector('.meo-math-live-result [data-rendered-math]')
         ?.textContent?.includes('x = 1S') === true
     );
     assert.equal(renderedImmediately, true,
@@ -96,12 +95,13 @@ async function main(): Promise<void> {
       (window as any).RenderedBlockModeShellProductionHarness.setMathRendererProbe({ kind: 'error' });
     });
     await page.keyboard.press('E');
+    await page.waitForSelector('.meo-math-result-status');
     const afterErrorEdit = await page.evaluate(() => {
       const source = document.querySelector<HTMLElement>(
-        '.meo-latex-math-editing-block.is-split .meo-latex-math-source-pane'
+        '#app > .cm-editor .cm-content'
       )!;
       const error = document.querySelector<HTMLElement>(
-        '.meo-latex-math-editing-block.is-split .meo-latex-math-preview-error'
+        '.meo-math-result-status'
       );
       const selection = window.getSelection();
       const outerScroller = document.querySelector<HTMLElement>('#app > .cm-editor > .cm-scroller')!;
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
         scrollTop: outerScroller.scrollTop
       };
     });
-    assert.equal(afterErrorEdit.errorText?.includes('x = 1SE'), true,
+    assert.equal(afterErrorEdit.errorText?.includes('last valid result'), true,
       'Split mode must expose a synchronous renderer error before the edit completes');
     assert.equal(afterErrorEdit.sourceFocused, true, 'Synchronous renderer errors must preserve source focus');
     assert.equal(afterErrorEdit.caretInSource, true, 'Synchronous renderer errors must preserve the public DOM caret');

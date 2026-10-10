@@ -77,7 +77,8 @@ try {
       return {
         gutterTop: gutter?.getBoundingClientRect().top ?? NaN,
         scrollTop: view.scrollDOM.scrollTop,
-        lineHeight: view.lineBlockAt(view.state.doc.line(94).from).height,
+        lineHeight: Array.from(view.contentDOM.querySelectorAll<HTMLElement>(':scope > .cm-line'))
+          .find(row => view.state.doc.lineAt(view.posAtDOM(row)).number === 94)?.getBoundingClientRect().height ?? NaN,
         mutationCount: (window as any).__gutterMutations.length,
         sameNode: gutter === (window as any).__gutterReference,
         sameHtmlNode: view.dom.querySelector('.meo-md-html-block') === (window as any).__htmlReference
@@ -89,7 +90,7 @@ try {
     for (let key = 0; key < 20; key++) {
       await page.keyboard.press(operation);
       for (let frame = 0; frame < 3; frame++) {
-        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
         await sample(offset + key, frame);
       }
     }

@@ -8,6 +8,7 @@ import {
 } from '../shared/builtInVisualBaseline';
 import { normalizePreviewFontFamily, type PreviewAppearance } from '../shared/preview';
 import type { EditorStyleEnvironment } from '../protocol/editorStyleEnvironment';
+import { getMermaidPalette } from '../shared/mermaidPalette';
 
 const styleValueInjectionPattern = /[\n\r;{}]/g;
 const isolatedDarkBackgroundColor = '#20252b';
@@ -30,8 +31,7 @@ export function buildPreviewStyles(
 
 /* Preview shares Live's borderless block surfaces. */
 pre.meo-export-code-block,
-.meo-export-mermaid,
-.meo-export-math-fenced-display {
+.meo-export-mermaid {
   border: 0;
   background: var(--meo-code-bg);
 }`;
@@ -43,6 +43,7 @@ function buildReadingStyles(
   matchEditorBackground: boolean
 ): string {
   const theme = getBuiltInVisuals(appearance === 'light' ? 'light' : 'dark');
+  const mermaidPalette = getMermaidPalette(appearance !== 'light');
   const isolatePreviewTheme = environment.previewThemeIsolation === true;
   const capturedEditorBackground = sanitizeCssColor(environment.editorBackgroundColor ?? '');
   const editorAppearanceIsDark = isDarkCssColor(capturedEditorBackground);
@@ -220,10 +221,15 @@ ${headingWeightVarsCss}
   --meo-inline-code-bg: ${theme.semanticColors.inlineCodeBackground};
   --meo-code-bg: ${codeBlockBackgroundColor};
   --meo-mermaid-background: var(--meo-code-bg);
-  --meo-mermaid-node-background: ${appearance === 'light' ? '#ffffff' : sideBarBackgroundColor};
-  --meo-mermaid-foreground: var(--meo-fg);
-  --meo-mermaid-border: ${appearance === 'light' ? '#8c959f' : previewMutedColor};
-  --meo-mermaid-line: ${appearance === 'light' ? '#57606a' : previewMutedColor};
+  --meo-mermaid-node-background: ${mermaidPalette.nodeBackground};
+  --meo-mermaid-secondary-background: ${mermaidPalette.secondaryBackground};
+  --meo-mermaid-tertiary-background: ${mermaidPalette.tertiaryBackground};
+  --meo-mermaid-cluster-background: ${mermaidPalette.clusterBackground};
+  --meo-mermaid-foreground: ${mermaidPalette.foreground};
+  --meo-mermaid-border: ${mermaidPalette.border};
+  --meo-mermaid-line: ${mermaidPalette.line};
+  ${mermaidPalette.chartColors.map((color, index) => `--meo-mermaid-chart-${index + 1}: ${color};`).join('\n  ')}
+  --meo-mermaid-chart-text: ${mermaidPalette.chartTextColor};
   --meo-sidebar-bg: ${sideBarBackgroundColor};
   --meo-page-bg: color-mix(in srgb, var(--meo-bg) 86%, var(--meo-border) 14%);
   --meo-panel-bg: color-mix(in srgb, var(--meo-bg) 96%, var(--meo-fg) 4%);
@@ -314,7 +320,9 @@ body[data-meo-export-target='pdf'] .meo-export-mermaid-svg svg {
 }
 
 html[data-meo-export-target='pdf'] :is(h1, h2, h3, h4, h5, h6),
-body[data-meo-export-target='pdf'] :is(h1, h2, h3, h4, h5, h6) {
+body[data-meo-export-target='pdf'] :is(h1, h2, h3, h4, h5, h6),
+html[data-meo-export-target='pdf'] [data-meo-pdf-heading-description],
+body[data-meo-export-target='pdf'] [data-meo-pdf-heading-description] {
   break-after: avoid-page;
   page-break-after: avoid;
 }
@@ -897,6 +905,12 @@ kbd {
   overflow: visible;
 }
 
+.meo-export-math-display .katex-display > .katex { white-space: normal; }
+.meo-export-math-display .katex-html > .tag { white-space: nowrap; }
+.meo-export-math-display.meo-math-nowrap .katex-display > .katex { white-space: nowrap; }
+.meo-export-math-display.meo-math-nowrap > .meo-export-math-canvas,
+.meo-export-math-display.meo-math-nowrap > .meo-export-math-canvas > .katex-display { width: max-content; }
+
 .meo-export-math-display.meo-export-math-fenced-display {
   display: flex;
   align-items: center;
@@ -905,23 +919,28 @@ kbd {
   margin: 0;
   padding: 0.45em 0.6em;
   border: 0;
-  border-radius: 6px;
-  background: var(--meo-code-bg);
+  border-radius: 0;
+  background: transparent;
   overflow-x: visible;
   overflow-y: visible;
   line-height: 1;
   text-align: center;
 }
 
+/* The formula supplies its own breathing room; do not add a paragraph gap again. */
+.meo-export-doc p:has(+ .meo-export-math-fenced-display) {
+  margin-bottom: 0;
+}
+
 .meo-export-math-display > .meo-export-math-canvas {
   position: relative;
   flex: 0 0 auto;
-  width: max-content;
+  width: 100%;
   max-width: none;
 }
 
 .meo-export-math-display > .meo-export-math-canvas > .katex-display {
-  width: max-content;
+  width: auto;
   max-width: none;
 }
 

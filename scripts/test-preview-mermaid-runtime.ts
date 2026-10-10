@@ -6,6 +6,8 @@ import { shouldPreloadMermaid } from '../src/extension/webviewResourceHints';
 import { launchTestBrowser } from './browser-test-helpers';
 import { renderMarkdownToHtml } from '../src/export/renderMarkdown';
 import { buildPreviewStyles } from '../src/export/exportStyles';
+import { getMermaidPalette } from '../src/shared/mermaidPalette';
+import { complexMermaidSamples } from './fixtures/mermaid-community-samples';
 import { createPreviewMermaidRenderer } from '../webview/src/helpers/previewMermaid';
 import {
   MermaidDiagramResourceUnavailableError,
@@ -613,6 +615,108 @@ try {
       `Unrelated edits before rendered blocks must preserve Mermaid and math presentations: ${JSON.stringify(shiftedBlockContinuity)}`
     );
   }
+  const pieSource = complexMermaidSamples.find(sample => sample.id === 'pie')!.source;
+  const pieText = `\`\`\`mermaid\n${pieSource}\n\`\`\``;
+  const pieRendered = renderMarkdownToHtml({ markdownText: pieText, markdownFilePath: 'C:/tmp/pie.md', target: 'html' });
+  for (const appearance of ['dark', 'light'] as const) {
+    await page.evaluate(({ appearance, source, text, html, lightStyles, darkStyles }) => {
+      document.documentElement.style.setProperty('--meo-code-background', appearance === 'dark' ? '#20252b' : '#ffffff');
+      const testWindow = window as any;
+      const host = testWindow.__renderEditorMermaid(source);
+      host.id = `pie-live-${appearance}`;
+      const controller = testWindow.__previewController;
+      controller.setAppearance(appearance);
+      controller.requestRender(text);
+      const requestId = testWindow.__previewMessages.findLast((message: any) => message.type === 'requestPreviewRender').requestId;
+      controller.acceptRenderResponse({ type: 'previewRenderResult', requestId,
+        result: { ok: true, value: { html, hasMermaid: true, styles: { light: lightStyles, dark: darkStyles } } } });
+    }, { appearance, source: pieSource, text: pieText, html: pieRendered.html, lightStyles, darkStyles });
+    await page.waitForFunction(appearance => {
+      const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+      return document.querySelectorAll(`#pie-live-${appearance} path.pieCircle`).length === 8
+        && frame?.querySelector('.meo-export-mermaid')?.getAttribute('data-meo-preview-mermaid-appearance') === appearance
+        && frame.querySelectorAll('path.pieCircle').length === 8;
+    }, {}, appearance);
+    const actual = await page.evaluate(appearance => {
+      const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      return [document.querySelector(`#pie-live-${appearance}`)!, frame].map(root => ({
+        fills: Array.from(root.querySelectorAll('path.pieCircle')).map(slice => slice.ownerDocument.defaultView!.getComputedStyle(slice).fill),
+        labels: Array.from(root.querySelectorAll('text.slice')).map(label => label.ownerDocument.defaultView!.getComputedStyle(label).fill)
+      }));
+    }, appearance);
+    const palette = getMermaidPalette(appearance === 'dark');
+    const rgb = (hex: string) => `rgb(${[1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16)).join(', ')})`;
+    for (const surface of actual) {
+      assert.deepEqual(surface.fills, palette.chartColors.slice(0, 8).map(rgb), `${appearance}: Live and Preview must preserve the eight accent colors`);
+      assert.ok(surface.labels.length === 8 && surface.labels.every(color => color === rgb(palette.chartTextColor)), 'Percentages must remain legible on the slices');
+    }
+  }
+  // Exercise the whole-document Preview iframe, whose chrome is independent of Live's widgets.
+  const layoutText = [
+    '```js', 'const result = 42;', '```', '',
+    '```mermaid', 'flowchart LR', '  A[Start] --> B[Done]', '```', '',
+    '> ```mermaid', '> flowchart TD', '>   A[Parent] --> B[Child]', '> ```', '',
+    '```mermaid', '$$', '\\frac{a}{b}', '$$', '```', '',
+    '```latex', 'r = \\frac{6}{8} \\times 100\\% = 75\\%', '```', '',
+    '$$', 'E = mc^2', '$$'
+  ].join('\n');
+  const layoutRendered = renderMarkdownToHtml({ markdownText: layoutText, markdownFilePath: 'C:/tmp/preview-layout.md', target: 'html' });
+  const layoutFailures: string[] = [];
+  const screenshotDir = path.join(repoRoot, '.local', 'preview-rendered-blocks');
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  for (const width of [520, 1100]) {
+    await page.setViewport({ width, height: 1100 });
+    for (const appearance of ['dark', 'light'] as const) {
+      await page.evaluate(({ text, html, appearance, lightStyles, darkStyles }) => {
+        const testWindow = window as any;
+        const controller = testWindow.__previewController;
+        controller.setAppearance(appearance);
+        controller.requestRender(text);
+        const requestId = testWindow.__previewMessages.findLast((message: any) => message.type === 'requestPreviewRender').requestId;
+        controller.acceptRenderResponse({ type: 'previewRenderResult', requestId,
+          result: { ok: true, value: { html, hasMermaid: true, styles: { light: lightStyles, dark: darkStyles } } } });
+        controller.host.style.height = '1000px';
+      }, { text: layoutText, html: layoutRendered.html, appearance, lightStyles, darkStyles });
+      await page.waitForFunction(appearance => {
+        const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+        const blocks = Array.from(frame?.querySelectorAll('.meo-export-mermaid') ?? []);
+        return blocks.length === 3 && blocks.every(block => block.querySelector(':scope > .meo-export-mermaid-svg > svg')
+          && block.getAttribute('data-meo-preview-mermaid-appearance') === appearance);
+      }, {}, appearance);
+      const layout = await page.evaluate(async () => {
+        const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+        await frame.fonts.ready;
+        return Array.from(frame.querySelectorAll<HTMLElement>('.meo-export-mermaid, .meo-export-math-fenced-display')).map(block => {
+          const canvas = block.querySelector<HTMLElement>(':scope > .meo-export-mermaid-svg > svg, :scope > .meo-latex-math-canvas')!;
+          const outer = block.getBoundingClientRect(), inner = canvas.getBoundingClientRect();
+          const labels = block.querySelectorAll<HTMLElement>(':scope > .meo-export-code-language-label');
+          const label = labels[0], labelRect = label?.getBoundingClientRect();
+          return {
+            kind: block.classList.contains('meo-export-mermaid') ? 'mermaid' : 'latex',
+            width: outer.width, height: outer.height,
+            x: (inner.left + inner.right - outer.left - outer.right) / 2,
+            y: (inner.top + inner.bottom - outer.top - outer.bottom) / 2,
+            labelCount: labels.length, language: label?.textContent,
+            labelLeft: labelRect ? labelRect.left - outer.left : null,
+            labelTop: labelRect ? labelRect.top - outer.top : null,
+            labelOverlapsContent: labelRect ? labelRect.bottom > inner.top : false
+          };
+        });
+      });
+      await page.screenshot({ path: path.join(screenshotDir, `${appearance}-${width}.png`) });
+      for (const block of layout) {
+        if (block.width <= 0 || block.height <= 0 || Math.abs(block.x) > 1 || Math.abs(block.y) > 1) {
+          layoutFailures.push(`${appearance}/${width}: content not centered ${JSON.stringify(block)}`);
+        }
+        if (block.kind === 'mermaid' && (block.labelCount !== 1 || block.language !== 'mermaid'
+          || block.labelLeft !== 16 || block.labelTop !== 6 || block.labelOverlapsContent)) {
+          layoutFailures.push(`${appearance}/${width}: missing or misplaced Mermaid language ${JSON.stringify(block)}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(layoutFailures, [], 'Whole-document Preview must center rendered blocks and retain the Mermaid language across theme changes');
+
   const disposingPreview = await page.evaluate(({ text, html, lightStyles, darkStyles }) => {
     const controller = (window as typeof window & { __previewController?: any }).__previewController;
     const testWindow = window as typeof window & {

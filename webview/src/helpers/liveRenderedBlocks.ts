@@ -3,7 +3,8 @@ import type { SyntaxNodeRef, Tree } from '@lezer/common';
 import { isThematicBreakLine } from './frontmatter';
 import { parseBlockLinePrefix } from './blockIndent';
 import { getFencedCodeInfo, resolvedSyntaxTree } from './markdownSyntax';
-import { collectLatexMathRanges, resolveFencedDisplayMathInnerLineRange } from './math';
+import { resolveFencedDisplayMathInnerLineRange } from './math';
+import { collectDocumentMathRanges } from './displayMathBlocks';
 import { isTableDelimiterLine, parseTableInfo } from './tables';
 import { collectRenderableHtmlBlocks, getHtmlEditingRange } from './htmlContent';
 
@@ -142,23 +143,6 @@ function detectFallbackTableBlocks(
   return blocks;
 }
 
-function collectCodeLikeRanges(tree: any): Array<{ from: number; to: number }> {
-  const ranges: Array<{ from: number; to: number }> = [];
-
-  tree.iterate({
-    enter(node: SyntaxNodeRef) {
-      if (node.name !== 'FencedCode' && node.name !== 'CodeBlock') {
-        return;
-      }
-      ranges.push({ from: node.from, to: node.to });
-      return false;
-    }
-  });
-
-  ranges.sort((left, right) => left.from - right.from || left.to - right.to);
-  return ranges;
-}
-
 function resolveMathHiddenLineRange(
   startLine: number,
   endLine: number
@@ -210,7 +194,7 @@ export function getLiveRenderedBlocks(
     if (block.kind === 'html' && htmlEditingRange?.from === htmlFrom) return false;
     return block.kind !== 'math' || options.includeSelectedMath
       || block.lineNumberHiddenTo < block.lineNumberHiddenFrom
-      || !selectionTouchesLineRange(state, block.lineNumberHiddenFrom, block.lineNumberHiddenTo);
+      || !selectionTouchesLineRange(state, block.startLine, block.endLine);
   }).map(({ block }) => ({ ...block }));
   if (!options.includeSelectedMath) renderedBlockCache.set(state, { tree, blocks });
   return blocks;
@@ -220,7 +204,6 @@ function discoverRenderedBlocks(state: EditorState, tree: Tree): DiscoveredBlock
   const blocks: LiveRenderedBlock[] = [];
   const htmlFromByBlock = new Map<LiveRenderedBlock, number>();
   const parsedTableRanges: Array<{ from: number; to: number }> = [];
-  const codeLikeRanges = collectCodeLikeRanges(tree);
 
   tree.iterate({
     enter(node: SyntaxNodeRef) {
@@ -256,9 +239,7 @@ function discoverRenderedBlocks(state: EditorState, tree: Tree): DiscoveredBlock
     }
   });
 
-  const mathRanges = collectLatexMathRanges(state.doc.toString(), {
-    excludedRanges: codeLikeRanges
-  });
+  const mathRanges = collectDocumentMathRanges(state, tree, parsedTableRanges);
   for (const mathRange of mathRanges) {
     if (mathRange.mode !== 'display' || mathRange.fencedDisplay !== true) {
       continue;

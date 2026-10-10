@@ -19,6 +19,8 @@
 
 ## VS Code 配置
 
+已有图片的读取不受粘贴保存目录设置影响。普通 Markdown 和 HTML 图片先按文档目录查找；未命中的裸相对路径再尝试最近的 `.obsidian` 仓库根目录，或当前文档所属工作区。识别到仓库后不再尝试外层工作区。显式 `./`、`../` 及绝对路径保持原意；同名图片优先使用文档目录中的文件。预览、外部打开和 HTML/PDF/Word 导出使用相同规则，不改写文档中的链接。
+
 新设置保存模式以及两种输入的值：
 
     "meoEnhanced.imageStorage": {
@@ -32,6 +34,8 @@ mode 可为 default、perDocument、advanced。前两种使用 folder，高级�
 通常写入 VS Code 用户设置；已有显式文件夹/工作区覆盖时自动保持其作用域。无效规则不替换上次有效设置。选择目录后，直到下一次粘贴才会写入图片。
 
 ## English
+
+Existing Markdown and HTML images resolve beside the document first. Missing bare relative paths fall back to the nearest `.obsidian` vault root, or the document's owning workspace. A detected vault takes precedence over an outer workspace. Explicit `./`, `../` and absolute paths retain their meaning. Preview, external image opening and HTML/PDF/Word export share this behavior without rewriting links or using the paste-folder setting.
 
 Open **Settings → Input → Paste → Image save location**. Choose a folder beside the Markdown file, separate images by the document's file name, or use an advanced path rule with the four variables above. Choose folder opens the native directory picker.
 

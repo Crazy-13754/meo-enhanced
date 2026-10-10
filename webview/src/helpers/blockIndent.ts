@@ -150,7 +150,9 @@ export function getCodeBlockSourceLines(state: EditorState, node: SyntaxNode) {
     let prefixTo = content ? Math.max(line.from, content.from)
       : mark?.from ?? line.from + Math.min(openingPrefix.length, parseBlockLinePrefix(line.text, state.tabSize).prefix.length);
     const consumedColumns = getCodeContainerColumns(state, node, line) + fenceIndent;
-    if (content && node.name === 'FencedCode') {
+    // Blank payload lines can lack a CodeText node, but still own the same
+    // container prefix. Leaving it in the payload re-adds it on every edit.
+    if (!mark && node.name === 'FencedCode') {
       while (prefixTo < line.to && /[ \t]/.test(state.doc.sliceString(prefixTo, prefixTo + 1))
         && parseBlockLinePrefix(state.doc.sliceString(line.from, prefixTo), state.tabSize).columns < consumedColumns) prefixTo += 1;
     }
@@ -213,7 +215,8 @@ export function liveBlockIndentCssValue(indent: LiveBlockIndentValue): string | 
     return columns > 0 || taskOffset ? `calc(${columns} * var(--meo-live-container-ch)${taskOffset})` : null;
   }
   const markerColumns = String(indent.footnoteNumber).length + 1;
-  return `calc(${columns + markerColumns} * var(--meo-live-container-ch) + 0.45em${taskOffset})`;
+  // Container spacing belongs to the Live font, even inside source-font panels.
+  return `calc(${columns + markerColumns} * var(--meo-live-container-ch) + 0.45 * var(--meo-user-editor-font-size, var(--meo-font-live-size))${taskOffset})`;
 }
 
 export function applyLiveBlockIndent(element: HTMLElement, indent: LiveBlockIndentValue): void {
@@ -236,7 +239,7 @@ export function applyLiveBlockIndent(element: HTMLElement, indent: LiveBlockInde
   element.style.setProperty('--meo-live-block-quote-depth', String(quotes.length));
   element.style.setProperty('--meo-live-block-quote-base',
     typeof indent !== 'number' && indent.footnoteNumber !== null
-      ? `calc(${String(indent.footnoteNumber).length + 1} * var(--meo-live-container-ch) + 0.45em)` : '0px');
+      ? `calc(${String(indent.footnoteNumber).length + 1} * var(--meo-live-container-ch) + 0.45 * var(--meo-user-editor-font-size, var(--meo-font-live-size)))` : '0px');
   const rule = 'var(--meo-semantic-blockquoteBorder)';
   element.style.setProperty('--meo-live-block-quote-bars', quotes.map((column, index) => {
     const taskOffset = typeof indent !== 'number' && indent.quoteTaskIndents?.[index];

@@ -7,6 +7,10 @@ import { markdownTableFromCells, parseMarkdownTable } from '../application/delim
 import { parseMeoTableClipboard, parseHtmlTableClipboard, parseTsvTableClipboard, meoTableClipboardMime } from './tableClipboard';
 import { clipboardHtmlToMarkdown, safeClipboardUrl } from './htmlPaste';
 
+// The editor owner supplies formula context; paste dispatch keeps its own
+// history/input rules without depending on rendered widgets.
+type MathPasteText = (view: EditorView, text: string) => string | null;
+
 export function isCodeInput(view: EditorView, position = view.state.selection.main.head): boolean {
   let node = syntaxTree(view.state).resolveInner(position, -1);
   for (;;) {
@@ -17,25 +21,31 @@ export function isCodeInput(view: EditorView, position = view.state.selection.ma
 }
 
 /** Shared explicit plain paste bypasses conversion while retaining the existing edit/history owner. */
-export function insertPlainClipboardText(view: EditorView, text: string): boolean {
+export function insertPlainClipboardText(view: EditorView, text: string, mathPasteText: MathPasteText): boolean {
   const active = view.dom.ownerDocument.activeElement;
   if (active instanceof HTMLTextAreaElement && view.dom.contains(active)) {
     active.setRangeText(text.replace(/\r\n?/g, '\n'), active.selectionStart, active.selectionEnd, 'end');
     active.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: text }));
   } else {
-    view.dispatch(view.state.replaceSelection(text.replace(/\r\n?/g, '\n')), { annotations: Transaction.userEvent.of('input.paste') });
+    view.dispatch(view.state.replaceSelection(mathPasteText(view, text) ?? text.replace(/\r\n?/g, '\n')), { annotations: Transaction.userEvent.of('input.paste') });
     view.focus();
   }
   return true;
 }
 
-export const pasteAssistance = EditorView.domEventHandlers({
+export const pasteAssistance = (mathPasteText: MathPasteText) => EditorView.domEventHandlers({
   paste(event, view) {
     // Multiple selections use CodeMirror's literal paste distribution.
     if (!event.clipboardData || event.target instanceof HTMLTextAreaElement || view.compositionStarted || view.state.selection.ranges.length !== 1) return false;
     const clipboard = event.clipboardData;
     const preferences = view.state.facet(inputAssistanceFacet);
     const selection = view.state.selection.main;
+    const mathText = mathPasteText(view, clipboard.getData('text/plain'));
+    if (mathText !== null) {
+      event.preventDefault();
+      view.dispatch(view.state.replaceSelection(mathText), { annotations: Transaction.userEvent.of('input.paste') });
+      return true;
+    }
     if (isCodeInput(view, selection.from) || isCodeInput(view, selection.to)) return false;
     const text = clipboard.getData('text/plain');
     const matrix = parseMeoTableClipboard(clipboard.getData(meoTableClipboardMime))

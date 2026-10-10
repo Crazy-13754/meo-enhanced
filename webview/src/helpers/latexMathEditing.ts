@@ -1,6 +1,8 @@
 import { editorViewportBounds } from '../editor/editorViewportBounds';
 import { EditorSelection, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, lineNumbers, type DecorationSet } from '@codemirror/view';
+import { renderedBlockSourceBoundaryKeys } from './renderedBlockSourceNavigation';
+import { applySourceLinePrefix, outerOffsetToSourceOffset, sourceOffsetToOuterOffset } from './sourceLinePrefix';
 import { defaultKeymap, indentLess, indentMore } from '@codemirror/commands';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
 import { renderLatexMathToHtml, parseLatexMathAt, type LatexMathRange } from './math';
@@ -56,6 +58,7 @@ type LatexMathEditingBlock = {
   contentFrom: number;
   contentTo: number;
   sourceText: string;
+  sourceLinePrefix: string;
   indentColumns: LiveBlockIndentValue;
 };
 
@@ -517,7 +520,7 @@ export function focusLatexMathEditingOffset(
   if (!editingBlock?.__meoLatexMathEditingController) {
     return false;
   }
-  return editingBlock.__meoLatexMathEditingController.focusOffset(offset, isCurrent);
+  return editingBlock.__meoLatexMathEditingController.focusOuterOffset(offset, isCurrent);
 }
 
 export function takeLatexMathModeSelection(
@@ -609,6 +612,12 @@ class LatexMathEditingController {
             }
           }),
           keymap.of([
+            ...renderedBlockSourceBoundaryKeys({
+              outerView,
+              bounds: () => this.block,
+              selection: () => this.getModeSelection(),
+              releaseProjection: () => this.cancelModeSelectionRestore()
+            }),
             { key: 'Mod-z', run: () => consumeEditorHistoryCommand(this.outerView, 'undo') },
             { key: 'Mod-y', run: () => consumeEditorHistoryCommand(this.outerView, 'redo') },
             { key: 'Mod-Shift-z', run: () => consumeEditorHistoryCommand(this.outerView, 'redo') },
@@ -622,7 +631,8 @@ class LatexMathEditingController {
             }
             const sourceText = update.state.doc.toString();
             const { contentFrom, contentTo } = this.block;
-            if (this.outerView.state.doc.sliceString(contentFrom, contentTo) === sourceText) {
+            const outerSourceText = applySourceLinePrefix(sourceText, this.block.sourceLinePrefix);
+            if (this.outerView.state.doc.sliceString(contentFrom, contentTo) === outerSourceText) {
               return;
             }
             const userEvent = update.transactions.reduce<string | undefined>(
@@ -631,7 +641,7 @@ class LatexMathEditingController {
             ) ?? 'input';
             const nextBlock = {
               ...this.block,
-              contentTo: contentFrom + sourceText.length,
+              contentTo: contentFrom + outerSourceText.length,
               sourceText
             };
             this.block = nextBlock;
@@ -641,9 +651,9 @@ class LatexMathEditingController {
               this.projectionPreviousSelection = this.outerView.state.selection;
             }
             const projection = this.outerView.state.update({
-              changes: { from: contentFrom, to: contentTo, insert: sourceText },
+              changes: { from: contentFrom, to: contentTo, insert: outerSourceText },
               selection: retainInnerFocus
-                ? { anchor: nextBlock.contentFrom + innerSelection.head }
+                ? { anchor: nextBlock.contentFrom + sourceOffsetToOuterOffset(sourceText, nextBlock.sourceLinePrefix, innerSelection.head) }
                 : undefined,
               effects: replaceLiveInputNestedDecoration(
                 nextBlock.contentFrom,
@@ -728,9 +738,12 @@ class LatexMathEditingController {
 
   getModeSelection(): { anchor: number; head: number } {
     const selection = this.innerView.state.selection.main;
+    const position = (offset: number) => this.block.contentFrom + sourceOffsetToOuterOffset(
+      this.block.sourceText, this.block.sourceLinePrefix, offset
+    );
     return {
-      anchor: this.block.contentFrom + selection.anchor,
-      head: this.block.contentFrom + selection.head
+      anchor: position(selection.anchor),
+      head: position(selection.head)
     };
   }
 
@@ -753,12 +766,16 @@ class LatexMathEditingController {
     ) return null;
     this.innerView.dispatch({
       selection: {
-        anchor: selection.anchor - this.block.contentFrom,
-        head: selection.head - this.block.contentFrom
+        anchor: outerOffsetToSourceOffset(this.block.sourceText, this.block.sourceLinePrefix, selection.anchor - this.block.contentFrom),
+        head: outerOffsetToSourceOffset(this.block.sourceText, this.block.sourceLinePrefix, selection.head - this.block.contentFrom)
       }
     });
     if (restoreFocus) this.innerView.contentDOM.focus({ preventScroll: true });
     return this.innerView.contentDOM;
+  }
+
+  focusOuterOffset(offset: number, isCurrent: () => boolean = () => true): boolean {
+    return this.focusOffset(outerOffsetToSourceOffset(this.block.sourceText, this.block.sourceLinePrefix, offset), isCurrent);
   }
 
   focusOffset(offset: number, isCurrent: () => boolean = () => true): boolean {
@@ -865,11 +882,11 @@ class LatexMathEditingController {
     }
     const anchor = Math.max(0, Math.min(
       this.innerView.state.doc.length,
-      searchReveal.from - this.block.contentFrom
+      outerOffsetToSourceOffset(this.block.sourceText, this.block.sourceLinePrefix, searchReveal.from - this.block.contentFrom)
     ));
     const head = Math.max(anchor, Math.min(
       this.innerView.state.doc.length,
-      searchReveal.to - this.block.contentFrom
+      outerOffsetToSourceOffset(this.block.sourceText, this.block.sourceLinePrefix, searchReveal.to - this.block.contentFrom)
     ));
     const selection = this.innerView.state.selection.main;
     this.innerView.dispatch({
@@ -965,6 +982,7 @@ export class LatexMathEditingWidget extends UiLanguageSensitiveWidget {
       other.block.anchor === this.block.anchor &&
       other.block.lineNumber === this.block.lineNumber &&
       other.block.sourceText === this.block.sourceText &&
+      other.block.sourceLinePrefix === this.block.sourceLinePrefix &&
       liveBlockIndentKey(other.block.indentColumns) === liveBlockIndentKey(this.block.indentColumns) &&
       other.mode === this.mode &&
       other.searchReveal?.from === this.searchReveal?.from &&

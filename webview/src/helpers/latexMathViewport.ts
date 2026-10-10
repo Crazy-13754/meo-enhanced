@@ -3,6 +3,8 @@ import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { mountRenderedBlockPreviewControls } from './renderedBlockModeControls';
 
 export type LatexMathViewportController = {
+  /** Refit a mounted result in the input transaction, before a provisional height can paint. */
+  setContent(html: string): void;
   destroy(): void;
 };
 
@@ -36,6 +38,7 @@ type LatexMathPresentationSnapshot = {
   zoom: string;
   transform: string;
   height: string;
+  width: string;
 };
 
 function isFinitePositive(value: number): boolean {
@@ -120,6 +123,9 @@ export function attachLatexMathViewport(
     ? options.layout
     : { kind: 'block', interactive: options.interactive ?? false };
   const interactive = layout.kind === 'block' && layout.interactive;
+  // KaTeX positions a tag's internal rows against one formula baseline.
+  // Keep numbered formulas atomic rather than reflowing that baseline.
+  let reflow = layout.kind === 'block' && !interactive && !root.querySelector('.katex-html > .tag');
   const uiLanguage = 'uiLanguage' in options ? options.uiLanguage ?? 'en' : 'en';
   const allowFullscreen = 'layout' in options ? false : options.allowFullscreen ?? true;
   const strings = getUiStrings(uiLanguage);
@@ -155,6 +161,8 @@ export function attachLatexMathViewport(
     root.appendChild(canvas);
     root.classList.add('meo-latex-math-viewport');
     root.classList.toggle('is-interactive', interactive);
+    root.classList.toggle('meo-math-reflow', reflow);
+    root.classList.toggle('meo-math-nowrap', layout.kind === 'block' && !reflow);
     resizeObserver?.observe(canvas);
     return canvas;
   };
@@ -179,7 +187,8 @@ export function attachLatexMathViewport(
     fontSize: canvas?.style.fontSize ?? '',
     zoom: canvas?.style.zoom ?? '',
     transform: canvas?.style.transform ?? '',
-    height: root.style.height
+    height: root.style.height,
+    width: canvas?.style.width ?? ''
   });
 
   const restorePresentation = (snapshot: LatexMathPresentationSnapshot): void => {
@@ -187,9 +196,14 @@ export function attachLatexMathViewport(
       canvas.style.fontSize = snapshot.fontSize;
       canvas.style.zoom = snapshot.zoom;
       canvas.style.transform = snapshot.transform;
+      canvas.style.width = snapshot.width;
     }
     root.style.height = snapshot.height;
   };
+
+  const unbreakableWidth = () => Math.max(0, ...Array.from(canvas?.querySelectorAll<HTMLElement>('.katex-html > .base, .katex-html > .tag') ?? [])
+    .map(base => { const style = ownerWindow.getComputedStyle(base);
+      return base.getBoundingClientRect().width + (Number.parseFloat(style.marginLeft) || 0) + (Number.parseFloat(style.marginRight) || 0); }));
 
   const commitPresentation = (
     candidateNaturalWidth: number,
@@ -214,7 +228,7 @@ export function attachLatexMathViewport(
       // Chromium enforces a minimum rendered font size in some hosts. Font-size
       // scaling remains sharp above that floor; zoom only supplies the residual
       // scale needed below it so an unusually wide formula still fits.
-      const uncorrectedWidth = canvas.getBoundingClientRect().width;
+      const uncorrectedWidth = reflow ? unbreakableWidth() || canvas.getBoundingClientRect().width : canvas.getBoundingClientRect().width;
       const targetWidth = candidateNaturalWidth * candidateRenderedScale;
       if (!isFinitePositive(uncorrectedWidth) || !isFinitePositive(targetWidth)) {
         restorePresentation(entryPresentation);
@@ -226,6 +240,7 @@ export function attachLatexMathViewport(
         return false;
       }
       canvas.style.zoom = `${residualScale}`;
+      if (reflow) canvas.style.width = `${100 / residualScale}%`;
 
       let candidateHeight: string | null = null;
       if (layout.kind === 'block' && !interactive) {
@@ -344,7 +359,8 @@ export function attachLatexMathViewport(
 
       canvas.style.zoom = '1';
       canvas.style.fontSize = '1em';
-      const naturalRectWidth = canvas.getBoundingClientRect().width;
+      if (reflow) canvas.style.width = '100%';
+      const naturalRectWidth = reflow ? unbreakableWidth() || canvas.getBoundingClientRect().width : canvas.getBoundingClientRect().width;
       const fallbackNaturalWidth = canvas.scrollWidth * effectiveScale;
       const measuredNaturalWidth = isFinitePositive(naturalRectWidth)
         ? naturalRectWidth
@@ -362,6 +378,16 @@ export function attachLatexMathViewport(
       }
 
       committed = commitPresentation(measuredNaturalWidth, candidateFitScale, entryPresentation);
+      const splitPreview = root.parentElement;
+      if (committed && interactive && splitPreview?.classList.contains('meo-latex-math-preview-sticky')) {
+        const rootStyle = ownerWindow.getComputedStyle(root);
+        // Fit the split frame to its formula, while zoom only changes the canvas.
+        const preferredHeight = Math.ceil(canvas.getBoundingClientRect().height / userZoom
+          + Number.parseFloat(rootStyle.paddingTop) + Number.parseFloat(rootStyle.paddingBottom));
+        if (isFinitePositive(preferredHeight)) {
+          splitPreview.style.setProperty('--meo-latex-math-preview-preferred-height', `${preferredHeight}px`);
+        }
+      }
     } catch {
       restorePresentation(entryPresentation);
     }
@@ -503,6 +529,16 @@ export function attachLatexMathViewport(
   void ownerDocument.fonts?.ready.then(scheduleMeasure);
 
   return {
+    setContent(html) {
+      if (destroyed || !canvas) return;
+      canvas.innerHTML = html;
+      reflow = layout.kind === 'block' && !interactive && !canvas.querySelector('.katex-html > .tag');
+      root.classList.toggle('meo-math-reflow', reflow);
+      root.classList.toggle('meo-math-nowrap', layout.kind === 'block' && !reflow);
+      if (measureFrame !== 0) ownerWindow.cancelAnimationFrame(measureFrame);
+      measure();
+      scheduleMeasure();
+    },
     destroy() {
       destroyed = true;
       fullscreenCleanup?.();

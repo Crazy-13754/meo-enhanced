@@ -30,13 +30,12 @@ function isWhitespace(character: string | undefined): boolean {
 
 const INLINE_MATH_MARKDOWN_STRUCTURE_MARKERS = Object.freeze(['**', '__', '~~', '`', '](', '![']);
 const INLINE_MATH_PROSE_LENGTH_LIMIT = 120;
-const INLINE_MATH_CURRENCY_CONTENT_RE = /^[0-9][0-9\s,._%+-]*$/;
 const INLINE_MATH_TEX_COMMAND_RE = /\\[A-Za-z]+/;
 const INLINE_MATH_TEX_SYMBOL_RE = /[_^{}]/;
 
 function shouldRejectInlineMathCandidate(content: string): boolean {
   const trimmed = content.trim();
-  if (!trimmed || INLINE_MATH_CURRENCY_CONTENT_RE.test(trimmed)) {
+  if (!trimmed) {
     return true;
   }
   if (INLINE_MATH_MARKDOWN_STRUCTURE_MARKERS.some((marker) => content.includes(marker))) {
@@ -103,6 +102,7 @@ function findInlineMathClose(text: string, start: number, excludedRanges: Readon
       return -1;
     }
     if (character === '$' && !isEscaped(text, index) && braceLevel === 0) {
+      if (text[index - 1] === '$' || text[index + 1] === '$') return -1;
       return index;
     }
     if (character === '\\') {
@@ -125,8 +125,10 @@ function findDisplayMathClose(text: string, start: number, excludedRanges: Reado
       continue;
     }
     const character = text[index];
-    if (character === '$' && text[index + 1] === '$' && !isEscaped(text, index) && braceLevel === 0) {
-      return index;
+    if (character === '\n' || character === '\r') return -1;
+    if (character === '$' && text[index + 1] === '$' && !isEscaped(text, index)) {
+      if (text[index - 1] === '$' || text[index + 2] === '$') return -1;
+      if (braceLevel === 0) return index;
     }
     if (character === '\\') {
       index += 1;
@@ -135,6 +137,38 @@ function findDisplayMathClose(text: string, start: number, excludedRanges: Reado
     } else if (character === '}' && braceLevel > 0) {
       braceLevel -= 1;
     }
+  }
+  return -1;
+}
+
+/** A malformed block cannot borrow a delimiter across a Markdown boundary. */
+function findFencedDisplayClose(text: string, firstLine: number, openingPrefix: string): number {
+  const quoteDepth = openingPrefix.match(/>/g)?.length ?? 0;
+  const listMarker = /(?:[-+*]|\d+[.)])[ \t]+$/.exec(openingPrefix);
+  let prefixPayload = openingPrefix;
+  for (let depth = 0; depth < quoteDepth; depth++) prefixPayload = prefixPayload.replace(/^[ \t]*>[ \t]?/, '');
+  const continuationIndent = listMarker
+    ? prefixPayload.length : 0;
+  for (let start = firstLine; start < text.length;) {
+    const newline = text.indexOf('\n', start);
+    const end = newline < 0 ? text.length : newline;
+    const line = text.slice(start, end);
+    let offset = 0;
+    for (let depth = 0; depth < quoteDepth; depth++) {
+      const prefix = /^[ \t]*>[ \t]?/.exec(line.slice(offset));
+      if (!prefix) { if (line.trim()) return -1; break; }
+      offset += prefix[0].length;
+    }
+    const payload = line.slice(offset);
+    if (payload.trim()) {
+      if (continuationIndent && (/^[ \t]*/.exec(payload)?.[0].length ?? 0) < continuationIndent) return -1;
+      if (/^[ \t]*\$\$[ \t\r]*$/.test(payload)) return start + offset + payload.indexOf('$$');
+      // Do not hide headings, code fences, container exits or another display formula.
+      if (/^[ \t]*(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|\$\$)/.test(payload)
+        || /^[ \t]*(?:>[ \t]*|(?:[-+*]|\d+[.)])[ \t]+)\$\$/.test(payload)) return -1;
+    }
+    if (newline < 0) break;
+    start = newline + 1;
   }
   return -1;
 }
@@ -157,18 +191,29 @@ function scanLatexMathCandidateAt(
   if (text[open] !== '$' || isEscaped(text, open)) {
     return { range: null, nextOpen: open + 1 };
   }
+  if (text[open - 1] === '$') return { range: null, nextOpen: open + 1 };
+  if (text[open + 1] === '$' && text[open + 2] === '$') {
+    let end = open + 3;
+    while (text[end] === '$') end++;
+    return { range: null, nextOpen: end };
+  }
   if (text[open + 1] === '$') {
-    const close = findDisplayMathClose(text, open + 2, excludedRanges);
+    const openLineStart = text.lastIndexOf('\n', Math.max(0, open - 1)) + 1;
+    const openLineEnd = text.indexOf('\n', open + 2);
+    const openingPrefix = text.slice(openLineStart, open);
+    const standaloneOpen = /^[ \t]*(?:>[ \t]*)*(?:(?:[-+*]|\d+[.)])[ \t]+)?$/.test(openingPrefix)
+      && openLineEnd >= 0 && !text.slice(open + 2, openLineEnd).trim();
+    const close = standaloneOpen
+      ? findFencedDisplayClose(text, openLineEnd + 1, openingPrefix)
+      : findDisplayMathClose(text, open + 2, excludedRanges);
     if (close <= open + 2) {
       return { range: null, nextOpen: open + 2 };
     }
     const rawContent = text.slice(open + 2, close);
     let content = rawContent.trim();
-    const openLineStart = text.lastIndexOf('\n', Math.max(0, open - 1)) + 1;
-    const openLineEnd = text.indexOf('\n', open + 2);
     const closeLineStart = text.lastIndexOf('\n', Math.max(0, close - 1)) + 1;
     const closeLineEnd = text.indexOf('\n', close + 2);
-    const openingPrefix = text.slice(openLineStart, open), closingPrefix = text.slice(closeLineStart, close);
+    const closingPrefix = text.slice(closeLineStart, close);
     const quoteDepth = openingPrefix.match(/>/g)?.length ?? 0;
     let fencedDisplay = /^[ \t]*(?:>[ \t]*)*(?:(?:[-+*]|\d+[.)])[ \t]+)?$/.test(openingPrefix)
       && !text.slice(open + 2, openLineEnd < 0 ? text.length : openLineEnd).trim()
@@ -206,7 +251,7 @@ function scanLatexMathCandidateAt(
     return { range: null, nextOpen: open + 1 };
   }
   const close = findInlineMathClose(text, open + 1, excludedRanges);
-  if (close <= open + 1 || isWhitespace(text[close - 1])) {
+  if (close <= open + 1 || isWhitespace(text[close - 1]) || /[0-9]/.test(text[close + 1] ?? '')) {
     return { range: null, nextOpen: open + 1 };
   }
   const content = text.slice(open + 1, close);

@@ -12,6 +12,7 @@ import { createExportCodeHighlighter } from './shikiCodeHighlighter';
 export type ExportRuntimeBuildHtmlOptions = {
   readingSnapshot: ReadingSnapshot;
   sourceDocumentPath: string;
+  imageSearchRoots?: readonly string[];
   outputFilePath: string;
   target: 'html' | 'pdf' | 'docx';
   mermaidRuntimeSrc: string;
@@ -38,6 +39,7 @@ async function renderExportHtmlDocument(
     rendered = renderMarkdownToHtml({
       markdownText: snapshot.text,
       markdownFilePath: options.sourceDocumentPath,
+      imageSearchRoots: options.imageSearchRoots,
       outputFilePath: options.outputFilePath,
       target: options.target,
       uiLanguage: snapshot.uiLanguage,

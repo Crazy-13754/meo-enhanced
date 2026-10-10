@@ -11,7 +11,8 @@ import { prepareMarkdownWithFootnotes } from './footnotes';
 import type { SourceMappedMarkdown } from './sourceMappedMarkdown';
 import { installMathTransform } from './mathTransform';
 import { collectMarkdownCodeLines } from './markdownCodeLines';
-import { collectLatexMathRanges, renderLatexMathToHtml } from './math';
+import { renderLatexMathToHtml } from './math';
+import { isMathFenceLanguage, mathFenceBodyRange, mathFenceContent } from '../shared/mathFence';
 import { installHighlightTransform } from './highlightTransform';
 import { installInlineScriptTransform } from './inlineScriptTransform';
 import { installPunctuationInlineTransform } from './punctuationInlineTransform';
@@ -30,7 +31,6 @@ const POWER_QUERY_KEYWORDS =
   'let in each if then else try otherwise error and or not as is type meta section shared';
 const POWER_QUERY_HASH_KEYWORDS =
   '#date #time #datetime #datetimezone #duration #table #binary #sections #shared';
-const MATH_FENCE_LANGUAGES = new Set(['latex', 'tex', 'math', 'katex']);
 const OPENING_KBD_TAG_RE = /^<kbd\b[^>]*>$/i;
 const CLOSING_KBD_TAG_RE = /^<\/kbd\s*>$/i;
 const DEFERRED_IMAGE_ATTRIBUTE = 'data-meo-deferred-image-src';
@@ -51,6 +51,7 @@ export type RenderMarkdownTarget = 'html' | 'pdf' | 'docx';
 export type RenderMarkdownOptions = {
   markdownText: string;
   markdownFilePath: string;
+  imageSearchRoots?: readonly string[];
   outputFilePath?: string;
   target: RenderMarkdownTarget;
   uiLanguage?: UiLanguage;
@@ -85,6 +86,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     markdownFilePath: options.markdownFilePath,
     outputFilePath: options.outputFilePath,
     target: options.target,
+    imageSearchRoots: options.imageSearchRoots,
     embeddedImageDataUrlCache
   });
   const deferImageSrc = (rawSrc: string): { src: string; deferredSrc?: string } => (
@@ -155,16 +157,14 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       : '';
     const source = String(codeBlock.content ?? '');
 
-    if (MATH_FENCE_LANGUAGES.has(language)) {
-      const trimmedSource = source.trim();
-      const ranges = collectLatexMathRanges(trimmedSource);
-      const mathContent = ranges.length === 1 && ranges[0].from === 0 && ranges[0].to === trimmedSource.length
-        ? ranges[0].content
-        : trimmedSource.replace(/^\$\$\s*/, '').replace(/\s*\$\$$/, '').trim();
+    if (isMathFenceLanguage(language)) {
+      const mathContent = mathFenceContent(source);
       const renderedMath = renderLatexMathToHtml(mathContent, 'display');
       if (renderedMath) {
         hasMath = true;
-        const sourceB64 = Buffer.from(mathContent, 'utf8').toString('base64');
+        const copySource = source.replace(/\n$/, '');
+        const body = mathFenceBodyRange(copySource);
+        const sourceB64 = Buffer.from(copySource.slice(body.from, body.to), 'utf8').toString('base64');
         return `<div class="meo-export-math meo-export-math-display meo-export-math-fenced-display" data-source-b64="${sourceB64}"${sourceAttrs}>${renderedMath}</div>`;
       }
     }

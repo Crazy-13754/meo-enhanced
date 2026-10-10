@@ -39,7 +39,12 @@ assert.ok(viewportCommands.some((command) => (
 assert.ok(viewportCommands.some(command => command.args.includes('scripts/test-long-document-scroll.ts')));
 
 for (const commands of [quickCommands, viewportCommands]) {
-  assert.ok(commands.some(command => command.args.includes('scripts/test-line-number-rendered-block-stability.ts')));
+  for (const contract of ['test-line-number-rendered-block-stability.ts', 'test-line-number-layout-contract.ts',
+    'test-display-math-gutter-paint.ts', 'test-source-diff-long-caret.ts']) {
+    assert.ok(commands.some(command => command.args.includes('scripts/' + contract)), `Missing line layout contract ${contract}`);
+  }
+  assert.ok(commands.some(command => command.args.includes('scripts/test-source-diff-long-caret.ts')
+    && command.args.includes('--sampled') && command.args.includes('--hidpi')), 'Daily caret gate must stay bounded');
 }
 
 const history = createTestWorkflowPlan(
@@ -232,6 +237,7 @@ const packageJson = JSON.parse(
 const packageScripts = packageJson.scripts ?? {};
 assert.equal(packageScripts['test:quick'], 'bun scripts/test-workflow.ts quick');
 assert.equal(packageScripts['test:targeted'], 'bun scripts/test-workflow.ts targeted');
+assert.ok(packageScripts['test:rendered-source']?.includes('bun scripts/test-display-math-fences.ts'), 'TeX fence aliases share the display math regression gate');
 assert.equal(packageScripts['test:release'], 'bun scripts/test-workflow.ts release');
 assert.equal(packageScripts['test:endurance'], 'bun scripts/test-workflow.ts endurance');
 assert.equal(

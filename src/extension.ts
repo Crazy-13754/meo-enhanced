@@ -72,6 +72,7 @@ import {
 import {
   collectWebviewImageResourceRoots,
   getDocumentFragmentHref,
+  resolveImageSearchRoots,
   resolveLocalLinkTargetUri
 } from './shared/documentLinks';
 import {
@@ -100,6 +101,7 @@ type ExportRuntimeModule = {
   renderExportHtmlDocument: (options: {
     readingSnapshot: ReadingSnapshot;
     sourceDocumentPath: string;
+    imageSearchRoots: readonly string[];
     outputFilePath: string;
     target: ExportFormat;
     mermaidRuntimeSrc: string;
@@ -817,6 +819,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     return exportRuntime.renderExportHtmlDocument({
       readingSnapshot: params.readingSnapshot,
       sourceDocumentPath: params.sourceDocumentUri.fsPath,
+      imageSearchRoots: await resolveImageSearchRoots(params.sourceDocumentUri),
       outputFilePath: params.outputFileUri.fsPath,
       target: params.target,
       mermaidRuntimeSrc,

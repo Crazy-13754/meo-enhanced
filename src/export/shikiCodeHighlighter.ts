@@ -9,9 +9,9 @@ import {
   type ShikiPresentationToken
 } from '../shared/shikiTokenPresentation';
 import { normalizeFenceLanguage } from './fenceLanguage';
+import { isMathFenceLanguage } from '../shared/mathFence';
 
 const THEME_NAME = 'meo-export-code-theme';
-const MATH_FENCE_LANGUAGES = new Set(['latex', 'tex', 'math', 'katex']);
 const PLAIN_TEXT_LANGUAGE_IDS = new Set(['text', 'plaintext', 'plain', 'txt']);
 const DEFAULT_BRACKET_COLORS_DARK = ['#FFD700', '#DA70D6', '#179FFF'];
 const DEFAULT_BRACKET_COLORS_LIGHT = ['#0431FA', '#319331', '#7B3814'];
@@ -97,7 +97,7 @@ function collectLanguages(markdownText: string, registry: LanguageRegistry): str
   for (const token of parser.parse(markdownText, {})) {
     if (token.type !== 'fence') continue;
     const language = normalizeFenceLanguage(token.info);
-    if (language === 'mermaid' || MATH_FENCE_LANGUAGES.has(language)) continue;
+    if (language === 'mermaid' || isMathFenceLanguage(language)) continue;
     const resolved = resolveShikiLanguage(language, registry);
     if (resolved) languages.add(resolved);
   }

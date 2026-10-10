@@ -115,6 +115,8 @@ function buildMathViewportRuntimeScript(): string {
 
   const createController = (root) => {
     const layout = root.classList.contains('meo-export-math-inline') ? 'inline' : 'block';
+    const reflow = layout === 'block' && !root.querySelector('.katex-html > .tag');
+    root.classList.toggle('meo-math-nowrap', layout === 'block' && !reflow);
     let phase = layout === 'inline' ? 'observing-native' : 'fitted';
     let canvas = null;
     let resizeObserver = null;
@@ -146,6 +148,10 @@ function buildMathViewportRuntimeScript(): string {
     };
 
     if (layout === 'block') attachCanvas();
+
+    const unbreakableWidth = () => Math.max(0, ...Array.from(canvas.querySelectorAll('.katex-html > .base, .katex-html > .tag'))
+      .map(base => { const style = getComputedStyle(base);
+        return base.getBoundingClientRect().width + (Number.parseFloat(style.marginLeft) || 0) + (Number.parseFloat(style.marginRight) || 0); }));
 
     let frame = 0;
     const measure = () => {
@@ -203,7 +209,8 @@ function buildMathViewportRuntimeScript(): string {
       const previousZoom = canvas.style.zoom;
       canvas.style.zoom = '1';
       canvas.style.fontSize = '1em';
-      const naturalRectWidth = canvas.getBoundingClientRect().width;
+      if (reflow) canvas.style.width = '100%';
+      const naturalRectWidth = reflow ? unbreakableWidth() || canvas.getBoundingClientRect().width : canvas.getBoundingClientRect().width;
       const fallbackNaturalWidth = canvas.scrollWidth * effectiveScale;
       const naturalWidth = isFinitePositive(naturalRectWidth) ? naturalRectWidth : fallbackNaturalWidth;
       if (!isFinitePositive(naturalWidth)) {
@@ -215,7 +222,7 @@ function buildMathViewportRuntimeScript(): string {
       const fitScale = Math.min(1, availableWidth / naturalWidth);
 
       canvas.style.fontSize = fitScale + 'em';
-      const uncorrectedWidth = canvas.getBoundingClientRect().width;
+      const uncorrectedWidth = reflow ? unbreakableWidth() || canvas.getBoundingClientRect().width : canvas.getBoundingClientRect().width;
       const targetWidth = naturalWidth * fitScale;
       if (!isFinitePositive(uncorrectedWidth) || !Number.isFinite(targetWidth) || targetWidth < 0) {
         canvas.style.fontSize = previousFontSize;
@@ -231,6 +238,7 @@ function buildMathViewportRuntimeScript(): string {
         return;
       }
       canvas.style.zoom = String(residualScale);
+      if (reflow) canvas.style.width = (100 / residualScale) + '%';
     };
 
     const schedule = () => {
@@ -576,26 +584,49 @@ function buildRuntimeScript(hasMermaid: boolean): string {
     const foreground = getExportThemeColor('--meo-mermaid-foreground', darkMode ? '#e6edf3' : '#24292f', 'color');
     const border = getExportThemeColor('--meo-mermaid-border', darkMode ? '#768390' : '#8c959f', 'color');
     const line = getExportThemeColor('--meo-mermaid-line', darkMode ? '#8b949e' : '#57606a', 'color');
+    const secondaryBackground = getExportThemeColor('--meo-mermaid-secondary-background', nodeBackground);
+    const tertiaryBackground = getExportThemeColor('--meo-mermaid-tertiary-background', nodeBackground);
+    const clusterBackground = getExportThemeColor('--meo-mermaid-cluster-background', background);
+    const chartColors = Array.from({ length: 12 }, (_, index) => getExportThemeColor('--meo-mermaid-chart-' + (index + 1), nodeBackground));
+    const chartTextColor = getExportThemeColor('--meo-mermaid-chart-text', foreground, 'color');
     return {
       startOnLoad: false,
       securityLevel: 'strict',
       theme: 'base',
+      look: 'classic',
       themeVariables: {
         background,
         mainBkg: nodeBackground,
-        secondBkg: nodeBackground,
-        tertiaryColor: nodeBackground,
+        secondBkg: secondaryBackground,
+        secondaryColor: secondaryBackground,
+        tertiaryColor: tertiaryBackground,
         primaryColor: nodeBackground,
         primaryTextColor: foreground,
+        secondaryTextColor: foreground,
+        tertiaryTextColor: foreground,
         primaryBorderColor: border,
+        secondaryBorderColor: border,
+        tertiaryBorderColor: border,
         nodeBorder: border,
         lineColor: line,
+        signalColor: line,
+        sequenceNumberColor: darkMode ? chartTextColor : '#ffffff',
         textColor: foreground,
         nodeTextColor: foreground,
         edgeLabelBackground: background,
-        clusterBkg: background,
+        clusterBkg: clusterBackground,
         clusterBorder: border,
         titleColor: foreground,
+        noteBkgColor: secondaryBackground,
+        noteTextColor: foreground,
+        noteBorderColor: border,
+        ...Object.fromEntries(chartColors.map((color, index) => ['pie' + (index + 1), color])),
+        pieSectionTextColor: chartTextColor,
+        pieLegendTextColor: foreground,
+        pieTitleTextColor: foreground,
+        pieOpacity: 1,
+        pieStrokeColor: border,
+        pieOuterStrokeColor: border,
         darkMode
       },
       htmlLabels: true,

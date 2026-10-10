@@ -1,6 +1,7 @@
 import type { Range } from '@codemirror/state';
-import type { Decoration, DecorationSet } from '@codemirror/view';
+import type { Decoration, DecorationSet, EditorView } from '@codemirror/view';
 import { applyLiveBlockIndent, type LiveBlockIndentValue } from './blockIndent';
+import { commitObservedEditorSize } from '../editor/layoutMeasurement';
 
 export type RenderedBlockPreviewKind = 'mermaid' | 'math';
 
@@ -21,12 +22,19 @@ export class RenderedBlockPreviewHeight {
     if (this.identity === previous.identity) this.measurement = previous.measurement;
   }
 
-  observe(shell: HTMLElement): void {
+  observe(shell: HTMLElement, view: EditorView): void {
     if (typeof ResizeObserver === 'undefined') return;
+    this.destroy(shell);
     const measurement = this.measurement;
     const observer = new ResizeObserver(() => {
+      if (!shell.isConnected) return;
       const height = shell.getBoundingClientRect().height;
-      if (height > 0) measurement.height = height;
+      if (height <= 0 || measurement.height === height) return;
+      measurement.height = height;
+      // ResizeObserver runs after frame callbacks. Waiting for requestMeasure's
+      // next frame would paint new content beside a gutter with the old height.
+      // Finish the queued measurement only when the mounted result changes size.
+      commitObservedEditorSize(view);
     });
     observer.observe(shell);
     previewHeightObservers.set(shell, observer);

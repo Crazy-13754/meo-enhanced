@@ -61,15 +61,24 @@ export async function materializeDocxBodyFromHtmlExport(options: HeadlessExportO
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`Word export could not capture ${descriptor}: ${message}`, { cause: error });
       }
-      await handle.evaluate((element: Element, pngBase64: string) => {
+      await handle.evaluate((element: Element, captured: { pngBase64: string; width: number; height: number }) => {
         const image = document.createElement('img');
-        image.src = `data:image/png;base64,${pngBase64}`;
+        image.src = `data:image/png;base64,${captured.pngBase64}`;
         image.alt = element instanceof HTMLImageElement
           ? element.alt
           : element.getAttribute('data-source') ?? '';
         image.setAttribute('data-meo-docx-materialized', '');
+        if (element.classList.contains('meo-export-mermaid') && !element.classList.contains('is-math')) {
+          // Word cannot split a drawing across pages. Match docxRuntime's A4 / 20mm
+          // margins, retaining space for the image paragraph and its spacing.
+          const maximumHeight = ((297 - 40) / 25.4) * 96 - 32;
+          const maximumWidth = ((210 - 40) / 25.4) * 96;
+          const scale = Math.min(1, maximumWidth / captured.width, maximumHeight / captured.height);
+          image.width = Math.floor(captured.width * scale);
+          image.height = Math.floor(captured.height * scale);
+        }
         element.replaceWith(image);
-      }, data);
+      }, { pngBase64: data, width: bounds.width, height: bounds.height });
     }
     return page.$eval('.meo-export-doc', (element: Element) => element.outerHTML);
   }, 'docx');
@@ -115,14 +124,19 @@ export async function preparePdfPagination(page: any): Promise<void> {
     for (const diagram of Array.from(
       documentRoot.querySelectorAll<HTMLElement>('.meo-export-mermaid.is-rendered:not(.is-math)')
     )) {
-      const heading = diagram.previousElementSibling as HTMLElement | null;
+      const preceding = diagram.previousElementSibling as HTMLElement | null;
+      const description = preceding?.matches('p') && outerHeight(preceding) <= contentHeight * 0.15
+        ? preceding : null;
+      const heading = (description?.previousElementSibling ?? preceding) as HTMLElement | null;
       const graphic = diagram.querySelector('.meo-export-mermaid-svg > svg') as SVGSVGElement | null;
       if (!heading?.matches('h1, h2, h3, h4, h5, h6') || !graphic) continue;
 
       const graphicHeight = graphic.getBoundingClientRect().height;
-      const fixedPairHeight = outerHeight(heading) + outerHeight(diagram) - graphicHeight;
+      const fixedPairHeight = outerHeight(heading) + (description ? outerHeight(description) : 0)
+        + outerHeight(diagram) - graphicHeight;
       const maximumGraphicHeight = Math.max(160, Math.floor(contentHeight - fixedPairHeight - 8));
       diagram.setAttribute('data-meo-pdf-heading-pair', '');
+      description?.setAttribute('data-meo-pdf-heading-description', '');
       if (graphicHeight > maximumGraphicHeight) {
         graphic.style.maxHeight = `${maximumGraphicHeight}px`;
         graphic.style.width = 'auto';
@@ -137,6 +151,8 @@ export async function fitBlockMathForPdf(page: any): Promise<void> {
     const roots = Array.from(document.querySelectorAll<HTMLElement>('.meo-export-math-fenced-display'));
 
     const fit = (root: HTMLElement) => {
+      const reflow = !root.querySelector('.katex-html > .tag');
+      root.classList.toggle('meo-math-nowrap', !reflow);
       let canvas = Array.from(root.children).find((child) => (
         child.classList.contains('meo-export-math-canvas')
       )) as HTMLElement | undefined;
@@ -151,17 +167,20 @@ export async function fitBlockMathForPdf(page: any): Promise<void> {
 
       canvas.style.position = 'relative';
       canvas.style.flex = '0 0 auto';
-      canvas.style.width = 'max-content';
+      canvas.style.width = reflow ? '100%' : 'max-content';
       canvas.style.maxWidth = 'none';
       canvas.style.zoom = '1';
       canvas.style.fontSize = '1em';
       const display = canvas.querySelector<HTMLElement>(':scope > .katex-display');
       if (display) {
-        display.style.width = 'max-content';
+        display.style.width = reflow ? 'auto' : 'max-content';
         display.style.maxWidth = 'none';
       }
 
-      const naturalWidth = canvas.getBoundingClientRect().width || canvas.scrollWidth;
+      const unbreakableWidth = () => Math.max(0, ...Array.from(canvas!.querySelectorAll<HTMLElement>('.katex-html > .base, .katex-html > .tag'))
+        .map(base => { const style = getComputedStyle(base);
+          return base.getBoundingClientRect().width + (Number.parseFloat(style.marginLeft) || 0) + (Number.parseFloat(style.marginRight) || 0); }));
+      const naturalWidth = (reflow ? unbreakableWidth() : canvas.getBoundingClientRect().width) || canvas.scrollWidth;
       const rootStyle = getComputedStyle(root);
       const horizontalPadding = Number.parseFloat(rootStyle.paddingLeft) + Number.parseFloat(rootStyle.paddingRight);
       const availableWidth = Math.max(0, root.clientWidth - horizontalPadding);
@@ -170,12 +189,13 @@ export async function fitBlockMathForPdf(page: any): Promise<void> {
         : 1;
 
       canvas.style.fontSize = `${fitScale}em`;
-      const uncorrectedWidth = canvas.getBoundingClientRect().width;
+      const uncorrectedWidth = reflow ? unbreakableWidth() || canvas.getBoundingClientRect().width : canvas.getBoundingClientRect().width;
       const targetWidth = naturalWidth * fitScale;
       const residualScale = uncorrectedWidth > 0
         ? Math.min(1, targetWidth / uncorrectedWidth)
         : 1;
       canvas.style.zoom = String(residualScale);
+      if (reflow) canvas.style.width = `${100 / residualScale}%`;
     };
 
     if (document.fonts?.ready) {

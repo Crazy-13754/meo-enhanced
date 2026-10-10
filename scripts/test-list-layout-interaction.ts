@@ -649,7 +649,7 @@ async function main(): Promise<void> {
       openLink: '打开链接',
       footnote: '跳转到脚注 1',
       footnoteBack: '跳转到脚注引用 1',
-      codeActions: ['全选代码', '复制代码', '全选代码', '复制代码'],
+      codeActions: ['全选代码', '复制', '全选代码', '复制'],
       longCode: { lineCountVisible: false, action: '显示其余 10 行代码' },
       imageActions: ['打开链接', '刷新图片', '使用系统应用打开', '全屏查看图片'],
       featureChrome: {
