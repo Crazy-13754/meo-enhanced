@@ -10,6 +10,9 @@ export type PrepareMarkdownWithFootnotesOptions = {
   backToReference: string;
   backToNumberedReference: (number: number) => string;
   backToReferenceOccurrence: (number: number, occurrence: number) => string;
+  githubStyle?: boolean;
+  /** Identifies generated reference tags so GFM raw-HTML filtering keeps their anchors. */
+  onReferenceTags?: (tags: readonly string[]) => void;
 };
 
 export type PreparedMarkdownWithFootnotes = {
@@ -58,9 +61,12 @@ export function prepareMarkdownWithFootnotes(
     const referenceId = nextCount === 1 ? `fnref-${footnoteNumber}` : `fnref-${footnoteNumber}-${nextCount}`;
     definition.referenceIds.push(referenceId);
 
+    const supTag = '<sup class="footnote-ref">';
+    const linkTag = `<a href="${escapeHtmlAttr(buildInternalAnchorHref(hrefPrefix, `fn-${footnoteNumber}`))}" id="${escapeHtmlAttr(referenceId)}">`;
+    options.onReferenceTags?.([supTag, linkTag]);
     return [
-      '<sup class="footnote-ref">',
-      `<a href="${escapeHtmlAttr(buildInternalAnchorHref(hrefPrefix, `fn-${footnoteNumber}`))}" id="${escapeHtmlAttr(referenceId)}">${footnoteNumber}</a>`,
+      supTag,
+      `${linkTag}${options.githubStyle ? `[${footnoteNumber}]` : footnoteNumber}</a>`,
       '</sup>'
     ].join('');
   };
@@ -251,7 +257,7 @@ function renderFootnotesHtml(
   const sourceEndLine = Math.max(...footnotes.map((footnote) => footnote.sourceEndLine));
   return [
     `<section class="footnotes" data-source-line="${sourceLine}" data-source-end-line="${sourceEndLine}">`,
-    '<hr>',
+    options.githubStyle ? '' : '<hr>',
     '<ol class="footnotes-list">',
     itemsHtml,
     '</ol>',
@@ -275,15 +281,14 @@ function renderFootnoteItemHtml(
   const backlinkHtml = footnote.referenceIds.map((referenceId, index) => {
     const label = repeated ? options.backToReferenceOccurrence(number, index + 1) : options.backToReference;
     const href = escapeHtmlAttr(buildInternalAnchorHref(hrefPrefix, referenceId));
-    const suffix = repeated ? '<sup>' + (index + 1) + '</sup>' : '';
+    const suffix = repeated && (!options.githubStyle || index > 0) ? '<sup>' + (index + 1) + '</sup>' : '';
     return '<a href="' + href + '" class="footnote-backref" title="' + escapeHtmlAttr(label)
       + '" aria-label="' + escapeHtmlAttr(label) + '">↩' + suffix + '</a>';
   }).join(' ');
 
   return [
     `<li id="fn-${number}" class="footnote-item" data-source-line="${footnote.sourceLine}" data-source-end-line="${footnote.sourceEndLine}">`,
-    indexHtml,
-    `<div class="footnote-body">${appendFootnoteBacklink(contentHtml, backlinkHtml)}</div>`,
+    options.githubStyle ? appendFootnoteBacklink(contentHtml, backlinkHtml) : indexHtml + `<div class="footnote-body">${appendFootnoteBacklink(contentHtml, backlinkHtml)}</div>`,
     '</li>'
   ].join('');
 }

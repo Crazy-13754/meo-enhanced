@@ -62,6 +62,7 @@ export function hasAppliedPreviewCodeHighlight(root: ParentNode): boolean {
 
 /** Projects the exact Shiki tokens used by Live mode onto an already-rendered Preview code block. */
 export function applyPreviewCodeHighlight(frameDocument: Document, nearViewportOnly = false, isCurrent: () => boolean = () => true): void {
+  if (!isCurrent()) return;
   const themeVersion = String(getShikiThemeVersion('preview'));
   const codes = Array.from(frameDocument.querySelectorAll<HTMLElement>('code.hljs'));
   const height = nearViewportOnly ? frameDocument.documentElement.clientHeight : 0;
@@ -81,7 +82,8 @@ export function applyPreviewCodeHighlight(frameDocument: Document, nearViewportO
       continue;
     }
 
-    const projectedLines = projectShikiTokenLines(lines, getShikiThemeMeta('preview'));
+    const projectedLines = frameDocument.documentElement.dataset.meoPreviewBracketColoring === 'false'
+      ? lines : projectShikiTokenLines(lines, getShikiThemeMeta('preview'));
     for (const [lineIndex, sourceElement] of sources.entries()) {
       const fragment = frameDocument.createDocumentFragment();
       for (const run of projectedLines[lineIndex] ?? []) {

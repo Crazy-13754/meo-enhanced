@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import sanitizeHtml from 'sanitize-html';
-import { parseDocument } from 'htmlparser2';
+import { Parser, parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
 import { isLocalImageSrc, rewriteExportImageSrc } from './assetPaths';
 import { extractExportFrontmatter } from './frontmatter';
@@ -26,6 +26,8 @@ import {
 import type { UiLanguage } from '../foundation/uiLanguage';
 import { getReadingUiStrings } from './readingUiLanguage';
 import { normalizeFenceLanguage } from './fenceLanguage';
+import { getPreviewPreset, type PreviewPresetId } from '../foundation/previewPresets';
+import { load as loadYaml } from 'js-yaml';
 
 const POWER_QUERY_KEYWORDS =
   'let in each if then else try otherwise error and or not as is type meta section shared';
@@ -61,6 +63,8 @@ export type RenderMarkdownOptions = {
   showComments?: boolean;
   /** Standalone exports inject the same Shiki token presentation used by Live and Preview. */
   highlightCode?: (source: string, language: string) => string;
+  /** Selects rendering semantics for Preview and HTML/PDF export. */
+  preset?: PreviewPresetId;
 };
 
 export type RenderMarkdownResult = {
@@ -76,12 +80,14 @@ type ExportHeading = Readonly<{
 }>;
 
 export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMarkdownResult {
+  const github = getPreviewPreset(options.preset).renderer === 'github-readme';
   const uiStrings = getReadingUiStrings(options.uiLanguage ?? 'en');
   let hasMermaid = false;
   let hasMath = false;
   let bodySourceLines: number[] | null = null;
   const headings: ExportHeading[] = [];
   const embeddedImageDataUrlCache = new Map<string, string | null>();
+  const generatedFootnoteTags = new Set<string>();
   const rewriteImageSrc = (rawSrc: string): string => rewriteExportImageSrc(rawSrc, {
     markdownFilePath: options.markdownFilePath,
     outputFilePath: options.outputFilePath,
@@ -101,7 +107,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   const md = new MarkdownIt({
     html: true,
     linkify: true,
-    breaks: true,
+    breaks: !github,
     langPrefix: 'language-'
   });
   // The bundled backtick rule strips bounding spaces even from all-space code.
@@ -118,21 +124,23 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     state.pos += match[0].length;
     return true;
   });
-  installHighlightTransform(md);
-  installInlineScriptTransform(md);
-  installPunctuationInlineTransform(md);
+  if (!github) {
+    installHighlightTransform(md);
+    installInlineScriptTransform(md);
+    installPunctuationInlineTransform(md);
+  }
   installSourcePositionAndHeadingAnchorTransform(md, (startIndex, endIndex) => ({
     start: bodySourceLines?.[startIndex] ?? 0,
     end: bodySourceLines?.[Math.max(startIndex, endIndex - 1)] ?? 0
-  }), (heading) => headings.push(heading));
+  }), (heading) => headings.push(heading), github);
   installTableContainerTransform(md, (sourceLine) => (
     countLeadingIndentColumns(originalSourceLines[sourceLine - 1] ?? '')
   ));
   installTableCellSourceTransform(md);
-  installTableCellListTransform(md);
-  installTaskListTransform(md);
+  if (!github) installTableCellListTransform(md);
+  installTaskListTransform(md, github);
   installKbdFallbackTransform(md);
-  installAlertTransform(md, uiStrings.alertLabel);
+  installAlertTransform(md, github ? type => type[0] + type.slice(1).toLowerCase() : uiStrings.alertLabel, github);
   installSafeHtmlTransform(
     md,
     deferImageSrc,
@@ -140,10 +148,13 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       start: bodySourceLines?.[startIndex] ?? 0,
       end: bodySourceLines?.[Math.max(startIndex, endIndex - 1)] ?? 0
     }),
-    options.showComments === true
+    !github && options.showComments === true,
+    !github,
+    github ? generatedFootnoteTags : undefined
   );
   if (shouldEnableMathTransform) {
     installMathTransform(md, {
+      githubStyle: github,
       onRenderedMath: () => {
         hasMath = true;
       }
@@ -161,7 +172,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     return defaultImageRule(tokens, idx, opts, env, self);
   };
 
-  const renderCodeBlock: NonNullable<typeof md.renderer.rules.fence> = (tokens, idx) => {
+  const renderCodeBlock: NonNullable<typeof md.renderer.rules.fence> = (tokens, idx, _opts, env) => {
     const codeBlock = tokens[idx];
     const language = codeBlock.type === 'fence' ? normalizeFenceLanguage(codeBlock.info) : '';
     const sourceLine = codeBlock.attrGet('data-source-line');
@@ -170,8 +181,9 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       ? ` data-source-line="${escapeHtmlAttr(sourceLine)}"${sourceEndLine ? ` data-source-end-line="${escapeHtmlAttr(sourceEndLine)}"` : ''}`
       : '';
     const source = String(codeBlock.content ?? '');
+    const renderRichContent = !github || !env?.meoGithubFootnote;
 
-    if (MATH_FENCE_LANGUAGES.has(language)) {
+    if (renderRichContent && (github ? language === 'math' : MATH_FENCE_LANGUAGES.has(language))) {
       const trimmedSource = source.trim();
       const ranges = collectLatexMathRanges(trimmedSource);
       const mathContent = ranges.length === 1 && ranges[0].from === 0 && ranges[0].to === trimmedSource.length
@@ -185,7 +197,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       }
     }
 
-    if (language === 'mermaid') {
+    if (renderRichContent && language === 'mermaid') {
       hasMermaid = true;
       const sourceB64 = Buffer.from(source, 'utf8').toString('base64');
       return [
@@ -212,17 +224,21 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   md.renderer.rules.fence = renderCodeBlock;
   md.renderer.rules.code_block = renderCodeBlock;
   const preparedMarkdown = prepareMarkdownWithFootnotes(extractedFrontmatter.body, {
+    githubStyle: github,
+    ...(github ? { onReferenceTags: (tags: readonly string[]) => tags.forEach(tag => generatedFootnoteTags.add(tag)) } : {}),
     target: options.target,
     outputFilePath: options.outputFilePath,
-    renderMarkdown: (markdownText) => md.render(markdownText),
-    normalizeMarkdown: normalizeMarkdownForExport,
+    renderMarkdown: (markdownText) => md.render(markdownText, github ? { meoGithubFootnote: true } : undefined),
+    normalizeMarkdown: github ? text => text : normalizeMarkdownForExport,
     backToReference: uiStrings.backToReference,
     backToNumberedReference: uiStrings.backToNumberedReference,
     backToReferenceOccurrence: uiStrings.backToReferenceOccurrence
   });
   // Extract definitions before table normalization can change their four-space
   // continuation indent and accidentally detach subsequent blocks.
-  const normalizedBody = normalizeMarkdownForExportWithSourceMap(preparedMarkdown.body.markdown);
+  const normalizedBody = github
+    ? { markdown: preparedMarkdown.body.markdown, sourceLines: preparedMarkdown.body.markdown.split(/\r?\n/).map((_, index) => index + 1) }
+    : normalizeMarkdownForExportWithSourceMap(preparedMarkdown.body.markdown);
   bodySourceLines = normalizedBody.sourceLines.map(line => preparedMarkdown.body.sourceLines[line - 1] ?? line);
   headings.length = 0;
   const bodyHtml = md.render(normalizedBody.markdown);
@@ -239,13 +255,16 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     : '';
   const rawHtml = [
     tableOfContentsHtml,
-    extractedFrontmatter.frontmatterHtml,
+    github && extractedFrontmatter.frontmatterHtml && !extractedFrontmatter.frontmatterHtml.includes('meo-export-frontmatter-source')
+      ? renderGithubFrontmatter(originalSourceLines, extractedFrontmatter.body.sourceLines[0] ?? originalSourceLines.length + 1)
+      : extractedFrontmatter.frontmatterHtml,
     bodyHtml,
     preparedMarkdown.footnotesHtml
   ].join('');
   const html = sanitizeHtml(rawHtml, {
     allowedTags: [
       ...sanitizeHtml.defaults.allowedTags,
+      ...(github ? ['input', 'kbd', 'del'] : []),
       'mark',
       'details',
       'summary',
@@ -278,6 +297,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       'polyline'
     ],
     allowedAttributes: {
+      ...(github ? { input: ['type', 'disabled', 'checked', 'aria-label'] } : {}),
       a: ['href', 'name', 'target', 'rel', 'title', 'aria-label'],
       details: ['open'],
       img: ['src', 'alt', 'title', 'width', 'height', 'loading', DEFERRED_IMAGE_ATTRIBUTE],
@@ -434,7 +454,9 @@ function installSafeHtmlTransform(
   md: MarkdownIt,
   rewriteImageSrc: (rawSrc: string) => { src: string; deferredSrc?: string },
   resolveSourceRange: (startIndex: number, endIndex: number) => { start: number; end: number },
-  showComments: boolean
+  showComments: boolean,
+  preserveSourceStyles = true,
+  generatedFootnoteTags?: ReadonlySet<string>
 ): void {
   // HTML code contents are literal, including when another paragraph enables math rendering.
   md.inline.ruler.before('html_inline', 'meo_literal_html_code', (state, silent) => {
@@ -445,7 +467,8 @@ function installSafeHtmlTransform(
     return true;
   });
   const allowedAttributes = Object.fromEntries(
-    [...supportedHtmlTags].map((tagName) => [tagName, getSupportedHtmlAttributes(tagName)])
+    [...supportedHtmlTags].map((tagName) => [tagName, getSupportedHtmlAttributes(tagName)
+      .filter(attribute => preserveSourceStyles || !['style', 'class', 'id'].includes(attribute))])
   );
   allowedAttributes.img = [...allowedAttributes.img, DEFERRED_IMAGE_ATTRIBUTE];
   const safeHtmlSanitizerOptions: NonNullable<Parameters<typeof sanitizeHtml>[1]> = {
@@ -471,6 +494,28 @@ function installSafeHtmlTransform(
     }
   };
   const sanitizeRawSource = (source: string, tokenType: string): string => {
+    if (!preserveSourceStyles && tokenType === 'html_block' && isSupportedHtmlSource(source)) {
+      // A GFM HTML container can span multiple Markdown tokens. Sanitizing each
+      // block as a balanced document closes <details> before its Markdown body.
+      let fragment = '';
+      let cursor = 0;
+      const append = (html: string) => {
+        // The parser ignores unmatched closing tags from preceding Markdown
+        // tokens. Retain those gaps; opening tags always go through sanitization.
+        fragment += source.slice(cursor, parser.startIndex) + html;
+        cursor = parser.endIndex + 1;
+      };
+      const parser = new Parser({
+        onopentag: (_name, _attributes, implied) => { if (!implied) append(sanitizeRawSource(source.slice(parser.startIndex, parser.endIndex + 1), 'html_inline')); },
+        onclosetag: (_name, implied) => { if (!implied) append(source.slice(parser.startIndex, parser.endIndex + 1)); },
+        ontext: append,
+        oncomment: () => append(''),
+        onprocessinginstruction: () => append(''),
+        onend: () => { fragment += source.slice(cursor); }
+      }, { decodeEntities: false });
+      parser.end(source);
+      return fragment;
+    }
     if (source.includes('<!--')) {
       const comments: Array<{ from: number; to: number; raw: string }> = [];
       const visit = (nodes: readonly ChildNode[]): void => {
@@ -509,7 +554,7 @@ function installSafeHtmlTransform(
         policySource += source.slice(cursor);
         renderSource += source.slice(cursor);
         const rendered = isSupportedHtmlSource(policySource)
-          ? sanitizeHtml(renderSource, safeHtmlSanitizerOptions)
+          ? (preserveSourceStyles ? sanitizeHtml(renderSource, safeHtmlSanitizerOptions) : sanitizeRawSource(renderSource, tokenType))
           : escapeHtml(renderSource);
         return replacements.reduce((html, replacement) => html.replace(replacement.marker, replacement.html), rendered);
       }
@@ -535,12 +580,15 @@ function installSafeHtmlTransform(
   const renderRawHtml = (tokens: any[], index: number): string => {
     const htmlNode = tokens[index];
     const source = String(htmlNode?.content ?? '');
-    if (htmlNode?.meta?.meoTrustedHtml === true) return source;
+    if (htmlNode?.meta?.meoTrustedHtml === true || generatedFootnoteTags?.has(source)) return source;
     const rendered = sanitizeRawSource(source, String(htmlNode?.type ?? ''));
     if (rendered === '') return '';
     if (htmlNode?.type !== 'html_block' || !Array.isArray(htmlNode.map)) return rendered;
     const sourceRange = resolveSourceRange(Number(htmlNode.map[0]), Number(htmlNode.map[1]));
     if (sourceRange.start <= 0) return rendered;
+    if (!preserveSourceStyles) {
+      return rendered.replace(/^(\s*<[a-z][a-z\d-]*)(?=[\s>])/i, `$1 data-source-line="${sourceRange.start}" data-source-end-line="${Math.max(sourceRange.start, sourceRange.end)}"`);
+    }
     return `<div class="meo-export-html-block" data-source-line="${sourceRange.start}" data-source-end-line="${Math.max(sourceRange.start, sourceRange.end)}">${rendered}</div>`;
   };
   md.renderer.rules.html_block = renderRawHtml;
@@ -550,7 +598,8 @@ function installSafeHtmlTransform(
 function installSourcePositionAndHeadingAnchorTransform(
   md: MarkdownIt,
   resolveSourceRange: (startIndex: number, endIndex: number) => { start: number; end: number },
-  onHeading?: (heading: ExportHeading) => void
+  onHeading?: (heading: ExportHeading) => void,
+  github = false
 ): void {
   md.core.ruler.after('inline', 'meo-heading-anchors', (state: any) => {
     if (state.env?.meoTableCell) return;
@@ -573,10 +622,23 @@ function installSourcePositionAndHeadingAnchorTransform(
       }
 
       const inlineContent = tokens[index + 1];
-      const baseSlug = markdownHeadingAnchor(inlineContent?.content ?? '');
-      const occurrence = (slugCounts.get(baseSlug) ?? 0) + 1;
-      slugCounts.set(baseSlug, occurrence);
-      const id = occurrence === 1 ? baseSlug : `${baseSlug}-${occurrence}`;
+      const headingSource = github ? extractHeadingText(inlineContent, true) : String(inlineContent?.content ?? '');
+      // GitHub preserves each space and existing hyphen, including gaps left by punctuation.
+      const baseSlug = github
+        ? headingSource.trim().toLowerCase().replace(/<[^>]*>/g, '')
+          .replace(/[^\p{Letter}\p{Number}\p{Mark} _-]/gu, '').replace(/ /g, '-')
+        : markdownHeadingAnchor(headingSource);
+      let id = baseSlug;
+      if (github) {
+        let suffix = slugCounts.get(baseSlug) ?? 0;
+        while (slugCounts.has(id)) id = `${baseSlug}-${++suffix}`;
+        slugCounts.set(baseSlug, suffix);
+        slugCounts.set(id, 0);
+      } else {
+        const occurrence = (slugCounts.get(baseSlug) ?? 0) + 1;
+        slugCounts.set(baseSlug, occurrence);
+        id = occurrence === 1 ? baseSlug : `${baseSlug}-${occurrence}`;
+      }
       headingOpen.attrSet('id', id);
       onHeading?.({
         level: Number.parseInt(String(headingOpen.tag).slice(1), 10),
@@ -682,17 +744,18 @@ function splitCellLogicalLines(content: string, md: MarkdownIt): string[] {
   return lines;
 }
 
-function extractHeadingText(inlineToken: any): string {
+function extractHeadingText(inlineToken: any, github = false): string {
   const collect = (tokens: any[]): string => tokens.map((token) => {
     if (token.type === 'softbreak' || token.type === 'hardbreak') return ' ';
     if (token.type === 'text' || token.type === 'code_inline' || token.type === 'image') {
       return String(token.content ?? '');
     }
+    if (github && token.type === 'text_special') return String(token.content ?? '');
+    if (github && token.meta?.meoMathSource) return String(token.meta.meoMathSource);
     return Array.isArray(token.children) ? collect(token.children) : '';
   }).join('');
-  return collect(Array.isArray(inlineToken?.children) ? inlineToken.children : [])
-    .replace(/\s+/g, ' ')
-    .trim();
+  const text = collect(Array.isArray(inlineToken?.children) ? inlineToken.children : []);
+  return (github ? text : text.replace(/\s+/g, ' ')).trim();
 }
 
 function renderExportTableOfContents(
@@ -924,7 +987,7 @@ function expandBodyListBreaks(line: string): string[] {
   return (output + line.slice(start)).split('\n');
 }
 
-function installTaskListTransform(md: MarkdownIt): void {
+function installTaskListTransform(md: MarkdownIt, github = false): void {
   md.core.ruler.after('inline', 'meo-task-list-transform', (state: any) => {
     const itemStack: Array<{ token: any; firstInlineHandled: boolean }> = [];
 
@@ -949,7 +1012,7 @@ function installTaskListTransform(md: MarkdownIt): void {
       }
       current.firstInlineHandled = true;
 
-      const match = /^\[([ xX~\-])\]\s+/.exec(token.content ?? '');
+      const match = (github ? /^\[([ xX])\]\s+/ : /^\[([ xX~\-])\]\s+/).exec(token.content ?? '');
       if (!match) {
         continue;
       }
@@ -966,7 +1029,9 @@ function installTaskListTransform(md: MarkdownIt): void {
 
       const children = Array.isArray(token.children) ? token.children : [];
       const checkboxNode = new state.Token('html_inline', '', 0);
-      checkboxNode.content = `<span class="meo-export-task-checkbox ${statusClass}" aria-hidden="true"></span>`;
+      checkboxNode.content = github
+        ? `<input type="checkbox" class="meo-export-task-checkbox task-list-item-checkbox" disabled${statusClass === 'is-done' ? ' checked' : ''} aria-label="${statusClass === 'is-done' ? 'Completed task' : 'Incomplete task'}"> `
+        : `<span class="meo-export-task-checkbox ${statusClass}" aria-hidden="true"></span>`;
       checkboxNode.meta = { ...(checkboxNode.meta ?? {}), meoTrustedHtml: true };
       const openTextNode = new state.Token('html_inline', '', 0);
       openTextNode.content = `<span class="meo-export-task-text ${statusClass}">`;
@@ -1092,12 +1157,16 @@ const ALERT_ICONS: Record<AlertType, string> = {
   CAUTION: renderLucideIcon(XCircle as unknown as IconNode)
 };
 
-function installAlertTransform(md: MarkdownIt, alertLabel: (type: string) => string): void {
+function installAlertTransform(md: MarkdownIt, alertLabel: (type: string) => string, github = false): void {
   const defaultBlockquoteRender = md.renderer.rules.blockquote_open ??
     ((tokens: any, idx: number, opts: any, _env: any, self: any) => self.renderToken(tokens, idx, opts));
 
   md.renderer.rules.blockquote_open = (tokens: any, idx: number, opts: any, env: any, self: any) => {
     const openToken = tokens[idx];
+    if (github && openToken.level > 0) return defaultBlockquoteRender(tokens, idx, opts, env, self);
+    if (github && (tokens[idx + 1]?.type !== 'paragraph_open' || tokens[idx + 2]?.type !== 'inline')) {
+      return defaultBlockquoteRender(tokens, idx, opts, env, self);
+    }
     let alertType: AlertType | null = null;
     let headerHtml = '';
     const TokenCons = tokens[0].constructor as any;
@@ -1107,7 +1176,7 @@ function installAlertTransform(md: MarkdownIt, alertLabel: (type: string) => str
       if (token.type === 'blockquote_close') break;
       if (token.type === 'paragraph_open') continue;
       if (token.type === 'inline' && token.content) {
-        const match = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(token.content.trim());
+        const match = (github ? /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?=\s*(?:\n|$))/i : /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i).exec(token.content.trim());
         if (match) {
           alertType = match[1].toUpperCase() as AlertType;
           headerHtml = [
@@ -1137,7 +1206,7 @@ function installAlertTransform(md: MarkdownIt, alertLabel: (type: string) => str
           continue;
         }
 
-        if (token.children) {
+        if (token.children && !github) {
           for (const child of token.children) {
             if (child.type === 'softbreak') {
               child.type = 'hardbreak';
@@ -1165,12 +1234,33 @@ function installAlertTransform(md: MarkdownIt, alertLabel: (type: string) => str
           }
         }
 
+        if (github) {
+          token.children = token.children.filter((child: any) => child.type !== 'text' || child.content !== '');
+          if (['softbreak', 'hardbreak'].includes(token.children[1]?.type)) token.children.splice(1, 1);
+        }
+
         insertedHeader = true;
       }
     }
 
     return defaultBlockquoteRender(tokens, idx, opts, env, self);
   };
+}
+
+function renderGithubFrontmatter(lines: string[], bodyStartLine: number): string {
+  const end = bodyStartLine - 1;
+  try {
+    const value = loadYaml(lines.slice(1, end - 1).join('\n'));
+    const fields: Array<[string, unknown]> = value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.entries(value) : [['value', value]];
+    const text = (entry: unknown): string => entry === null || entry === undefined ? ''
+      : Array.isArray(entry) ? entry.map(text).join(', ')
+      : typeof entry === 'object' ? JSON.stringify(entry) : String(entry);
+    return `<div class="meo-export-frontmatter" data-source-line="1" data-source-end-line="${end}"><table><thead><tr>${fields.map(([key]) => `<th>${escapeHtml(key)}</th>`).join('')}</tr></thead><tbody><tr>${fields.map(([, entry]) => `<td>${escapeHtml(text(entry))}</td>`).join('')}</tr></tbody></table></div>`;
+  } catch {
+    // Cyclic YAML aliases cannot be projected into table cells; retain their source.
+    return `<pre data-source-line="1" data-source-end-line="${end}"><code>${escapeHtml(lines.slice(0, end).join('\n'))}</code></pre>`;
+  }
 }
 
 function registerExportLanguages(): void {

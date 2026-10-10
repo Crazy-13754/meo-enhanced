@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Preview preset",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "description", "renderer", "defaults", "controls", "notes"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "name": { "$ref": "#/$defs/localizedText" },
+    "description": { "$ref": "#/$defs/localizedText" },
+    "renderer": { "enum": ["meo", "github-readme"] },
+    "styles": {
+      "type": "object", "additionalProperties": false, "required": ["light", "dark"],
+      "properties": { "light": { "type": "string" }, "dark": { "type": "string" } }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false, "required": ["url", "version", "commit"],
+      "properties": { "url": { "type": "string" }, "version": { "type": "string" }, "commit": { "type": "string" } }
+    },
+    "defaults": {
+      "type": "object", "additionalProperties": false, "required": ["appearance", "contentWidth"],
+      "properties": { "appearance": { "enum": ["auto", "light", "dark"] }, "contentWidth": { "enum": ["responsive", "reference"] } }
+    },
+    "controls": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fontFamily", "appearance", "codeColoring", "htmlComments", "contentWidth"],
+      "properties": {
+        "fontFamily": { "$ref": "#/$defs/control" },
+        "appearance": { "$ref": "#/$defs/control" },
+        "codeColoring": { "$ref": "#/$defs/booleanControl" },
+        "htmlComments": { "$ref": "#/$defs/booleanControl" },
+        "contentWidth": { "$ref": "#/$defs/control" }
+      }
+    },
+    "notes": { "type": "array", "items": { "$ref": "#/$defs/localizedText" } }
+  },
+  "$defs": {
+    "localizedText": {
+      "type": "object", "additionalProperties": false, "required": ["en", "zh-CN"],
+      "properties": { "en": { "type": "string", "minLength": 1 }, "zh-CN": { "type": "string", "minLength": 1 } }
+    },
+    "control": {
+      "type": "object", "additionalProperties": false, "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["editable", "fixed", "unsupported"] },
+        "value": { "type": "boolean" },
+        "options": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } }
+      }
+    },
+    "booleanControl": {
+      "allOf": [
+        { "$ref": "#/$defs/control" },
+        { "type": "object", "if": { "properties": { "mode": { "const": "fixed" } } }, "then": { "required": ["value"] } }
+      ]
+    }
+  }
+}

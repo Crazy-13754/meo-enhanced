@@ -39,6 +39,7 @@ const previewResources = {
 } as MermaidDiagramRenderResources;
 const previewRenderer = createPreviewMermaidRenderer(previewResources);
 const pendingFrame = {
+  documentElement: { dataset: {} },
   defaultView: null,
   querySelectorAll: () => [{
     classList: { contains: () => false },

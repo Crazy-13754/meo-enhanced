@@ -19,6 +19,11 @@ export type UiStrings = Readonly<{
   light: string;
   dark: string;
   previewTitle: string;
+  previewPreset: string;
+  previewPresetInfo: string;
+  previewWidth: string;
+  previewWidthResponsive: string;
+  previewWidthReference: string;
   previewAppearance: string;
   previewSourceColoring: string;
   strongColoring: string;
@@ -323,6 +328,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     auto: 'Auto', light: 'Light', dark: 'Dark', previewTitle: 'Markdown Preview',
     previewAppearance: 'Preview theme', previewSourceColoring: 'Preview source coloring', strongColoring: 'Color bold text', boldHeadings: 'Bold headings', showComments: 'HTML comments', previewCommentsShow: 'Show', previewCommentsHide: 'Hide',
     previewCodeColors: 'Code color', previewCodeColorsOn: 'On', previewCodeColorsOff: 'Off',
+    previewPreset: 'Preset', previewPresetInfo: 'Preset info', previewWidth: 'Width', previewWidthResponsive: 'Fit panel', previewWidthReference: 'Reference width',
     previewFontFamily: 'Font',
     previewFontPlaceholder: 'VS Code editor font',
     previewFontUnavailable: 'Local font list unavailable; type a family name',
@@ -514,6 +520,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     auto: '自动', light: '浅色', dark: '深色', previewTitle: 'Markdown 预览',
     previewAppearance: '预览主题', previewSourceColoring: '预览源码着色', strongColoring: '粗体文字着色', boldHeadings: '标题加粗', showComments: 'HTML 注释', previewCommentsShow: '显示', previewCommentsHide: '隐藏',
     previewCodeColors: '代码着色', previewCodeColorsOn: '开', previewCodeColorsOff: '关',
+    previewPreset: '预设', previewPresetInfo: '预设说明', previewWidth: '正文宽度', previewWidthResponsive: '适配面板', previewWidthReference: '参考宽度',
     previewFontFamily: '预览字体',
     previewFontPlaceholder: 'VS Code 编辑器字体',
     previewFontUnavailable: '无法获取本地字体列表；请手动输入字体名称',

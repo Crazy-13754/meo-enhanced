@@ -10,7 +10,7 @@ if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
 try {
   const page = await browser.newPage();
-  await page.setViewport({ width: 1100, height: 700 });
+  await page.setViewport({ width: 1400, height: 700 });
   await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
   await page.addStyleTag({ path: 'webview/src/styles.css' });
   await page.addScriptTag({ content: `window.__hostMessages=[];window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.__hostMessages.push(message);}});` });
@@ -88,7 +88,7 @@ try {
   });
   assert.equal(narrowMenu.visibility, 'visible');
   assert.ok(narrowMenu.left >= 0 && narrowMenu.right <= 420, JSON.stringify(narrowMenu));
-  await page.setViewport({ width: 1100, height: 700 });
+  await page.setViewport({ width: 1400, height: 700 });
   await page.click('.more-tools-wrapper > .format-button');
   const settingsChoices = [
     '.ui-language-button[data-ui-language="zh-CN"]',

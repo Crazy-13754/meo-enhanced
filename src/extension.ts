@@ -114,6 +114,8 @@ type ExportRuntimeModule = {
     sourceDocumentPath: string;
     uiLanguage: ReadingSnapshot['uiLanguage'];
     styleEnvironment?: ExportStyleEnvironment;
+    preset?: import('./foundation/previewPresets').PreviewPresetId;
+    contentWidth?: import('./foundation/previewPresets').PreviewContentWidth;
   }) => PreviewRenderResult;
   writeHtmlExport: (options: {
     htmlDocument: string;

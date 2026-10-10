@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="100" viewBox="0 0 360 100">
+  <rect x="1" y="1" width="358" height="98" rx="8" fill="#f6f8fa" stroke="#d1d9e0"/>
+  <rect x="20" y="28" width="110" height="44" rx="6" fill="#0969da"/>
+  <text x="75" y="55" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#ffffff">Markdown</text>
+  <path d="M145 50h55m-10-6 10 6-10 6" fill="none" stroke="#57606a" stroke-width="2"/>
+  <rect x="220" y="28" width="110" height="44" rx="6" fill="#1a7f37"/>
+  <text x="275" y="55" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#ffffff">Preview</text>
+</svg>

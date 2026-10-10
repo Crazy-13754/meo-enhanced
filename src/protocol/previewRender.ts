@@ -1,6 +1,7 @@
 import { decodeRequestResult, type RequestResult } from './requestResult';
 import { decodeEditorStyleEnvironment, type EditorStyleEnvironment } from './editorStyleEnvironment';
 import { isUiLanguage, type UiLanguage } from '../foundation/uiLanguage';
+import { isPreviewPresetId, type PreviewPresetId, type PreviewContentWidth } from '../foundation/previewPresets';
 
 export const PREVIEW_RENDER_TIMEOUT_MS = 15_000;
 
@@ -16,12 +17,15 @@ export type PreviewRenderRequest = {
   readonly text: string;
   readonly uiLanguage: UiLanguage;
   readonly environment: PreviewStyleEnvironment;
+  readonly preset?: PreviewPresetId;
+  readonly contentWidth?: PreviewContentWidth;
 };
 
 export type PreviewRenderValue = {
   readonly html: string;
   readonly hasMermaid: boolean;
   readonly styles: PreviewStyles;
+  readonly preset?: PreviewPresetId;
 };
 
 export type PreviewRenderResolution = RequestResult<PreviewRenderValue>;
@@ -45,7 +49,9 @@ export function decodePreviewRenderRequest(value: unknown): PreviewRenderRequest
     || value.type !== 'requestPreviewRender'
     || !isNonEmptyString(value.requestId)
     || typeof value.text !== 'string'
-    || !isUiLanguage(value.uiLanguage)) return null;
+    || !isUiLanguage(value.uiLanguage)
+    || (value.preset !== undefined && !isPreviewPresetId(value.preset))
+    || (value.contentWidth !== undefined && value.contentWidth !== 'responsive' && value.contentWidth !== 'reference')) return null;
   const environment = decodeEditorStyleEnvironment(value.environment);
   if (environment === null) return null;
   return {
@@ -53,7 +59,9 @@ export function decodePreviewRenderRequest(value: unknown): PreviewRenderRequest
     requestId: value.requestId,
     text: value.text,
     uiLanguage: value.uiLanguage,
-    environment
+    environment,
+    ...(value.preset === undefined ? {} : { preset: value.preset as PreviewPresetId }),
+    ...(value.contentWidth === undefined ? {} : { contentWidth: value.contentWidth as PreviewContentWidth })
   };
 }
 
@@ -65,11 +73,13 @@ export function decodePreviewRenderResponse(value: unknown): PreviewRenderRespon
           || typeof candidate.hasMermaid !== 'boolean'
           || !isRecord(candidate.styles)
           || typeof candidate.styles.dark !== 'string'
-          || typeof candidate.styles.light !== 'string') return null;
+          || typeof candidate.styles.light !== 'string'
+          || (candidate.preset !== undefined && !isPreviewPresetId(candidate.preset))) return null;
         return {
           html: candidate.html,
           hasMermaid: candidate.hasMermaid,
-          styles: { dark: candidate.styles.dark, light: candidate.styles.light }
+          styles: { dark: candidate.styles.dark, light: candidate.styles.light },
+          ...(candidate.preset === undefined ? {} : { preset: candidate.preset as PreviewPresetId })
         };
       })
     : null;

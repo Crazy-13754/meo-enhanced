@@ -1,6 +1,6 @@
 import morphdom from 'morphdom';
 import { createPreviewSearchController, previewSearchStyles } from './previewSearch';
-import { createElement as createIconElement, PenLine, TextCursor } from 'lucide';
+import { createElement as createIconElement, PenLine, TextCursor, Info, Palette, FileText, Check } from 'lucide';
 import { getExportStyleEnvironment } from './export';
 import { createPreviewMermaidRenderer } from './previewMermaid';
 import { createCopyCodeButton } from './codeBlockControls';
@@ -15,13 +15,16 @@ import { attachLatexMathViewport, type LatexMathViewportController } from './lat
 import type { MermaidDiagramRenderResources } from '../application/mermaidDiagramRenderResources';
 import type { PreviewCodePalette } from '../application/finalCodePalette';
 import { normalizePreviewFontFamily } from '../../../src/shared/preview';
+import { decodePreviewPresetState, getPreviewPreset, isPreviewPresetId, previewPresets, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetState } from '../../../src/foundation/previewPresets';
+import githubLightTheme from '@shikijs/themes/github-light-default';
+import githubDarkTheme from '@shikijs/themes/github-dark-default';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import {
   applyPreviewCodeHighlight,
   hasAppliedPreviewCodeHighlight,
   isPreviewCodeHighlightReady
 } from './previewCodeHighlight';
-import { activateShikiCodeHighlighting, subscribeShikiRefresh } from './shikiHighlighter';
+import { activateShikiCodeHighlighting, subscribeShikiRefresh, setShikiTheme, type RawVscodeTheme } from './shikiHighlighter';
 import { createToolbarDropdown } from './toolbarDropdown';
 import { createSegmentedControl } from '../adapters/segmentedControl';
 import { resolveEmbeddedImageSrc } from './images';
@@ -38,6 +41,7 @@ type PreviewControllerOptions = {
   isCurrentText?: (text: string) => boolean;
   getCodePalette: (appearance: 'light' | 'dark') => PreviewCodePalette;
   applyCodeTheme: (appearance: 'light' | 'dark') => void;
+  onPresetPreferencesChanged?: () => void;
   onRendered?: (options?: { readonly skipLinkedViewportProjection?: boolean }) => void;
   onPaintReady?: () => void;
   /** Return true for a handled global command; other command keys continue to VS Code. */
@@ -308,7 +312,8 @@ function morphPreviewMain(
   html: string,
   deferUnreadyCodeBlock: boolean,
   pendingCodeBlocks: readonly PreviewCodeBlockUpdate[] | undefined,
-  isCurrent: () => boolean
+  isCurrent: () => boolean,
+  retainTableColumns = true
 ): PreviewCodeBlockUpdate[] {
   const updates: PreviewCodeBlockUpdate[] = pendingCodeBlocks ? [...pendingCodeBlocks] : [];
   let clearPresentationMorphKeys = () => {};
@@ -317,7 +322,7 @@ function morphPreviewMain(
     nextMain.className = 'meo-export-doc';
     nextMain.innerHTML = html;
     addPreviewCodeCopyControls(nextMain, frameDocument.documentElement.lang as UiLanguage);
-    const currentTables = Array.from(currentMain.querySelectorAll<HTMLTableElement>('table'));
+    const currentTables = retainTableColumns ? Array.from(currentMain.querySelectorAll<HTMLTableElement>('table')) : [];
     Array.from(nextMain.querySelectorAll<HTMLTableElement>('table')).forEach((table, index) => {
       const columns = currentTables[index]
         ?.querySelector<HTMLTableColElement>(':scope > colgroup[data-meo-preview-columns]');
@@ -792,6 +797,7 @@ export function createPreviewController({
   isCurrentText,
   getCodePalette,
   applyCodeTheme,
+  onPresetPreferencesChanged,
   onRendered,
   onPaintReady,
   onShortcut,
@@ -894,6 +900,59 @@ export function createPreviewController({
   showCommentsControl.append(showCommentsLabel, showCommentsSegments.element);
   const fontFamilySelectControl = createToolbarDropdown('preview-font-family-control', uiStrings.previewFontFamily);
   const fontFamilyControl = fontFamilySelectControl.element;
+  const presetSelectControl = createToolbarDropdown('preview-preset-control', uiStrings.previewPreset);
+  const presetControl = presetSelectControl.element;
+  const presetSelect = presetSelectControl.select;
+  const createPresetIcon = (preset: PreviewPresetId) => preset === 'github-readme'
+    // GitHub's Octicons mark-github-16; license recorded in THIRD_PARTY_NOTICES.md.
+    ? createIconElement([['path', {
+      d: 'M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656'
+    }]], { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'currentColor', stroke: 'none', 'aria-hidden': 'true' })
+    : createIconElement(FileText, { width: 15, height: 15, 'aria-hidden': 'true' });
+  presetSelectControl.trigger.prepend(
+    createIconElement(Palette, { width: 15, height: 15, 'aria-hidden': 'true' }),
+    presetSelectControl.label
+  );
+  const widthSelectControl = createToolbarDropdown('preview-width-control', uiStrings.previewWidth);
+  const widthControl = widthSelectControl.element;
+  const widthSelect = widthSelectControl.select;
+  const presetInfoControl = document.createElement('button');
+  presetInfoControl.type = 'button';
+  presetInfoControl.className = 'preview-toolbar-action preview-preset-info';
+  presetInfoControl.append(createIconElement(Info, { width: 15, height: 15, 'aria-hidden': 'true' }));
+  presetInfoControl.dataset.tooltipKind = 'description';
+  // Keep the explanation next to its selector, including in overflow and split views.
+  presetControl.append(presetInfoControl);
+  for (const preset of previewPresets) {
+    const option = document.createElement('option');
+    option.value = preset.id;
+    option.textContent = preset.name[uiLanguage];
+    presetSelect.append(option);
+  }
+  for (const [value, label] of [['responsive', uiStrings.previewWidthResponsive], ['reference', uiStrings.previewWidthReference]]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    widthSelect.append(option);
+  }
+  const refreshPresetOptions = () => {
+    presetSelectControl.refreshOptions();
+    for (const option of presetSelectControl.panel.querySelectorAll<HTMLButtonElement>('[role="option"]')) {
+      const preset = getPreviewPreset(option.dataset.value as PreviewPresetId);
+      const name = document.createElement('span');
+      name.className = 'preview-preset-option-name';
+      name.textContent = preset.name[uiLanguage];
+      option.setAttribute('aria-label', preset.name[uiLanguage]);
+      option.setAttribute('aria-description', preset.description[uiLanguage]);
+      option.replaceChildren(
+        createPresetIcon(preset.id),
+        name,
+        createIconElement(Check, { width: 14, height: 14, class: 'preview-preset-option-check', 'aria-hidden': 'true' })
+      );
+    }
+  };
+  refreshPresetOptions();
+  widthSelectControl.refreshOptions();
   const fontFamilyLabel = fontFamilySelectControl.label;
   const fontFamilySelect = fontFamilySelectControl.select;
   fontFamilySelect.classList.add('preview-font-family-select');
@@ -919,6 +978,11 @@ export function createPreviewController({
     uiLanguage = language;
     uiStrings = getUiStrings(language);
     frame.title = uiStrings.previewTitle;
+    presetSelectControl.setLabel(uiStrings.previewPreset);
+    for (const option of presetSelect.options) option.textContent = getPreviewPreset(option.value as PreviewPresetId).name[language];
+    refreshPresetOptions();
+    widthSelectControl.setLabel(uiStrings.previewWidth);
+    updatePresetControls();
     appearanceLabel.textContent = uiStrings.previewAppearance;
     appearanceSegments.element.setAttribute('aria-label', uiStrings.previewAppearance);
     appearanceSelect.options[0].textContent = uiStrings.auto;
@@ -955,6 +1019,48 @@ export function createPreviewController({
   let sourceColoring = true;
   let showComments = false;
   let fontFamilyPreference = '';
+  let presetPreference: PreviewPresetId = 'default';
+  let contentWidthPreference: PreviewContentWidth = 'responsive';
+  let presetPreferences: PreviewPresetState['preferences'] = {};
+  const isSourceColoringEnabled = () => {
+    const policy = getPreviewPreset(presetPreference).controls.codeColoring;
+    return policy.mode === 'editable' ? sourceColoring : policy.mode === 'fixed' && policy.value === true;
+  };
+  const applyPreviewCodeTheme = (nextAppearance: 'light' | 'dark') => {
+    if (getPreviewPreset(presetPreference).renderer === 'meo') applyCodeTheme(nextAppearance);
+    else setShikiTheme((nextAppearance === 'light' ? githubLightTheme : githubDarkTheme) as RawVscodeTheme, 'preview');
+  };
+  const updatePresetControls = () => {
+    const preset = getPreviewPreset(presetPreference);
+    for (const [key, control] of [
+      ['fontFamily', fontFamilyControl], ['appearance', appearanceControl],
+      ['codeColoring', sourceColoringControl], ['htmlComments', showCommentsControl],
+      ['contentWidth', widthControl]
+    ] as const) control.hidden = preset.controls[key].mode !== 'editable';
+    presetSelect.value = presetPreference;
+    presetSelectControl.syncFromSelect();
+    presetSelectControl.trigger.setAttribute('aria-label', `${uiStrings.previewPreset}: ${preset.name[uiLanguage]}`);
+    widthSelect.value = contentWidthPreference;
+    const appearances = preset.controls.appearance.options ?? [];
+    for (const button of appearanceSegments.element.querySelectorAll<HTMLButtonElement>('[data-preview-appearance-choice]')) {
+      button.hidden = !appearances.includes(button.dataset.previewAppearanceChoice ?? '');
+    }
+    const widths = preset.controls.contentWidth.options ?? [];
+    widthSelect.replaceChildren(...widths.map(width => {
+      const option = document.createElement('option');
+      option.value = width;
+      option.textContent = width === 'reference' ? uiStrings.previewWidthReference : uiStrings.previewWidthResponsive;
+      return option;
+    }));
+    widthSelect.value = contentWidthPreference;
+    widthSelectControl.refreshOptions();
+    widthSelectControl.syncFromSelect();
+    presetInfoControl.hidden = preset.renderer === 'meo' && preset.notes.length === 0;
+    presetInfoControl.dataset.tooltip = preset.notes.length === 0
+      ? preset.description[uiLanguage]
+      : `${preset.description[uiLanguage]}\n\n${preset.notes.map(note => `• ${note[uiLanguage]}`).join('\n')}`;
+    presetInfoControl.setAttribute('aria-label', `${uiStrings.previewPresetInfo}: ${preset.name[uiLanguage]}`);
+  };
   let requestGeneration = 0;
   let latestAcceptedRequestGeneration = -1;
   let frameGeneration = 0;
@@ -1042,7 +1148,7 @@ export function createPreviewController({
   let commitPendingCodeHighlight: (() => void) | null = null;
   const currentCodeHighlight = (frameDocument: Document): (() => boolean) => {
     const generation = frameGeneration;
-    return () => !disposed && sourceColoring && generation === frameGeneration
+    return () => !disposed && isSourceColoringEnabled() && (latestPayload?.preset ?? 'default') === presetPreference && generation === frameGeneration
       && activeFrameDocument === frameDocument;
   };
   const cancelHighlightFrame = () => {
@@ -1053,7 +1159,7 @@ export function createPreviewController({
     if (highlightFrame !== null) return;
     highlightFrame = window.requestAnimationFrame(() => {
       highlightFrame = null;
-      if (!disposed && sourceColoring && activeFrameDocument === frameDocument) {
+      if (currentCodeHighlight(frameDocument)()) {
         applyPreviewCodeHighlight(frameDocument, true, currentCodeHighlight(frameDocument));
       }
     });
@@ -1108,7 +1214,7 @@ export function createPreviewController({
       pendingCommit();
       return;
     }
-    if (!disposed && sourceColoring && activeFrameDocument) {
+    if (!disposed && isSourceColoringEnabled() && activeFrameDocument) {
       applyPreviewCodeHighlight(activeFrameDocument, true, currentCodeHighlight(activeFrameDocument));
     }
   }, 'preview');
@@ -1286,12 +1392,14 @@ export function createPreviewController({
       control.dataset.previewAppearance = toolbarAppearance;
     }
     fontFamilySelectControl.setAppearance(toolbarAppearance);
+    presetSelectControl.setAppearance(toolbarAppearance);
+    widthSelectControl.setAppearance(toolbarAppearance);
     appearanceSegments.setActive(appearancePreference);
   };
 
   const syncPreviewCodeHighlight = (frameDocument: Document): void => {
-    frameDocument.documentElement.dataset.meoPreviewSourceColoring = String(sourceColoring);
-    if (sourceColoring) applyPreviewCodeHighlight(frameDocument, true, currentCodeHighlight(frameDocument));
+    frameDocument.documentElement.dataset.meoPreviewSourceColoring = String(isSourceColoringEnabled());
+    if (isSourceColoringEnabled()) applyPreviewCodeHighlight(frameDocument, true, currentCodeHighlight(frameDocument));
   };
 
   const syncSourceActiveLineBackground = (frameDocument: Document): void => {
@@ -1431,7 +1539,9 @@ export function createPreviewController({
       const styleElement = frameDocument.querySelector<HTMLStyleElement>('style[data-meo-preview-styles]');
       if (styleElement) styleElement.textContent = payload.styles[appearance];
       previewTableLayout?.dispose();
-      previewTableLayout = createPreviewTableLayoutController(frameDocument);
+      frameDocument.documentElement.dataset.meoPreviewPreset = payload.preset ?? 'default';
+      frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(getPreviewPreset(payload.preset).renderer === 'meo');
+      previewTableLayout = getPreviewPreset(payload.preset).renderer === 'meo' ? createPreviewTableLayoutController(frameDocument) : null;
       const presentationGeneration = mermaidPresentationGeneration + 1;
       mermaidPresentationGeneration = presentationGeneration;
       const isCurrent = () => (
@@ -1447,7 +1557,7 @@ export function createPreviewController({
       attachPreviewMathViewports(frameDocument);
       syncPreviewCodeHighlight(frameDocument);
       frameDocument.addEventListener('scroll', () => {
-        if (!disposed && activeFrameDocument === frameDocument && sourceColoring) scheduleViewportHighlight(frameDocument);
+        if (!disposed && activeFrameDocument === frameDocument && isSourceColoringEnabled()) scheduleViewportHighlight(frameDocument);
         if (!disposed && activeFrameDocument === frameDocument) onViewportChange?.();
       }, { passive: true, signal });
       const notifyTrustedViewportInteraction = (event: Event) => {
@@ -1538,9 +1648,10 @@ export function createPreviewController({
           reusableDocument,
           reusableMain,
           payload.html,
-          sourceColoring,
+          isSourceColoringEnabled(),
           pendingCodeBlocks,
-          () => !disposed && sourceColoring && loadGeneration === frameGeneration
+          () => !disposed && isSourceColoringEnabled() && loadGeneration === frameGeneration,
+          (reusableDocument.documentElement.dataset.meoPreviewPreset ?? 'default') === (payload.preset ?? 'default')
         );
         if (deferredCodeBlocks.length > 0) {
           commitPendingCodeHighlight = () => {
@@ -1578,7 +1689,7 @@ export function createPreviewController({
     previewTableLayout = null;
     loadingFrameText = renderedText;
     frame.onload = () => initializeFrame();
-    frame.srcdoc = `<!DOCTYPE html><html lang="${uiLanguage}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${katexStylesTag}<style data-meo-preview-styles>${styles}</style><style>${previewScrollbarStyles}${previewCodeCopyStyles}${previewLatexMathViewportStyles}${previewSourcePositionMarkerStyles}.meo-export-doc a[data-meo-preview-href]{cursor:pointer}${previewSearchStyles}</style></head><body><div class="meo-export-page"><main class="meo-export-doc">${payload.html}</main></div></body></html>`;
+    frame.srcdoc = `<!DOCTYPE html><html lang="${uiLanguage}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${katexStylesTag}<style data-meo-preview-styles>${styles}</style><style>${previewScrollbarStyles}${previewCodeCopyStyles}${previewLatexMathViewportStyles}${previewSourcePositionMarkerStyles}.meo-export-doc a[data-meo-preview-href]{cursor:pointer}${previewSearchStyles}</style></head><body><div class="meo-export-page"><main class="meo-export-doc markdown-body">${payload.html}</main></div></body></html>`;
   };
 
   const applyAppearanceToFrame = (preserveReadingPosition = false) => {
@@ -1728,6 +1839,8 @@ export function createPreviewController({
     nextAppearance: PreviewAppearance,
     { post = false }: { post?: boolean } = {}
   ): void => {
+    if (post && (getPreviewPreset(presetPreference).controls.appearance.mode !== 'editable'
+      || !getPreviewPreset(presetPreference).controls.appearance.options?.includes(nextAppearance))) return;
     if (nextAppearance !== 'auto' && nextAppearance !== 'light' && nextAppearance !== 'dark') {
       return;
     }
@@ -1736,13 +1849,16 @@ export function createPreviewController({
     if (changed) capturePresentationScroll();
     appearancePreference = nextAppearance;
     appearance = resolvedAppearance;
-    applyCodeTheme(resolvedAppearance);
+    if (presetPreference === 'default') presetPreferences.default = { appearance: nextAppearance, contentWidth: 'responsive' };
+    applyPreviewCodeTheme(resolvedAppearance);
     updateThemeToggle();
     if (changed && activeFrameDocument) {
       applyAppearanceToFrame();
     }
     if (post) {
-      vscode.postMessage({ type: 'setPreviewAppearance', appearance: appearancePreference });
+      presetPreferences[presetPreference] = { appearance: appearancePreference, contentWidth: contentWidthPreference };
+      if (presetPreference === 'default') vscode.postMessage({ type: 'setPreviewAppearance', appearance: appearancePreference });
+      onPresetPreferencesChanged?.();
     }
   };
 
@@ -1801,7 +1917,9 @@ export function createPreviewController({
     return previewRenderTransport.render({
       text,
       uiLanguage,
-      environment: getStyleEnvironment()
+      environment: getStyleEnvironment(),
+      preset: presetPreference,
+      contentWidth: contentWidthPreference
     }).then((result) => {
       if (generation !== requestGeneration) return;
       hasPendingRequest = false;
@@ -1868,6 +1986,7 @@ export function createPreviewController({
     enabled: boolean,
     { post = false }: { readonly post?: boolean } = {}
   ): void => {
+    if (post && getPreviewPreset(presetPreference).controls.codeColoring.mode !== 'editable') return;
     if (sourceColoring === enabled) {
       updateSourceColoringControl();
       return;
@@ -1885,6 +2004,7 @@ export function createPreviewController({
     value: string,
     { post = false }: { readonly post?: boolean } = {}
   ): void => {
+    if (post && getPreviewPreset(presetPreference).controls.fontFamily.mode !== 'editable') return;
     const nextFontFamily = normalizePreviewFontFamily(value);
     if (disposed || nextFontFamily === null) {
       fontFamilySelect.value = fontFamilyPreference;
@@ -1973,6 +2093,7 @@ export function createPreviewController({
   };
 
   const setShowComments = (enabled: boolean, { post = false }: { readonly post?: boolean } = {}): void => {
+    if (post && getPreviewPreset(presetPreference).controls.htmlComments.mode !== 'editable') return;
     const changed = showComments !== enabled;
     showComments = enabled;
     showCommentsSegments.setActive(String(enabled) as 'true' | 'false');
@@ -1986,6 +2107,48 @@ export function createPreviewController({
   };
   showCommentsSegments.element.addEventListener('click', handleShowCommentsSegmentClick);
   setShowComments(false);
+  const getPresetState = (): PreviewPresetState => ({
+    preset: presetPreference,
+    preferences: { ...presetPreferences, [presetPreference]: { appearance: appearancePreference, contentWidth: contentWidthPreference } }
+  });
+  const setPreset = (preset: PreviewPresetId, { persist = true } = {}) => {
+    if (disposed || !isPreviewPresetId(preset) || preset === presetPreference) return;
+    presetPreferences[presetPreference] = { appearance: appearancePreference, contentWidth: contentWidthPreference };
+    capturePresentationScroll();
+    presetPreference = preset;
+    const preference = presetPreferences[preset] ?? getPreviewPreset(preset).defaults;
+    appearancePreference = preference.appearance;
+    contentWidthPreference = preference.contentWidth;
+    appearance = appearancePreference === 'auto' ? getEditorAppearance() : appearancePreference;
+    applyPreviewCodeTheme(appearance);
+    updateThemeToggle();
+    updatePresetControls();
+    const text = hasPendingRequest ? pendingText : latestAcceptedText;
+    if (text !== null) void requestRender(text, { force: true, preserveViewport: true });
+    if (persist) onPresetPreferencesChanged?.();
+  };
+  const restorePresetState = (value: unknown) => {
+    const state = decodePreviewPresetState(value);
+    if (!state) return;
+    presetPreferences = { ...state.preferences, default: { appearance: appearancePreference, contentWidth: 'responsive' } };
+    setPreset(state.preset, { persist: false });
+  };
+  const handlePresetChange = () => {
+    if (isPreviewPresetId(presetSelect.value)) setPreset(presetSelect.value);
+  };
+  const handleWidthChange = () => {
+    const width = widthSelect.value;
+    if (getPreviewPreset(presetPreference).controls.contentWidth.mode !== 'editable'
+      || !getPreviewPreset(presetPreference).controls.contentWidth.options?.includes(width)
+      || (width !== 'responsive' && width !== 'reference')) return;
+    contentWidthPreference = width;
+    const text = hasPendingRequest ? pendingText : latestAcceptedText;
+    if (text !== null) void requestRender(text, { force: true, preserveViewport: true, preserveFrame: true });
+    onPresetPreferencesChanged?.();
+  };
+  presetSelect.addEventListener('change', handlePresetChange);
+  widthSelect.addEventListener('change', handleWidthChange);
+  updatePresetControls();
   const getVisualSourceMap = (): PreviewSourceMapEntry[] => {
     getSourceMap();
     return visualSourceMap;
@@ -2597,19 +2760,19 @@ export function createPreviewController({
   };
 
   const getVisibleDocumentRange = () => {
-    const headings = getHeadings();
     const viewportHeight = frame.contentWindow?.innerHeight ?? host.clientHeight;
     const elements = getSourceElements();
     const visibleLines = elements
       .filter((element) => {
+        if (element.getClientRects().length === 0) return false;
         const rect = element.getBoundingClientRect();
-        return rect.bottom >= 0 && rect.top <= viewportHeight;
+        return rect.height > 0 && rect.bottom > 0 && rect.top < viewportHeight;
       })
       .map((element) => Number.parseInt(element.dataset.sourceLine ?? '1', 10))
       .filter(Number.isFinite);
-    const fallbackLastLine = headings.at(-1)?.line ?? 1;
     const fromLine = visibleLines.length > 0 ? Math.min(...visibleLines) : 1;
-    const toLine = visibleLines.length > 0 ? Math.max(...visibleLines) : fallbackLastLine;
+    // A hidden/unpainted surface has no visible range, never the entire document.
+    const toLine = visibleLines.length > 0 ? Math.max(...visibleLines) : fromLine;
     return { from: fromLine, to: toLine, fromLine, toLine };
   };
 
@@ -2619,6 +2782,7 @@ export function createPreviewController({
       const anchorY = (frame.contentWindow?.innerHeight ?? host.clientHeight) * ratio;
       let activeLine = 1;
       for (const heading of getSourceElements()) {
+        if (heading.getClientRects().length === 0) continue;
         if (heading.getBoundingClientRect().top > anchorY) {
           break;
         }
@@ -2649,6 +2813,12 @@ export function createPreviewController({
 
   return {
     host,
+    presetControl,
+    widthControl,
+    presetInfoControl,
+    getPresetState,
+    setPreset,
+    restorePresetState,
     appearanceControl,
     fontFamilyControl,
     sourceColoringControl,
@@ -2656,7 +2826,13 @@ export function createPreviewController({
     requestRender,
     preload: (text: string) => requestRender(text, { background: true }),
     acceptRenderResponse,
-    setAppearance,
+    setAppearance: (nextAppearance: PreviewAppearance, options?: { readonly post?: boolean }) => {
+      if (!options?.post && presetPreference !== 'default') {
+        presetPreferences.default = { appearance: nextAppearance, contentWidth: 'responsive' };
+        return;
+      }
+      setAppearance(nextAppearance, options);
+    },
     setSourceColoring,
     setShowComments,
     setFontFamily,
@@ -2686,14 +2862,14 @@ export function createPreviewController({
     syncAutoAppearance: () => {
       if (appearancePreference === 'auto') setAppearance('auto');
       else {
-        applyCodeTheme(appearance);
+        applyPreviewCodeTheme(appearance);
         updateThemeToggle();
       }
       refreshTheme();
     },
     refreshTheme,
     getAppearance: () => appearance,
-    getSourceColoring: () => sourceColoring,
+    getSourceColoring: isSourceColoringEnabled,
     getStyleEnvironment,
     setVisible: (visible: boolean) => {
       host.hidden = !visible;
@@ -2798,6 +2974,10 @@ export function createPreviewController({
       showCommentsSegments.element.removeEventListener('click', handleShowCommentsSegmentClick);
       fontFamilySelect.removeEventListener('change', handleFontFamilyChange);
       fontFamilySelectControl.dispose();
+      presetSelect.removeEventListener('change', handlePresetChange);
+      widthSelect.removeEventListener('change', handleWidthChange);
+      presetSelectControl.dispose();
+      widthSelectControl.dispose();
       frame.onload = null;
       disposePreviewMathViewports();
       previewTableLayout?.dispose();

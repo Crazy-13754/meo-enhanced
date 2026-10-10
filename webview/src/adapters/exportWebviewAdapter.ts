@@ -5,6 +5,7 @@ import type { ExportSnapshotResolution } from '../../../src/protocol/exportSnaps
 import { createExportSnapshotResponder } from './exportSnapshotTransport';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
 import type { CodeThemeDto } from '../../../src/protocol/hostConfigurationEvents';
+import type { PreviewPresetId } from '../../../src/foundation/previewPresets';
 
 export type ExportWebviewAdapterDependencies = {
   readonly postMessage: (message: WebviewToHostMessage) => void;
@@ -14,6 +15,7 @@ export type ExportWebviewAdapterDependencies = {
   readonly getUiLanguage: () => UiLanguage;
   readonly getStyleEnvironment: () => EditorStyleEnvironment;
   readonly getCodeTheme: () => CodeThemeDto;
+  readonly getPreset?: () => PreviewPresetId;
 };
 
 export type ExportWebviewAdapter = {
@@ -78,7 +80,8 @@ export function createExportWebviewAdapter(
               appearance: dependencies.getPreviewAppearance(),
               uiLanguage: dependencies.getUiLanguage(),
               environment: Object.freeze(environment),
-              codeTheme: Object.freeze(codeTheme)
+              codeTheme: Object.freeze(codeTheme),
+              ...(dependencies.getPreset ? { preset: dependencies.getPreset() } : {})
             })
           });
         } catch (error) {

@@ -1,4 +1,5 @@
 import type { EditorAppearance } from '../../../src/protocol/editorCommands';
+import { getGithubMermaidConfig } from '../../../src/preview/githubMermaid';
 
 type PreviewAppearance = Exclude<EditorAppearance, 'auto'>;
 import {
@@ -42,11 +43,13 @@ export function createPreviewMermaidRenderer(
     const renderGeneration = latestRenderGeneration + 1;
     latestRenderGeneration = renderGeneration;
     activeGroup?.end();
+    const preset = frameDocument.documentElement.dataset.meoPreviewPreset ?? 'default';
     const hasPendingBlocks = Array.from(frameDocument.querySelectorAll<HTMLElement>(
       '.meo-export-mermaid[data-source-b64]'
     )).some((block) => (
       !block.classList.contains('is-rendered')
       || block.dataset.meoPreviewMermaidAppearance !== appearance
+      || (block.dataset.meoPreviewMermaidPreset ?? 'default') !== preset
     ));
     if (!hasPendingBlocks) return Promise.resolve();
     const scheduled = renderTail.catch(() => undefined).then(async () => {
@@ -98,11 +101,13 @@ async function renderMermaidBlocks(
   commit: (mutate: () => void) => void
 ): Promise<void> {
   if (!isCurrent()) return;
+  const preset = frameDocument.documentElement.dataset.meoPreviewPreset ?? 'default';
   const viewportCenter = (frameDocument.defaultView?.innerHeight ?? 0) / 2;
   const blocks = Array.from(frameDocument.querySelectorAll<HTMLElement>('.meo-export-mermaid[data-source-b64]'))
     .filter((block) => (
       !block.classList.contains('is-rendered')
       || block.dataset.meoPreviewMermaidAppearance !== appearance
+      || (block.dataset.meoPreviewMermaidPreset ?? 'default') !== preset
     ))
     .map((block, documentIndex) => ({ block, documentIndex }))
     .sort((left, right) =>
@@ -114,7 +119,8 @@ async function renderMermaidBlocks(
   const mermaid = await loadMermaidRuntime();
   if (!isCurrent()) return;
   const palette = readPreviewMermaidPalette(frameDocument, appearance);
-  mermaid.initialize({
+  const github = preset === 'github-readme';
+  mermaid.initialize(github ? getGithubMermaidConfig(appearance === 'dark') : {
     startOnLoad: false,
     securityLevel: 'strict',
     theme: 'base',
@@ -155,6 +161,7 @@ async function renderMermaidBlocks(
     if (!source) continue;
 
     const cacheKey = [
+      github ? 'github-readme' : 'default',
       appearance,
       palette.background,
       palette.nodeBackground,
@@ -195,6 +202,7 @@ async function renderMermaidBlocks(
       block.classList.remove('is-error');
       delete block.dataset.meoPreviewMermaidPending;
       block.dataset.meoPreviewMermaidAppearance = appearance;
+      block.dataset.meoPreviewMermaidPreset = preset;
       const copyActions = block.querySelector(':scope > .meo-preview-code-actions');
       block.innerHTML = `<div class="meo-export-mermaid-svg">${svg}</div>`;
       if (copyActions) block.append(copyActions);
