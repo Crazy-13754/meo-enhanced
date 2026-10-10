@@ -2370,6 +2370,13 @@ function buildWidgetTableData(
 const mountedTableWidgets = new WeakMap<EditorView, Set<HtmlTableWidget>>();
 const tableDomOwners = new WeakMap<HTMLElement, HtmlTableWidget>();
 
+/** Ends native cell presentation when document navigation supersedes its return point. */
+export function endTableCellEditing(view: EditorView): void {
+  for (const widget of mountedTableWidgets.get(view) ?? []) {
+    if (widget.cellInteraction.snapshot().editingTarget) widget.clearSelection('external');
+  }
+}
+
 export function refreshMountedTablePositions(
   view: EditorView,
   diagnostics: EditorDiagnostic[] = [],
@@ -3198,6 +3205,9 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
         continue;
       }
       if (effect.kind === 'clear') {
+        if (effect.reason !== 'pointercancel' && effect.reason !== 'lostcapture') {
+          runPrimary(() => this.endCellEditing());
+        }
         runPrimary(() => clearNativeTextSelection(effect.reason === 'dispose'));
         runPrimary(() => this.applySelection(null));
         if (wrap && effect.reason === 'cross-table') {
@@ -3216,6 +3226,9 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
         continue;
       }
       if (effect.kind === 'cells') {
+        if (effect.focus === 'table' || effect.range.fromRow !== effect.range.toRow || effect.range.fromCol !== effect.range.toCol) {
+          runPrimary(() => this.endCellEditing());
+        }
         runPrimary(clearNativeTextSelection);
         if (wrap) runPrimary(() => this.setTableInteractionActive(wrap, true));
         runPrimary(() => this.applySelection(effect.range));
@@ -3270,6 +3283,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   }
 
   clearSelection(reason: 'outside' | 'escape' | 'cross-table' | 'external' | 'replacement' = 'external') {
+    this.endCellEditing();
     const transition = this.cellSelection.accept({ type: 'clear', reason });
     this.applyCellSelectionTransition(transition);
   }
@@ -3710,7 +3724,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
         ? nextTarget.closest('.meo-md-html-table-shell')
         : null;
       if (nextTableShell) {
-        this.transferTableInteraction(wrap);
+        if (nextTableShell !== this.domRefs?.shell) this.transferTableInteraction(wrap);
         return;
       }
       if (pendingTableSwitchPointerId !== null) {
@@ -3719,16 +3733,21 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       }
       const view = this.getEditorView(wrap);
       if (view) commitPendingTableEdits(view);
-      this.exitTableInteraction(wrap);
+      // Window activation and Webview chrome suspend the native input. Only a
+      // new document focus target ends the cell session; outside clicks have
+      // their own explicit boundary below, including clicks with no focus target.
+      if (!this.cellInteraction.snapshot().editingTarget || (nextTarget instanceof Node && view?.dom.contains(nextTarget))) {
+        this.exitTableInteraction(wrap);
+      }
     };
 
     const onDocumentPointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node)) return;
       const wrap = getWrap();
       const container = getContainer();
-      // A modal owns its pointer interactions. Scheduling an outside-table exit
-      // here could blur the cell after the modal restores its original focus.
-      if (isEditingMenuTarget(event.target) || (event.target instanceof Element && event.target.closest('dialog[open]'))) {
+      // Chrome and modals temporarily own focus. A delayed outside-table exit
+      // would otherwise clear the cell after their close handler restores it.
+      if (isEditingMenuTarget(event.target) || (event.target instanceof Element && event.target.closest('dialog[open], .mode-toolbar, .find-panel'))) {
         return;
       }
       const isOutsideTable = !container.contains(event.target);
@@ -5022,7 +5041,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       const view = this.view;
       const wrap = this.domRefs?.wrap;
       if (view && wrap) this.resolveCurrentTableRange(view, wrap);
-      this.cellInteraction.accept({ type: 'focus', target: { row: rowIndex, col: colIndex } });
+      this.setCellEditingState(input, true);
       const pending = this.cellInteraction.snapshot().pending;
       const lastPendingEdit = pending[pending.length - 1];
       if (
@@ -5052,7 +5071,6 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
           }
         });
       }
-      this.setCellEditingState(input, true);
       this.setTableInteractionActive(container, true);
       this.setSingleCellSelection({ row: rowIndex, col: colIndex }, 'focus');
       notifySelectionChange();
@@ -5060,14 +5078,14 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     input.addEventListener('blur', (event) => {
       if (this.destroyed || !this.view) return;
       refreshPreview();
-      this.setCellEditingState(input, false);
+      this.cellInteraction.accept({ type: 'blur', target: { row: rowIndex, col: colIndex } });
       notifySelectionChange();
       const nextTarget = event.relatedTarget;
       const nextTableShell = nextTarget instanceof Element
         ? nextTarget.closest('.meo-md-html-table-shell')
         : null;
       if (nextTableShell) {
-        if (nextTarget instanceof Node && !container.contains(nextTarget)) {
+        if (nextTableShell !== this.domRefs?.shell) {
           this.transferTableInteraction(container);
         }
         return;
@@ -5289,7 +5307,30 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   setCellEditingState(input: HTMLTextAreaElement, isEditing: boolean) {
     const content = input?.parentElement;
     if (!(content instanceof HTMLElement)) return;
+    const target = this.parseCellCoords(input.dataset.tableRow, input.dataset.tableCol);
+    if (isEditing && target) {
+      for (const widget of this.view ? mountedTableWidgets.get(this.view) ?? [] : []) {
+        if (widget !== this) widget.endCellEditing();
+      }
+      const previous = this.cellInteraction.snapshot().editingTarget;
+      if (previous && (previous.row !== target.row || previous.col !== target.col)) this.endCellEditing();
+      this.cellInteraction.accept({ type: 'focus', target });
+      if (input.ownerDocument.activeElement !== input || !input.ownerDocument.hasFocus()) {
+        this.cellInteraction.accept({ type: 'blur', target });
+      }
+    }
     content.classList.toggle('is-editing', isEditing);
+  }
+
+  endCellEditing() {
+    const target = this.cellInteraction.snapshot().editingTarget;
+    this.cancelPendingCellAutoCommit();
+    const input = target ? this.domRefs?.allRowInputs[target.row]?.[target.col] : null;
+    if (input) {
+      this.refreshCellPreviewFromInput(input);
+      this.setCellEditingState(input, false);
+    }
+    this.cellInteraction.accept({ type: 'exit' });
   }
 
   refreshAllCellPreviews() {

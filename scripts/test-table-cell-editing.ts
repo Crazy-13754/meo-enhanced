@@ -51,6 +51,19 @@ assert(restored.snapshot.phase === 'pending' && restored.snapshot.pending[0]?.va
 const retry = interaction.accept({ type: 'commit', reason: 'history' });
 assert(retry.commit?.edits[0]?.value === 'merged', 'Retry did not retain pending value');
 assert(interaction.accept({ type: 'commit-result', generation: retry.commit!.generation, outcome: 'applied' }).snapshot.phase === 'idle', 'Successful commit did not return idle');
+assert(interaction.snapshot().editingTarget?.row === 1 && interaction.snapshot().focused, 'Source commit ended the active cell session');
+interaction.accept({ type: 'blur', target: { row: 1, col: 0 } });
+assert(interaction.snapshot().editingTarget?.col === 0 && !interaction.snapshot().focused, 'Blur ended the editing session instead of suspending focus');
+interaction.accept({ type: 'focus', target: { row: 1, col: 1 } });
+interaction.accept({ type: 'blur', target: { row: 1, col: 0 } });
+assert(interaction.snapshot().editingTarget?.col === 1 && interaction.snapshot().focused, 'A stale blur suspended the newly selected cell');
+const exitTimer = interaction.accept({ type: 'input', target: { row: 1, col: 1 }, value: 'retained', sequence: 8 }).scheduleAutoCommit!.generation;
+interaction.accept({ type: 'exit' });
+assert(interaction.snapshot().editingTarget === null && !interaction.snapshot().focused && interaction.snapshot().pending[0]?.value === 'retained',
+  'Explicit exit must end presentation ownership without discarding uncommitted content');
+assert(!interaction.accept({ type: 'timer', generation: exitTimer }).timerCurrent, 'An exited cell kept an auto-commit timer that could restore its old focus');
+const exitCommit = interaction.accept({ type: 'commit', reason: 'outside' }).commit!;
+interaction.accept({ type: 'commit-result', generation: exitCommit.generation, outcome: 'applied' });
 
 const retryAfterFailure = createTableCellInteraction();
 retryAfterFailure.accept({ type: 'input', target: { row: 1, col: 0 }, value: 'first cell', sequence: 3 });

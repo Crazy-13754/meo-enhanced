@@ -2559,6 +2559,10 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
   visibility: hidden !important;
 }
 
+.editor-root.meo-window-focus-return-pending .cm-editor .meo-md-html-table textarea:focus {
+  background: transparent;
+}
+
 .cm-editor,
 .cm-editor .cm-scroller,
 .cm-editor .cm-content,

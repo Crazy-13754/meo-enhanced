@@ -99,6 +99,7 @@ import {
   tableCellSourceRangeForInput,
   tableHeaderAlignmentOverrideField,
   commitPendingTableEdits,
+  endTableCellEditing,
   focusHistoryChange,
   focusTableHistoryChange,
   refreshMountedTablePositions,
@@ -1698,6 +1699,7 @@ export function createEditor({
   };
 
   const selectSearchMatch = (from: number, to: number, { focusEditor = true }: { focusEditor?: boolean } = {}) => {
+    endTableCellEditing(view);
     const htmlBlock = currentMode === 'live'
       ? collectRenderableHtmlBlocks(view.state).find((block) => from < block.to && to > block.from)
       : null;
@@ -1733,6 +1735,7 @@ export function createEditor({
   };
 
   const applyRevealSelection = (anchor: number, head = anchor, { focusEditor = true, align = 'center' }: RevealOptions = {}, settleNavigation = false) => {
+    endTableCellEditing(view);
     const max = view.state.doc.length;
     const nextAnchor = Math.max(0, Math.min(anchor, max));
     const nextHead = Math.max(0, Math.min(head, max));
@@ -2606,7 +2609,16 @@ export function createEditor({
   };
   onEditorFocusIn = (event) => {
     const target = editableTarget(event.target);
-    if (target) lastFocusedEditorTarget = target;
+    if (target) {
+      // Table controls borrow focus without replacing the suspended cell's
+      // native selection as the document's return point.
+      const shell = event.target instanceof Element ? event.target.closest('.meo-md-html-table-shell') : null;
+      if (shell && target === view.contentDOM && lastFocusedEditorTarget instanceof HTMLTextAreaElement &&
+        lastFocusedEditorTarget.closest('.meo-md-html-table-shell') === shell &&
+        lastFocusedEditorTarget.parentElement?.classList.contains('is-editing')) return;
+      lastFocusedEditorTarget = target;
+      if (!(event.target instanceof Element) || !event.target.closest('.meo-md-html-table-shell')) endTableCellEditing(view);
+    }
   };
   onEditorFocusOut = (event) => {
     const target = event.target;

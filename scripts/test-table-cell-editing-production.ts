@@ -131,6 +131,58 @@ async function main() {
       return active ? { row: active.dataset.tableRow, col: active.dataset.tableCol } : null;
     });
     if (shiftTabTarget?.row !== '1' || shiftTabTarget.col !== '0') throw new Error(`Shift+Tab did not select preceding cell: ${JSON.stringify(shiftTabTarget)}`);
+    const editingCells = await page.$$eval('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing', cells => cells.length);
+    if (editingCells !== 1) throw new Error(`Cell navigation retained ${editingCells} editing presentations`);
+
+    const menuSession = await page.evaluate((selector) => {
+      const input = document.querySelector<HTMLTextAreaElement>(selector)!;
+      input.setSelectionRange(3, 7, 'backward');
+      const shell = input.closest('.meo-md-html-table-shell')!;
+      shell.querySelector<HTMLButtonElement>('.meo-md-html-table-context-trigger')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+      shell.querySelector<HTMLButtonElement>('[data-command="insert-row-below"]')!.focus();
+      return { active: document.activeElement?.tagName, editing: input.parentElement!.classList.contains('is-editing') };
+    }, first);
+    if (menuSession.active !== 'BUTTON' || !menuSession.editing) throw new Error(`Table menu ended the cell session: ${JSON.stringify(menuSession)}`);
+    const menuReturn = await page.evaluate((selector) => {
+      (window as any).__tableCellEditor.focus();
+      const input = document.querySelector<HTMLTextAreaElement>(selector)!;
+      return { focused: document.activeElement === input, start: input.selectionStart, end: input.selectionEnd, direction: input.selectionDirection };
+    }, first);
+    if (!menuReturn.focused || menuReturn.start !== 3 || menuReturn.end !== 7 || menuReturn.direction !== 'backward') {
+      throw new Error(`Table menu lost the native cell return point: ${JSON.stringify(menuReturn)}`);
+    }
+    await page.keyboard.press('Escape');
+    const stillEditing = await page.$eval(first, input => input.parentElement!.classList.contains('is-editing'));
+    if (!stillEditing) throw new Error('Closing the table menu ended the cell editing session');
+
+    await page.evaluate(() => {
+      (window as any).__cellPresentationFrames = [];
+      (window as any).__recordCellPresentation = true;
+      const sample = () => {
+        (window as any).__cellPresentationFrames.push({
+          editing: document.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing').length,
+          active: document.activeElement?.tagName,
+          columns: document.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) thead textarea').length
+        });
+        if ((window as any).__recordCellPresentation) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+      (window as any).__tableCellEditor.executeCommand('columnAfter');
+    });
+    await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) thead textarea').length === 3
+      && document.activeElement instanceof HTMLTextAreaElement);
+    await page.evaluate(() => (window as any).__tableCellEditor.undo());
+    await page.evaluate(() => (window as any).__tableCellEditor.redo());
+    await page.evaluate(() => (window as any).__tableCellEditor.undo());
+    const structuralFrames = await page.evaluate(() => {
+      (window as any).__recordCellPresentation = false;
+      return (window as any).__cellPresentationFrames as Array<{ editing: number; active: string; columns: number }>;
+    });
+    if (structuralFrames.length === 0 || structuralFrames.some(frame => frame.editing !== 1)) {
+      throw new Error(`Structural command/Undo/Redo flashed the cell presentation: ${JSON.stringify(structuralFrames)}`);
+    }
+    await waitForTable(page);
 
     await page.click(last);
     await page.keyboard.press('Tab');
@@ -195,6 +247,9 @@ async function main() {
     }));
     if (escaped.active === 'TEXTAREA' || escaped.depth.undo !== beforeEscapeDepth.undo + 1) {
       throw new Error(`Escape did not commit exactly once and exit: ${JSON.stringify({ beforeEscapeDepth, escaped })}`);
+    }
+    if (await page.$('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing')) {
+      throw new Error('Escape retained the cell editing presentation');
     }
     const undo = await page.evaluate(() => (window as any).__tableCellEditor.undo());
     await page.waitForFunction(() => !(window as any).__tableCellEditor.getText().includes('continued'));
