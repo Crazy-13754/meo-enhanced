@@ -1,3 +1,4 @@
+import { enterDisplayMathSource, findDisplayMathOpening, readDisplayMathHistoryTarget } from './history-display-math-chromium';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -149,6 +150,13 @@ async function setMode(
 
 async function editBlock(page: any, target: EditTarget, mode: Exclude<BlockMode, 'preview'>) {
   const occurrence = target.occurrence ?? 'first';
+  if (target.kind === 'math') {
+    const opening = await findDisplayMathOpening(page, '__renderedHistoryStressEditor', target.needle, occurrence);
+    await enterDisplayMathSource(page, '__renderedHistoryStressEditor', opening, 'end');
+    await page.keyboard.type(target.marker);
+    await waitForFrames(page);
+    return;
+  }
   await setMode(page, target.kind, target.needle, mode, occurrence);
   await page.evaluate(({ blockKind, lineNeedle, targetOccurrence }) => {
     const editor = (window as any).__renderedHistoryStressEditor;
@@ -184,7 +192,14 @@ async function editBlock(page: any, target: EditTarget, mode: Exclude<BlockMode,
   await waitForFrames(page);
 }
 
-async function assertFocusedTarget(page: any, target: EditTarget, direction: 'undo' | 'redo', step: number) {
+async function assertFocusedTarget(page: any, target: EditTarget, direction: string, step: number) {
+  if (target.kind === 'math') {
+    const opening = await findDisplayMathOpening(page, '__renderedHistoryStressEditor', target.needle, target.occurrence ?? 'first');
+    const state = await readDisplayMathHistoryTarget(page, '__renderedHistoryStressEditor', opening);
+    if (!state.focused || !state.caretAtEnd || !state.visible || !state.resultPresent || !state.source.includes(target.needle))
+      throw new Error(`${direction} step ${step} missed native formula: ${JSON.stringify(state)}`);
+    return;
+  }
   const state = await page.evaluate((blockKind) => {
     const outer = (window as any).__renderedHistoryStressEditor.view;
     const selector = blockKind === 'mermaid' ? '.meo-mermaid-editing-block' : '.meo-latex-math-editing-block';
@@ -329,7 +344,7 @@ async function main() {
     const versions = [await documentText(page)];
     for (const edit of edits) {
       await editBlock(page, edit, edit.mode);
-      if (edit.returnToPreview) {
+      if (edit.returnToPreview && edit.kind === 'mermaid') {
         await setMode(page, edit.kind, edit.needle, 'preview', edit.occurrence ?? 'first');
       }
       await new Promise((resolve) => setTimeout(resolve, 650));
@@ -436,10 +451,16 @@ async function main() {
     } finally {
       await page.keyboard.up('Control');
     }
-    const immediateTypingBefore = await page.evaluate(() => {
+    const immediateTypingBefore = await page.evaluate(targetNeedle => {
       const editor = (window as any).__renderedHistoryStressEditor;
-      return { scrollTop: editor.view.scrollDOM.scrollTop };
-    });
+      const root = Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-editing-block')).find((node: any) => node.__meoMermaidEditingController?.innerView?.state.doc.toString().includes(targetNeedle)) as any;
+      const inner = root?.__meoMermaidEditingController?.innerView;
+      const caret = inner?.coordsAtPos(inner.state.selection.main.head);
+      const bounds = (window as any).MermaidEditingHarness.editorViewportBounds(editor.view);
+      return { scrollTop: editor.view.scrollDOM.scrollTop,
+        caretVisible: !!caret && caret.top >= bounds.top && caret.bottom <= bounds.bottom };
+    }, immediateTypingTarget.needle);
+    if (!immediateTypingBefore.caretVisible) throw new Error('History returned keyboard ownership while the Mermaid caret was covered');
     await page.keyboard.type(' IMMEDIATE_AFTER_HISTORY');
     await waitForFrames(page, 20);
     const immediateTypingAfter = await page.evaluate((targetNeedle) => {

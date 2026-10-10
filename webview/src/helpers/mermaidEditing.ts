@@ -1006,6 +1006,17 @@ class MermaidEditingController {
     if (!isCurrent()) return false;
     this.innerView.contentDOM.focus({ preventScroll: true });
     if (!isCurrent()) return false;
+    // History must account for the passive header before handing keyboard
+    // ownership back. Otherwise the first input reveals a partly covered caret.
+    const viewportController = getViewportController(this.outerView);
+    const caret = this.innerView.coordsAtPos(position);
+    const visibleBounds = editorViewportBounds(this.outerView);
+    if (caret && (caret.top < visibleBounds.top || caret.bottom > visibleBounds.bottom)) {
+      const margin = visualLineContextMargin(this.outerView, 1);
+      viewportController?.navigateBy({ top: caret.top < visibleBounds.top
+        ? caret.top - visibleBounds.top - margin
+        : caret.bottom - visibleBounds.bottom + margin });
+    }
     // Let the outer replacement finish measuring before reading inner caret
     // coordinates; its transient geometry must not override history placement.
     const isNavigationCurrent = getViewportController(this.outerView)?.captureNavigationCurrentness() ?? (() => true);
@@ -1015,7 +1026,7 @@ class MermaidEditingController {
         read: (innerView) => {
           if (!isCurrent() || !isNavigationCurrent()) return null;
           const coords = innerView.coordsAtPos(position);
-          const viewport = this.outerView.scrollDOM.getBoundingClientRect();
+          const viewport = editorViewportBounds(this.outerView);
           if (!coords || (coords.top >= viewport.top && coords.bottom <= viewport.bottom)) {
             return null;
           }
