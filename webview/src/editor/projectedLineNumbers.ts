@@ -29,6 +29,13 @@ export function mountProjectedLineNumbers(
     commitObservedEditorSize(view);
   });
   const mutationObserver = new MutationObserver(() => schedule());
+  const gutterPositionObserver = new MutationObserver(() => {
+    if (disposed || !column.isConnected) return;
+    schedule();
+    // CodeMirror's own measurement can move the native gutter after our read.
+    // Finish the corrected projection in this microtask, before the next paint.
+    commitObservedEditorSize(view);
+  });
   // Observe only the mount until the adapter supplies its narrower targets.
   mutationObserver.observe(view.contentDOM, { childList: true, subtree: true });
   const sameElements = (left: readonly Element[], right: readonly Element[]) =>
@@ -78,6 +85,9 @@ export function mountProjectedLineNumbers(
   // after resize: waiting for a later frame briefly leaves the column empty.
   queueMicrotask(() => {
     if (disposed || !column.isConnected) return;
+    const gutterRow = column.parentElement;
+    if (gutterRow?.matches('.cm-gutterElement')) gutterPositionObserver.observe(gutterRow,
+      { attributes: true, attributeFilter: ['style'] });
     schedule();
     commitObservedEditorSize(view);
   });
@@ -86,6 +96,7 @@ export function mountProjectedLineNumbers(
     disposed = true;
     resizeObserver?.disconnect();
     mutationObserver.disconnect();
+    gutterPositionObserver.disconnect();
     view.scrollDOM.removeEventListener('scroll', schedule);
     markers.clear();
     elements = mutationTargets = [];

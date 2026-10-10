@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const browser = await launchTestBrowser();
   try {
     for (const kind of ['mermaid', 'math'] as const) {
-      for (const mode of ['source', 'split', 'preview'] as const) {
+      for (const mode of (kind === 'mermaid' ? ['source', 'split', 'preview'] : ['editing', 'reading']) as string[]) {
         const page = await browser.newPage();
         try {
           await page.setViewport({ width: 920, height: 600 });
@@ -38,8 +38,28 @@ async function main(): Promise<void> {
               initialMode: 'live', onApplyChanges() {}
             });
           }, kind);
-          await runHistoryRenderedBlockChromiumInteraction(page,
-            { kind, lineNumber: 103, targetMode: mode }, '__historyMatrixEditor');
+          const settle = async (lineNumber: number, state: string) => {
+            if (kind === 'mermaid') {
+              await runHistoryRenderedBlockChromiumInteraction(page,
+                { kind, lineNumber, targetMode: state as 'source' | 'split' | 'preview' }, '__historyMatrixEditor');
+              return;
+            }
+            await page.evaluate(lineNumber => {
+              const editor = (window as any).__historyMatrixEditor;
+              editor.scrollToLine(lineNumber, 'center');
+              editor.revealSelection(0, 0, { focusEditor: true, align: 'none' });
+            }, lineNumber);
+            await page.waitForSelector('.meo-math-copy-actions');
+            if (state === 'editing') {
+              await page.click('.meo-math-copy-actions [aria-label="Select formula source"]');
+              await page.waitForSelector('.meo-math-live-result');
+              assert.equal(await page.evaluate(() => {
+                const view = (window as any).__historyMatrixEditor.view;
+                return view.state.doc.lineAt(view.state.selection.main.from).number;
+              }), lineNumber + 1, 'Relocated formula action must select the current document source');
+            } else assert.equal(await page.$('.meo-math-source-line'), null, 'Reading formula must hide document source');
+          };
+          await settle(103, mode);
           const originalLength = await page.evaluate(() => {
             const editor = (window as any).__historyMatrixEditor;
             editor.revealSelection(0, 1, { focusEditor: true, align: 'upper' });
@@ -52,11 +72,9 @@ async function main(): Promise<void> {
           await page.mouse.move(0, 0);
           const shiftedLength = await page.evaluate(() => (window as any).__historyMatrixEditor.getText().length);
           assert.equal(shiftedLength, originalLength);
-          await runHistoryRenderedBlockChromiumInteraction(page,
-            { kind, lineNumber: 104, targetMode: mode === 'split' ? 'source' : 'split' }, '__historyMatrixEditor');
+          await settle(104, kind === 'math' ? (mode === 'editing' ? 'reading' : 'editing') : mode === 'split' ? 'source' : 'split');
           assert.equal(await page.evaluate(async () => (window as any).__historyMatrixEditor.undo()), true);
-          await runHistoryRenderedBlockChromiumInteraction(page,
-            { kind, lineNumber: 103, targetMode: mode }, '__historyMatrixEditor');
+          await settle(103, mode);
         } finally { await page.close(); }
       }
     }

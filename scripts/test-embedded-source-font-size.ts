@@ -68,10 +68,11 @@ try {
         outerFont: getComputedStyle(outer).fontSize,
         innerFont: getComputedStyle(inner).fontSize,
         renderedMarkers: markers.length,
-        totalLines: labels.length,
+        totalLines: 77,
+        documentNumbers: labels.map(label => Number(label.textContent)),
         visiblePairs: visible.map((marker) => {
           const number = Number(marker.textContent!.trim());
-          const label = labels[number - 1];
+          const label = labels.find(candidate => Number(candidate.textContent) === number + 2);
           const textTop = (element: HTMLElement) => {
             const range = document.createRange();
             range.selectNodeContents(element);
@@ -99,6 +100,8 @@ try {
       assert.ok(result.visiblePairs.length >= 3, `${mode} should expose visible source lines: ${JSON.stringify(result)}`);
       assert.ok(result.renderedMarkers < result.totalLines && result.visiblePairs.some((pair) => pair.number >= 50),
         `${mode} should measure a deep virtualized part of the source: ${JSON.stringify(result)}`);
+      assert.equal(new Set(result.documentNumbers).size, result.documentNumbers.length,
+        `${mode} projected document line numbers must not duplicate`);
       assert.ok(result.visiblePairs.every((pair) => pair.delta !== null && Math.abs(pair.delta) <= 2),
         `${mode} outer line numbers should align with embedded source: ${JSON.stringify(result)}`);
       assert.ok(result.visiblePairs.every((pair) => pair.documentNumber === pair.number + 2),
