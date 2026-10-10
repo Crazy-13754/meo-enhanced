@@ -23,6 +23,7 @@ import { parseFootnotes } from './footnotes';
 import { createLatexMathElement, parseLatexMathAt } from './math';
 import { isPrimaryModifierPointerClick } from './linkNavigation';
 import { wikiLinkScheme } from './wikiLinks';
+import { isWikiImageTarget, parseWikiReference, wikiImageSrc } from '../../../src/foundation/wikiReference';
 import { normalizeSourceHref } from './rawUrls';
 import type { EditorDiagnostic } from './diagnostics';
 import { continuedListMarker, listMarkerData, listMarkerDataInContainerLine, nextOrderedSequenceNumber } from './listMarkers';
@@ -1351,29 +1352,16 @@ function parseTableInlineMarkdownLink(text: string, index: number, syntax: Retur
 }
 
 function parseTableInlineWikiLink(text: string, index: number) {
-  if (!text.startsWith('[[', index) || isTableInlineEscaped(text, index)) return null;
-  for (let i = index + 2; i < text.length - 1; i += 1) {
-    if (text[i] === '\\') {
-      i += 1;
-      continue;
-    }
-    if (text[i] === ']' && text[i + 1] === ']' && !isTableInlineEscaped(text, i)) {
-      const content = text.slice(index + 2, i);
-      const pipeIndex = content.indexOf('|');
-      const rawTarget = pipeIndex >= 0 ? content.slice(0, pipeIndex).trim() : content.trim();
-      const rawAlias = pipeIndex >= 0 ? content.slice(pipeIndex + 1).trim() : '';
-      const visibleRaw = pipeIndex >= 0 ? content.slice(pipeIndex + 1) : content;
-      const visibleText = rawAlias || rawTarget;
-      const visibleTextFrom = index + 2 + (pipeIndex >= 0 ? pipeIndex + 1 : 0) + (visibleRaw.search(/\S|$/));
-      return {
-        target: rawTarget,
-        visibleText,
-        visibleTextFrom,
-        nextIndex: i + 2
-      };
-    }
-  }
-  return null;
+  const reference = parseWikiReference(text, index);
+  if (!reference || reference.embed) return null;
+  const contentFrom = index + 2;
+  const contentTo = reference.to - 2;
+  const pipe = text.indexOf('|', contentFrom);
+  const hasAlias = pipe >= 0 && pipe < contentTo && text.slice(pipe + 1, contentTo).trim().length > 0;
+  const visibleFrom = hasAlias ? pipe + 1 : contentFrom;
+  const visibleRaw = text.slice(visibleFrom, hasAlias || pipe < 0 ? contentTo : pipe);
+  return { target: reference.target, visibleText: reference.label,
+    visibleTextFrom: visibleFrom + visibleRaw.search(/\S|$/), nextIndex: reference.to };
 }
 
 function trimTableInlineRawUrl(raw: string, precedingChar: string): string {
@@ -1482,7 +1470,8 @@ function appendTableInlinePreviewImage(
   url: string,
   sourceRange: TableCellRange,
   presentationFactory: ImagePresentationFactory,
-  uiLanguage: UiLanguage
+  uiLanguage: UiLanguage,
+  dimensions: { width?: number; height?: number } = {}
 ) {
   if (!url) {
     appendInlineMappedText(parent, `![${altText}]()`, sourceRange);
@@ -1492,7 +1481,7 @@ function appendTableInlinePreviewImage(
   // pointerup instead of being consumed by the standalone image interaction.
   const dom = new ImageWidget(url, decodeTableInlineEscapes(altText), '', null, presentationFactory, {
     pointerInteractionOwner: 'parent',
-    uiLanguage
+    uiLanguage, ...dimensions
   }).toDOM();
   if (dom instanceof HTMLElement) {
     dom.setAttribute('data-meo-link-href', url);
@@ -1681,6 +1670,15 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       });
       parent.appendChild(button);
       i += footnoteMarker[0].length;
+      continue;
+    }
+
+    const wikiImage = parseWikiReference(text, i);
+    if (wikiImage?.embed && isWikiImageTarget(wikiImage.target)) {
+      flushBuffer();
+      appendTableInlinePreviewImage(parent, wikiImage.label, wikiImageSrc(wikiImage.target),
+        { from: baseOffset + i, to: baseOffset + wikiImage.to }, options.presentationFactory, options.uiLanguage, wikiImage);
+      i = wikiImage.to;
       continue;
     }
 
@@ -2120,6 +2118,8 @@ function renderTableCellInlinePreview(
 function consumeTableInlineProtectedSpan(text: string, index: number, endIndex: number, syntax: ReturnType<typeof parseTableInlineSyntax> | null): number | null {
   const code = syntax?.codes.get(index);
   if (code && code.to <= endIndex) return code.to;
+  const reference = parseWikiReference(text, index);
+  if (reference && reference.to <= endIndex) return reference.to;
 
   const kbd = text[index] === '<' && !isTableInlineEscaped(text, index) ? parseKbdTagAt(text, index) : null;
   if (kbd && kbd.nextIndex <= endIndex) return kbd.nextIndex;

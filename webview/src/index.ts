@@ -8,7 +8,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
 import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, Keyboard, ExternalLink, History, Info } from 'lucide';
-import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste } from './helpers/images';
+import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses, initializeWikiLinkHandling, collectWikiLinkTargets, requestWikiLinkStatuses, scheduleWikiLinkStatusRefresh, setWikiLinkRefreshContext, cancelPendingWikiStatusRefresh, handleResolvedWikiLinks } from './helpers/wikiLinks';
@@ -3505,6 +3505,17 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'resolvedImageSrc') {
     settleImageSrcRequest(message);
+    return;
+  }
+
+  if (message.type === 'wikiResourcesChanged') {
+    if (!editor) return;
+    requestWikiLinkStatuses(editor.getText());
+    refreshWikiImagePresentations();
+    editor.refreshDecorations();
+    void previewController.requestRender(editor.getText(), {
+      background: previewController.host.hidden, force: true, preserveViewport: true
+    });
     return;
   }
 

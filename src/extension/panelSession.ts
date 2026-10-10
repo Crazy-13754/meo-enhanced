@@ -1,4 +1,6 @@
 import { runEditorService } from '../host/editorServices';
+import { onDidChangeWikiResources } from '../host/wikiResources';
+import { collectWikiReferences } from '../foundation/wikiReference';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { normalizeDocumentText } from '../foundation/documentText';
@@ -1089,11 +1091,18 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   scheduleSavedRevisionRefresh(0);
   runBackground(viewNavigation.revealCurrentEditorSelection(), 'viewNavigation.startup');
 
+  const wikiResourcesSubscription = onDidChangeWikiResources(() => {
+    if (!disposed && collectWikiReferences(document.getText()).length) {
+      void panel.webview.postMessage({ type: 'wikiResourcesChanged' } satisfies HostEditorEvent);
+    }
+  });
+
   const dispose = (): void => {
     if (disposed) {
       return;
     }
     disposed = true;
+    wikiResourcesSubscription.dispose();
     viewNavigation.dispose();
     diffBaselineSelection.dispose();
     gitBaselineRefresh.dispose();

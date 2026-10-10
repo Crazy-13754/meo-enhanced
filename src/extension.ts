@@ -1,6 +1,8 @@
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as vscode from 'vscode';
+import { disposeWikiResources, resolveDocumentWikiResources } from './host/wikiResources';
+import type { ResolvedWikiResources } from './foundation/wikiReference';
 import { shouldPreloadMermaid } from './extension/webviewResourceHints';
 import { createGitApiWatcher } from './git/gitApiWatch';
 import {
@@ -98,6 +100,7 @@ type FindOptionsState = {
 
 type ExportRuntimeModule = {
   renderExportHtmlDocument: (options: {
+    wikiResources?: ResolvedWikiResources;
     readingSnapshot: ReadingSnapshot;
     sourceDocumentPath: string;
     outputFilePath: string;
@@ -110,6 +113,7 @@ type ExportRuntimeModule = {
     shikiLanguageAssetsRoot: string;
   }) => Promise<{ htmlDocument: string; hasMermaid: boolean; hasMath: boolean }>;
   renderPreviewDocument: (options: {
+    wikiResources?: ResolvedWikiResources;
     markdownText: string;
     sourceDocumentPath: string;
     uiLanguage: ReadingSnapshot['uiLanguage'];
@@ -176,6 +180,7 @@ const createVscodeAppearanceSettingsStore = (context: vscode.ExtensionContext): 
 });
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  context.subscriptions.push({ dispose: disposeWikiResources });
   const appearanceSettings = await createAppearanceSettingsOwner(createVscodeAppearanceSettingsStore(context));
   void vscode.commands.executeCommand('setContext', ACTIVE_EDITOR_CONTEXT_KEY, false);
   const agentReviewHandoff = new AgentReviewHandoffController({
@@ -611,7 +616,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       onExportDocument: (session, options) => this.exportSessionDocument(session, options),
       renderPreview: async (options) => {
         const exportRuntime = await loadExportRuntimeModule(this.context.extensionUri);
-        return exportRuntime.renderPreviewDocument(options);
+        return exportRuntime.renderPreviewDocument({ ...options,
+          wikiResources: await resolveDocumentWikiResources(options.markdownText, documentUri)
+        });
       },
       getFindOptions: () => this.getFindOptions(),
       getUiLanguage: () => this.getUiLanguage(),
@@ -820,6 +827,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     ).toString();
     const baseHref = pathToFileURL(`${path.dirname(params.outputFileUri.fsPath)}${path.sep}`).toString();
     return exportRuntime.renderExportHtmlDocument({
+      wikiResources: await resolveDocumentWikiResources(params.readingSnapshot.text, params.sourceDocumentUri),
       readingSnapshot: params.readingSnapshot,
       sourceDocumentPath: params.sourceDocumentUri.fsPath,
       outputFilePath: params.outputFileUri.fsPath,

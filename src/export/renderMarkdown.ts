@@ -28,6 +28,8 @@ import { getReadingUiStrings } from './readingUiLanguage';
 import { normalizeFenceLanguage } from './fenceLanguage';
 import { getPreviewPreset, type PreviewPresetId } from '../foundation/previewPresets';
 import { load as loadYaml } from 'js-yaml';
+import { installWikiReferenceTransform } from './wikiReferences';
+import type { ResolvedWikiResources } from '../foundation/wikiReference';
 
 const POWER_QUERY_KEYWORDS =
   'let in each if then else try otherwise error and or not as is type meta section shared';
@@ -52,6 +54,7 @@ registerExportLanguages();
 export type RenderMarkdownTarget = 'html' | 'pdf' | 'docx';
 
 export type RenderMarkdownOptions = {
+  wikiResources?: ResolvedWikiResources;
   markdownText: string;
   markdownFilePath: string;
   outputFilePath?: string;
@@ -125,6 +128,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     return true;
   });
   if (!github) {
+    installWikiReferenceTransform(md, options.deferImages === true, options.wikiResources);
     installHighlightTransform(md);
     installInlineScriptTransform(md);
     installPunctuationInlineTransform(md);
@@ -338,12 +342,13 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       polygon: ['points'],
       polyline: ['points']
     },
-    allowedSchemes: ['http', 'https', 'mailto', 'tel', 'file', 'data'],
+    allowedSchemes: ['http', 'https', 'mailto', 'tel', 'file', 'data', 'meo-wiki'],
     allowedSchemesByTag: {
       img: ['http', 'https', 'file', 'data']
     },
     allowProtocolRelative: false,
     allowedStyles: {
+      img: { width: [/^\d+px$/], height: [/^\d+px$/] },
       '*': {
         'text-align': [/^left$/i, /^right$/i, /^center$/i, /^justify$/i],
         '--meo-table-indent': [/^\d+(?:\.\d+)?ch$/i]

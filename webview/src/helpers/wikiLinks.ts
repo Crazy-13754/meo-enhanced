@@ -3,9 +3,11 @@ import { Decoration, EditorView } from '@codemirror/view';
 import { currentSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
 import { createWikiLinkResolutionTransport, type WikiLinkResolutionTransport } from '../adapters/wikiLinkResolutionTransport';
 import type { ResolvedWikiLinksResponse } from '../../../src/protocol/wikiLinkResolution';
+import { collectWikiReferences, parseWikiReference } from '../../../src/foundation/wikiReference';
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const wikiLinkStatusByTarget = new Map<string, boolean>();
+const wikiLinkIssues = new Map<string, string>();
 
 let vscodeApi: any = null;
 let wikiLinkTransport: WikiLinkResolutionTransport = {
@@ -32,29 +34,8 @@ export const isEscapedAt = (text: string, index: number): boolean => {
 };
 
 export const collectWikiLinkTargets = (text: string): string[] => {
-  const targets = new Set<string>();
-  for (let i = 0; i < text.length - 1; i += 1) {
-    if (text[i] !== '[' || text[i + 1] !== '[') {
-      continue;
-    }
-    if ((i > 0 && text[i - 1] === '!') || isEscapedAt(text, i)) {
-      continue;
-    }
-
-    const close = text.indexOf(']]', i + 2);
-    if (close < 0) {
-      break;
-    }
-    const content = text.slice(i + 2, close);
-    const pipeIndex = content.indexOf('|');
-    const targetRaw = (pipeIndex >= 0 ? content.slice(0, pipeIndex) : content).trim();
-    const target = normalizeWikiTarget(targetRaw);
-    if (target) {
-      targets.add(target);
-    }
-    i = close + 1;
-  }
-  return Array.from(targets);
+  return [...new Set(collectWikiReferences(text).filter(reference => !reference.embed)
+    .map(reference => normalizeWikiTarget(reference.target)).filter(Boolean))];
 };
 
 export interface WikiLinkRefreshContext {
@@ -189,7 +170,7 @@ function wikiHrefFromTarget(target: string): string {
   if (!target) {
     return '';
   }
-  if (SCHEME_RE.test(target)) {
+  if (SCHEME_RE.test(target) && !/^[a-z]:[\\/]/i.test(target)) {
     return target;
   }
   return `${wikiLinkScheme}${encodeURIComponent(target)}`;
@@ -197,7 +178,7 @@ function wikiHrefFromTarget(target: string): string {
 
 export function normalizeWikiTarget(target: string | null | undefined): string {
   const normalized = (target ?? '').split('#', 1)[0]?.trim() ?? '';
-  if (!normalized || SCHEME_RE.test(normalized)) {
+  if (!normalized || (SCHEME_RE.test(normalized) && !/^[a-z]:[\\/]/i.test(normalized))) {
     return '';
   }
   return normalized;
@@ -261,7 +242,8 @@ export function parseWikiLinkData(state: EditorState, node: any): WikiLinkData |
 
   const hasTarget = target.from < target.to;
   const hasText = text.from < text.to;
-  const rawTarget = hasTarget ? state.doc.sliceString(target.from, target.to).trim() : '';
+  const reference = parseWikiReference(state.doc.sliceString(bounds.openFrom, bounds.closeTo));
+  const rawTarget = reference?.target ?? (hasTarget ? state.doc.sliceString(target.from, target.to).trim() : '');
   const localTarget = normalizeWikiTarget(rawTarget);
 
   return {
@@ -288,8 +270,11 @@ export function getWikiLinkStatus(target: string | null | undefined): boolean | 
   return wikiLinkStatusByTarget.get(target) === true;
 }
 
-export function replaceWikiLinkStatuses(entries: Array<{ target: string; exists: boolean }>): void {
+export function getWikiLinkIssue(target: string): string | undefined { return wikiLinkIssues.get(target); }
+
+export function replaceWikiLinkStatuses(entries: Array<{ target: string; exists: boolean; issue?: string }>): void {
   wikiLinkStatusByTarget.clear();
+  wikiLinkIssues.clear();
   for (const entry of entries) {
     if (!entry || typeof entry.target !== 'string') {
       continue;
@@ -299,6 +284,7 @@ export function replaceWikiLinkStatuses(entries: Array<{ target: string; exists:
       continue;
     }
     wikiLinkStatusByTarget.set(target, entry.exists === true);
+    if (entry.issue) wikiLinkIssues.set(target, entry.issue);
   }
 }
 

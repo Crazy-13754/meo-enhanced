@@ -49,7 +49,7 @@ import {
   isThematicBreakLine,
   type FrontmatterInfo
 } from './helpers/frontmatter';
-import { isWikiLinkNode, parseWikiLinkData, getWikiLinkStatus } from './helpers/wikiLinks';
+import { isWikiLinkNode, parseWikiLinkData, getWikiLinkStatus, getWikiLinkIssue } from './helpers/wikiLinks';
 import {
   createMissingLocalLinkIndicator,
   isMissingLocalLinkTarget
@@ -1041,16 +1041,18 @@ class OpenLinkWidget extends UiLanguageSensitiveWidget {
 }
 
 class MissingWikiLinkWidget extends UiLanguageSensitiveWidget {
+  constructor(readonly issue?: string) { super(); }
   eq(other: WidgetType): boolean {
-    return other instanceof MissingWikiLinkWidget && this.hasSameUiLanguageEpoch(other);
+    return other instanceof MissingWikiLinkWidget && other.issue === this.issue && this.hasSameUiLanguageEpoch(other);
   }
 
   toDOM(view: EditorView): HTMLElement {
     const strings = getUiStrings(view.state.facet(uiLanguageFacet));
     const badge = document.createElement('span');
     badge.className = 'meo-md-wiki-missing-icon';
-    badge.dataset.tooltip = strings.missingWikiLink;
-    badge.setAttribute('aria-label', strings.missingWikiLink);
+    badge.dataset.tooltip = this.issue ?? strings.missingWikiLink;
+    badge.dataset.tooltipKind = 'description';
+    badge.setAttribute('aria-label', this.issue ?? strings.missingWikiLink);
     badge.appendChild(createElement(AlertCircle, { 'aria-hidden': 'true' }));
     return badge;
   }
@@ -1536,7 +1538,7 @@ function addWikiLinkDecorations(builder: DecorationCollector, state: EditorState
     const iconPos = hasVisibleText ? wikiLink.textFrom : wikiLink.openTo;
     builder.push(
       Decoration.widget({
-        widget: new MissingWikiLinkWidget(),
+        widget: new MissingWikiLinkWidget(getWikiLinkIssue(wikiLink.localTarget)),
         side: -1
       }).range(iconPos)
     );
@@ -2256,16 +2258,16 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
         const imageSelection = overlapsSelection(state, node.from, node.to);
 
         if (isActiveLine || imageSelection) {
-          const { url, altText, linkUrl } = getImageData(state, node);
+          const { url, altText, linkUrl, width, height } = getImageData(state, node);
           if (url) {
             const group = activeImageGroups.get(line.number) ?? { line, items: [] };
-            group.items.push({ url, altText, linkUrl, sourceFrom: node.from });
+            group.items.push({ url, altText, linkUrl, width, height, sourceFrom: node.from });
             activeImageGroups.set(line.number, group);
           }
           return;
         }
 
-        const { url, altText, linkUrl } = getImageData(state, node);
+        const { url, altText, linkUrl, width, height } = getImageData(state, node);
         if (url) {
           ranges.push(
             Decoration.replace({
@@ -2275,7 +2277,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
                 linkUrl,
                 node.from,
                 getImagePresentationFactory(state),
-                { uiLanguage: state.facet(uiLanguageFacet) }
+                { uiLanguage: state.facet(uiLanguageFacet), width, height }
               ),
               inclusive: false
             }).range(node.from, node.to)

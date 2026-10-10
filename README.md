@@ -99,9 +99,11 @@ Code blocks support syntax highlighting, select all, copy, and folding for long 
 
 - Frontmatter Properties and source editing for complex YAML content.
 - GitHub Alerts, footnotes, task lists, and blockquotes.
-- Standard links, document anchors, and Wiki links.
+- Standard links, document anchors, and Wiki links, including `![[image.png]]`, `![[image.png|300]]`, and `![[image.png|300x200]]`.
 - `==highlights==`, keyboard keys, color previews, and inline styles.
 - Visual actions for merge conflict blocks.
+
+Wiki references use the containing Obsidian vault, or the current workspace as a fallback. Explicit relative paths, vault paths, and unique short filenames are supported; duplicate names require a more specific path. Escape the size separator in tables, for example `![[image.png\|300]]`. Default Preview and exports support this syntax; the GitHub README preset keeps GitHub Markdown semantics.
 
 ### Settings and typing assistance
 

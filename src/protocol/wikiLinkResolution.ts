@@ -3,6 +3,7 @@ import { decodeRequestResult, type RequestResult } from './requestResult';
 export const WIKI_LINK_RESOLUTION_TIMEOUT_MS = 15_000;
 
 export type WikiLinkStatus = {
+  readonly issue?: string;
   readonly target: string;
   readonly exists: boolean;
 };
@@ -30,7 +31,8 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isWikiLinkStatus(value: unknown): value is WikiLinkStatus {
-  return isRecord(value) && isNonEmptyString(value.target) && typeof value.exists === 'boolean';
+  return isRecord(value) && isNonEmptyString(value.target) && typeof value.exists === 'boolean'
+    && (value.issue === undefined || typeof value.issue === 'string');
 }
 
 export function decodeResolveWikiLinksRequest(value: unknown): ResolveWikiLinksRequest | null {
