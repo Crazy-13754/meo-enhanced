@@ -3705,6 +3705,8 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     const onDocumentKeyDown = (event: KeyboardEvent) => {
       if (this.composingInput || event.isComposing || event.keyCode === 229) return;
       if (event.key !== 'Escape') return;
+      // A modal owns Escape while the cell selection is kept for focus return.
+      if (event.target instanceof Element && event.target.closest('dialog[open]')) return;
       if (this.domRefs && !this.domRefs.contextMenu.hidden) {
         event.preventDefault();
         event.stopPropagation();
