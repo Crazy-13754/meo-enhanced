@@ -30,6 +30,127 @@ async function main(): Promise<void> {
       }
     });
 
+    for (const quote of ['> 文字', '> > 文字', '>>文字', '>>>文字', '>   >  文字', '  >\t>\t文字',
+      '> # 文字', '> > ## 文字', '> - 文字', '> > - 文字', '- > 文字', '> - > 文字',
+      '> - [ ] 文字', '> > - [x] 文字', '> 1. 文字', '> **文字**', '> `文字`', '> [文字](https://example.com)']) {
+      await page.evaluate((quote) => {
+        const editor = (window as any).ListEditingHarness.createEditor({
+          parent: document.getElementById('host')!,
+          text: `Before\n\n${quote}\n\nAfter`, initialMode: 'live', onApplyChanges() {}
+        });
+        (window as any).__quoteEditor = editor;
+        editor.focus();
+      }, quote);
+      await settle();
+      try {
+        const contentOffset = quote.indexOf('文');
+        const railPoint = await page.evaluate(() => {
+          const line = document.querySelectorAll<HTMLElement>('#host .cm-line')[2]!;
+          const rect = line.getBoundingClientRect();
+          return { x: rect.left + Number.parseFloat(getComputedStyle(line, '::before').left) + 1,
+            y: (rect.top + rect.bottom) / 2 };
+        });
+        await page.mouse.click(railPoint.x, railPoint.y);
+        await settle();
+        const railOffset = await page.evaluate(() => {
+          const view = (window as any).__quoteEditor.view;
+          return view.state.selection.main.head - view.state.doc.line(3).from;
+        });
+        assert.equal(railOffset, contentOffset, `${JSON.stringify(quote)}: inactive quote rail must enter the content start`);
+        for (const active of [false, true]) {
+          for (const side of ['left', 'right'] as const) {
+            await page.evaluate(({ active, contentOffset }) => {
+              const view = (window as any).__quoteEditor.view;
+              view.dispatch({ selection: { anchor: active ? view.state.doc.line(3).from + contentOffset : 0 } });
+              view.focus();
+            }, { active, contentOffset });
+            await settle();
+            const point = await page.evaluate((side) => {
+              const line = document.querySelectorAll<HTMLElement>('#host .cm-line')[2]!;
+              const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+              for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                const offset = node.textContent!.indexOf('文');
+                if (offset < 0) continue;
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                const rect = range.getBoundingClientRect();
+                return { x: rect.left + rect.width * (side === 'left' ? 0.2 : 0.8), y: (rect.top + rect.bottom) / 2 };
+              }
+              throw new Error('Quoted content is missing');
+            }, side);
+            await page.mouse.click(point.x, point.y);
+            await settle();
+            const offset = await page.evaluate(() => {
+              const view = (window as any).__quoteEditor.view;
+              return view.state.selection.main.head - view.state.doc.line(3).from;
+            });
+            assert.equal(offset, contentOffset + (side === 'right' ? 1 : 0),
+              `${JSON.stringify(quote)}: ${active ? 'active' : 'inactive'} first-character ${side} click`);
+          }
+        }
+
+        const quoteOffsets = [...quote.matchAll(/>/g)].map((match) => match.index!);
+        for (const [index, markerOffset] of quoteOffsets.entries()) {
+          for (const side of ['left', 'right'] as const) {
+            const point = await page.evaluate(({ index, side }) => {
+              const marker = document.querySelectorAll<HTMLElement>('#host .meo-md-quote-marker-active')[index]!;
+              const range = document.createRange();
+              range.selectNodeContents(marker);
+              const rect = range.getBoundingClientRect();
+              return { x: rect.left + rect.width * (side === 'left' ? 0.2 : 0.8), y: (rect.top + rect.bottom) / 2 };
+            }, { index, side });
+            await page.mouse.click(point.x, point.y);
+            await settle();
+            const offset = await page.evaluate(() => {
+              const view = (window as any).__quoteEditor.view;
+              return view.state.selection.main.head - view.state.doc.line(3).from;
+            });
+            assert.equal(offset, markerOffset + (side === 'right' ? 1 : 0),
+              `${JSON.stringify(quote)}: quote marker ${index + 1} ${side} click must preserve its source boundary`);
+          }
+        }
+
+        // Check geometry independently of posAtCoords: distinct source stops
+        // must remain ordered even when the quote marks have no separating spaces.
+        const prefix = /^[ \t>]+/.exec(quote)?.[0] ?? '';
+        if (prefix && !quote.slice(prefix.length).startsWith('-')) {
+          const positions = await page.evaluate((prefixLength) => {
+            const view = (window as any).__quoteEditor.view;
+            const line = view.state.doc.line(3);
+            return Array.from({ length: prefixLength + 1 }, (_, offset) => ({
+              offset, x: view.coordsAtPos(line.from + offset)?.left ?? null
+            }));
+          }, prefix.length);
+          for (let index = 0; index < positions.length; index += 1) {
+            assert.notEqual(positions[index]!.x, null, `${JSON.stringify(quote)}: source stop ${index} has no coordinates`);
+            if (index > 0) {
+              assert.ok(positions[index]!.x! > positions[index - 1]!.x! + 0.5,
+                `${JSON.stringify(quote)}: prefix caret coordinates overlap or reverse: ${JSON.stringify(positions)}`);
+            }
+          }
+          await page.evaluate((contentOffset) => {
+            const view = (window as any).__quoteEditor.view;
+            view.dispatch({ selection: { anchor: view.state.doc.line(3).from + contentOffset } });
+            view.focus();
+          }, contentOffset);
+          await settle();
+          for (let expected = contentOffset - 1; expected >= 0; expected -= 1) {
+            await page.keyboard.press('ArrowLeft');
+            await settle();
+            const offset = await page.evaluate(() => {
+              const view = (window as any).__quoteEditor.view;
+              return view.state.selection.main.head - view.state.doc.line(3).from;
+            });
+            assert.equal(offset, expected, `${JSON.stringify(quote)}: ArrowLeft must reach each prefix character`);
+          }
+        }
+        assert.equal(await page.evaluate(() => (window as any).__quoteEditor.getText()), `Before\n\n${quote}\n\nAfter`);
+      } finally {
+        await page.evaluate(() => (window as any).__quoteEditor.destroy());
+      }
+    }
+
     for (const quote of ['> text', '> ', '>', '> > ', '>>', '> > > ', '>>>', '> > > > ', '>   >  ', '  >\t>\t']) {
       await page.evaluate((quote) => {
         const editor = (window as any).ListEditingHarness.createEditor({
@@ -120,7 +241,7 @@ async function main(): Promise<void> {
         await page.evaluate(() => (window as any).__quoteEditor.destroy());
       }
     }
-    console.log('empty quote caret Chromium checks passed: nesting, whitespace, repeated clicks, markers, dragging, Shift-click and Source mode');
+    console.log('quote caret Chromium checks passed: first-character clicks, prefix geometry, keyboard stops, nesting, whitespace, repeated clicks, markers, dragging, Shift-click and Source mode');
   } finally {
     await browser.close();
   }
