@@ -44,7 +44,7 @@ async function assertCompactMarkerPlacement(page: Page, mode: 'source' | 'live')
     geometry.stripeLeft < 0 ||
     geometry.markerPointerEvents !== 'none' ||
     (geometry.lineNumberTextRight !== null && geometry.stripeLeft - geometry.lineNumberTextRight < 4) ||
-    Math.abs(geometry.contentLeft - geometry.stripeRight - 5) > 1
+    Math.abs(geometry.contentLeft - geometry.stripeRight - (mode === 'source' ? 7 : 5)) > 1
   ) {
     throw new Error(`${mode} compact change marker was not separated from both line numbers and content: ${JSON.stringify(geometry)}`);
   }
@@ -618,7 +618,7 @@ async function main() {
             document.querySelector('.cm-line')!.getBoundingClientRect().left
             - document.querySelector('.cm-gutters')!.getBoundingClientRect().right
           ));
-          if (Math.abs(gap) > 1) throw new Error(`${label} separated gutters from content by ${gap}px`);
+          if (Math.abs(gap - 2) > 1) throw new Error(`${label} separated gutters from content by ${gap}px`);
           await assertDetailBackgroundContinuity(page, label);
           if (scrollable) {
             await page.evaluate(() => { document.querySelector('.cm-scroller')!.scrollTop = 8; });
@@ -1409,7 +1409,7 @@ async function main() {
             return { left, right, y: rect.top,
               gap: document.querySelector('.cm-line')!.getBoundingClientRect().left - right };
           });
-          if (triangle.left < 0 || Math.abs(triangle.gap - 4) > 1) {
+          if (triangle.left < 0 || Math.abs(triangle.gap - (mode === 'source' ? 6 : 4)) > 1) {
             throw new Error(`${mode}, numbers ${numbers}, limited ${limited}: deletion marker misplaced: ${JSON.stringify(triangle)}`);
           }
         }
@@ -1451,6 +1451,57 @@ async function main() {
     }).sort((left, right) => left.top - right.top));
     if (adjacentMarkers.length !== 2) {
       throw new Error(`Adjacent deletions rendered ${adjacentMarkers.length} markers instead of two`);
+    }
+    // Native Source backgrounds must style ordinary active lines without
+    // masking either compact diff highlights or detailed fenced-code rows.
+    for (const fenced of [false, true]) {
+      await page.evaluate(fenced => {
+        const previous = (window as any).__editor;
+        previous.destroy(); document.getElementById('app')!.replaceChildren();
+        const text = fenced ? 'ordinary\n```text\nchanged\n```\nlast' : 'ordinary\nchanged\nlast';
+        const editor = (window as any).EditorStabilityHarness.createEditor({
+          parent: document.getElementById('app')!, text, initialMode: 'source', onApplyChanges() {}
+        });
+        (window as any).__editor = editor;
+        editor.setGitBaseline({ available: true, tracked: true, mode: 'current-edit', baseText: text.replace('changed', 'original') });
+        (window as any).EditorStabilityHarness.setGitDiffLineHighlightsEnabled(editor, true);
+        editor.revealSelection(0, 0, { align: 'none' });
+      }, fenced);
+      await waitForFrames(page, 8);
+      const ordinaryBackground = await page.evaluate(() => {
+        const line = document.querySelector<HTMLElement>('.cm-line.cm-activeLine')!;
+        const probe = document.createElement('span'); probe.style.background = 'var(--meo-source-line)';
+        line.appendChild(probe);
+        const colors = [getComputedStyle(line).backgroundColor, getComputedStyle(probe).backgroundColor];
+        probe.remove(); return colors;
+      });
+      if (ordinaryBackground[0] !== ordinaryBackground[1]) throw new Error('Ordinary Source active line lost its native background');
+      for (const details of [false, true]) {
+        await page.evaluate(({ details, active }) => {
+          const editor = (window as any).__editor;
+          (window as any).EditorStabilityHarness.setGitDiffDetailsVisible(editor, details);
+          const position = active ? editor.getText().indexOf('changed') : 0;
+          editor.revealSelection(position, position, { align: 'none' });
+        }, { details, active: false });
+        for (const active of [false, true]) {
+          await page.evaluate(active => {
+            const editor = (window as any).__editor;
+            const position = active ? editor.getText().indexOf('changed') : 0;
+            editor.revealSelection(position, position, { align: 'none' });
+          }, active);
+          await waitForFrames(page, 8);
+          const colors = await page.evaluate(() => {
+            const row = document.querySelector<HTMLElement>('.meo-diff-changed-line')!;
+            const probe = document.createElement('span'); probe.style.background = 'var(--meo-source-line)';
+            row.appendChild(probe);
+            const result = [getComputedStyle(row).backgroundColor, getComputedStyle(probe).backgroundColor];
+            probe.remove(); return result;
+          });
+          if (colors[0] === colors[1] || colors[0] === 'rgba(0, 0, 0, 0)')
+            throw new Error(`Native Source masked a diff row: ${JSON.stringify({ fenced, details, active, colors })}`);
+          if (details) await assertDetailBackgroundContinuity(page, `Native Source fenced ${fenced}, active ${active}`);
+        }
+      }
     }
     console.log('document diff gutter checks passed');
   } finally {

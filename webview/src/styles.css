@@ -8127,8 +8127,9 @@ html[data-editor-appearance='light'] :is(.selection-inline-menu, .cm-editor .meo
 }
 .cm-editor.meo-mode-source, .cm-editor.meo-mode-source :is(.cm-scroller, .cm-content, .cm-line) { color: var(--meo-source-foreground); }
 .cm-editor.meo-mode-source .cm-gutterElement.cm-activeLineGutter { color: var(--meo-source-active-line-number); }
-.cm-editor.meo-mode-source .cm-line.cm-activeLine { background: var(--meo-source-line) !important; box-shadow: inset 0 0 0 1px var(--meo-source-line-border); }
-.cm-editor.meo-mode-source .cm-line.meo-src-code-block:not(.cm-activeLine) { background: var(--meo-background) !important; }
+/* Diff rows own their background and gap fill, including fenced code. */
+.cm-editor.meo-mode-source .cm-line.cm-activeLine:not(.meo-diff-added-line):not(.meo-diff-changed-line):not(.meo-git-diff-current-line) { background: var(--meo-source-line) !important; box-shadow: inset 0 0 0 1px var(--meo-source-line-border); }
+.cm-editor.meo-mode-source .cm-line.meo-src-code-block:not(.cm-activeLine):not(.meo-diff-added-line):not(.meo-diff-changed-line):not(.meo-git-diff-current-line) { background: var(--meo-background) !important; }
 .cm-editor.meo-mode-source:not(.cm-focused) .cm-selectionBackground { background: var(--meo-source-inactive-selection) !important; }
 .changes-review-panel { background: var(--meo-ui-menu-background); color: var(--meo-ui-menu-foreground); border-color: var(--meo-ui-menu-border); box-shadow: var(--meo-ui-shadow); }
 :is(.changes-review-option, .changes-review-snapshot-select):is(:hover, :focus-visible, .is-selected):not(:disabled) { color: var(--meo-ui-menu-hover-foreground); background: var(--meo-ui-menu-hover); outline: 1px solid var(--meo-ui-menu-selection-border); outline-offset: -1px; }
