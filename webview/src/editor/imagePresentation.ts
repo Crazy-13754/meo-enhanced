@@ -7,7 +7,8 @@ export type ImagePresentationView = {
 
 export type ImagePresentationHandle = {
   present(sourceKey: string, rawSrc: string): void;
-  refresh(): Promise<void>;
+  /** A changed resource can now be missing or resolve to another file. */
+  refresh(options?: { resourceChanged?: boolean }): Promise<void>;
   externalDocumentPresented(): void;
   whenCurrentPresentationSettles(signal?: AbortSignal): Promise<void>;
   dispose(): void;

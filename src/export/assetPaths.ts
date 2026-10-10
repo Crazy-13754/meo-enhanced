@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { WIKI_IMAGE_SCHEME } from '../foundation/wikiReference';
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const REMOTE_OR_INLINE_RE = /^(?:https?:|data:|blob:)/i;
@@ -30,6 +31,7 @@ export type RewriteExportImageSrcOptions = {
 
 export function isLocalImageSrc(rawSrc: string): boolean {
   const input = (rawSrc ?? '').trim();
+  if (input.startsWith(WIKI_IMAGE_SCHEME)) return true;
   if (!input || REMOTE_OR_INLINE_RE.test(input) || /^\/\//.test(input)) {
     return false;
   }

@@ -105,6 +105,12 @@ const applyHostAppearance = (appearance: EditorAppearance): void => {
     ? lightCssVariableOverrides
     : darkCssVariableOverrides;
   for (const [property, value] of Object.entries(overrides)) {
+    // Preserve VS Code's inline root color for the document background while
+    // keeping the existing fixed UI color scoped to controls inside the body.
+    if (property === '--vscode-editor-background') {
+      document.body.style.setProperty(property, value);
+      continue;
+    }
     rootStyle.setProperty(property, value);
   }
 };
@@ -116,7 +122,15 @@ export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance,
 
   const rootStyle = document.documentElement.style;
   const insetBackground = getInsetBackground(resolvedTheme.backgroundColor, resolvedTheme.colors.base03);
-  rootStyle.setProperty('--meo-background', resolvedTheme.backgroundColor);
+  const hostIsLight = document.body.classList.contains('vscode-light')
+    || document.body.classList.contains('vscode-high-contrast-light');
+  const hostIsDark = !hostIsLight && (document.body.classList.contains('vscode-dark')
+    || document.body.classList.contains('vscode-high-contrast'));
+  const fallbackBackground = (appearance === 'light' ? lightCssVariableOverrides : darkCssVariableOverrides)['--vscode-editor-background'];
+  const matchesHostAppearance = appearance === 'light' ? hostIsLight : hostIsDark;
+  rootStyle.setProperty('--meo-background', matchesHostAppearance
+    ? `var(--vscode-editor-background, ${fallbackBackground})`
+    : fallbackBackground);
   rootStyle.setProperty('--meo-inset-background', resolvedTheme.semanticColors.insetBackground || insetBackground);
   rootStyle.setProperty('--meo-foreground', resolvedTheme.semanticColors.foreground);
   rootStyle.setProperty('--meo-muted-foreground', resolvedTheme.semanticColors.mutedForeground);

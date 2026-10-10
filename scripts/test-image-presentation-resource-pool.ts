@@ -163,4 +163,31 @@ assert.deepEqual(
 releaseRefreshPool();
 refreshPool.dispose();
 
+// Resource changes must discard earlier work even within the same document generation.
+const sourceCompletions: Array<(value: string) => void> = [];
+const imageCompletions: Array<(value: HTMLImageElement) => void> = [];
+const changedPool = createImagePresentationResourcePool({
+  resolveSource: () => new Promise(resolve => sourceCompletions.push(resolve)),
+  loadImage: () => new Promise(resolve => imageCompletions.push(resolve))
+});
+const releaseChanged = changedPool.acquire();
+const oldSource = changedPool.resolve('document', 'short.png');
+changedPool.invalidateResource('document', 'short.png', null);
+const newSource = changedPool.resolve('document', 'short.png');
+sourceCompletions[1]('new.png');
+assert.equal(await newSource, 'new.png');
+sourceCompletions[0]('old.png');
+assert.equal(await oldSource, null);
+assert.equal(changedPool.getResolved('document', 'short.png'), 'new.png', 'a late old lookup cannot overwrite the new target');
+const oldImage = changedPool.load('document', 'new.png');
+changedPool.invalidateResource('document', 'short.png', 'new.png');
+const newImage = changedPool.load('document', 'new.png');
+imageCompletions[1]({ src: 'new bytes' } as HTMLImageElement);
+assert.equal((await newImage)?.src, 'new bytes');
+imageCompletions[0]({ src: 'old bytes' } as HTMLImageElement);
+assert.equal(await oldImage, null);
+assert.equal(changedPool.getLoaded('document', 'new.png')?.src, 'new bytes');
+releaseChanged();
+changedPool.dispose();
+
 console.log('image presentation resource pool contracts passed');

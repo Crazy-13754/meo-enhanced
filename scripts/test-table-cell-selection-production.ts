@@ -68,12 +68,20 @@ async function main() {
 
     const first = '.meo-md-html-table-shell[data-test-table="0"] tbody tr:first-child td:first-child .meo-md-html-table-cell-preview';
     const last = '.meo-md-html-table-shell[data-test-table="0"] tbody tr:nth-child(2) td:nth-child(2) .meo-md-html-table-cell-preview';
+    await page.click(first);
+    await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).blur());
+    await drag('.meo-md-html-table-shell[data-test-table="0"] tbody tr:first-child td:nth-child(2) .meo-md-html-table-cell-preview', last);
+    if (await page.$('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing')) {
+      throw new Error('A multi-cell selection retained the suspended editing cell');
+    }
+    await page.keyboard.press('Escape');
     await drag(first, last);
     const persisted = await page.evaluate(() => ({
       count: document.querySelectorAll('.meo-md-html-table-cell-selected').length,
-      active: document.activeElement?.tagName
+      active: document.activeElement?.tagName,
+      editing: document.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing').length
     }));
-    if (persisted.count !== 4 || persisted.active !== 'TABLE') {
+    if (persisted.count !== 4 || persisted.active !== 'TABLE' || persisted.editing !== 0) {
       throw new Error(`pointerup did not persist the visible rectangle: ${JSON.stringify(persisted)}`);
     }
 
@@ -495,6 +503,16 @@ async function main() {
     if (JSON.stringify(tableSelections) !== JSON.stringify([0, 4])) {
       throw new Error(`cross-table transfer retained the old owner: ${JSON.stringify(tableSelections)}`);
     }
+    await page.keyboard.press('Escape');
+    await page.click(first);
+    await page.click(secondFirst);
+    const editingOwners = await page.$$eval('.meo-md-html-table-shell', shells => shells.map(shell =>
+      shell.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing').length));
+    if (JSON.stringify(editingOwners) !== JSON.stringify([0, 1])) {
+      throw new Error(`Cross-table focus retained the old editing cell: ${JSON.stringify(editingOwners)}`);
+    }
+    await page.click('#outside');
+    await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing').length === 0);
 
     for (const type of ['pointercancel', 'lostpointercapture'] as const) {
       await page.keyboard.press('Escape');

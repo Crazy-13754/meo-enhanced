@@ -240,7 +240,7 @@ export function createImagePresentationResourcePool(
     }
     const resolution = Promise.race([sourceResolution, generation.releasedResult])
       .then((resolved) => {
-        if (generation.released || currentGeneration !== generation) return null;
+        if (generation.released || currentGeneration !== generation || generation.resolutionInFlight.get(key) !== resolution) return null;
         if (resolved) {
           setBounded(
             generation.resolvedCache,
@@ -251,7 +251,7 @@ export function createImagePresentationResourcePool(
         }
         return resolved || null;
       })
-      .finally(() => generation.resolutionInFlight.delete(key));
+      .finally(() => { if (generation.resolutionInFlight.get(key) === resolution) generation.resolutionInFlight.delete(key); });
     generation.resolutionInFlight.set(key, resolution);
     return resolution;
   };
@@ -288,7 +288,7 @@ export function createImagePresentationResourcePool(
     );
     const loading = Promise.race([browserLoad, generation.releasedResult])
       .then((image) => {
-        if (generation.released || currentGeneration !== generation) return null;
+        if (generation.released || currentGeneration !== generation || generation.loadInFlight.get(key) !== loading) return null;
         if (image) {
           setBounded(
             generation.loadedCache,
@@ -317,7 +317,7 @@ export function createImagePresentationResourcePool(
         }
         return image;
       })
-      .finally(() => generation.loadInFlight.delete(key));
+      .finally(() => { if (generation.loadInFlight.get(key) === loading) generation.loadInFlight.delete(key); });
     generation.loadInFlight.set(key, loading);
     return loading;
   };
@@ -546,6 +546,7 @@ export function createImagePresentationFactory(
     readonly runtime: ReturnType<typeof createImagePresentationRuntime>;
   }>();
   const releaseResourceLeases = new Set<() => void>();
+  const changedResources = new Set<string>();
   let disposed = false;
 
   const create = (view: ImagePresentationView): ImagePresentationHandle => {
@@ -562,15 +563,22 @@ export function createImagePresentationFactory(
       present(sourceKey, rawSrc) {
         if (active) runtime.dispatch({ type: 'present', sourceKey, rawSrc });
       },
-      async refresh() {
+      async refresh({ resourceChanged = false } = {}) {
         if (!active) return;
         const before = application.getState().current;
-        if (!before || before.phase !== 'ready') return;
-        options.resources.invalidateResource(
-          options.resourceContextKey,
-          before.rawSrc,
-          before.resolvedSrc
-        );
+        if (!before || (!resourceChanged && before.phase !== 'ready')) return;
+        if (resourceChanged) {
+          // All views of one source share the invalidation for this notification.
+          if (!changedResources.has(before.rawSrc)) {
+            changedResources.add(before.rawSrc);
+            options.resources.invalidateResource(options.resourceContextKey, before.rawSrc, before.resolvedSrc);
+            queueMicrotask(() => changedResources.delete(before.rawSrc));
+          }
+          runtime.dispatch({ type: 'present', sourceKey: before.sourceKey, rawSrc: before.rawSrc });
+          await runtime.whenCurrentPresentationSettles();
+          return;
+        }
+        options.resources.invalidateResource(options.resourceContextKey, before.rawSrc, before.resolvedSrc);
         const resolved = await options.resources.resolve(
           options.resourceContextKey,
           before.rawSrc

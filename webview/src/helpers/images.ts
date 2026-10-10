@@ -10,6 +10,25 @@ import type {
   ImagePresentationHandle
 } from '../editor/imagePresentation';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
+import { encodeMarkdownPath } from '../../../src/foundation/linkDestination';
+import { isWikiImageTarget, parseWikiReference, wikiImageSrc, wikiTargetFromImageSrc, WIKI_IMAGE_SCHEME } from '../../../src/foundation/wikiReference';
+
+const wikiImageIssues = new Map<string, string>();
+const wikiIssueRequests = new Map<string, number>();
+let wikiIssueRequestId = 0;
+type WikiImagePresentation = { url: string; handle: ImagePresentationHandle; reportIssue: (issue?: string) => void };
+const wikiImagePresentations = new Set<WikiImagePresentation>();
+
+function reportWikiImageIssue(url: string, issue?: string): void {
+  if (issue) wikiImageIssues.set(url, issue); else wikiImageIssues.delete(url);
+  for (const presentation of wikiImagePresentations) if (presentation.url === url) presentation.reportIssue(issue);
+}
+
+export function refreshWikiImagePresentations(): void {
+  wikiImageIssues.clear();
+  wikiIssueRequests.clear();
+  for (const presentation of wikiImagePresentations) void presentation.handle.refresh({ resourceChanged: true });
+}
 
 const IMAGE_EXT_RE = /\.(?:avif|bmp|gif|ico|jpe?g|png|svg|tiff?|webp)(?:$|[?#])/i;
 
@@ -111,7 +130,19 @@ const openImageExternally = (url: string): void => {
 const isImmediateImageSrc = (url: string): boolean => /^(?:https?:|data:|blob:|vscode-webview:|vscode-webview-resource:|vscode-resource:)/i.test(url);
 
 const requestImageSrcResolution = async (url: string, signal?: AbortSignal): Promise<string> => {
+  const requestId = url.startsWith(WIKI_IMAGE_SCHEME) ? ++wikiIssueRequestId : null;
+  if (requestId !== null) wikiIssueRequests.set(url, requestId);
   const result = await imageResolutionTransport.resolve(url, signal);
+  if (url.startsWith(WIKI_IMAGE_SCHEME)) {
+    const current = wikiIssueRequests.get(url) === requestId;
+    if (current) wikiIssueRequests.delete(url);
+    if (!result.ok) {
+      if (current && !signal?.aborted) reportWikiImageIssue(url, result.error.message);
+      throw new Error(result.error.message);
+    }
+    if (current && !signal?.aborted) reportWikiImageIssue(url);
+    return result.value.resolvedUrl;
+  }
   const resolvedUrl = result.ok === true ? result.value.resolvedUrl : '';
   return resolvedUrl || url;
 };
@@ -238,7 +269,7 @@ export const handleImagePaste = async (
           if (result.ok === false) throw new Error(result.error.message);
           savedImage = { fileName, path: result.value.path };
         }
-        const markdownPath = encodeURI(savedImage.path).replace(/[()#?]/g, character => '%' + character.charCodeAt(0).toString(16).toUpperCase());
+        const markdownPath = encodeMarkdownPath(savedImage.path);
         const imageMarkdown = `![${savedImage.fileName}](${markdownPath})`;
         if (tableInput && tableSelection && tableInput.isConnected) {
           const start = tableInput.value === tableTextAtPaste
@@ -291,6 +322,8 @@ export function isImageUrl(url: string | null | undefined): boolean {
 }
 
 export class ImageWidget extends WidgetType {
+  readonly width?: number;
+  readonly height?: number;
   url: string;
   altText: string;
   linkUrl: string;
@@ -301,6 +334,7 @@ export class ImageWidget extends WidgetType {
   fullscreenCleanup: (() => void) | null;
   exitFullscreenHandler: ((event: KeyboardEvent) => void) | null;
   presentationHandle: ImagePresentationHandle | null;
+  private wikiPresentation?: WikiImagePresentation;
   uiLanguage: UiLanguage;
 
   constructor(
@@ -313,6 +347,8 @@ export class ImageWidget extends WidgetType {
       pointerInteractionOwner?: 'widget' | 'parent';
       uiLanguage?: UiLanguage;
       sourceFromResolver?: () => number | null;
+      width?: number;
+      height?: number;
     } = {}
   ) {
     super();
@@ -321,6 +357,8 @@ export class ImageWidget extends WidgetType {
     this.linkUrl = linkUrl?.trim() ?? '';
     this.initialSourceFrom = Number.isInteger(sourceFrom) ? sourceFrom : null;
     this.sourceFromResolver = options.sourceFromResolver;
+    this.width = options.width;
+    this.height = options.height;
     this.pointerInteractionOwner = options.pointerInteractionOwner ?? 'widget';
     this.fullscreenOverlay = null;
     this.fullscreenCleanup = null;
@@ -338,6 +376,7 @@ export class ImageWidget extends WidgetType {
       other.url === this.url &&
       other.altText === this.altText &&
       other.linkUrl === this.linkUrl &&
+      other.width === this.width && other.height === this.height &&
       other.sourceFrom === this.sourceFrom &&
       other.pointerInteractionOwner === this.pointerInteractionOwner &&
       other.uiLanguage === this.uiLanguage
@@ -347,6 +386,7 @@ export class ImageWidget extends WidgetType {
   toDOM(view?: EditorView): HTMLElement {
     const container = document.createElement('div');
     container.className = 'meo-md-image';
+    if (this.url.startsWith(WIKI_IMAGE_SCHEME)) container.dataset.tooltipKind = 'description';
 
     if (this.linkUrl) {
       container.classList.add('meo-md-image-linked');
@@ -361,7 +401,7 @@ export class ImageWidget extends WidgetType {
       this.attachImagePointerInteractions(container);
     }
 
-    this.presentationHandle?.dispose();
+    this.disposePresentation();
     const presentationHandle = this.presentationFactory.create({
       showFallback: () => {
         this.renderFallback(container);
@@ -369,6 +409,7 @@ export class ImageWidget extends WidgetType {
       },
       showImage: (loadedImage) => {
         const image = this.createDisplayImage(loadedImage);
+        delete container.dataset.tooltip;
         container.classList.remove('meo-md-image-fallback');
         container.replaceChildren(image, this.createImageControls(image));
         return true;
@@ -390,7 +431,17 @@ export class ImageWidget extends WidgetType {
       }
     });
     this.presentationHandle = presentationHandle;
+    const wikiPresentation = { url: this.url, handle: presentationHandle, reportIssue: (issue?: string) => {
+      if (this.presentationHandle !== presentationHandle) return;
+      if (issue) container.dataset.tooltip = issue; else delete container.dataset.tooltip;
+    } };
+    if (this.url.startsWith(WIKI_IMAGE_SCHEME)) {
+      wikiImagePresentations.add(wikiPresentation);
+      this.wikiPresentation = wikiPresentation;
+    }
     container.addEventListener(IMAGE_PRESENTATION_DISPOSE_EVENT, () => {
+      wikiImagePresentations.delete(wikiPresentation);
+      if (this.wikiPresentation === wikiPresentation) this.wikiPresentation = undefined;
       presentationHandle.dispose();
       if (this.presentationHandle === presentationHandle) this.presentationHandle = null;
     }, { once: true });
@@ -403,6 +454,8 @@ export class ImageWidget extends WidgetType {
     img.className = 'meo-md-image-img';
     img.alt = this.altText;
     img.loading = 'eager';
+    if (this.width) { img.width = this.width; img.style.width = `${this.width}px`; }
+    if (this.height) { img.height = this.height; img.style.height = `${this.height}px`; }
     return img;
   }
 
@@ -483,6 +536,8 @@ export class ImageWidget extends WidgetType {
   }
 
   fallbackText(): string {
+    const wikiTarget = wikiTargetFromImageSrc(this.url);
+    if (wikiTarget !== null) return `![[${wikiTarget}${this.width ? `|${this.width}${this.height ? `x${this.height}` : ''}` : ''}]]`;
     return `![${this.altText}](${this.url})`;
   }
 
@@ -699,6 +754,8 @@ export class ImageWidget extends WidgetType {
 
   renderFallback(container: HTMLElement): void {
     container.classList.add('meo-md-image-fallback');
+    const issue = wikiImageIssues.get(this.url);
+    if (issue) container.dataset.tooltip = issue;
     const intrinsicSize = this.url ? this.presentationFactory.getIntrinsicSize(this.url) : null;
     if (intrinsicSize) {
       const heightScale = Math.min(1, 240 / intrinsicSize.height);
@@ -711,7 +768,7 @@ export class ImageWidget extends WidgetType {
     }
     const fallback = document.createElement('code');
     fallback.className = 'meo-md-image-fallback-text';
-    fallback.textContent = `![${this.altText}](${this.url})`;
+    fallback.textContent = this.fallbackText();
     container.replaceChildren(fallback);
   }
 
@@ -722,9 +779,15 @@ export class ImageWidget extends WidgetType {
     return true;
   }
 
-  destroy(): void {
+  private disposePresentation(): void {
+    if (this.wikiPresentation) wikiImagePresentations.delete(this.wikiPresentation);
+    this.wikiPresentation = undefined;
     this.presentationHandle?.dispose();
     this.presentationHandle = null;
+  }
+
+  destroy(): void {
+    this.disposePresentation();
     this.closeFullscreen();
   }
 }
@@ -741,6 +804,8 @@ export interface ImageGroupItem {
   altText: string;
   linkUrl: string;
   sourceFrom: number;
+  width?: number;
+  height?: number;
 }
 
 export class ImageGroupWidget extends WidgetType {
@@ -760,7 +825,7 @@ export class ImageGroupWidget extends WidgetType {
       item.linkUrl,
       item.sourceFrom,
       presentationFactory,
-      { uiLanguage }
+      { uiLanguage, width: item.width, height: item.height }
     ));
   }
 
@@ -774,6 +839,7 @@ export class ImageGroupWidget extends WidgetType {
           item.url === current.url
           && item.altText === current.altText
           && item.linkUrl === current.linkUrl
+          && item.width === current.width && item.height === current.height
           && item.sourceFrom === current.sourceFrom
         );
       })
@@ -813,7 +879,9 @@ function stripMarkdownImageTitle(url: string): string {
   return (title?.[1] ?? url).trim();
 }
 
-export function getImageData(state: any, node: any): { url: string; altText: string; linkUrl: string } {
+export function getImageData(state: any, node: any): { url: string; altText: string; linkUrl: string; width?: number; height?: number } {
+  const wiki = parseWikiReference(state.doc.sliceString(node.from, node.to));
+  if (wiki?.embed && isWikiImageTarget(wiki.target)) return { url: wikiImageSrc(wiki.target), altText: wiki.label, linkUrl: '', width: wiki.width, height: wiki.height };
   const urlNode = findChildNode(node, 'URL');
   const rawUrl = urlNode ? state.doc.sliceString(urlNode.from, urlNode.to).trim() : '';
   const url = stripMarkdownImageTitle(rawUrl);

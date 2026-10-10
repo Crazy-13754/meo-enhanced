@@ -10,8 +10,10 @@ import type { CodeThemeDto } from '../protocol/hostConfigurationEvents';
 import { createExportCodeHighlighter } from './shikiCodeHighlighter';
 import { resolvePreviewPresetSettings, type PreviewPresetId, type PreviewContentWidth } from '../foundation/previewPresets';
 import { buildPresetPreviewStyles } from '../preview/presetStyles';
+import type { ResolvedWikiResources } from '../foundation/wikiReference';
 
 export type ExportRuntimeBuildHtmlOptions = {
+  wikiResources?: ResolvedWikiResources;
   readingSnapshot: ReadingSnapshot;
   sourceDocumentPath: string;
   outputFilePath: string;
@@ -47,6 +49,7 @@ async function renderExportHtmlDocument(
   let rendered: ReturnType<typeof renderMarkdownToHtml>;
   try {
     rendered = renderMarkdownToHtml({
+      wikiResources: options.wikiResources,
       markdownText: snapshot.text,
       markdownFilePath: options.sourceDocumentPath,
       outputFilePath: options.outputFilePath,
@@ -83,6 +86,7 @@ async function renderExportHtmlDocument(
 }
 
 function renderPreviewDocument(options: {
+  wikiResources?: ResolvedWikiResources;
   markdownText: string;
   sourceDocumentPath: string;
   uiLanguage: ReadingSnapshot['uiLanguage'];
@@ -96,6 +100,7 @@ function renderPreviewDocument(options: {
     ...resolvePreviewPresetSettings(preset, options.styleEnvironment ?? { previewFontFamily: '' })
   };
   const rendered = renderMarkdownToHtml({
+    wikiResources: options.wikiResources,
     markdownText: options.markdownText,
     markdownFilePath: options.sourceDocumentPath,
     target: 'html',

@@ -29,6 +29,8 @@ assert.equal(settingsSearchMatches('image theme', 'Image storage folder'), false
 assert.equal(settingsSearchMatches('csv table', 'CSV only'), false);
 const defaults = { input: { ...defaultInputAssistance }, shortcuts: {} };
 assert.equal(defaults.input.selectionToolbar, true, 'existing users keep the selection toolbar by default');
+assert.equal(defaults.input.pasteHtml, false, 'HTML paste formatting is disabled by default');
+assert.equal(normalizeEditingPreferences(undefined).input.pasteHtml, false);
 const { selectionToolbar: _toolbar, ...previousInput } = defaultInputAssistance;
 assert.deepEqual(normalizeEditingPreferences({ input: { ...previousInput, emoji: true }, shortcuts: { bold: [] } }), {
   input: { ...defaultInputAssistance, emoji: true }, shortcuts: { bold: [] }
@@ -147,10 +149,22 @@ assert.deepEqual(race.result, { ok: true, value: raceValue }, 'acknowledgement c
 const schema = JSON.parse(readFileSync('package.json', 'utf8')).contributes.configuration.properties['meoEnhanced.editing.preferences'];
 assert.deepEqual(new Set(schema.properties.shortcuts.propertyNames.enum), new Set(editorCommandIds.filter(canBindCommand)));
 assert.deepEqual(schema.default, defaults);
+assert.equal(schema.properties.input.properties.pasteHtml.default, false);
 
 let savedGlobal: Partial<EditingPreferences> | undefined;
 let savedWorkspace: Partial<EditingPreferences> | undefined;
+let failedConfigurationTarget: number | undefined;
 const configurationWrites: number[] = [];
+const createMigrationStore = () => {
+  const values = new Map<string, unknown>();
+  const writes: { key: string; value: unknown }[] = [];
+  return {
+    get<T>(key: string, fallback?: T): T { return (values.has(key) ? values.get(key) : fallback) as T; },
+    update: async (key: string, value: unknown) => { values.set(key, value); writes.push({ key, value }); },
+    writes
+  };
+};
+const createMigrationState = () => ({ globalState: createMigrationStore(), workspaceState: createMigrationStore() });
 mock.module('vscode', () => ({
   ConfigurationTarget: { Global: 1, Workspace: 2 },
   workspace: { getConfiguration: () => ({
@@ -160,6 +174,7 @@ mock.module('vscode', () => ({
       shortcuts: { ...savedGlobal?.shortcuts, ...savedWorkspace?.shortcuts }
     }),
     update: async (_key: string, value: EditingPreferences, target: number) => {
+      if (target === failedConfigurationTarget) throw new Error('settings write failed');
       configurationWrites.push(target);
       if (target === 1) savedGlobal = value; else savedWorkspace = value;
     }
@@ -168,28 +183,82 @@ mock.module('vscode', () => ({
 const { createVscodeEditingPreferences } = await import('../src/host/vscodeEditingPreferences');
 for (const language of ['zh-CN', 'en'] as const) {
   savedGlobal = undefined; savedWorkspace = undefined; configurationWrites.length = 0;
-  const initialized = await createVscodeEditingPreferences(language);
+  const migrationState = createMigrationState();
+  const initialized = await createVscodeEditingPreferences(language, migrationState);
+  assert.equal(initialized.read().input.pasteHtml, false);
   assert.equal(initialized.read().input.slashPreferAbove, language === 'zh-CN');
   assert.deepEqual(configurationWrites, [1], 'the language-derived default is immediately persisted globally');
-  const later = await createVscodeEditingPreferences(language === 'zh-CN' ? 'en' : 'zh-CN');
+  const later = await createVscodeEditingPreferences(language === 'zh-CN' ? 'en' : 'zh-CN', migrationState);
   assert.equal(later.read().input.slashPreferAbove, language === 'zh-CN', 'language changes preserve the initial value without a manual toggle');
   assert.deepEqual(configurationWrites, [1], 'reloading does not initialize twice');
   await initialized.update({ type: 'updateEditingPreferences', requestId: 'placement', change: { type: 'input', key: 'slashPreferAbove', value: language !== 'zh-CN' } });
-  assert.equal((await createVscodeEditingPreferences(language)).read().input.slashPreferAbove, language !== 'zh-CN', 'explicit changes survive restart');
+  assert.equal((await createVscodeEditingPreferences(language, migrationState)).read().input.slashPreferAbove, language !== 'zh-CN', 'explicit changes survive restart');
 }
 savedGlobal = { input: { ...defaultInputAssistance, emoji: true, pasteUrl: false }, shortcuts: { bold: [] } };
 delete (savedGlobal.input as { slashPreferAbove?: boolean }).slashPreferAbove;
 savedWorkspace = { input: { ...defaultInputAssistance, slashPreferAbove: false, pasteHtml: false } };
 configurationWrites.length = 0;
-const migrated = await createVscodeEditingPreferences('zh-CN');
+const slashMigrationState = createMigrationState();
+const migrated = await createVscodeEditingPreferences('zh-CN', slashMigrationState);
 assert.equal(savedGlobal.input!.slashPreferAbove, true);
 assert.equal(savedGlobal.input!.emoji, true);
 assert.equal(savedGlobal.input!.pasteUrl, false);
 assert.deepEqual(savedGlobal.shortcuts, { bold: [] }, 'initialization preserves existing global choices');
 assert.equal(migrated.read().input.slashPreferAbove, false, 'an existing workspace choice overrides the global default');
-assert.equal(savedGlobal.input!.pasteHtml, true, 'workspace-only choices are not copied into global preferences');
+assert.equal(savedGlobal.input!.pasteHtml, false);
 assert.deepEqual(configurationWrites, [1]);
 savedWorkspace = undefined;
-assert.equal((await createVscodeEditingPreferences('en')).read().input.slashPreferAbove, true);
+assert.equal((await createVscodeEditingPreferences('en', slashMigrationState)).read().input.slashPreferAbove, true);
 assert.deepEqual(configurationWrites, [1]);
 console.log('Slash menu preference: one-time language defaults, persistence, explicit choices and workspace overrides passed');
+
+savedGlobal = { input: { ...defaultInputAssistance, pasteHtml: true, emoji: true, slashPreferAbove: true }, shortcuts: { bold: ['Alt + B'] } };
+savedWorkspace = { input: { ...defaultInputAssistance, pasteHtml: true, pasteUrl: false }, shortcuts: { italic: ['Alt + I'] } };
+const previousGlobal = structuredClone(savedGlobal);
+const previousWorkspace = structuredClone(savedWorkspace);
+configurationWrites.length = 0;
+const migrationState = createMigrationState();
+const upgraded = await createVscodeEditingPreferences('en', migrationState);
+assert.equal(upgraded.read().input.pasteHtml, false, 'both old configuration scopes are disabled on upgrade');
+assert.deepEqual(savedGlobal, { ...previousGlobal, input: { ...previousGlobal.input, pasteHtml: false } });
+assert.deepEqual(savedWorkspace, { ...previousWorkspace, input: { ...previousWorkspace.input, pasteHtml: false } }, 'migration changes only pasteHtml, retaining input choices and shortcuts');
+assert.deepEqual(configurationWrites, [1, 2]);
+await upgraded.update({ type: 'updateEditingPreferences', requestId: 'enable-html-workspace', change: { type: 'input', key: 'pasteHtml', value: true } });
+assert.equal((await createVscodeEditingPreferences('en', migrationState)).read().input.pasteHtml, true, 'a workspace opt-in survives restart after migration');
+assert.deepEqual(configurationWrites, [1, 2, 2], 'completed migrations do not repeat');
+assert.equal(migrationState.globalState.writes.length, 1);
+assert.equal(migrationState.workspaceState.writes.length, 1);
+
+savedWorkspace = undefined;
+const userPreferences = await createVscodeEditingPreferences('en', migrationState);
+await userPreferences.update({ type: 'updateEditingPreferences', requestId: 'enable-html-global', change: { type: 'input', key: 'pasteHtml', value: true } });
+assert.equal((await createVscodeEditingPreferences('zh-CN', migrationState)).read().input.pasteHtml, true, 'a global opt-in survives restart after migration');
+savedWorkspace = previousWorkspace;
+configurationWrites.length = 0;
+const otherWorkspaceState = { globalState: migrationState.globalState, workspaceState: createMigrationStore() };
+assert.equal((await createVscodeEditingPreferences('en', otherWorkspaceState)).read().input.pasteHtml, false, 'an old workspace opened later migrates independently');
+assert.equal(savedGlobal!.input!.pasteHtml, true, 'opening an old workspace preserves the migrated profile\'s new choice');
+assert.deepEqual(configurationWrites, [2]);
+
+savedGlobal = { input: { ...defaultInputAssistance, pasteHtml: false }, shortcuts: {} };
+savedWorkspace = undefined;
+configurationWrites.length = 0;
+await createVscodeEditingPreferences('en', createMigrationState());
+assert.deepEqual(configurationWrites, [], 'disabled and missing saved values need no configuration rewrite');
+
+for (const target of [1, 2]) {
+  savedGlobal = structuredClone(previousGlobal); savedWorkspace = structuredClone(previousWorkspace);
+  configurationWrites.length = 0;
+  const retryState = createMigrationState();
+  failedConfigurationTarget = target;
+  await assert.rejects(createVscodeEditingPreferences('en', retryState), /settings write failed/);
+  const failedState = target === 1 ? retryState.globalState : retryState.workspaceState;
+  assert.equal(failedState.writes.length, 0, 'a failed configuration write must not mark the migration complete');
+  failedConfigurationTarget = undefined;
+  const retried = await createVscodeEditingPreferences('en', retryState);
+  assert.equal(retried.read().input.pasteHtml, false, 'a failed migration retries on the next activation');
+  assert.deepEqual(configurationWrites, [1, 2], 'retry skips already completed configuration writes');
+  assert.equal(retryState.globalState.writes.length, 1);
+  assert.equal(retryState.workspaceState.writes.length, 1);
+}
+console.log('HTML paste preference: default off, one-time profile/workspace overrides, opt-in persistence and failed migration retries passed');

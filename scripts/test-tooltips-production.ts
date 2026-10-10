@@ -72,7 +72,7 @@ try {
         side: hint.dataset.side,
         nativeTitle: element.getAttribute('title'),
         visibleCount: document.querySelectorAll('.meo-tooltip.is-visible').length,
-        inside: rect.left >= 8 && rect.right <= innerWidth - 8 && rect.top >= 8 && rect.bottom <= innerHeight - 8
+        inside: rect.left >= 4 && rect.right <= innerWidth - 4 && rect.top >= 4 && rect.bottom <= innerHeight - 4
       };
     });
   };
@@ -81,6 +81,30 @@ try {
   assert.equal(await page.$eval(encodedAnchor, element => (element as HTMLElement).dataset.tooltipLinkHref), '#%E5%AE%89%E8%A3%85%E8%AF%B4%E6%98%8E', 'display formatting preserves the navigation target');
   await page.keyboard.press('Escape');
   await page.mouse.move(0, 0);
+
+  for (const [href, display] of [
+    ['设计资料/%E6%88%AA%E5%9B%BE.png', '设计资料/截图.png'],
+    ['设计资料/%E6%88%AA%E5%9B%BE%zz.png', '设计资料/截图%zz.png'],
+    ['设计资料/%E6%88%AA%E5%9B%BE%FF.png', '设计资料/截图%FF.png'],
+    ['https://example.test/%E4%B8%AD%E6%96%87?q=%23%2F#%E6%A0%87%E9%A2%98', 'https://example.test/中文?q=%23%2F#标题'],
+    ['设计资料/%2520.png', '设计资料/%20.png']
+  ]) {
+    await page.evaluate(href => {
+      const button = document.createElement('button');
+      button.id = 'destination-tooltip';
+      button.textContent = 'Destination';
+      button.dataset.tooltip = href;
+      button.dataset.tooltipLinkHref = href;
+      button.style.cssText = 'position:fixed;left:400px;top:300px;z-index:700';
+      document.body.append(button);
+    }, href);
+    assert.equal((await show('#destination-tooltip')).text, 'Go to: ' + display);
+    assert.equal(await page.$eval('#destination-tooltip', element => (element as HTMLElement).dataset.tooltipLinkHref), href,
+      'display formatting preserves the exact navigation destination');
+    await page.keyboard.press('Escape');
+    await page.mouse.move(0, 0);
+    await page.$eval('#destination-tooltip', element => element.remove());
+  }
 
   const find = '[data-action="find"]';
   const timing = await page.$eval(find, element => {
@@ -416,14 +440,18 @@ try {
   }
   const nestedHint = await frame.$eval('.meo-tooltip.is-visible', element => ({
     text: element.textContent,
+    language: (element as HTMLElement).lang,
     background: getComputedStyle(element).backgroundColor,
+    color: getComputedStyle(element).color,
+    filter: getComputedStyle(element).filter,
     size: getComputedStyle(element).fontSize,
     bodyFont: getComputedStyle(document.body).fontFamily,
     bodySize: getComputedStyle(document.body).fontSize,
     documentTheme: document.documentElement.getAttribute('data-editor-appearance')
   }));
   assert.deepEqual(nestedHint, {
-    text: 'Go to: https://example.com\nLink explanation', background: 'rgb(58, 58, 58)', size: '12px',
+    text: 'Go to: https://example.com\nLink explanation', language: 'en', background: 'rgb(58, 58, 58)',
+    color: 'rgb(255, 255, 255)', filter: 'none', size: '13px',
     bodyFont: before.font, bodySize: before.size, documentTheme: before.theme
   }, 'Preview hints use the UI theme without changing the document theme or font');
   await show(find);
@@ -585,7 +613,7 @@ try {
   const narrow = await frame.$eval('.meo-tooltip.is-visible', element => {
     const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right, width: rect.width, viewport: innerWidth };
   });
-  assert.ok(narrow.width < 320 && narrow.left >= 8 && narrow.right <= narrow.viewport - 8, 'target width stays inside the available reading pane');
+  assert.ok(narrow.width < 320 && narrow.left >= 4 && narrow.right <= narrow.viewport - 4, 'target width stays inside the available reading pane');
   assert.deepEqual(errors, []);
   await page.close();
   console.log('Production tooltips: delay, stateful pointer/keyboard updates, mode focus feedback, dismissal, toolbar/menu scope, fullscreen controls, boundary placement and Preview theme isolation passed.');

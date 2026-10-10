@@ -23,6 +23,7 @@ import { parseFootnotes } from './footnotes';
 import { createLatexMathElement, parseLatexMathAt } from './math';
 import { isPrimaryModifierPointerClick } from './linkNavigation';
 import { wikiLinkScheme } from './wikiLinks';
+import { isWikiImageTarget, parseWikiReference, wikiImageSrc } from '../../../src/foundation/wikiReference';
 import { normalizeSourceHref } from './rawUrls';
 import type { EditorDiagnostic } from './diagnostics';
 import { continuedListMarker, listMarkerData, listMarkerDataInContainerLine, nextOrderedSequenceNumber } from './listMarkers';
@@ -1351,29 +1352,16 @@ function parseTableInlineMarkdownLink(text: string, index: number, syntax: Retur
 }
 
 function parseTableInlineWikiLink(text: string, index: number) {
-  if (!text.startsWith('[[', index) || isTableInlineEscaped(text, index)) return null;
-  for (let i = index + 2; i < text.length - 1; i += 1) {
-    if (text[i] === '\\') {
-      i += 1;
-      continue;
-    }
-    if (text[i] === ']' && text[i + 1] === ']' && !isTableInlineEscaped(text, i)) {
-      const content = text.slice(index + 2, i);
-      const pipeIndex = content.indexOf('|');
-      const rawTarget = pipeIndex >= 0 ? content.slice(0, pipeIndex).trim() : content.trim();
-      const rawAlias = pipeIndex >= 0 ? content.slice(pipeIndex + 1).trim() : '';
-      const visibleRaw = pipeIndex >= 0 ? content.slice(pipeIndex + 1) : content;
-      const visibleText = rawAlias || rawTarget;
-      const visibleTextFrom = index + 2 + (pipeIndex >= 0 ? pipeIndex + 1 : 0) + (visibleRaw.search(/\S|$/));
-      return {
-        target: rawTarget,
-        visibleText,
-        visibleTextFrom,
-        nextIndex: i + 2
-      };
-    }
-  }
-  return null;
+  const reference = parseWikiReference(text, index);
+  if (!reference || reference.embed) return null;
+  const contentFrom = index + 2;
+  const contentTo = reference.to - 2;
+  const pipe = text.indexOf('|', contentFrom);
+  const hasAlias = pipe >= 0 && pipe < contentTo && text.slice(pipe + 1, contentTo).trim().length > 0;
+  const visibleFrom = hasAlias ? pipe + 1 : contentFrom;
+  const visibleRaw = text.slice(visibleFrom, hasAlias || pipe < 0 ? contentTo : pipe);
+  return { target: reference.target, visibleText: reference.label,
+    visibleTextFrom: visibleFrom + visibleRaw.search(/\S|$/), nextIndex: reference.to };
 }
 
 function trimTableInlineRawUrl(raw: string, precedingChar: string): string {
@@ -1482,7 +1470,8 @@ function appendTableInlinePreviewImage(
   url: string,
   sourceRange: TableCellRange,
   presentationFactory: ImagePresentationFactory,
-  uiLanguage: UiLanguage
+  uiLanguage: UiLanguage,
+  dimensions: { width?: number; height?: number } = {}
 ) {
   if (!url) {
     appendInlineMappedText(parent, `![${altText}]()`, sourceRange);
@@ -1492,7 +1481,7 @@ function appendTableInlinePreviewImage(
   // pointerup instead of being consumed by the standalone image interaction.
   const dom = new ImageWidget(url, decodeTableInlineEscapes(altText), '', null, presentationFactory, {
     pointerInteractionOwner: 'parent',
-    uiLanguage
+    uiLanguage, ...dimensions
   }).toDOM();
   if (dom instanceof HTMLElement) {
     dom.setAttribute('data-meo-link-href', url);
@@ -1681,6 +1670,15 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       });
       parent.appendChild(button);
       i += footnoteMarker[0].length;
+      continue;
+    }
+
+    const wikiImage = parseWikiReference(text, i);
+    if (wikiImage?.embed && isWikiImageTarget(wikiImage.target)) {
+      flushBuffer();
+      appendTableInlinePreviewImage(parent, wikiImage.label, wikiImageSrc(wikiImage.target),
+        { from: baseOffset + i, to: baseOffset + wikiImage.to }, options.presentationFactory, options.uiLanguage, wikiImage);
+      i = wikiImage.to;
       continue;
     }
 
@@ -2120,6 +2118,8 @@ function renderTableCellInlinePreview(
 function consumeTableInlineProtectedSpan(text: string, index: number, endIndex: number, syntax: ReturnType<typeof parseTableInlineSyntax> | null): number | null {
   const code = syntax?.codes.get(index);
   if (code && code.to <= endIndex) return code.to;
+  const reference = parseWikiReference(text, index);
+  if (reference && reference.to <= endIndex) return reference.to;
 
   const kbd = text[index] === '<' && !isTableInlineEscaped(text, index) ? parseKbdTagAt(text, index) : null;
   if (kbd && kbd.nextIndex <= endIndex) return kbd.nextIndex;
@@ -2369,6 +2369,13 @@ function buildWidgetTableData(
 
 const mountedTableWidgets = new WeakMap<EditorView, Set<HtmlTableWidget>>();
 const tableDomOwners = new WeakMap<HTMLElement, HtmlTableWidget>();
+
+/** Ends native cell presentation when document navigation supersedes its return point. */
+export function endTableCellEditing(view: EditorView): void {
+  for (const widget of mountedTableWidgets.get(view) ?? []) {
+    if (widget.cellInteraction.snapshot().editingTarget) widget.clearSelection('external');
+  }
+}
 
 export function refreshMountedTablePositions(
   view: EditorView,
@@ -3198,6 +3205,9 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
         continue;
       }
       if (effect.kind === 'clear') {
+        if (effect.reason !== 'pointercancel' && effect.reason !== 'lostcapture') {
+          runPrimary(() => this.endCellEditing());
+        }
         runPrimary(() => clearNativeTextSelection(effect.reason === 'dispose'));
         runPrimary(() => this.applySelection(null));
         if (wrap && effect.reason === 'cross-table') {
@@ -3216,6 +3226,9 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
         continue;
       }
       if (effect.kind === 'cells') {
+        if (effect.focus === 'table' || effect.range.fromRow !== effect.range.toRow || effect.range.fromCol !== effect.range.toCol) {
+          runPrimary(() => this.endCellEditing());
+        }
         runPrimary(clearNativeTextSelection);
         if (wrap) runPrimary(() => this.setTableInteractionActive(wrap, true));
         runPrimary(() => this.applySelection(effect.range));
@@ -3270,6 +3283,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   }
 
   clearSelection(reason: 'outside' | 'escape' | 'cross-table' | 'external' | 'replacement' = 'external') {
+    this.endCellEditing();
     const transition = this.cellSelection.accept({ type: 'clear', reason });
     this.applyCellSelectionTransition(transition);
   }
@@ -3340,7 +3354,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     const clipboard = event.clipboardData;
     if (!clipboard) return null;
     return parseMeoTableClipboard(clipboard.getData(meoTableClipboardMime))
-      ?? parseHtmlTableClipboard(clipboard.getData('text/html'), this.view?.state.facet(inputAssistanceFacet).pasteHtml ?? true)
+      ?? parseHtmlTableClipboard(clipboard.getData('text/html'), this.view?.state.facet(inputAssistanceFacet).pasteHtml ?? false)
       ?? parseTsvTableClipboard(clipboard.getData('text/plain')) ?? (() => { const table = parseMarkdownTable(clipboard.getData('text/plain')); return table ? { cells: table.cells, source: 'meo' as const } : null; })();
   }
 
@@ -3710,7 +3724,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
         ? nextTarget.closest('.meo-md-html-table-shell')
         : null;
       if (nextTableShell) {
-        this.transferTableInteraction(wrap);
+        if (nextTableShell !== this.domRefs?.shell) this.transferTableInteraction(wrap);
         return;
       }
       if (pendingTableSwitchPointerId !== null) {
@@ -3719,16 +3733,21 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       }
       const view = this.getEditorView(wrap);
       if (view) commitPendingTableEdits(view);
-      this.exitTableInteraction(wrap);
+      // Window activation and Webview chrome suspend the native input. Only a
+      // new document focus target ends the cell session; outside clicks have
+      // their own explicit boundary below, including clicks with no focus target.
+      if (!this.cellInteraction.snapshot().editingTarget || (nextTarget instanceof Node && view?.dom.contains(nextTarget))) {
+        this.exitTableInteraction(wrap);
+      }
     };
 
     const onDocumentPointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node)) return;
       const wrap = getWrap();
       const container = getContainer();
-      // A modal owns its pointer interactions. Scheduling an outside-table exit
-      // here could blur the cell after the modal restores its original focus.
-      if (isEditingMenuTarget(event.target) || (event.target instanceof Element && event.target.closest('dialog[open]'))) {
+      // Chrome and modals temporarily own focus. A delayed outside-table exit
+      // would otherwise clear the cell after their close handler restores it.
+      if (isEditingMenuTarget(event.target) || (event.target instanceof Element && event.target.closest('dialog[open], .mode-toolbar, .find-panel'))) {
         return;
       }
       const isOutsideTable = !container.contains(event.target);
@@ -5022,7 +5041,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       const view = this.view;
       const wrap = this.domRefs?.wrap;
       if (view && wrap) this.resolveCurrentTableRange(view, wrap);
-      this.cellInteraction.accept({ type: 'focus', target: { row: rowIndex, col: colIndex } });
+      this.setCellEditingState(input, true);
       const pending = this.cellInteraction.snapshot().pending;
       const lastPendingEdit = pending[pending.length - 1];
       if (
@@ -5052,7 +5071,6 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
           }
         });
       }
-      this.setCellEditingState(input, true);
       this.setTableInteractionActive(container, true);
       this.setSingleCellSelection({ row: rowIndex, col: colIndex }, 'focus');
       notifySelectionChange();
@@ -5060,14 +5078,14 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     input.addEventListener('blur', (event) => {
       if (this.destroyed || !this.view) return;
       refreshPreview();
-      this.setCellEditingState(input, false);
+      this.cellInteraction.accept({ type: 'blur', target: { row: rowIndex, col: colIndex } });
       notifySelectionChange();
       const nextTarget = event.relatedTarget;
       const nextTableShell = nextTarget instanceof Element
         ? nextTarget.closest('.meo-md-html-table-shell')
         : null;
       if (nextTableShell) {
-        if (nextTarget instanceof Node && !container.contains(nextTarget)) {
+        if (nextTableShell !== this.domRefs?.shell) {
           this.transferTableInteraction(container);
         }
         return;
@@ -5289,7 +5307,30 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   setCellEditingState(input: HTMLTextAreaElement, isEditing: boolean) {
     const content = input?.parentElement;
     if (!(content instanceof HTMLElement)) return;
+    const target = this.parseCellCoords(input.dataset.tableRow, input.dataset.tableCol);
+    if (isEditing && target) {
+      for (const widget of this.view ? mountedTableWidgets.get(this.view) ?? [] : []) {
+        if (widget !== this) widget.endCellEditing();
+      }
+      const previous = this.cellInteraction.snapshot().editingTarget;
+      if (previous && (previous.row !== target.row || previous.col !== target.col)) this.endCellEditing();
+      this.cellInteraction.accept({ type: 'focus', target });
+      if (input.ownerDocument.activeElement !== input || !input.ownerDocument.hasFocus()) {
+        this.cellInteraction.accept({ type: 'blur', target });
+      }
+    }
     content.classList.toggle('is-editing', isEditing);
+  }
+
+  endCellEditing() {
+    const target = this.cellInteraction.snapshot().editingTarget;
+    this.cancelPendingCellAutoCommit();
+    const input = target ? this.domRefs?.allRowInputs[target.row]?.[target.col] : null;
+    if (input) {
+      this.refreshCellPreviewFromInput(input);
+      this.setCellEditingState(input, false);
+    }
+    this.cellInteraction.accept({ type: 'exit' });
   }
 
   refreshAllCellPreviews() {

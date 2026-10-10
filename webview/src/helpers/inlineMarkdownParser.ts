@@ -5,8 +5,9 @@ import { highlightMarkdownExtension } from './highlightSyntax';
 import { inlineScriptMarkdownExtension } from './inlineStyles';
 import { collectInlineMathExcludedRanges, createMathLiteralSyntaxExtension, htmlCodeLiteralSyntaxExtension } from './markdownLiteralSyntax';
 import { createPunctuationInlineStyleExtension } from './punctuationSyntax';
+import { wikiImageMarkdownExtension } from '../../../src/foundation/wikiReference';
 
-const literalExtensions = [footnoteMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, htmlCodeLiteralSyntaxExtension];
+const literalExtensions = [footnoteMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, htmlCodeLiteralSyntaxExtension, wikiImageMarkdownExtension];
 const literalParser = (markdownLanguage.parser as MarkdownParser).configure(literalExtensions);
 export const inlineMarkdownExtensions = [...literalExtensions, createMathLiteralSyntaxExtension(literalParser), createPunctuationInlineStyleExtension(literalParser)];
 const inlineParser = (markdownLanguage.parser as MarkdownParser).configure(inlineMarkdownExtensions);

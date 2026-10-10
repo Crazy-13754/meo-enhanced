@@ -14,6 +14,7 @@ import { nativeSymbolInput } from './nativeTypingAssistance';
 import { addAutomaticSymbolPair } from './typingAssistance';
 import { sourceTableAt } from './sourceTableCommands';
 import { blockInsertion, type MarkdownInputContext } from './blockInsertion';
+import { encodeMarkdownPath } from '../../../src/foundation/linkDestination';
 
 type Suggestion = LinkCandidate & { readonly caret?: number; readonly slash?: SlashCommand };
 export function createInputSuggestions(options: {
@@ -378,7 +379,7 @@ export function createInputSuggestions(options: {
       const tableBreak = item.slash?.id === 'lineBreak' && !!sourceTableAt(this.view.state, this.head);
       let insert = tableBreak ? '<br>' : item.insert;
       if (context.type === 'documents') insert = insert.replace(/\.(?:md|markdown|mdx|mdc)$/i, '');
-      if (context.type === 'paths') insert = insert.split('/').map(part => encodeURIComponent(part)).join('/');
+      if (context.type === 'paths') insert = encodeMarkdownPath(insert);
       if (context.type === 'headings' && !context.wiki) insert = item.anchor ?? insert;
       const from = this.head - context.length;
       const caret = from + (tableBreak ? insert.length : item.caret ?? insert.length);

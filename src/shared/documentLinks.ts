@@ -4,8 +4,9 @@ import { parser as markdownParser } from '@lezer/markdown';
 import * as vscode from 'vscode';
 import { safeDecodeURIComponent } from '../agents/resourceMatching';
 import { withMarkdownExtensions } from './extensionConfig';
+import { WIKI_IMAGE_SCHEME, WIKI_LINK_SCHEME, wikiTargetFromImageSrc } from '../foundation/wikiReference';
+import { resolveWikiResource } from '../host/wikiResources';
 
-const WIKI_LINK_SCHEME = 'meo-wiki:';
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview:|vscode-webview-resource:|vscode-resource:)/i;
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const HOSTNAME_RE = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
@@ -29,11 +30,14 @@ export async function openExternalLink(rawHref: string): Promise<void> {
 }
 
 export async function openImageExternally(rawUrl: string, documentUri: vscode.Uri): Promise<void> {
-  const localImageUri = await resolveLocalLinkTargetUri(rawUrl, documentUri);
+  const wikiTarget = wikiTargetFromImageSrc(rawUrl);
+  const localImageUri = wikiTarget === null ? await resolveLocalLinkTargetUri(rawUrl, documentUri)
+    : (await resolveWikiResource(wikiTarget, documentUri)).uri;
   if (localImageUri) {
     await openLocalImageWithSystemApp(localImageUri);
     return;
   }
+  if (wikiTarget !== null) return;
   if (looksLikeLocalHref(rawUrl)) {
     console.warn('[meo] Local image target not found', { url: rawUrl });
     return;
@@ -126,41 +130,38 @@ export function getDocumentFragmentHref(rawHref: string): string {
 }
 
 export async function openWikiLink(rawHref: string, documentUri: vscode.Uri): Promise<boolean> {
-  if (!rawHref.toLowerCase().startsWith(WIKI_LINK_SCHEME)) {
+  const scheme = rawHref.startsWith(WIKI_IMAGE_SCHEME) ? WIKI_IMAGE_SCHEME : WIKI_LINK_SCHEME;
+  if (!rawHref.toLowerCase().startsWith(scheme)) {
     return false;
   }
 
-  const decoded = safeDecodeURIComponent(rawHref.slice(WIKI_LINK_SCHEME.length)).trim();
+  const decoded = safeDecodeURIComponent(rawHref.slice(scheme.length)).trim();
   if (!decoded) {
     return true;
   }
 
-  const target = decoded.split('#', 1)[0]?.trim() ?? '';
-  if (!target) {
-    return true;
-  }
-
-  const targetUri = await resolveWikiLinkTargetUri(target, documentUri);
+  const result = await resolveWikiResource(decoded, documentUri);
+  const targetUri = result.uri;
   if (!targetUri) {
+    if (result.issue) void vscode.window.showWarningMessage(result.issue);
     return true;
   }
 
-  const targetDoc = await vscode.workspace.openTextDocument(targetUri);
-  await vscode.window.showTextDocument(targetDoc, { preview: false });
+  await vscode.commands.executeCommand('vscode.open', targetUri, { preview: false });
   return true;
 }
 
 export async function resolveWikiLinkTargets(
   targets: string[],
   documentUri: vscode.Uri
-): Promise<Array<{ target: string; exists: boolean }>> {
+): Promise<Array<{ target: string; exists: boolean; issue?: string }>> {
   const uniqueTargets = Array.from(new Set(targets
     .map((target) => normalizeWikiTarget(target))
     .filter((target) => target.length > 0)));
 
   const resolved = await Promise.all(uniqueTargets.map(async (target) => {
-    const targetUri = await resolveWikiLinkTargetUri(target, documentUri);
-    return { target, exists: Boolean(targetUri) };
+    const result = await resolveWikiResource(target, documentUri);
+    return { target, exists: Boolean(result.uri), ...(result.issue ? { issue: result.issue } : {}) };
   }));
 
   return resolved;
@@ -184,36 +185,14 @@ export async function resolveLocalLinkTargets(
 
 export function normalizeWikiTarget(target: string): string {
   const normalized = target.split('#', 1)[0]?.trim() ?? '';
-  if (!normalized || SCHEME_RE.test(normalized)) {
+  if (!normalized || (SCHEME_RE.test(normalized) && !WINDOWS_ABSOLUTE_PATH_RE.test(normalized))) {
     return '';
   }
   return normalized;
 }
 
 export async function resolveWikiLinkTargetUri(target: string, documentUri: vscode.Uri): Promise<vscode.Uri | null> {
-  const normalized = target.replace(/\\/g, path.sep);
-  const basePath = path.isAbsolute(normalized)
-    ? normalized
-    : path.resolve(path.dirname(documentUri.fsPath), normalized);
-  const ext = path.extname(normalized);
-  const candidates = ext ? [basePath] : withMarkdownExtensions(basePath);
-  const resolvedFromDocumentDir = await findFirstExistingUri(candidates.map((candidate) => toDocumentScopedUri(candidate, documentUri)));
-  if (resolvedFromDocumentDir) {
-    return resolvedFromDocumentDir;
-  }
-
-  if (path.isAbsolute(normalized)) {
-    return null;
-  }
-
-  const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
-  if (!workspaceRoot?.fsPath) {
-    return null;
-  }
-
-  const workspaceBasePath = path.resolve(workspaceRoot.fsPath, normalized);
-  const workspaceCandidates = ext ? [workspaceBasePath] : withMarkdownExtensions(workspaceBasePath);
-  return findFirstExistingUri(workspaceCandidates.map((candidate) => toDocumentScopedUri(candidate, workspaceRoot)));
+  return (await resolveWikiResource(target, documentUri)).uri ?? null;
 }
 
 export async function resolveLocalLinkTargetUri(rawHref: string, documentUri: vscode.Uri): Promise<vscode.Uri | null> {
@@ -295,11 +274,14 @@ export async function resolveWebviewImageSrc(
     return trimmed;
   }
 
-  if (SCHEME_RE.test(trimmed) && !/^file:/i.test(trimmed) && !WINDOWS_IMAGE_PATH_RE.test(trimmed)) {
+  const wikiTarget = wikiTargetFromImageSrc(trimmed);
+  if (wikiTarget === null && SCHEME_RE.test(trimmed) && !/^file:/i.test(trimmed) && !WINDOWS_IMAGE_PATH_RE.test(trimmed)) {
     return trimmed;
   }
 
-  const imageUri = resolveLocalImageUri(trimmed, documentUri);
+  const wikiResult = wikiTarget === null ? null : await resolveWikiResource(wikiTarget, documentUri);
+  if (wikiResult?.issue) throw new Error(wikiResult.issue);
+  const imageUri = wikiResult ? wikiResult.uri : resolveLocalImageUri(trimmed, documentUri);
 
   if (!imageUri || !(await uriExists(imageUri))) {
     return '';

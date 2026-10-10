@@ -188,7 +188,23 @@ try {
           const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!;
           input.focus(); input.setSelectionRange(2, 7, 'backward');
         });
+        for (const order of ['window-first', 'input-first']) {
+          if (order === 'input-first') {
+            await frame.evaluate(() => document.querySelector<HTMLTextAreaElement>('tbody textarea')!.blur());
+          }
+          await leave(page, frame, 'tbody textarea');
+          assert.equal(await frame.evaluate(() => {
+            const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!;
+            return input.parentElement!.classList.contains('is-editing') && getComputedStyle(input).opacity === '1';
+          }), true, `${order}: window loss must retain the cell editing presentation`);
+          await returnToFrame(page);
+          assert.deepEqual(await readInput(frame, 'tbody textarea'), {
+            focused: true, value: 'Table selection', start: 2, end: 7, direction: 'backward', scrollLeft: 0
+          }, `${order}: window return must restore the suspended cell and selection`);
+        }
         await (await frame.$('[data-action="find"]'))!.click();
+        assert.equal(await frame.evaluate(() => document.querySelector('tbody textarea')!.parentElement!.classList.contains('is-editing')), true,
+          'opening Find must suspend the cell without switching to the rendered presentation');
         await leave(page, frame, '.find-row .find-input'); await returnToFrame(page);
         await page.keyboard.press('Escape');
         assert.deepEqual(await frame.evaluate(() => {
@@ -202,6 +218,8 @@ try {
         });
         await page.keyboard.press('Enter');
         const navigated = await readEditor(frame);
+        assert.equal(await frame.evaluate(() => document.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing').length), 0,
+          'an explicit search outside the table must end the old cell editing session');
         assert.equal(navigated.anchor, navigated.text.indexOf('witness.'));
         assert.equal(navigated.head, navigated.anchor + 'witness.'.length);
         await leave(page, frame, '.find-row .find-input'); await returnToFrame(page);
@@ -222,6 +240,12 @@ try {
           const input = document.querySelector<HTMLTextAreaElement>('thead textarea')!;
           return {focused: document.activeElement === input, start: input.selectionStart, end: input.selectionEnd};
         }), {focused: true, start: 0, end: 4}, 'searching another cell must return to that cell instead of the original one');
+        await (await frame.$('.cm-line'))!.click();
+        assert.equal(await frame.evaluate(() => document.querySelectorAll('.meo-md-html-table:not(.meo-md-html-table-sticky-table) .is-editing').length), 0,
+          'clicking document text must end cell editing');
+        await page.focus('#host-control'); await returnToFrame(page);
+        assert.equal(await frame.evaluate(() => document.activeElement instanceof HTMLTextAreaElement), false,
+          'window return must respect the new document target instead of resurrecting the exited cell');
       }
       assert.deepEqual(errors, [], `${mode}: focus handlers must not throw`);
     } finally { await page.close(); }

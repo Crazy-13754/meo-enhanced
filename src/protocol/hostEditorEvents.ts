@@ -1,6 +1,7 @@
 import type { DiffBaselineMode, OutlinePosition } from './editorCommands';
 
 export type HostEditorEvent =
+  | { readonly type: 'wikiResourcesChanged' }
   | { readonly type: 'focusEditor' }
   | {
       readonly type: 'externalFileStatusChanged';
@@ -28,6 +29,8 @@ function isOffset(value: unknown): value is number {
 export function decodeHostEditorEvent(value: unknown): HostEditorEvent | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null;
   switch (value.type) {
+    case 'wikiResourcesChanged':
+      return { type: 'wikiResourcesChanged' };
     case 'focusEditor':
       return { type: 'focusEditor' };
     case 'externalFileStatusChanged':

@@ -11,6 +11,8 @@ export type TableCellInteractionSnapshot = Readonly<{
   phase: TableCellInteractionPhase;
   generation: number;
   pending: readonly TableCellEditIntent[];
+  editingTarget: TableCellCoordinates | null;
+  focused: boolean;
 }>;
 
 export type TableCellKeyboardInput = Readonly<{
@@ -63,6 +65,8 @@ export type TableCellCommitConfirmation = {
 
 export type TableCellInteractionInput =
   | { readonly type: 'focus'; readonly target: TableCellCoordinates }
+  | { readonly type: 'blur'; readonly target: TableCellCoordinates }
+  | { readonly type: 'exit' }
   | { readonly type: 'input'; readonly target: TableCellCoordinates; readonly value: string; readonly sequence: number }
   | { readonly type: 'timer'; readonly generation: number }
   | { readonly type: 'commit'; readonly reason: 'escape' | 'switch' | 'outside' | 'history' | 'command' }
@@ -152,12 +156,17 @@ export function createTableCellInteraction(): TableCellInteraction {
   let phase: TableCellInteractionPhase = 'idle';
   let generation = 0;
   let timerGeneration = 0;
+  // The edit session survives native focus loss and successful source commits.
+  let editingTarget: TableCellCoordinates | null = null;
+  let focused = false;
   let pending: Array<{ row: number; col: number; value: string; sequence: number }> = [];
   let inFlight: Array<{ row: number; col: number; value: string; sequence: number }> = [];
 
   const snapshot = (): TableCellInteractionSnapshot => ({
     phase,
     generation,
+    editingTarget: editingTarget ? { ...editingTarget } : null,
+    focused,
     pending: pending.map((edit) => ({ ...edit }))
   });
   const result = (extra: Omit<TableCellInteractionResult, 'snapshot'> = {}): TableCellInteractionResult => ({
@@ -182,6 +191,8 @@ export function createTableCellInteraction(): TableCellInteraction {
         timerGeneration += 1;
         pending = [];
         inFlight = [];
+        editingTarget = null;
+        focused = false;
         phase = 'disposed';
         return result();
       }
@@ -191,11 +202,26 @@ export function createTableCellInteraction(): TableCellInteraction {
         timerGeneration += 1;
         pending = [];
         inFlight = [];
+        editingTarget = null;
+        focused = false;
         phase = 'idle';
         return result();
       }
       if (input.type === 'focus') {
+        editingTarget = { ...input.target };
+        focused = true;
         if (phase === 'idle') phase = 'editing';
+        return result();
+      }
+      if (input.type === 'blur') {
+        if (editingTarget && sameCell(editingTarget, input.target)) focused = false;
+        return result();
+      }
+      if (input.type === 'exit') {
+        timerGeneration += 1;
+        editingTarget = null;
+        focused = false;
+        if (phase === 'editing') phase = 'idle';
         return result();
       }
       if (input.type === 'input') {
