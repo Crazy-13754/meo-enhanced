@@ -6251,6 +6251,11 @@ body.outline-resizing .preview-frame {
   overflow: clip;
 }
 
+/* Fence rows own the outer corners; the Mermaid middle joins must stay square. */
+.cm-editor .meo-mermaid-editing-block {
+  border-radius: 0;
+}
+
 .cm-editor .meo-rendered-block-mode-shell[data-meo-rendered-block-layout="source-only"] {
   grid-template-columns: minmax(0, 1fr);
 }
