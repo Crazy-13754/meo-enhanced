@@ -20,8 +20,10 @@ import { decodeReadingPositionChangedMessage, type ReadingPositionChangedMessage
 import { decodePreviewPresetsChanged, type PreviewPresetsChanged } from './previewPresets';
 
 import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageStorageChangedEvent, type ImageLocationRequest, type ImageLocationResponse, type ImageStorageChangedEvent } from './imageStorage';
+import { decodeUpdateUiColorsRequest, decodeUiColorsResult, type UpdateUiColorsRequest, type UiColorsResult } from './uiColors';
 
 export type WebviewToHostMessage =
+  | UpdateUiColorsRequest
   | ImageLocationRequest
   | EditorServiceRequest
   | ReadyMessage
@@ -41,6 +43,7 @@ export type WebviewToHostMessage =
   | ExportSnapshotResponse;
 
 export type HostToWebviewMessage =
+  | UiColorsResult
   | PreviewPresetsChanged
   | ImageLocationResponse
   | ImageStorageChangedEvent
@@ -66,6 +69,7 @@ export type HostToWebviewMessage =
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
   return decodeImageLocationRequest(value)
+    ?? decodeUpdateUiColorsRequest(value)
     ?? decodeEditorServiceRequest(value)
     ?? decodeReadyMessage(value)
     ?? decodeDocumentSyncCommand(value)
@@ -86,6 +90,7 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
 
 export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage | null {
   return decodePreviewPresetsChanged(value)
+    ?? decodeUiColorsResult(value)
     ?? decodeImageLocationResponse(value)
     ?? decodeImageStorageChangedEvent(value)
     ?? decodeEditorServiceResponse(value)

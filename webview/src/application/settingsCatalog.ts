@@ -1,6 +1,17 @@
 import type { EditorCommandId, InputAssistance } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-export type SettingsTab = 'general' | 'typing' | 'shortcuts';
+export type SettingsTab = 'general' | 'appearance' | 'typing' | 'shortcuts';
+
+export const appearanceCatalog = [
+  { id: 'mode', title: ['模式', 'Mode'], description: ['自动跟随 VS Code 主题，切换后立即保存。', 'Auto follows the VS Code theme. Mode changes save immediately.'], keywords: ['主题 深色 暗色 夜间 浅色 亮色 自动 跟随 外观', 'theme dark night light auto appearance'], advanced: false },
+  { id: 'surface', title: ['界面背景', 'UI background'], description: ['菜单栏、面板与弹出菜单的背景来源。', 'Base surface for toolbars, panels and menus.'], keywords: ['背景 底色 面板 菜单', 'background surface panel menu'], advanced: false },
+  { id: 'text', title: ['界面文字', 'UI text'], description: ['控件文字与图标共用的颜色。', 'Shared text and icon color for controls.'], keywords: ['前景 字体 图标 文字', 'foreground text font icon'], advanced: false },
+  { id: 'accent', title: ['操作强调', 'Action accent'], description: ['开关、焦点与操作状态的强调色。', 'Accent for switches, focus and action states.'], keywords: ['强调 开关 焦点 选中', 'accent switch focus selected'], advanced: false },
+  { id: 'textEmphasis', title: ['内容强调', 'Content emphasis'], description: ['Live 标题、列表、目录强调、菜单匹配文字与脚注底色。', 'Live headings, lists, outline emphasis, menu matches and footnote tint.'], keywords: ['标题 列表 目录 斜杠 匹配 脚注', 'heading list outline slash match footnote'], advanced: false },
+  { id: 'success', title: ['成功', 'Success'], description: ['成功状态的文字与图标。', 'Text and icons indicating success.'], keywords: ['成功 状态 高级', 'success status advanced'], advanced: true },
+  { id: 'warning', title: ['警告', 'Warning'], description: ['警告状态的文字与图标。', 'Text and icons indicating a warning.'], keywords: ['警告 状态 高级', 'warning status advanced'], advanced: true },
+  { id: 'danger', title: ['危险', 'Danger'], description: ['错误与危险操作的文字与图标。', 'Text and icons for errors and destructive actions.'], keywords: ['危险 错误 状态 高级', 'danger error status advanced'], advanced: true }
+] as const;
 export const settingsText = (language: UiLanguage, chinese: string, english: string) => language === 'zh-CN' ? chinese : english;
 export const typingSections = ['symbols', 'structure', 'paste', 'candidates'] as const;
 export type TypingSection = typeof typingSections[number];
@@ -75,7 +86,6 @@ export const generalSearchKeywords = {
   stickyHeader: ['表头固定 冻结表头 表头吸顶 表格滚动', 'sticky header freeze pin table header scrolling'],
   restorePosition: ['恢复位置 记住位置 继续阅读 阅读进度 上次位置', 'restore remember position resume reading progress last location'],
   largeDocument: ['大文件 长文档 启动速度 打开速度 性能 源码优先', 'large file long document startup performance speed source first'],
-  theme: ['主题 外观 配色 颜色 深色 暗色 夜间 浅色 亮色 跟随系统 自动', 'theme appearance color colour dark night light system automatic'],
   language: ['语言 中文 英文 英语 简体 翻译 本地化 自动', 'language Chinese English translation localization locale automatic'],
   fontSize: ['字号 字体大小 文字大小 放大 缩小 缩放 自动字号 自定义字号', 'font size text size zoom scale larger smaller auto custom']
 } as const satisfies Record<string, SearchKeywords>;

@@ -17,6 +17,7 @@ import {
 } from '../foundation/editorFontSize';
 import { decodeReadingPosition, type ReadingPositionDto } from './readingPosition';
 import { defaultInputAssistance, isEditingPreferences, type EditingPreferences } from '../foundation/editingPreferences';
+import { decodeUiColors, type UiColors } from '../foundation/uiColors';
 import { decodeCustomPreviewPresets } from '../foundation/customPreviewPreset';
 import type { PreviewPresetDefinition, PreviewPresetDiagnostic } from '../foundation/previewPresets';
 import { decodePreviewPresetDiagnostics } from './previewPresets';
@@ -56,6 +57,7 @@ export type InitMessage = {
   readonly previewShowComments: boolean;
   readonly liveStrongColoring: boolean;
   readonly editorAppearance: PreviewAppearance;
+  readonly uiColors: UiColors;
   readonly editorFontSizeMode: EditorFontSizeMode;
   readonly editorFontSize: number;
   readonly gitChangesGutter: boolean;
@@ -168,6 +170,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     || (value.previewShowComments !== undefined && typeof value.previewShowComments !== 'boolean')
     || liveStrongColoring === null
     || !isPreviewAppearance(value.editorAppearance)
+    || (value.uiColors !== undefined && decodeUiColors(value.uiColors) === null)
     || editorFontSizeMode === null
     || editorFontSize === null
     || !Array.isArray(value.diagnostics)
@@ -207,6 +210,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
   }
   return {
     ...value,
+    uiColors: decodeUiColors(value.uiColors) ?? { light: {}, dark: {} },
     ...(value.customPreviewPresets === undefined ? {} : { customPreviewPresets: decodeCustomPreviewPresets(value.customPreviewPresets) ?? [] }),
     previewPresetDiagnostics: decodePreviewPresetDiagnostics(value.previewPresetDiagnostics ?? []) ?? [],
     uiLanguagePreference: value.uiLanguagePreference ?? 'auto',

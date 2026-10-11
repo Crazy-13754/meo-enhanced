@@ -1,0 +1,156 @@
+import { createElement, Moon, Sun } from 'lucide';
+import { normalizeUiColor, uiColorKeys, type UiColorKey, type UiColors } from '../../../src/foundation/uiColors';
+import type { EditorAppearance } from '../../../src/protocol/editorCommands';
+import type { UiColorsResult } from '../../../src/protocol/uiColors';
+import type { UiLanguage } from '../../../src/foundation/uiLanguage';
+import { appearanceCatalog, settingsSearchMatches, settingsText } from '../application/settingsCatalog';
+import { createSegmentedControl } from './segmentedControl';
+
+export type AppearanceSettingsOptions = {
+  getColors(): UiColors;
+  getMode(): EditorAppearance;
+  getScheme(): 'light' | 'dark';
+  setMode(mode: EditorAppearance): void;
+  preview(colors: UiColors | null): void;
+  update(colors: UiColors): Promise<UiColorsResult['result']>;
+  registerInput?: (input: HTMLInputElement) => () => void;
+};
+const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) => {
+  const element = document.createElement(tag); element.className = className; if (text !== undefined) element.textContent = text; return element;
+};
+const button = (text: string, className = 'settings-button') => { const element = node('button', className, text); element.type = 'button'; return element; };
+const copy = (colors: UiColors): UiColors => ({ light: { ...colors.light }, dark: { ...colors.dark } });
+
+/** The window owns a disposable preview draft; persistence stays with the Host. */
+export function createAppearanceSettings(options: AppearanceSettingsOptions) {
+  let language: UiLanguage = 'zh-CN';
+  let draft: UiColors | null = null;
+  let baseline = copy(options.getColors());
+  let session = 0;
+  let saving = false;
+  let closed = false;
+  let advancedOpen = false;
+  let invalid = new Set<UiColorKey>();
+  let presenters: (() => void)[] = [];
+  let inputRegistrations: (() => void)[] = [];
+  let scheme = options.getScheme();
+  const t = (zh: string, en: string) => settingsText(language, zh, en);
+  const footer = node('div', 'appearance-footer');
+  const reset = button(''); const cancel = button(''); const apply = button('', 'settings-button settings-primary');
+  const actions = node('div', 'settings-actions'); actions.append(cancel, apply); footer.append(reset, actions);
+  const status = node('p', 'appearance-status'); status.setAttribute('role', 'status'); status.hidden = true;
+  const same = (first: UiColors, second: UiColors) => (['light', 'dark'] as const).every(mode => uiColorKeys.every(key => first[mode][key] === second[mode][key]));
+  const changed = () => draft !== null && !same(draft, baseline);
+  const present = () => {
+    const saved = options.getColors();
+    if (!same(saved, baseline)) {
+      // External configuration changes update untouched inputs without erasing local edits.
+      const next = copy(saved);
+      if (draft) for (const mode of ['light', 'dark'] as const) for (const key of uiColorKeys) {
+        if (draft[mode][key] !== baseline[mode][key]) {
+          if (draft[mode][key] === undefined) delete next[mode][key]; else next[mode][key] = draft[mode][key];
+        }
+      }
+      baseline = copy(saved); if (draft) { draft = next; options.preview(changed() ? draft : null); }
+    }
+    const nextScheme = options.getScheme();
+    if (nextScheme !== scheme) { scheme = nextScheme; invalid.clear(); }
+    for (const show of presenters) show();
+    reset.textContent = t('恢复默认颜色', 'Reset colors'); cancel.textContent = t('取消', 'Cancel'); apply.textContent = saving ? t('保存中…', 'Saving…') : t('应用', 'Apply');
+    reset.disabled = saving; cancel.disabled = saving || !changed() && !invalid.size; apply.disabled = saving || !changed() || invalid.size > 0;
+  };
+  const discard = () => { baseline = copy(options.getColors()); draft = copy(baseline); invalid.clear(); status.hidden = true; options.preview(null); present(); };
+  const change = (key: UiColorKey, value: string | undefined) => {
+    draft ??= copy(options.getColors());
+    if (value === undefined) delete draft[scheme][key]; else draft[scheme][key] = value;
+    invalid.delete(key); status.hidden = true; options.preview(draft); present();
+  };
+  reset.addEventListener('click', () => { draft = { light: {}, dark: {} }; invalid.clear(); status.hidden = true; options.preview(draft); present(); });
+  cancel.addEventListener('click', discard);
+  apply.addEventListener('click', async () => {
+    if (!draft || apply.disabled) return;
+    const savingSession = session;
+    saving = true; status.hidden = true; present();
+    let result: UiColorsResult['result'];
+    try { result = await options.update(copy(draft)); }
+    catch (error) { result = { ok: false, error: { code: 'operation-failed', message: String(error) } }; }
+    saving = false;
+    if (closed || savingSession !== session) { present(); return; }
+    if (result.ok) { baseline = copy(options.getColors()); draft = copy(baseline); options.preview(null); }
+    else { status.textContent = (result.error.code === 'timeout' ? t('保存未确认：', 'Save not confirmed: ') : t('保存失败：', 'Unable to save: ')) + result.error.message; status.hidden = false; }
+    present();
+  });
+
+  const items = (query: string) => appearanceCatalog.filter(item => settingsSearchMatches(query, '外观 Appearance', ...item.title, ...item.description, ...item.keywords, '跟随 VS Code 主题 Follow VS Code theme', item.id));
+  function render(nextLanguage: UiLanguage, query: string) {
+    for (const unregister of inputRegistrations) unregister(); inputRegistrations = [];
+    language = nextLanguage; scheme = options.getScheme(); presenters = []; invalid.clear();
+    const visible = items(query); const section = node('section', 'settings-section appearance-section'); section.id = 'meo-settings-appearance';
+    section.append(node('h3', 'settings-section-title', t('视觉风格', 'Visual style')));
+    const note = node('p', 'settings-description appearance-note');
+    presenters.push(() => {
+      const high = document.documentElement.dataset.meoUiContrast === 'high';
+      note.textContent = high ? t('高对比度模式使用 VS Code 配色。自定义颜色会保留，切回普通主题后生效。', 'High contrast uses VS Code colors. Custom colors are retained for other themes.')
+        : t(scheme === 'light' ? '正在编辑浅色配色。颜色实时预览，点击“应用”保存。' : '正在编辑深色配色。颜色实时预览，点击“应用”保存。', `Editing ${scheme} colors. Changes preview live; Apply saves them.`);
+    });
+    section.append(note, status);
+    const common = node('div', 'appearance-group');
+    const advanced = node('details', 'appearance-advanced'); advanced.open = advancedOpen || query.length > 0;
+    advanced.addEventListener('toggle', () => { if (!query.length) advancedOpen = advanced.open; });
+    advanced.append(node('summary', '', t('高级颜色', 'Advanced colors')));
+    const advancedGroup = node('div', 'appearance-group'); advanced.append(advancedGroup);
+    for (const item of visible) {
+      const row = node('div', 'settings-item appearance-item'); row.dataset.setting = item.id;
+      const text = node('div', 'settings-item-text'); text.append(node('div', 'settings-item-title', t(item.title[0], item.title[1])), node('p', 'settings-description', t(item.description[0], item.description[1]))); row.append(text);
+      if (item.id === 'mode') {
+        row.classList.add('appearance-mode');
+        const modeControl = createSegmentedControl<EditorAppearance>({ ariaLabel: t(...item.title), className: 'editor-appearance-control appearance-mode-control', buttonClassName: 'editor-appearance-button', datasetKey: 'appearanceMode', role: 'group', width: '272px', buttonTitles: false, options: [
+          { value: 'auto', label: t('自动', 'Auto') },
+          { value: 'light', label: t('浅色', 'Light'), renderLeading: () => createElement(Sun, { width: 12, height: 12, 'aria-hidden': 'true' }) },
+          { value: 'dark', label: t('深色', 'Dark'), renderLeading: () => createElement(Moon, { width: 12, height: 12, 'aria-hidden': 'true' }) }
+        ] });
+        presenters.push(() => modeControl.setActive(options.getMode()));
+        for (const value of ['auto', 'light', 'dark'] as const) modeControl.getButton(value).addEventListener('click', () => { options.setMode(value); present(); });
+        row.append(modeControl.element);
+      } else {
+        const key = item.id; const controls = node('div', 'appearance-color-controls');
+        const chip = node('label', 'appearance-color-chip');
+        const swatchInput = node('input', 'appearance-color-swatch'); swatchInput.type = 'color'; swatchInput.setAttribute('aria-label', t(item.title[0], item.title[1]));
+        const input = node('input', 'appearance-color-hex'); input.type = 'text'; input.setAttribute('spellcheck', 'false'); input.maxLength = 7; input.placeholder = t('跟随 VS Code 主题', 'Follow VS Code theme'); input.setAttribute('aria-label', t(item.title[0], item.title[1]) + ' HEX'); input.title = t('输入 #RGB 或 #RRGGBB；留空跟随 VS Code 主题。', 'Enter #RGB or #RRGGBB; leave empty to follow the VS Code theme.');
+        const unregister = options.registerInput?.(input); if (unregister) inputRegistrations.push(unregister);
+        const restore = button(t('重置', 'Reset'), 'settings-button settings-subtle appearance-color-reset'); restore.setAttribute('aria-label', t(item.title[0], item.title[1]) + ' · ' + t('跟随 VS Code 主题', 'Follow VS Code theme'));
+        chip.append(swatchInput); controls.append(chip, input, restore); row.append(controls);
+        let shownScheme = scheme;
+        presenters.push(() => {
+          const color = (draft ?? options.getColors())[scheme][key];
+          if ((!invalid.has(key) && document.activeElement !== input) || shownScheme !== scheme) { input.value = color ?? ''; input.removeAttribute('aria-invalid'); shownScheme = scheme; }
+          restore.disabled = saving || !color && !invalid.has(key); swatchInput.disabled = saving; input.disabled = saving;
+          const role = key === 'textEmphasis' ? 'text-emphasis-content' : key;
+          const value = color ?? getComputedStyle(document.documentElement).getPropertyValue('--meo-ui-' + role).trim();
+          chip.style.backgroundColor = value;
+          if (color) swatchInput.value = color;
+          else { const rgb = value.match(/^rgb\((\d+)[, ]+(\d+)[, ]+(\d+)/); if (rgb) swatchInput.value = '#' + rgb.slice(1, 4).map(channel => Number(channel).toString(16).padStart(2, '0')).join(''); }
+        });
+        swatchInput.addEventListener('input', () => { input.value = swatchInput.value.toUpperCase(); input.removeAttribute('aria-invalid'); change(key, input.value); });
+        input.addEventListener('input', () => {
+          const color = normalizeUiColor(input.value);
+          if (!input.value.trim()) { input.removeAttribute('aria-invalid'); change(key, undefined); }
+          else if (color) { input.removeAttribute('aria-invalid'); change(key, color); }
+          else { invalid.add(key); input.setAttribute('aria-invalid', 'true'); present(); }
+        });
+        input.addEventListener('blur', () => { if (!invalid.has(key)) { input.value = (draft ?? options.getColors())[scheme][key] ?? ''; } });
+        restore.addEventListener('click', () => { input.value = ''; change(key, undefined); });
+      }
+      (item.advanced ? advancedGroup : common).append(row);
+    }
+    if (common.childNodes.length) section.append(common);
+    if (advancedGroup.childNodes.length) section.append(advanced);
+    if (!visible.length) section.append(node('p', 'settings-empty', t('没有匹配的设置', 'No matching settings')));
+    present(); return section;
+  }
+  return { footer, render, present, count: (query: string) => items(query).length,
+    open() { session++; closed = false; baseline = copy(options.getColors()); draft = copy(baseline); invalid.clear(); status.hidden = true; },
+    close() { session++; closed = true; draft = null; invalid.clear(); options.preview(null); },
+    dispose() { session++; closed = true; draft = null; options.preview(null); for (const unregister of inputRegistrations) unregister(); inputRegistrations = []; presenters = []; },
+  };
+}

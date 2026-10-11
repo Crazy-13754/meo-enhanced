@@ -1,5 +1,6 @@
 import { darkCssVariableOverrides } from '../themes/editorDarkTheme';
 import { lightCssVariableOverrides } from '../themes/editorLightTheme';
+import type { UiColorOverrides } from '../../../src/foundation/uiColors';
 
 export const contentVariable = (name: string): string => name.replace('--vscode-', '--meo-content-');
 
@@ -28,13 +29,14 @@ const neutral = (value: Rgb): Rgb => {
 // events invalidate it by changing the key; mode switches reuse the same roles.
 let paletteCache: { key: string; roles: Record<string, string> } | undefined;
 
-export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean): void {
+export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean, overrides: UiColorOverrides = {}): void {
   const style = document.documentElement.style;
   const fallback = appearance === 'light' ? lightCssVariableOverrides : darkCssVariableOverrides;
   const color = (id: string, legacy: string): string => matchesHost ? `var(--vscode-${id.replace(/\./g, '-')}, ${legacy})` : legacy;
   const highContrast = matchesHost && (document.body.classList.contains('vscode-high-contrast')
     || document.body.classList.contains('vscode-high-contrast-light'));
   document.documentElement.dataset.meoUiContrast = highContrast ? 'high' : 'normal';
+  const custom = highContrast ? {} : overrides;
   const probe = document.createElement('span');
   probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
   document.body.appendChild(probe);
@@ -73,19 +75,19 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
 
   try {
     const documentSurface = read('editor.background', fallback['--vscode-editor-background']);
-    const nativeSurface = read('editorWidget.background', fallback['--vscode-editorWidget-background'], documentSurface);
+    const nativeSurface = custom.surface ? sample(custom.surface) : read('editorWidget.background', fallback['--vscode-editorWidget-background'], documentSurface);
     // Large UI areas share the toolbar's low-chroma family. Native menu fills
     // can have an unrelated, strong tint and are not another default input.
-    const surface = highContrast ? nativeSurface : mix(nativeSurface, neutral(nativeSurface), 0.30);
-    const foreground = neutral(read('foreground', fallback['--vscode-editor-foreground'], surface));
-    const accent = read('button.background', fallback['--meo-notice-action-surface'], surface);
-    const success = read('testing.iconPassed', appearance === 'light' ? '#1a7f37' : '#73c991', surface);
-    const warning = read('editorWarning.foreground', fallback['--meo-notice-warning'], surface);
-    const danger = read('errorForeground', fallback['--meo-notice-error'], surface);
+    const surface = highContrast || custom.surface ? nativeSurface : mix(nativeSurface, neutral(nativeSurface), 0.30);
+    const foreground = custom.text ? sample(custom.text) : neutral(read('foreground', fallback['--vscode-editor-foreground'], surface));
+    const accent = custom.accent ? sample(custom.accent) : read('button.background', fallback['--meo-notice-action-surface'], surface);
+    const success = custom.success ? sample(custom.success) : read('testing.iconPassed', appearance === 'light' ? '#1a7f37' : '#73c991', surface);
+    const warning = custom.warning ? sample(custom.warning) : read('editorWarning.foreground', fallback['--meo-notice-warning'], surface);
+    const danger = custom.danger ? sample(custom.danger) : read('errorForeground', fallback['--meo-notice-error'], surface);
     const contentSurface = sample(`var(--meo-background, ${rgb(documentSurface)})`, documentSurface);
     // Matches start from the final heading ink. Keep it unchanged when readable,
     // otherwise apply only the existing contrast correction for the menu carrier.
-    const textEmphasis = read('textLink.foreground',
+    const textEmphasis = custom.textEmphasis ? sample(custom.textEmphasis) : read('textLink.foreground',
       `var(--meo-semantic-headingForeground, ${appearance === 'light' ? '#0550ae' : '#79b8ff'})`, contentSurface);
     const footnoteBackground = `color-mix(in srgb, ${rgb(textEmphasis)} 12%, transparent)`;
     const contentSurfaces = [contentSurface,
@@ -120,7 +122,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
       const accentHover = fit(mix(accent, endpoint([accent]), appearance === 'light' ? 0.08 : 0.06), [endpoint([accent])], 4.55);
       const onAccent = fit(endpoint([accent, accentHover]), [accent, accentHover], 4.55);
       const accentText = fit(accent, surfaces, 4.55);
-      const selectedText = fit(neutral(nativeSelectionText ?? text), [selected], 4.55);
+      const selectedText = fit(custom.text ? text : neutral(nativeSelectionText ?? text), [selected], 4.55);
       const contentEmphasis = fit(textEmphasis, contentSurfaces, 4.55);
       const roles: Record<string, string> = Object.fromEntries(Object.entries({
         surface, 'surface-raised': raised, 'surface-field': field, 'surface-hover': hover,

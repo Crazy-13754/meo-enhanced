@@ -133,6 +133,8 @@ function targetedCommands(
     case 'appearance':
       return [
         packageScript('test:theme-inheritance'),
+        script('scripts/test-ui-colors-production.ts'),
+        script('scripts/test-ui-colors.ts'),
         script('scripts/test-shiki-empty-line-recovery.ts'),
         script('scripts/test-source-syntax-stability.ts'),
         script('scripts/test-source-syntax-first-paint.ts'),
@@ -284,6 +286,8 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-editing-features-production.ts'),
           script('scripts/test-slash-commands-production.ts'),
           script('scripts/test-settings-window-production.ts'),
+          script('scripts/test-ui-colors.ts'),
+          script('scripts/test-ui-colors-production.ts'),
           script('scripts/test-input-focus-return-production.ts'),
           packageScript('test:reading-position'),
           script('scripts/test-test-workflow.ts'),

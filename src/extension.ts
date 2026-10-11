@@ -68,6 +68,7 @@ import { cleanupRetiredWorkspaceState } from './host/vscodeRetiredWorkspaceState
 import { type PreviewRenderResult } from './shared/preview';
 import {
   createAppearanceSettingsOwner,
+  UI_COLORS_SETTING_KEY,
   type AppearanceSettingsOwner,
   type AppearanceSettingsStore
 } from './host/appearanceSettings';
@@ -491,6 +492,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   async handleConfigurationChanged(event: vscode.ConfigurationChangeEvent): Promise<void> {
+    if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${UI_COLORS_SETTING_KEY}`)) {
+      this.broadcast({ type: 'uiColorsChanged', colors: this.appearanceSettings.getUiColors() });
+    }
     if (event.affectsConfiguration('meoEnhanced.imageStorage') || event.affectsConfiguration('meoEnhanced.imageFolder')) {
       this.broadcast({ type: 'imageStorageChanged' });
     }
@@ -670,6 +674,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       getLiveStrongColoring: this.appearanceSettings.getLiveStrongColoring,
       setLiveStrongColoring: this.appearanceSettings.setLiveStrongColoring,
       getEditorAppearance: this.appearanceSettings.getEditorAppearance,
+      getUiColors: this.appearanceSettings.getUiColors,
+      setUiColors: this.appearanceSettings.setUiColors,
       setEditorAppearance: this.appearanceSettings.setEditorAppearance,
       getEditorFontSizePreference: this.appearanceSettings.getEditorFontSizePreference,
       setEditorFontSizePreference: this.appearanceSettings.setEditorFontSizePreference,

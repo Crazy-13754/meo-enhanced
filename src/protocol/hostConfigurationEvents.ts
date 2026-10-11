@@ -1,3 +1,5 @@
+import { decodeUiColors, type UiColors } from '../foundation/uiColors';
+
 export type CodeThemeDto = {
   readonly name: string;
   readonly type: 'light' | 'dark';
@@ -8,6 +10,7 @@ export type CodeThemeDto = {
 };
 
 export type HostConfigurationEvent =
+  | { readonly type: 'uiColorsChanged'; readonly colors: UiColors }
   | { readonly type: 'toggleMode' }
   | { readonly type: 'developmentStylesChanged'; readonly css: string }
   | { readonly type: 'largeDocumentOptimizationChanged'; readonly enabled: boolean }
@@ -49,6 +52,10 @@ export function decodeCodeTheme(value: unknown): CodeThemeDto | null | undefined
 export function decodeHostConfigurationEvent(value: unknown): HostConfigurationEvent | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null;
   switch (value.type) {
+    case 'uiColorsChanged': {
+      const colors = decodeUiColors(value.colors);
+      return colors ? { type: value.type, colors } : null;
+    }
     case 'toggleMode':
       return { type: 'toggleMode' };
     case 'developmentStylesChanged':

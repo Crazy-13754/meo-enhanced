@@ -8,6 +8,7 @@ import type { EditorAppearance } from '../../../src/shared/editorAppearance';
 import { lightCssVariableOverrides } from '../themes/editorLightTheme';
 import { darkCssVariableOverrides } from '../themes/editorDarkTheme';
 import { applyUiTheme, contentColor, contentVariable } from './uiTheme';
+import type { UiColors } from '../../../src/foundation/uiColors';
 
 const vscodeEditorFontFamily = 'var(--vscode-editor-font-family)';
 const vscodeEditorFontSize = 'var(--vscode-editor-font-size, 13px)';
@@ -110,7 +111,7 @@ const applyHostAppearance = (appearance: EditorAppearance): void => {
   }
 };
 
-export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance, 'auto'> = 'dark'): void => {
+export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance, 'auto'> = 'dark', colors?: UiColors): void => {
   const editorFontWeight = resolveEditorFontWeight();
   applyHostAppearance(appearance);
   const baseline = getBuiltInVisuals(appearance);
@@ -185,5 +186,5 @@ export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance,
   rootStyle.setProperty('--meo-heading-token-weight', defaultHeadingFontWeight);
   rootStyle.setProperty('--meo-line-height-live', `${liveLineHeight}`);
   rootStyle.setProperty('--meo-line-height-source', `${sourceLineHeight}`);
-  applyUiTheme(appearance, matchesHostAppearance);
+  applyUiTheme(appearance, matchesHostAppearance, colors?.[appearance]);
 };

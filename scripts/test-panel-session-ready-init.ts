@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mock } from 'bun:test';
 import { decodeInitMessage } from '../src/protocol/readyInit';
+import type { UiColors } from '../src/foundation/uiColors';
 import {
   createPanelSessionControllerParams,
   createPanelSessionTestDocument,
@@ -21,6 +22,10 @@ const [{ createPanelSessionController }, { createPendingDraftRecovery }] = await
 ]);
 
 const messages: Array<Record<string, unknown>> = [];
+let receiveMessage: ((value: unknown) => void) | undefined;
+let colors: UiColors = { light: {}, dark: { accent: '#2277CC' } };
+let failColors = false;
+let concurrentColors: UiColors | undefined;
 let releaseDiskRead: (() => void) | undefined;
 const diskRead = new Promise<void>((resolve) => { releaseDiskRead = resolve; });
 const panel = {
@@ -30,7 +35,7 @@ const panel = {
       messages.push(message);
       return true;
     },
-    onDidReceiveMessage: () => panelSessionDisposable()
+    onDidReceiveMessage: (receive: (value: unknown) => void) => { receiveMessage = receive; return panelSessionDisposable(); }
   },
   onDidChangeViewState: () => panelSessionDisposable(),
   onDidDispose: () => panelSessionDisposable()
@@ -44,6 +49,11 @@ const controller = createPanelSessionController(createPanelSessionControllerPara
   }),
   readDiskText: () => document.text,
   overrides: {
+    getUiColors: () => colors,
+    setUiColors: async (next: UiColors) => {
+      if (failColors) throw new Error('fixture color write failure');
+      colors = concurrentColors ?? next; return next;
+    },
     context: {
       globalState: {
         get: <T>(key: string, fallback?: T): T | undefined => (key === 'editorMode' ? 'preview' : fallback) as T | undefined,
@@ -72,12 +82,27 @@ await controller.handleMessage({ type: 'ready' });
 const initMessages = messages.filter((message) => message.type === 'init');
 assert.equal(initMessages.length, 2, 'a later ready must retry an init lost during Webview startup');
 assert.equal(initMessages[0]?.mode, 'preview');
+assert.deepEqual(initMessages[0]?.uiColors, colors, 'initial handshake includes saved UI color profiles');
 assert.equal(initMessages[0]?.text, '# Preview startup\n\nBody', 'initial Markdown must use the Webview editor line endings');
 for (const message of initMessages) {
   const decoded = decodeInitMessage(message);
   assert.notEqual(decoded, null, 'the first and retried CRLF init must cross the actual Protocol decoder');
   assert.deepEqual(decoded?.savedRevision, { version: document.version, text: '# Preview startup\n\nBody' });
 }
+const requestedColors: UiColors = { light: { surface: '#F8F8F8' }, dark: { textEmphasis: '#99CCAA' } };
+await controller.handleMessage({ type: 'updateUiColors', requestId: 'color-save', colors: requestedColors });
+assert.deepEqual(messages.at(-2), { type: 'uiColorsChanged', colors: requestedColors });
+assert.deepEqual(messages.at(-1), { type: 'uiColorsResult', requestId: 'color-save', result: { ok: true, value: requestedColors } });
+const beforeInvalidColors = messages.length;
+receiveMessage?.({ type: 'updateUiColors', requestId: 'invalid', colors: { dark: { text: 'red' } } });
+assert.equal(messages.length, beforeInvalidColors, 'invalid color input is rejected before the owner');
+failColors = true;
+await controller.handleMessage({ type: 'updateUiColors', requestId: 'color-failure', colors: { light: {}, dark: {} } });
+assert.deepEqual(messages.at(-1), { type: 'uiColorsResult', requestId: 'color-failure', result: { ok: false, error: { code: 'operation-failed', message: 'fixture color write failure' } } });
+assert.deepEqual(colors, requestedColors, 'failed persistence does not change the current snapshot');
+failColors = false; concurrentColors = { light: {}, dark: { accent: '#5588CC' } };
+await controller.handleMessage({ type: 'updateUiColors', requestId: 'color-concurrent', colors: requestedColors });
+assert.deepEqual(messages.at(-2), { type: 'uiColorsChanged', colors: concurrentColors }, 'delivery reads the latest owner snapshot instead of an earlier save result');
 controller.dispose();
 
 const refreshedMessages: Array<Record<string, unknown>> = [];

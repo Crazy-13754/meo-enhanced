@@ -7756,6 +7756,30 @@ html .cm-editor .meo-md-html-table-context-menu {
 .settings-item:last-child { border-bottom: 0; }
 .settings-item-text { flex: 1 1 180px; min-width: 0; }
 .settings-item-title { font-size: 13px; font-weight: 400; line-height: 1.5; }
+.settings-window[data-settings-tab='appearance'] .settings-layout { grid-template-columns: minmax(0, 1fr); }
+.settings-window[data-settings-tab='appearance'] .settings-navigation { display: none; }
+.settings-window[data-settings-tab='appearance'] .settings-content { padding: 16px 24px 20px; }
+.appearance-section { border-bottom: 0; }
+.appearance-note { margin-bottom: 16px; }
+.appearance-item .settings-item-text { flex: 1 1 260px; }
+.appearance-mode-control { flex: 0 1 272px; margin-left: auto; }
+.appearance-color-controls { display: flex; align-items: center; gap: 8px; flex: 0 1 272px; width: 272px; max-width: 100%; min-width: 0; margin-left: auto; }
+.appearance-color-chip { display: block; position: relative; box-sizing: border-box; width: 24px; height: 24px; flex: 0 0 auto; border-radius: 50%; border: 1px solid var(--meo-ui-border-float); cursor: pointer; }
+.appearance-color-chip:focus-within { outline: 1px solid var(--meo-ui-focus); outline-offset: 3px; }
+.appearance-color-swatch { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; padding: 0; border: 0; }
+.appearance-color-hex { box-sizing: border-box; width: 170px; min-width: 0; flex: 1 1 170px; height: 30px; padding: 0 9px; border: 1px solid var(--meo-ui-border-float); border-radius: 5px; color: var(--meo-ui-text); background: var(--meo-ui-surface-field); font: inherit; font-size: 12px; }
+.appearance-color-hex::placeholder { color: var(--meo-ui-text-muted); }
+.appearance-color-hex:focus { outline: none; border-color: var(--meo-ui-focus); }
+.appearance-color-hex[aria-invalid='true'] { border-color: var(--meo-ui-danger); }
+.appearance-color-reset { padding-inline: 8px; }
+.appearance-advanced { margin-top: 18px; }
+.appearance-advanced > summary { width: fit-content; color: var(--meo-ui-text-muted); cursor: pointer; padding: 4px 0; }
+.appearance-advanced .appearance-group { margin-top: 10px; }
+.appearance-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.appearance-status { margin: 0 0 12px; color: var(--meo-ui-danger); font-size: 12px; }
+@media (max-width: 500px) {
+  .settings-window[data-settings-tab='appearance'] .settings-content { padding: 16px; }
+}
 .settings-description { color: var(--meo-ui-text-muted); margin: 4px 0 0; font-size: 12px; line-height: 1.5; max-width: 480px; }
 .settings-paste-contexts { flex-basis: 100%; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 12px; line-height: 1.65; }
 .settings-paste-contexts dt { color: var(--meo-ui-text); }

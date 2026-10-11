@@ -1,4 +1,5 @@
 import type { EditorAppearance } from '../protocol/editorCommands';
+import { decodeUiColors, type UiColors } from '../foundation/uiColors';
 import { normalizePreviewFontFamily } from '../protocol/editorStyleEnvironment';
 import type { PreviewAppearance } from '../protocol/readyInit';
 import {
@@ -26,6 +27,7 @@ const normalizeStoredPreviewFontFamily = (value: unknown): string => (
 );
 
 export const EDITOR_APPEARANCE_SETTING_KEY = 'appearance.editor';
+export const UI_COLORS_SETTING_KEY = 'appearance.colors';
 export const PREVIEW_APPEARANCE_SETTING_KEY = 'appearance.preview';
 export const PREVIEW_FONT_FAMILY_SETTING_KEY = 'preview.fontFamily';
 export const PREVIEW_SOURCE_COLORING_SETTING_KEY = 'preview.sourceColoring';
@@ -58,6 +60,8 @@ export type AppearanceSettingsStore = {
 };
 
 export type AppearanceSettingsOwner = {
+  getUiColors: () => UiColors;
+  setUiColors: (colors: UiColors) => Promise<UiColors>;
   getEditorAppearance: () => EditorAppearance;
   setEditorAppearance: (appearance: EditorAppearance) => Promise<void>;
   getPreviewAppearance: () => PreviewAppearance;
@@ -320,6 +324,13 @@ export async function createAppearanceSettingsOwner(
   };
 
   return {
+    getUiColors: () => decodeUiColors(store.readConfiguration(UI_COLORS_SETTING_KEY).value) ?? { light: {}, dark: {} },
+    setUiColors: async (colors) => {
+      const normalized = decodeUiColors(colors);
+      if (!normalized) throw new Error('Invalid UI colors.');
+      await store.updateConfiguration(UI_COLORS_SETTING_KEY, normalized);
+      return decodeUiColors(store.readConfiguration(UI_COLORS_SETTING_KEY).value) ?? { light: {}, dark: {} };
+    },
     getEditorAppearance: () => readSettings().editorAppearance,
     setEditorAppearance: (appearance) => write(
       'editorAppearance',

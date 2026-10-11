@@ -3,6 +3,8 @@ import type { EditorCommandId } from '../../src/foundation/editingPreferences';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
 import { createImageStorageTransport } from './adapters/imageStorageTransport';
 import { createSettingsWindow, type GeneralSetting } from './adapters/settingsWindow';
+import { createUiColorsTransport } from './adapters/uiColorsTransport';
+import type { UiColors } from '../../src/foundation/uiColors';
 import { bindTooltips, createTooltip } from './adapters/tooltip';
 import { createEditingPreferencesTransport } from './adapters/editingPreferencesTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
@@ -74,6 +76,8 @@ import { createReadingPositionLifecycle, type ReadingPositionLifecycle } from '.
 import { createEditorFocusController } from './adapters/editorFocusController';
 
 let settingsWindow: ReturnType<typeof createSettingsWindow> | null = null;
+let uiColors: UiColors = { light: {}, dark: {} };
+let uiColorsPreview: UiColors | null = null;
 let editingPreferences: EditingPreferences = { input: { ...defaultInputAssistance }, shortcuts: {} };
 let editingPreferencesRevision = -1;
 
@@ -3192,7 +3196,7 @@ const exportAdapter = createExportWebviewAdapter({
 const themeAdapter = createAppearanceWebviewAdapter({
   setAppearanceControl: (appearance) => editorAppearanceControl.setActive(appearance),
   applyAppearance: (appearance) => {
-    applyBuiltInVisualBaseline(appearance);
+    applyBuiltInVisualBaseline(appearance, uiColorsPreview ?? uiColors);
   },
   resolveCodePalette: codePaletteAdapter.resolve,
   applyCodePalette: codePaletteAdapter.apply,
@@ -3245,8 +3249,16 @@ const copyTableToHost = async (format: 'markdown' | 'csv') => {
   if (!await editorServicesTransport.request({ action: 'writeClipboard', text })) reportClipboardFailure();
 };
 const imageStorageTransport = createImageStorageTransport(request => vscode.postMessage(request));
+const uiColorsTransport = createUiColorsTransport(request => vscode.postMessage(request));
+const refreshUiColors = () => applyBuiltInVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
 settingsWindow = createSettingsWindow({
+  appearance: {
+    getColors: () => uiColors, getMode: () => themeAdapter.getPreference(), getScheme: () => themeAdapter.getAppearance(),
+    setMode: mode => themeAdapter.setAppearance(mode, { post: true }),
+    preview: colors => { uiColorsPreview = colors; refreshUiColors(); },
+    update: colors => uiColorsTransport.update(colors)
+  },
   registerInput: input => editorFocusController.registerInput(input),
   imageLocation: imageLocationSettings,
   initialLanguage: activeUiLanguage, platform: /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other',
@@ -3263,7 +3275,6 @@ settingsWindow = createSettingsWindow({
       switchItem('stickyHeader', 'display', strings.stickyTableHeader, () => tableStickyHeaderEnabled, setTableStickyHeaderEnabled),
       switchItem('restorePosition', 'opening', strings.resumeReadingPositionLabel, () => restoreReadingPositionOnOpen, setRestoreReadingPositionOnOpen),
       switchItem('largeDocument', 'opening', strings.largeDocumentStartup, () => largeDocumentOptimizationEnabled, setLargeDocumentOptimizationEnabled, strings.largeDocumentStartupDescription),
-      { id: 'theme', section: 'interface', title: strings.editorAppearance, control: { kind: 'choice', get: () => themeAdapter.getPreference(), set: value => themeAdapter.setAppearance(value as EditorAppearance, { post: true }), options: [{ value: 'auto', label: strings.auto }, { value: 'light', label: strings.light }, { value: 'dark', label: strings.dark }] } },
       { id: 'language', section: 'interface', title: strings.interfaceLanguage, control: { kind: 'choice', get: () => activeUiLanguagePreference, set: value => { activeUiLanguagePreference = value as UiLanguagePreference; uiLanguageControl.setActive(activeUiLanguagePreference); applyUiLanguage(value === 'auto' ? automaticUiLanguage : value as UiLanguage); vscode.postMessage({ type: 'setUiLanguagePreference', language: activeUiLanguagePreference }); }, options: [{ value: 'auto', label: strings.auto }, { value: 'zh-CN', label: '简体中文' }, { value: 'en', label: 'English' }] } },
       { id: 'fontSize', section: 'interface', title: strings.editorFontSize, control: { kind: 'font', get: () => editorFontSizePreference, set: value => applyEditorFontSizePreference(value, { post: true }) } }
     ];
@@ -3295,6 +3306,8 @@ window.addEventListener('message', (event) => {
   }
 
   queueMicrotask(() => { if (settingsWindow?.isOpen()) settingsWindow.present(); });
+  if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
+  if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
   if (message.type === 'imageStorageChanged') { if (settingsWindow?.isOpen()) void imageLocationSettings.refresh(); return; }
   if (message.type === 'updatedEditingPreferences') { editingPreferencesTransport.accept(message); return; }
@@ -3318,6 +3331,7 @@ window.addEventListener('message', (event) => {
     acknowledgeReadyHandshake();
     const restoredPresetState = (vscode.getState() as WebviewUiState | undefined)?.previewPresetState;
     withMessageErrorBoundary('init handler', () => {
+      uiColors = message.uiColors;
       themeAdapter.start({
         vscodeTheme: message.vscodeTheme,
         appearance: message.editorAppearance
@@ -3625,6 +3639,7 @@ window.addEventListener('beforeunload', () => {
   imageLocationSettings.dispose();
   imageStorageTransport.dispose();
   editingPreferencesTransport.dispose();
+  uiColorsTransport.dispose();
   editorServicesTransport.dispose();
   clearReadyRetryTimers();
   cancelPendingWikiStatusRefresh();

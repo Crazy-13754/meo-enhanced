@@ -1,6 +1,7 @@
 import { createElement, Minus, Plus, X } from 'lucide';
 import { createMenuSwitch } from './menuSwitch';
 import { createSegmentedControl } from './segmentedControl';
+import { createAppearanceSettings, type AppearanceSettingsOptions } from './appearanceSettings';
 import { canBindCommand, commandContext, effectiveShortcuts, shortcutConflicts, shortcutFromStroke, type ShortcutPlatform } from '../../../src/application/editingPreferences';
 import type { EditingPreferences, EditingPreferencesChange, EditorCommandId } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
@@ -30,6 +31,7 @@ export function createSettingsWindow(options: {
   readonly platform: ShortcutPlatform;
   readonly getPreferences: () => EditingPreferences;
   readonly getGeneral: (language: UiLanguage) => readonly GeneralSetting[];
+  readonly appearance: AppearanceSettingsOptions;
   readonly update: (change: EditingPreferencesChange) => Promise<{ ok: boolean; error?: { message: string } }>;
   readonly returnFocus: () => { focus(): void } | null;
   readonly registerInput?: (input: HTMLInputElement) => () => void;
@@ -44,7 +46,8 @@ export function createSettingsWindow(options: {
   let renderedSignature = '';
   let valuePresenters: (() => void)[] = [];
   const pending = new Set<string>();
-  const scrollPositions: Record<SettingsTab, number> = { general: 0, typing: 0, shortcuts: 0 };
+  const scrollPositions: Record<SettingsTab, number> = { general: 0, appearance: 0, typing: 0, shortcuts: 0 };
+  const appearance = createAppearanceSettings({ ...options.appearance, registerInput: options.registerInput });
   const abort = new AbortController();
   const dialog = element('dialog', 'settings-window'); dialog.dataset.meoSettings = '';
   const titlebar = element('header', 'settings-titlebar');
@@ -53,7 +56,7 @@ export function createSettingsWindow(options: {
   const top = element('div', 'settings-top');
   const tabs = element('div', 'settings-tabs'); tabs.setAttribute('role', 'tablist');
   const tabButtons = new Map<SettingsTab, { button: HTMLButtonElement; label: HTMLSpanElement; badge: HTMLSpanElement }>();
-  for (const id of ['general', 'typing', 'shortcuts'] as const) {
+  for (const id of ['general', 'appearance', 'typing', 'shortcuts'] as const) {
     const control = button('', 'settings-tab'); control.dataset.tab = id; control.setAttribute('role', 'tab');
     const label = element('span', 'settings-tab-label'); const badge = element('span', 'settings-tab-badge');
     control.append(label, badge); tabs.append(control); tabButtons.set(id, { button: control, label, badge });
@@ -62,7 +65,7 @@ export function createSettingsWindow(options: {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const ids = [...tabButtons.keys()]; const index = ids.indexOf(id);
-      const next = event.key === 'Home' ? ids[0] : event.key === 'End' ? ids.at(-1)! : ids[(index + (event.key === 'ArrowRight' ? 1 : 2)) % ids.length];
+      const next = event.key === 'Home' ? ids[0] : event.key === 'End' ? ids.at(-1)! : ids[(index + (event.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length];
       selectTab(next); tabButtons.get(next)!.button.focus();
     });
   }
@@ -80,7 +83,8 @@ export function createSettingsWindow(options: {
   const resetDescription = element('p', 'settings-reset-description'); const resetActions = element('div', 'settings-actions');
   const cancelReset = button(''); const confirmReset = button('', 'settings-button settings-primary');
   resetActions.append(cancelReset, confirmReset); resetPopover.append(resetTitle, resetDescription, resetActions); footer.append(resetPopover, reset);
-  dialog.append(titlebar, top, status, layout, footer); document.body.append(dialog);
+  const appearanceFooter = element('footer', 'settings-footer'); appearanceFooter.append(appearance.footer); appearanceFooter.hidden = true;
+  dialog.append(titlebar, top, status, layout, footer, appearanceFooter); document.body.append(dialog);
   const disposeSearchFocus = options.registerInput?.(search);
   const t = (zh: string, en: string) => settingsText(language, zh, en);
   const query = () => normalizeSettingsSearch(search.value);
@@ -233,18 +237,21 @@ export function createSettingsWindow(options: {
     const visible = filtered();
     for (const [id, control] of tabButtons) {
       control.button.setAttribute('aria-selected', String(id === tab)); control.button.tabIndex = id === tab ? 0 : -1;
-      control.badge.textContent = String(visible[id].length + (id === 'typing' && visible.imageLocation ? 1 : 0)); control.badge.hidden = !query();
+      control.badge.textContent = String(id === 'appearance' ? appearance.count(query()) : visible[id].length + (id === 'typing' && visible.imageLocation ? 1 : 0)); control.badge.hidden = !query();
       control.button.id = `meo-settings-tab-${id}`;
     }
     content.setAttribute('aria-labelledby', `meo-settings-tab-${tab}`);
+    dialog.dataset.settingsTab = tab;
     clear.hidden = search.value.length === 0; footer.hidden = tab !== 'shortcuts';
+    appearanceFooter.hidden = tab !== 'appearance'; appearance.present();
     const signature = JSON.stringify([language, tab, query(), recording?.command, tab === 'shortcuts' ? [options.getPreferences().shortcuts, [...pending]] : null]);
     if (renderedSignature === signature) { for (const presentValue of valuePresenters) presentValue(); return; }
     renderedSignature = signature;
     const oldScroll = content.scrollTop;
     const activeRecorder = document.activeElement?.classList.contains('settings-recorder');
     valuePresenters = []; content.replaceChildren(); navigation.replaceChildren();
-    const groups = tab === 'general' ? ['display', 'opening', 'interface'] : tab === 'typing' ? typingSections : Object.keys(shortcutSections);
+    if (tab === 'appearance') content.append(appearance.render(language, query()));
+    const groups = tab === 'appearance' ? [] : tab === 'general' ? ['display', 'opening', 'interface'] : tab === 'typing' ? typingSections : Object.keys(shortcutSections);
     for (const name of groups) {
       const section = name as Section;
       const items = tab === 'general' ? visible.general.filter(item => item.section === section).map(renderGeneral)
@@ -278,13 +285,13 @@ export function createSettingsWindow(options: {
     options.imageLocation?.present(language);
     title.textContent = t('设置', 'Settings'); close.setAttribute('aria-label', t('关闭设置', 'Close settings'));
     tabs.setAttribute('aria-label', t('设置分类', 'Settings categories')); navigation.setAttribute('aria-label', t('跳转到章节', 'Jump to section'));
-    for (const [id, control] of tabButtons) control.label.textContent = id === 'general' ? t('常规', 'General') : id === 'typing' ? t('输入', 'Input') : t('快捷键', 'Shortcuts');
+    for (const [id, control] of tabButtons) control.label.textContent = id === 'general' ? t('常规', 'General') : id === 'appearance' ? t('外观', 'Appearance') : id === 'typing' ? t('输入', 'Input') : t('快捷键', 'Shortcuts');
     search.placeholder = t('搜索设置', 'Search settings'); search.setAttribute('aria-label', search.placeholder); clear.setAttribute('aria-label', t('清除搜索', 'Clear search'));
     reset.textContent = t('恢复默认快捷键', 'Reset shortcuts'); reset.setAttribute('aria-expanded', String(resetOpen));
     resetTitle.textContent = t('恢复全部快捷键？', 'Reset all shortcuts?'); resetDescription.textContent = t('自定义绑定将被替换，其他设置保持不变。', 'Custom bindings will be replaced. Other settings stay unchanged.');
     cancelReset.textContent = t('取消', 'Cancel'); confirmReset.textContent = t('恢复默认', 'Reset'); renderContent();
   }
-  function closeWindow() { options.imageLocation?.flush(); recording = null; dismissReset(); if (dialog.open) dialog.close(); options.returnFocus()?.focus(); }
+  function closeWindow() { appearance.close(); options.imageLocation?.flush(); recording = null; dismissReset(); if (dialog.open) dialog.close(); options.returnFocus()?.focus(); }
   close.addEventListener('click', closeWindow);
   dialog.addEventListener('cancel', event => { event.preventDefault(); if (resetOpen) { dismissReset(); reset.focus(); } else if (recording) finishRecording(); else closeWindow(); });
   dialog.addEventListener('click', event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeWindow(); } });
@@ -298,7 +305,7 @@ export function createSettingsWindow(options: {
   document.addEventListener('focusin', event => { if (resetOpen && event.target instanceof Node && !resetPopover.contains(event.target) && !reset.contains(event.target)) dismissReset(); }, { signal: abort.signal });
   window.addEventListener('blur', dismissReset, { signal: abort.signal });
   present();
-  return { open() { if (disposed || dialog.open) return; present(); void options.imageLocation?.refresh(); dialog.showModal(); updateNavigation(); search.focus(); }, close: closeWindow,
+  return { open() { if (disposed || dialog.open) return; appearance.open(); present(); void options.imageLocation?.refresh(); dialog.showModal(); updateNavigation(); search.focus(); }, close: closeWindow,
     isOpen: () => dialog.open, present, setLanguage(next: UiLanguage) { language = next; present(); },
-    dispose() { disposed = true; abort.abort(); disposeSearchFocus?.(); if (dialog.open) dialog.close(); dialog.remove(); } };
+    dispose() { disposed = true; appearance.dispose(); abort.abort(); disposeSearchFocus?.(); if (dialog.open) dialog.close(); dialog.remove(); } };
 }

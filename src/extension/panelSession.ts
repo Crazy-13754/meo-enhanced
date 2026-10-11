@@ -64,6 +64,7 @@ import type { PreviewAppearance, PreviewRenderResult } from '../shared/preview';
 import type { EditorAppearance } from '../shared/editorAppearance';
 import type { RawVscodeTheme } from '../shared/vscodeTheme';
 import type { EditorFontSizePreference } from '../foundation/editorFontSize';
+import type { UiColors } from '../foundation/uiColors';
 import type { OutlinePosition } from '../shared/extensionConfig';
 import type { InitMessage, SavedRevisionDto, SourceLineNumberMode } from '../protocol/readyInit';
 import type {
@@ -165,6 +166,8 @@ type PanelSessionControllerParams = {
   setLiveStrongColoring?: (enabled: boolean) => Promise<void>;
   getEditorAppearance: () => EditorAppearance;
   setEditorAppearance: (appearance: EditorAppearance) => Promise<void>;
+  getUiColors?: () => UiColors;
+  setUiColors?: (colors: UiColors) => Promise<UiColors>;
   getEditorFontSizePreference: () => EditorFontSizePreference;
   setEditorFontSizePreference: (preference: EditorFontSizePreference) => Promise<void>;
   setOutlineVisible: (visible: boolean) => Promise<void>;
@@ -462,6 +465,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       previewShowComments: getPreviewShowComments(),
       liveStrongColoring: getLiveStrongColoring(),
       editorAppearance: getEditorAppearance(),
+      uiColors: params.getUiColors?.() ?? { light: {}, dark: {} },
       editorFontSizeMode: editorFontSizePreference.mode,
       editorFontSize: editorFontSizePreference.value,
       gitChangesGutter: getGitChangesGutterEnabled(context),
@@ -649,6 +653,19 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           result: { ok: false as const, error: { code: 'operation-failed' as const, message: 'Editing preferences owner is unavailable' } }
         };
         await postToWebview(response);
+        return;
+      }
+      case 'updateUiColors': {
+        try {
+          if (!params.setUiColors) throw new Error('Appearance settings owner is unavailable.');
+          const saved = await params.setUiColors(raw.colors);
+          // Read at delivery: another panel may have updated configuration during the save.
+          const colors = params.getUiColors?.() ?? saved;
+          await postToWebview({ type: 'uiColorsChanged', colors });
+          await postToWebview({ type: 'uiColorsResult', requestId: raw.requestId, result: { ok: true, value: colors } });
+        } catch (error) {
+          await postToWebview({ type: 'uiColorsResult', requestId: raw.requestId, result: { ok: false, error: { code: 'operation-failed', message: error instanceof Error ? error.message : String(error) } } });
+        }
         return;
       }
       case 'ready':

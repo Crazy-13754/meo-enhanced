@@ -138,7 +138,7 @@ try {
   assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '偏好设置']);
   await page.click('.more-tools-settings-button');
   assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true);
-  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 11);
+  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 10);
   assert.equal(await page.$eval('.settings-footer', element => (element as HTMLElement).hidden), true);
   const height = await page.$eval('.settings-window', element => element.getBoundingClientRect().height);
   await page.click('.settings-jump[data-section="interface"]');
@@ -413,7 +413,7 @@ try {
   const cursors = await page.$$eval('.settings-radio-input', elements => elements.map(element => [getComputedStyle(element).cursor, getComputedStyle(element.parentElement!).cursor]));
   assert.ok(cursors.every(([input, label]) => input === 'pointer' && label === 'pointer'));
   await page.click('.settings-search'); await page.keyboard.type('空符号');
-  assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => [element.textContent, (element as HTMLElement).hidden])), [['0', false], ['1', false], ['0', false]]);
+  assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => [element.textContent, (element as HTMLElement).hidden])), [['0', false], ['0', false], ['1', false], ['0', false]]);
   assert.equal(await page.$eval('.settings-searchbox svg', element => getComputedStyle(element).display), 'block');
   await page.click('.settings-tab[data-tab="shortcuts"]');
   assert.equal(await page.$eval('.settings-search-clear', element => (element as HTMLElement).hidden), false);
@@ -472,7 +472,8 @@ try {
   });
   await page.click('.settings-tab[data-tab="typing"]'); assert.equal(await page.$eval('[data-setting="emoji"] [role="switch"]', e => e.getAttribute('aria-checked')), 'true');
   await page.click('.settings-tab[data-tab="general"]');
-  const animation = await page.$eval('[data-setting="theme"] [data-value="light"]', e => {
+  await page.click('[data-tab="appearance"]');
+  const animation = await page.$eval('[data-appearance-mode="light"]', e => {
     (e as HTMLButtonElement).click();
     const pill = e.querySelector<HTMLElement>('.segmented-control-button-indicator')!;
     return pill.getAnimations().map(animation => {
@@ -488,12 +489,12 @@ try {
     assert.ok(Math.abs(sample.width - value.samples[0].width) <= .1 && Math.abs(sample.height - value.samples[0].height) <= .1 && sample.radius === value.samples[0].radius, 'the selected pill keeps its dimensions and corner radius throughout the slide');
   }
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
-  assert.equal(await page.$eval('[data-setting="theme"] [data-value="dark"]', e => { (e as HTMLButtonElement).click(); return e.querySelector<HTMLElement>('.segmented-control-button-indicator')!.getAnimations().length; }), 0);
+  assert.equal(await page.$eval('[data-appearance-mode="dark"]', e => { (e as HTMLButtonElement).click(); return e.querySelector<HTMLElement>('.segmented-control-button-indicator')!.getAnimations().length; }), 0);
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
   for (const language of ['en', 'zh-CN']) for (const appearance of ['light', 'dark']) {
     await page.click('.settings-tab[data-tab="general"]');
     await page.click(`[data-setting="language"] [data-value="${language}"]`);
-    await page.click(`[data-setting="theme"] [data-value="${appearance}"]`);
+    await page.click('.settings-tab[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`);
     assert.equal(await page.evaluate(() => document.documentElement.lang), language);
     assert.equal(await page.evaluate(() => document.documentElement.dataset.editorAppearance), appearance);
     assert.equal(await page.$eval('.more-tools-settings-button', element => element.textContent), language === 'en' ? 'More settings' : '更多设置');
@@ -588,19 +589,19 @@ try {
   await page.close(); page = await browser.newPage(); page.on('pageerror', error => errors.push(String(error)));
   await openFixture();
   await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
-  type SearchTab = 'general' | 'typing' | 'shortcuts';
+  type SearchTab = 'general' | 'appearance' | 'typing' | 'shortcuts';
   const searchCases: {tab: SearchTab; id: string; query: string}[] = [];
   for (const locale of ['zh-CN', 'en']) {
     await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button');
     await page.click('.settings-tab[data-tab="general"]'); await page.click(`[data-setting="language"] [data-value="${locale}"]`);
-    for (const tab of ['general', 'typing', 'shortcuts'] as const) {
+    for (const tab of ['general', 'appearance', 'typing', 'shortcuts'] as const) {
       await page.click(`.settings-tab[data-tab="${tab}"]`);
       const items = await page.$$eval('.settings-item', elements => elements.map(element => ({
         id: (element as HTMLElement).dataset.setting ?? (element as HTMLElement).dataset.input ?? (element as HTMLElement).dataset.command!,
         query: element.querySelector('.settings-item-title')!.textContent!,
         values: [...element.querySelectorAll('.settings-key, .image-location-mode-title, .image-location-field-label, .image-location-picker, .image-location-token')].map(control => control.getAttribute('aria-label') ?? control.textContent!)
       })));
-      assert.equal(items.length, tab === 'general' ? 11 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
+      assert.equal(items.length, tab === 'general' ? 10 : tab === 'appearance' ? 8 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
       searchCases.push(...items.flatMap(item => [item.query, ...item.values].map(query => ({tab, id: item.id, query}))));
     }
     await page.click('.settings-close');
@@ -610,7 +611,7 @@ try {
     ['general', 'width', '版心', 'reading width'], ['general', 'strongColor', '加粗颜色', 'bold color'],
     ['general', 'boldHeadings', '标题字重', 'heading weight'], ['general', 'stickyHeader', '冻结表头', 'freeze header'],
     ['general', 'restorePosition', '上次位置', 'remember position'], ['general', 'largeDocument', '启动速度', 'large file'],
-    ['general', 'theme', '夜间', 'night'], ['general', 'language', '本地化', 'locale'], ['general', 'fontSize', '文字大小', 'zoom'],
+    ['appearance', 'mode', '夜间', 'night'], ['appearance', 'surface', '底色', 'surface'], ['appearance', 'textEmphasis', '脚注', 'footnote'], ['general', 'language', '本地化', 'locale'], ['general', 'fontSize', '文字大小', 'zoom'],
     ['typing', 'selectionToolbar', '浮动工具栏', 'floating toolbar'], ['typing', 'wrapSelection', '环绕选区', 'surround selection'],
     ['typing', 'pairMode', '自动闭合', 'auto close'], ['typing', 'skipMode', '跳出符号', 'overtype'],
     ['typing', 'deleteMode', '一起删除', 'paired deletion'], ['typing', 'lists', '清单', 'list continuation'],
@@ -633,9 +634,9 @@ try {
   const searchChecks = searchCases.length * 4;
   for (const language of ['en', 'zh-CN']) for (const appearance of ['light', 'dark']) {
     await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button');
-    await page.click('.settings-tab[data-tab="general"]'); await page.click(`[data-setting="language"] [data-value="${language}"]`); await page.click(`[data-setting="theme"] [data-value="${appearance}"]`); await page.click('.settings-close');
+    await page.click('.settings-tab[data-tab="general"]'); await page.click(`[data-setting="language"] [data-value="${language}"]`); await page.click('.settings-tab[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`); await page.click('.settings-close');
     await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button');
-    for (const tab of ['general', 'typing', 'shortcuts'] as const) {
+    for (const tab of ['general', 'appearance', 'typing', 'shortcuts'] as const) {
       await page.click(`.settings-tab[data-tab="${tab}"]`);
       const results = await page.evaluate(cases => {
         const search = document.querySelector<HTMLInputElement>('.settings-search')!; search.focus();
@@ -660,7 +661,7 @@ try {
     await page.click('.settings-search-clear'); await page.keyboard.type('图片 path');
     assert.deepEqual(await page.$$eval('.settings-item', elements => elements.map(element => (element as HTMLElement).dataset.setting)), ['imageStorage']);
     await page.click('.settings-search-clear'); await page.keyboard.type('图片 theme');
-    assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => element.textContent)), ['0', '0', '0']);
+    assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => element.textContent)), ['0', '0', '0', '0']);
     assert.ok(await page.$('.settings-empty'));
     await page.click('.settings-search-clear'); await page.keyboard.type('不自动补全');
     assert.deepEqual(await page.$$eval('.settings-item', elements => elements.map(element => (element as HTMLElement).dataset.setting)), ['pairMode'], 'choice labels are searchable in the other UI language');
@@ -879,7 +880,7 @@ try {
     await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button');
     for (const [language, appearance] of [['zh-CN', 'dark'], ['zh-CN', 'light'], ['en', 'dark'], ['en', 'light']]) {
       await page.setViewport({ width: 1100, height: 780 });
-      await page.click('.settings-tab[data-tab="general"]'); await page.click(`[data-setting="language"] [data-value="${language}"]`); await page.click(`[data-setting="theme"] [data-value="${appearance}"]`);
+      await page.click('.settings-tab[data-tab="general"]'); await page.click(`[data-setting="language"] [data-value="${language}"]`); await page.click('.settings-tab[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`);
       await page.click('.settings-tab[data-tab="typing"]');
       await page.click('.settings-jump[data-section="symbols"]');
       await page.screenshot({ path: path.join(directory, `settings-${language}-${appearance}.png`) });

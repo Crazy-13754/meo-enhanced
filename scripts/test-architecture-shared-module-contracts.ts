@@ -2767,6 +2767,8 @@ try {
   rmSync(join(fixtureRoot, 'docs/appearance.md'));
 
   const removedColorCapabilityFixtures = [
+    ['webview/src/adapters/appearanceSettings.ts', "const anotherInput = document.createElement('input'); anotherInput.type = 'color';\n"],
+    ['webview/src/adapters/appearanceSettings.ts', "swatchInput.type = 'color'; const FUNCTION_COLOR_REGEX = /rgb/;\n"],
     ['package.json', JSON.stringify({ contributes: { commands: [{ command: 'meoEnhanced.openColorPicker' }] } })],
     ['package.json', JSON.stringify({ contributes: { configuration: { properties: { 'meoEnhanced.color-swatches.rgb': { type: 'boolean' } } } } })],
     ['src/host/color-picker-service.ts', 'export const owner = {};\n'],
@@ -2806,6 +2808,7 @@ try {
   }
 
   const retainedColorFixtures = [
+    ['webview/src/adapters/appearanceSettings.ts', "const swatchInput = document.createElement('input'); swatchInput.type = 'color';\n"],
     ['src/shared/hexColorSwatches.ts', 'export const collectHexColorRangesFromText = () => [];\n'],
     ['webview/src/helpers/colorSwatches.ts', 'export const createColorSwatchElement = () => document.createElement(\'span\');\n'],
     ['webview/src/styles.css', '.sample { color: rgb(1 2 3); background: linear-gradient(red, blue); }\n'],
