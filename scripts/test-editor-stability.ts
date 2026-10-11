@@ -231,9 +231,13 @@ async function countRenderedHeadingStrikePixels(page: Page): Promise<{ heading: 
     const context = canvas.getContext('2d')!;
     context.drawImage(image, 0, 0);
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const resolveColor = (value: string) => {
+      context.clearRect(0, 0, 1, 1); context.fillStyle = value; context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+    };
     const colors = {
-      heading: [121, 184, 255],
-      foreground: [230, 237, 243]
+      heading: resolveColor(getComputedStyle(document.querySelector('.meo-md-heading-content')!).color),
+      foreground: resolveColor(getComputedStyle(document.querySelector('.cm-content')!).color)
     };
     const counts = { heading: 0, foreground: 0 };
     for (let offset = 0; offset < pixels.length; offset += 4) {
@@ -533,20 +537,25 @@ async function main() {
       input.className = 'line-jump-input';
       input.placeholder = 'Line';
       document.body.appendChild(input);
+      const borderProbe = document.createElement('span');
+      borderProbe.style.borderColor = 'var(--meo-ui-border-control)';
+      document.body.appendChild(borderProbe);
       const style = getComputedStyle(input);
       const result = {
         placeholderAlignment: getComputedStyle(input, '::placeholder').textAlign,
         borderWidth: style.borderTopWidth,
-        borderColor: style.borderTopColor
+        borderColor: style.borderTopColor,
+        expectedBorderColor: getComputedStyle(borderProbe).borderTopColor
       };
       input.remove();
+      borderProbe.remove();
       return result;
     });
     if (lineInputStyle.placeholderAlignment !== 'center') {
       throw new Error(`Line jump placeholder was not centered: ${lineInputStyle.placeholderAlignment}`);
     }
-    if (lineInputStyle.borderWidth !== '1px' || lineInputStyle.borderColor !== 'rgb(84, 89, 94)') {
-      throw new Error(`Line jump input did not use the 1px gray border: ${JSON.stringify(lineInputStyle)}`);
+    if (lineInputStyle.borderWidth !== '1px' || lineInputStyle.borderColor !== lineInputStyle.expectedBorderColor) {
+      throw new Error(`Line jump input did not use the shared 1px control border: ${JSON.stringify(lineInputStyle)}`);
     }
     const genericFocusOutline = await page.evaluate(() => {
       const button = document.createElement('button');

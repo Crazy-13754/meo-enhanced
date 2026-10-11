@@ -1436,22 +1436,25 @@ try {
       table: tableMenu ? getComputedStyle(tableMenu).backgroundColor : null
     });
     const darkMenus = menuBackgrounds();
-    const previousAppearance = document.documentElement.dataset.editorAppearance;
-    document.documentElement.dataset.editorAppearance = 'light';
-    const lightMenus = menuBackgrounds();
-    if (previousAppearance === undefined) delete document.documentElement.dataset.editorAppearance;
-    else document.documentElement.dataset.editorAppearance = previousAppearance;
     return {
       live: liveHeader ? getComputedStyle(liveHeader).backgroundColor : null,
       preview: previewHeader ? previewDocument.defaultView!.getComputedStyle(previewHeader).backgroundColor : null,
-      darkMenus,
-      lightMenus
+      darkMenus
     };
   });
   assert.ok(tableHeaderColors.live && tableHeaderColors.preview, JSON.stringify(tableHeaderColors));
-  assert.notEqual(tableHeaderColors.live, tableHeaderColors.preview, JSON.stringify(tableHeaderColors));
+  assert.equal(tableHeaderColors.live, tableHeaderColors.preview, 'Default Preview shares the editor document palette');
   assert.equal(tableHeaderColors.darkMenus.selection, tableHeaderColors.darkMenus.table, JSON.stringify(tableHeaderColors));
-  assert.equal(tableHeaderColors.lightMenus.selection, tableHeaderColors.lightMenus.table, JSON.stringify(tableHeaderColors));
+  await page.$eval('.editor-appearance-button[data-editor-appearance="light"]', button => (button as HTMLButtonElement).click());
+  await page.waitForFunction(() => document.documentElement.dataset.editorAppearance === 'light');
+  const lightMenus = await page.evaluate(() => ({
+    selection: getComputedStyle(document.querySelector('.selection-inline-menu')!).backgroundColor,
+    table: getComputedStyle(document.querySelector('.meo-md-html-table-context-menu')!).backgroundColor
+  }));
+  assert.equal(lightMenus.selection, lightMenus.table, JSON.stringify(lightMenus));
+  assert.notEqual(lightMenus.selection, tableHeaderColors.darkMenus.selection, 'Appearance controls must actually change the menu palette');
+  await page.$eval('.editor-appearance-button[data-editor-appearance="dark"]', button => (button as HTMLButtonElement).click());
+  await page.waitForFunction(() => document.documentElement.dataset.editorAppearance === 'dark');
   await startPreviewAnchorSampling(transitionTableAnchorLine);
   await page.click('button[data-mode="source"]');
   await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'source');

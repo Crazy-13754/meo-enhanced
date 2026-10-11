@@ -832,7 +832,7 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
         next: { left: line.left, top: line.top - 2, right: line.right, bottom: line.bottom + 2 },
         click: { x: line.left + 12, y: line.top + line.height / 2 } };
     });
-    const positiveControl = await page.screenshot();
+    const positiveControl = await page.screenshot({ captureBeyondViewport: false });
     const advance = async (budget: number) => {
       const expired = new Promise<void>((resolve) => input.once('Emulation.virtualTimeBudgetExpired', () => resolve()));
       await input.send('Emulation.setVirtualTimePolicy', { policy: 'advance', budget });
@@ -851,11 +851,13 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
     });
     assert.equal(ready, true, `${mode} painted caret guard delayed input focus`);
     await advance(34);
-    const beforeClick = await page.screenshot();
+    // Keep capture inside the current viewport so screenshot transport does not
+    // request an expanded surface while virtual time is paused.
+    const beforeClick = await page.screenshot({ captureBeyondViewport: false });
     await input.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...geometry.click });
     await input.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...geometry.click });
     await advance(34);
-    const afterClick = await page.screenshot();
+    const afterClick = await page.screenshot({ captureBeyondViewport: false });
     const pixels = await page.evaluate(async ({ images, geometry }) => {
       const counts: Array<{ old: number; next: number }> = [];
       for (const encoded of images) {

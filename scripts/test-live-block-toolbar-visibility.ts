@@ -76,6 +76,8 @@ async function main(): Promise<void> {
         style.setProperty('--meo-background', theme === 'light' ? '#ffffff' : '#24292e');
         style.setProperty('--meo-foreground', theme === 'light' ? '#24292e' : '#e6edf3');
         style.setProperty('--meo-code-background', theme === 'light' ? '#f6f8fa' : '#292d31');
+        // This fixture owns its explicit palette, including the resolved action role.
+        style.setProperty('--meo-code-action-hover-foreground', theme === 'light' ? '#000000' : '#ffffff');
         style.setProperty('--meo-semantic-codeCopyBackground', theme === 'light' ? '#f6f8fa' : '#292d31');
         style.setProperty('--meo-semantic-codeCopyHoverBackground', theme === 'light' ? '#eaeef2' : '#3a4048');
       }, appearance);

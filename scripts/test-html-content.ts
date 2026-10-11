@@ -62,10 +62,10 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 920, height: 1600, deviceScaleFactor: 1 });
-    await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0} blockquote{background:#24292e}</style><div id="app"></div>');
+    await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0} blockquote{background:#24292e}</style><body class="vscode-light"><div id="app"></div></body>');
     await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
     await page.addStyleTag({
-      content: ':root { --meo-background:#f7f8fa; --meo-foreground:#1f2328; --meo-border:#c8d1dc; --meo-color-base03:#c8d1dc; --meo-semantic-kbdBackground:#eef2f6; --meo-semantic-kbdBorder:#8c959f; --meo-semantic-blockquoteBorder:#8c959f; --meo-semantic-blockquoteForeground:#57606a; --meo-semantic-tableBorder:#c8d1dc; --meo-semantic-tableHeaderBackground:#e3e9f0; --meo-semantic-inlineCodeBackground:#eff1f3; --meo-font-live:Arial; --meo-font-live-weight:400; --meo-font-live-size:16px; --meo-font-source:"Courier New"; --meo-font-source-weight:500; --meo-font-source-size:14px; --vscode-editor-font-family:monospace; --vscode-editor-font-size:14px; --vscode-editor-line-height:20px; }'
+      content: ':root { --vscode-editor-background:#f7f8fa; --vscode-editor-foreground:#1f2328; --meo-code-palette-background:#eff1f3; --meo-code-palette-foreground:#1f2328; --meo-background:#f7f8fa; --meo-foreground:#1f2328; --meo-border:#c8d1dc; --meo-color-base03:#c8d1dc; --meo-semantic-kbdBorder:#8c959f; --meo-semantic-blockquoteBorder:#8c959f; --meo-semantic-blockquoteForeground:#57606a; --meo-semantic-tableBorder:#c8d1dc; --meo-semantic-tableHeaderBackground:#e3e9f0; --meo-semantic-inlineCodeBackground:#eff1f3; --meo-font-live:Arial; --meo-font-live-weight:400; --meo-font-live-size:16px; --meo-font-source:"Courier New"; --meo-font-source-weight:500; --meo-font-source-size:14px; --vscode-editor-font-family:monospace; --vscode-editor-font-size:14px; --vscode-editor-line-height:20px; }'
     });
     await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
 
@@ -238,6 +238,9 @@ async function main() {
         tableBodyBackground: tableBodyCell ? getComputedStyle(tableBodyCell).backgroundColor : '',
         imageControls: image?.querySelectorAll('.meo-md-image-controls button').length ?? 0,
         kbdBackground: kbd ? getComputedStyle(kbd).backgroundColor : '',
+        kbdBorder: kbd ? getComputedStyle(kbd).borderBottomWidth : '',
+        kbdRadius: kbd ? getComputedStyle(kbd).borderRadius : '',
+        kbdShadow: kbd ? getComputedStyle(kbd).boxShadow : '',
         compactGap: compactBlocks.length === 2
           ? compactBlocks[1].getBoundingClientRect().top - compactBlocks[0].getBoundingClientRect().bottom
           : null,
@@ -307,14 +310,15 @@ async function main() {
       initial.tableHeaderBackground === 'rgba(0, 0, 0, 0)' ||
       initial.tableHeaderBackground === initial.tableBodyBackground ||
       initial.imageControls < 3 ||
-      initial.kbdBackground !== 'rgb(238, 242, 246)' ||
+      initial.kbdBackground !== 'rgba(0, 0, 0, 0)' ||
+      initial.kbdBorder !== '2px' || initial.kbdRadius === '0px' || !initial.kbdShadow.includes('inset') ||
       initial.compactGap === null || initial.compactGap < 20 || initial.compactGap > 30 ||
       !initial.quotedAttributeRendered ||
       !initial.sourceButtonSameRow ||
       !initial.sourceButtonOutsideContent ||
       !initial.sourceButtonInsideViewport ||
       initial.sourceButtonTopDelta === null || Math.abs(initial.sourceButtonTopDelta) > 1 ||
-      initial.sourceButtonBackground === 'rgba(0, 0, 0, 0)' ||
+      initial.sourceButtonBackground !== 'rgba(0, 0, 0, 0)' ||
       initial.htmlActionRailOffset === null ||
       initial.editorInlineEndPadding < initial.htmlActionRailOffset ||
       initial.collapsedAdjacentBlankLines !== 0 ||

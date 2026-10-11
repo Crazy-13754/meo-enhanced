@@ -52,17 +52,17 @@ async function verifyCodePaletteAndHighlightBounds(): Promise<void> {
     const page = await browser.newPage();
     try {
       const codeBackground = theme === 'dark' ? '#1b2024' : '#f6f8fa';
-      const activeBackground = theme === 'dark' ? '#30363d' : '#d9e3f0';
       const codeForeground = theme === 'dark' ? '#c5cad3' : '#3f4854';
       await page.setViewport({ width: 520, height: 420, deviceScaleFactor: 1 });
-      await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app" class="editor-host"></div>');
+      await page.setContent(`<!doctype html><style>html,body,#app{height:100%;margin:0}</style><body class="vscode-${theme}"><div id="app" class="editor-host"></div></body>`);
       await page.addStyleTag({ path: 'webview/src/styles.css' });
       await page.addStyleTag({ content: `:root{
         --meo-background:${theme === 'dark' ? '#24292e' : '#ffffff'};
         --meo-foreground:${theme === 'dark' ? '#ffffff' : '#111111'};
         --vscode-editor-foreground:${theme === 'dark' ? '#ffffff' : '#111111'};
+        --vscode-editor-background:${theme === 'dark' ? '#24292e' : '#ffffff'};
+        --meo-code-palette-background:${codeBackground};--meo-code-palette-foreground:${codeForeground};
         --meo-token-foreground-color:${codeForeground};--meo-code-background:${codeBackground};
-        --meo-semantic-codeBlockActiveLineBackground:${activeBackground};
         --meo-semantic-codeLanguageLabelForeground:#8b949e;
         --meo-font-source:monospace;--meo-font-source-weight:400;
         --vscode-editor-font-family:monospace;--vscode-editor-font-size:18px;--vscode-editor-line-height:26px;
@@ -81,6 +81,20 @@ async function verifyCodePaletteAndHighlightBounds(): Promise<void> {
           scope.__editor.view.focus();
         }, kind);
         await settle(page);
+        const palette = await page.evaluate(() => {
+          const probe = document.createElement('span'); document.body.append(probe);
+          probe.style.backgroundColor = 'var(--meo-code-background)';
+          const background = getComputedStyle(probe).backgroundColor;
+          probe.style.backgroundColor = 'var(--meo-code-block-active-line-bg)';
+          const active = getComputedStyle(probe).backgroundColor; probe.remove();
+          const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+          const context = canvas.getContext('2d')!;
+          const hex = () => '#' + [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map(value => value.toString(16).padStart(2, '0')).join('');
+          context.fillStyle = background; context.fillRect(0, 0, 1, 1);
+          const code = hex();
+          context.fillStyle = active; context.fillRect(0, 0, 1, 1);
+          return { code, active: hex() };
+        });
         const rowColors = await codeColors(page);
         const expectedCodeColor = codeForeground === '#c5cad3' ? 'rgb(197, 202, 211)' : 'rgb(63, 72, 84)';
         if (JSON.stringify(rowColors) !== JSON.stringify([expectedCodeColor])) failures.push(`${theme}/${kind}: plain code palette expected ${expectedCodeColor}, got ${rowColors}`);
@@ -128,8 +142,8 @@ async function verifyCodePaletteAndHighlightBounds(): Promise<void> {
             context.drawImage(screenshot, 0, 0);
             return points.map(point => '#' + [...context.getImageData(Math.round(point.x), Math.round(point.y), 1, 1).data].slice(0, 3).map(value => value.toString(16).padStart(2, '0')).join(''));
           }, { source: 'data:image/png;base64,' + Buffer.from(screenshot).toString('base64'), points: geometry });
-          if (pixels[0] !== codeBackground || pixels[1] !== codeBackground) failures.push(`${theme}/${kind}/${active}: visual padding must stay ${codeBackground}, got ${pixels.slice(0, 2)}`);
-          if (active !== 'range' && pixels[2] !== activeBackground) failures.push(`${theme}/${kind}/${active}: body highlight must stay ${activeBackground}, got ${pixels[2]}`);
+          if (pixels[0] !== palette.code || pixels[1] !== palette.code) failures.push(`${theme}/${kind}/${active}: visual padding must stay ${palette.code}, got ${pixels.slice(0, 2)}`);
+          if (active !== 'range' && pixels[2] !== palette.active) failures.push(`${theme}/${kind}/${active}: body highlight must stay ${palette.active}, got ${pixels[2]}`);
         }
         if (kind === 'multiline') {
           await page.evaluate(() => {

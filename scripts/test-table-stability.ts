@@ -42,6 +42,9 @@ async function main() {
           initialMode: 'live',
           onApplyChanges() {}
         });
+        // The standalone factory initializes UI colors before this fixture's
+        // explicit list palette is applied.
+        document.documentElement.style.setProperty('--meo-ui-text-emphasis-content', '#79b8ff');
         await waitFrames();
         return editor;
       };

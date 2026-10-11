@@ -17,7 +17,8 @@ if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
 try {
   const page = await browser.newPage();
-  await page.setContent('<!doctype html><style>.preview-dropdown-panel { position: fixed; }</style><body></body>');
+  await page.setContent('<!doctype html><style>html,body{height:100%;margin:0}body{display:flex;flex-direction:column}.preview-host{flex:1;min-height:0}</style><body></body>');
+  await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
   await page.addScriptTag({ path: path.join(tempDir, 'test-preview-mermaid-runtime-entry.js') });
   const stalePreload = await page.evaluate(async () => {
     const controller = (window as any).__previewController;

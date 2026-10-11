@@ -236,8 +236,14 @@ try {
       document.documentElement.dataset.editorAppearance = appearance;
       const light = appearance === 'light';
       for (const [name, value] of Object.entries({ '--meo-background': light ? '#fafafa' : '#24292e',
-        '--meo-foreground': light ? '#24292e' : '#e6edf3', '--meo-code-background': light ? '#f0f1f3' : '#1b2024' }))
+        '--meo-foreground': light ? '#24292e' : '#e6edf3', '--meo-code-background': light ? '#f0f1f3' : '#1b2024',
+        '--vscode-editor-background': light ? '#fafafa' : '#24292e',
+        '--vscode-editor-foreground': light ? '#24292e' : '#e6edf3',
+        '--meo-code-palette-background': light ? '#f0f1f3' : '#1b2024',
+        '--meo-code-palette-foreground': light ? '#24292e' : '#e6edf3' }))
         document.documentElement.style.setProperty(name, value);
+      document.body.className = light ? 'vscode-light' : 'vscode-dark';
+      host.MermaidEditingHarness.applyUiTheme(appearance, true);
       host.mathEditor = host.MermaidEditingHarness.createEditor({ parent: document.querySelector('#app'), uiLanguage: 'zh-CN',
         text: '# 公式编辑\n\n$$\nr = \\frac{6}{8} \\times 100\\% = 75\\%\n$$\n\n源码在上，预览在下。\n\n$$\nx^2+y^2=z^2\n$$\n\n正文继续。',
         initialMode: 'live', onApplyChanges() {} });
@@ -248,14 +254,19 @@ try {
       const result = document.querySelector('.meo-math-live-result')!;
       const copy = document.querySelector('.meo-math-source-actions .meo-copy-code-btn')!;
       const actions = document.querySelector('.meo-math-source-actions')!;
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--meo-code-action-foreground)';
+      document.body.append(probe);
+      const expectedColor = getComputedStyle(probe).color;
+      probe.remove();
       const sourceRect = source.getBoundingClientRect(), actionRect = actions.getBoundingClientRect();
       return { source: getComputedStyle(source).backgroundColor, result: getComputedStyle(result).backgroundColor,
-        color: getComputedStyle(copy).color, label: result.querySelector('.meo-math-result-status')?.textContent,
+        color: getComputedStyle(copy).color, expectedColor, label: result.querySelector('.meo-math-result-status')?.textContent,
         controlsFit: actionRect.top >= sourceRect.top && actionRect.bottom <= sourceRect.bottom + 1 };
     });
     assert.equal(visual.source, visual.result);
     assert.notEqual(visual.source, 'rgba(0, 0, 0, 0)');
-    assert.equal(visual.color, appearance === 'light' ? 'rgb(102, 102, 102)' : 'rgb(186, 196, 207)');
+    assert.equal(visual.color, visual.expectedColor);
     assert.equal(visual.label, '预览');
     assert.ok(visual.controlsFit, 'Toolbar must fit the existing delimiter line without adding a document row');
     await page.screenshot({ path: `.local/display-math/editing-${appearance}.png` });

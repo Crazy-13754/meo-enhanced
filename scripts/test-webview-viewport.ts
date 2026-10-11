@@ -6,6 +6,7 @@ import { launchTestBrowser } from './browser-test-helpers';
 import { darkBuiltInVisuals } from '../src/shared/builtInVisualBaseline';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
+const darkDocumentBackground = 'rgb(18, 19, 20)';
 // The production Preview copies the host KaTeX stylesheet. Reflow requires its
 // display and base boxes, so use the same stylesheet in this browser fixture.
 const katexFixtureHref = `data:text/css;base64,${Buffer.from(fs.readFileSync(path.resolve('node_modules/katex/dist/katex.min.css'), 'utf8')).toString('base64')}`;
@@ -417,7 +418,7 @@ async function main() {
     }));
     if (
       darkEditorOnLightHost.appearance !== 'dark' ||
-      darkEditorOnLightHost.background !== 'rgb(36, 41, 46)'
+      darkEditorOnLightHost.background !== darkDocumentBackground
     ) {
       throw new Error(`Dark editor appearance followed the light VS Code host: ${JSON.stringify(darkEditorOnLightHost)}`);
     }
@@ -1379,7 +1380,7 @@ async function main() {
     }));
     if (JSON.stringify(darkAfterHostThemeChange) !== JSON.stringify({
       appearance: 'dark',
-      background: 'rgb(36, 41, 46)',
+      background: darkDocumentBackground,
       sidebar: '#1f2428'
     })) {
       throw new Error(`VS Code host theme changed the manual dark appearance: ${JSON.stringify(darkAfterHostThemeChange)}`);

@@ -475,9 +475,9 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.setViewport({width:900,height:1100});
-    await page.setContent('<!doctype html><style>html,body{margin:0}.host{width:680px;height:500px}.host .cm-editor{height:100%}</style><div id="quote" class="host"></div><div id="table" class="host"></div><div id="footnote" class="host"></div><div id="preview"></div><div id="preview-notes"></div>');
+    await page.setContent('<!doctype html><style>html,body{margin:0}.host{width:680px;height:500px}.host .cm-editor{height:100%}</style><body class="vscode-light"><div id="quote" class="host"></div><div id="table" class="host"></div><div id="footnote" class="host"></div><div id="preview"></div><div id="preview-notes"></div></body>');
     await page.addStyleTag({path:path.join(root,'webview/src/styles.css')});
-    await page.addStyleTag({content:':root{--meo-background:#fff;--meo-foreground:#24292f;--meo-code-background:#f6f8fa;--meo-surface-background:#fff;--meo-color-base05:#0969da;--meo-font-live:Arial;--meo-font-live-size:16px;--meo-font-source:monospace;--meo-font-source-size:14px;--meo-semantic-blockquoteBorder:#888;--meo-semantic-blockquoteForeground:#555;--vscode-editor-font-family:monospace;--vscode-editor-font-size:14px;--vscode-editor-line-height:20px}'});
+    await page.addStyleTag({content:':root{--vscode-editor-background:#fff;--vscode-editor-foreground:#24292f;--meo-code-palette-background:#f6f8fa;--meo-code-palette-foreground:#24292f;--meo-background:#fff;--meo-foreground:#24292f;--meo-code-background:#f6f8fa;--meo-surface-background:#fff;--meo-color-base05:#0969da;--meo-font-live:Arial;--meo-font-live-size:16px;--meo-font-source:monospace;--meo-font-source-size:14px;--meo-semantic-blockquoteBorder:#888;--meo-semantic-blockquoteForeground:#555;--vscode-editor-font-family:monospace;--vscode-editor-font-size:14px;--vscode-editor-line-height:20px}'});
     await page.addScriptTag({path:path.join(temp,'bundle.js')});
     const preview = renderMarkdownToHtml({markdownText:fixtures.cells+'\n\nFirst[^repeat], second[^repeat], third[^repeat].\n\n[^repeat]: Repeated definition.',markdownFilePath:'test.md',target:'html',uiLanguage:'en',showComments:false,deferImages:true});
     const previewNotes = renderMarkdownToHtml({markdownText:fixtures.footnote,markdownFilePath:'test.md',target:'html',uiLanguage:'en',showComments:false});
@@ -607,9 +607,17 @@ async function main() {
     }));
     const failures:string[]=[];
     function check(name:string,fn:()=>void){try{fn();console.log('PASS',name);}catch(e){failures.push(name+': '+String(e));}}
+    const codeSurface = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = 'var(--meo-code-background)';
+      document.body.append(probe);
+      const channels = getComputedStyle(probe).backgroundColor.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+      probe.remove();
+      return channels;
+    });
     check('Rounded code surfaces follow the nested container at all four corners',()=>{
       for(const point of corners) {
-        assert.deepEqual(point.surface,[246,248,250],point.name+' must sample the actual code background');
+        assert.deepEqual(point.surface,codeSurface,point.name+' must sample the actual code background');
         // Fractional edges may antialias; a rounded corner must expose the lighter page surface.
         assert.ok(point.corner.reduce((sum,value)=>sum+value,0)>=point.surface.reduce((sum,value)=>sum+value,0)+5,point.name+' remains square: '+JSON.stringify(point.corner));
       }

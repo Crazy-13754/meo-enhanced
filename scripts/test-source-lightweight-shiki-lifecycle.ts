@@ -373,13 +373,13 @@ async function main(): Promise<void> {
       (window as any).__shikiEditors.second.view.requestMeasure();
     });
     await page.waitForFunction(() => !(window as any).__shikiEditors.second.view.inView);
-    const beforeIntroducedCode = (await readMetrics(page)).tokenizeCalls;
     // A hidden editor may receive its first supported block after initial layout.
     // An unsupported fence before it must not consume the one-block preparation.
     const introducedText = '```unsupported-test-language\nplain text\n```\n\n' + hiddenText('introduced');
     await page.evaluate((text) => (window as any).__shikiEditors.second.setText(text), introducedText);
     await waitForFrames(page);
-    assert.equal((await readMetrics(page)).tokenizeCalls, beforeIntroducedCode + 1,
+    assert.deepEqual((await readMetrics(page)).instances.flatMap(instance => instance.tokenizedCodes)
+      .filter(code => code.includes('hidden_introduced_')), ['const hidden_introduced_0 = 0;'],
       'A hidden editor must prepare the first supported block without cascading into all unseen blocks');
     await page.evaluate(() => {
       document.getElementById('second')!.hidden = false;
@@ -395,13 +395,13 @@ async function main(): Promise<void> {
       (window as any).__shikiEditors.second.view.requestMeasure();
     });
     await page.waitForFunction(() => !(window as any).__shikiEditors.second.view.inView);
-    const beforeAppendedCode = (await readMetrics(page)).tokenizeCalls;
     await page.evaluate((text) => {
       const editor = (window as any).__shikiEditors.second;
       editor.setText(editor.view.state.doc.toString() + '\n\n' + text);
     }, hiddenText('after_cached'));
     await waitForFrames(page);
-    assert.equal((await readMetrics(page)).tokenizeCalls, beforeAppendedCode + 1,
+    assert.deepEqual((await readMetrics(page)).instances.flatMap(instance => instance.tokenizedCodes)
+      .filter(code => code.includes('hidden_after_cached_')), ['const hidden_after_cached_0 = 0;'],
       'Cached or known blocks must not consume the one unseen-block preparation');
     for (const mode of ['source', 'live']) {
       await page.evaluate((mode) => {

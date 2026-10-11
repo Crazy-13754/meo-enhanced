@@ -78,13 +78,15 @@ try {
     await page.hover(selector);
     await page.waitForSelector('.meo-tooltip.is-visible');
     const rows = await page.$eval('.meo-tooltip.is-visible .meo-tooltip-label', label => {
-      const text = label.firstChild!;
+      const text = Array.from(label.querySelector('.meo-tooltip-text')!.childNodes)
+        .find(node => node.nodeType === Node.TEXT_NODE)!;
       const content = text.textContent!;
       const range = document.createRange();
+      let from = 0;
       return content.split('\n').map(line => {
-        const from = content.indexOf(line);
         range.setStart(text, from);
         range.setEnd(text, from + line.length);
+        from += line.length + 1;
         return range.getBoundingClientRect().top;
       });
     });
