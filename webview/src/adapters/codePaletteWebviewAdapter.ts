@@ -52,6 +52,11 @@ export function createCodePaletteWebviewAdapter(input: {
     },
     apply(palette) {
       const sourceStyle = input.sourceStyle ?? document.documentElement.style;
+      // Surface derivation checks the prepared code palette, without scanning
+      // rendered tokens or rerunning Shiki during a color preview.
+      sourceStyle.setProperty('--meo-code-palette-foreground', palette.preview.foreground);
+      sourceStyle.setProperty('--meo-code-palette-comment', palette.preview.comment);
+      sourceStyle.setProperty('--meo-code-palette-background', palette.sourceTheme.colors['editor.background'] ?? (palette.sourceTheme.type === 'light' ? '#ffffff' : '#24292e'));
       for (const [id, color] of Object.entries(palette.sourceTokens)) {
         sourceStyle.setProperty(`--meo-token-${id}-color`, color);
       }

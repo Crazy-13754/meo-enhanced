@@ -132,6 +132,18 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
     for (const item of visible) {
       const row = node('div', 'settings-item appearance-item'); row.dataset.setting = item.id;
       const text = node('div', 'settings-item-text'); text.append(node('div', 'settings-item-title', t(item.title[0], item.title[1])), node('p', 'settings-description', t(item.description[0], item.description[1]))); row.append(text);
+      if (item.id === 'documentBackground') {
+        const warning = node('p', 'settings-description appearance-background-warning');
+        text.append(warning);
+        presenters.push(() => {
+          const low = document.documentElement.dataset.meoDocumentContrast === 'low';
+          const paired = document.documentElement.dataset.meoDocumentCodeSurface === 'paired';
+          warning.hidden = !low && !paired;
+          warning.textContent = low
+            ? t('此背景与当前文字或明暗模式对比不足。建议调整背景、切换模式或恢复默认。', 'This background does not suit the current text or mode. Adjust it, change mode, or reset to default.')
+            : t('为保留代码文字对比，块区域暂用代码主题底色。可调整文档背景。', 'Blocks retain their code theme background for legibility. You can adjust the document background.');
+        });
+      }
       if (item.id === 'mode') {
         row.classList.add('appearance-mode');
         const modeControl = createSegmentedControl<EditorAppearance>({ ariaLabel: t(...item.title), className: 'editor-appearance-control appearance-mode-control', buttonClassName: 'editor-appearance-button', datasetKey: 'appearanceMode', role: 'group', width: '240px', buttonTitles: false, options: [

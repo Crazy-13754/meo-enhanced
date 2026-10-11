@@ -193,6 +193,10 @@ try {
   assert.equal(await page.$eval('.cm-editor', e => getComputedStyle(e).backgroundColor), 'rgb(24, 44, 56)');
   assert.equal(await role('surface'), originalSurface, 'document background does not change the UI surface');
   assert.deepEqual((await source()).map(([text, color]) => [text, color]), sourceBefore.map(([text, color]) => [text, color]), 'document background preserves native Source ink');
+  await edit('documentBackground', '#FFFFFF');
+  assert.equal(await page.$eval('.appearance-background-warning', element => (element as HTMLElement).hidden), false, 'an unsuitable custom background explains the ink/mode mismatch');
+  assert.equal(await value('documentBackground'), '#FFFFFF', 'contrast advice must not rewrite the user color');
+  await edit('documentBackground', '#182C38');
   await page.click(cancel);
   assert.equal(await page.$eval('body', e => getComputedStyle(e).backgroundColor), originalDocumentBackground, 'cancel restores the document carrier');
   const drag = await page.evaluate(async () => {
@@ -269,7 +273,18 @@ try {
   assert.equal(await page.$eval('body', e => getComputedStyle(e).backgroundColor), 'rgb(24, 44, 56)', 'reload restores the independent document background');
   await page.click('.settings-close'); await page.click('[data-mode="live"]');
   await page.waitForSelector('.meo-md-heading-content');
-  assert.equal(await page.$eval('.meo-md-heading-content', e => getComputedStyle(e).color), 'rgb(153, 204, 170)', 'saved content emphasis colors the actual Live heading');
+  assert.equal(await page.$eval('.meo-md-heading-content', e => getComputedStyle(e).color), await role('text-emphasis-content'), 'saved content emphasis projects its contrast-corrected role onto the actual Live heading');
+  const headingContrast = await page.evaluate(() => {
+    const ink = getComputedStyle(document.querySelector('.meo-md-heading-content')!).color;
+    const probe = document.createElement('span'); probe.style.color = 'var(--meo-document-inline)'; document.body.append(probe);
+    const surface = getComputedStyle(probe).color; probe.remove();
+    const luminance = (color: string) => color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(v => {
+      const channel = v / 255; return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    }).reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index], 0);
+    const values = [luminance(ink), luminance(surface)];
+    return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
+  });
+  assert.ok(headingContrast >= 4.5, 'content emphasis stays readable on the stronger inline surface without rewriting the saved color');
   await openSettings();
   await page.click('[data-appearance-mode="light"]'); assert.equal(await value('surface'), '', 'light profile is independent');
   await checkControlLayout();

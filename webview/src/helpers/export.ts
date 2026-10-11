@@ -1,5 +1,6 @@
 import { defaultCodeBlockBackgroundColor, themeColorKeys } from '../../../src/shared/builtInVisualBaseline';
 import type { PreviewCodePalette } from '../application/finalCodePalette';
+import { documentSurfaceVariables } from '../../../src/shared/documentSurfaceRoles';
 
 export interface ExportStyleEnvironment extends Record<string, unknown> {
   editorBackgroundColor: string;
@@ -30,6 +31,7 @@ export const getExportStyleEnvironment = (code: {
   readonly previewSourceColoring: boolean;
   readonly previewShowComments: boolean;
   readonly previewCodePalettes: Readonly<Record<'light' | 'dark', PreviewCodePalette>>;
+  readonly captureDocumentSurfaces?: boolean;
 }): ExportStyleEnvironment => {
   const rootStyles = getComputedStyle(document.documentElement);
   const bodyStyles = getComputedStyle(document.body);
@@ -68,6 +70,11 @@ export const getExportStyleEnvironment = (code: {
     const value = rootStyles.getPropertyValue(`--meo-color-${key}`).trim();
     if (value) {
       meoThemeColors[key] = value;
+    }
+  }
+  if (code.captureDocumentSurfaces) {
+    for (const role of new Set(Object.values(documentSurfaceVariables))) {
+      meoThemeColors['document-' + role] = colorVar('--meo-document-' + role);
     }
   }
   const editorForegroundColor = resolvedColorVar(

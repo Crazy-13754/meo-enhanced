@@ -27,6 +27,16 @@
   --meo-inline-code-background: var(--meo-code-background);
   --meo-code-action-foreground: #666666;
   --meo-code-action-hover-foreground: #000000;
+  --meo-document-inline: var(--meo-inline-code-background);
+  --meo-document-inline-border: transparent;
+  --meo-document-block: var(--meo-code-background);
+  --meo-document-table: var(--meo-semantic-tableHeaderBackground, var(--meo-inset-background));
+  --meo-document-separator: var(--meo-semantic-tableBorder, var(--meo-content-panel-border));
+  --meo-document-block-hover: var(--meo-semantic-codeCopyHoverBackground);
+  --meo-document-block-pressed: var(--meo-document-block-hover);
+  --meo-document-border-control: var(--meo-document-separator);
+  --meo-document-block-border: var(--meo-document-separator);
+  --meo-document-focus: var(--meo-ui-focus);
   --meo-code-block-active-line-bg: var(--meo-semantic-codeBlockActiveLineBackground, color-mix(
     in srgb,
     var(--meo-code-background, var(--meo-content-textCodeBlock-background)) 82%,
@@ -2121,7 +2131,7 @@ button:focus-visible > .menu-switch {
   min-height: 2.4em;
   padding: 6px 12px;
   border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--meo-foreground) 14%, transparent);
+  border-top: 1px solid var(--meo-document-separator);
   background: var(--meo-code-background);
 }
 
@@ -2165,7 +2175,9 @@ button:focus-visible > .menu-switch {
 }
 
 .meo-long-code-action:hover,
-.meo-long-code-floating-action:hover {
+.meo-long-code-action:focus-visible,
+.meo-long-code-floating-action:hover,
+.meo-long-code-floating-action:focus-visible {
   color: var(--meo-code-action-hover-foreground, var(--meo-foreground));
   background: var(--meo-semantic-codeCopyHoverBackground, var(--meo-outline-hover-background));
 }
@@ -2173,7 +2185,7 @@ button:focus-visible > .menu-switch {
 .meo-long-code-floating-action {
   position: fixed;
   z-index: calc(var(--meo-layer-document-overlay) + 20);
-  border: 1px solid color-mix(in srgb, var(--meo-foreground) 18%, transparent);
+  border: 1px solid var(--meo-document-separator);
   background: var(--meo-code-background);
   transform: translateX(-50%);
 }
@@ -2263,11 +2275,7 @@ button:focus-visible > .menu-switch {
   --meo-active-editor-font-size: var(--meo-font-live-size);
   --meo-active-editor-line-height: var(--meo-line-height-live);
   --meo-markdown-marker-font-weight: var(--meo-font-live-weight);
-  --meo-live-table-header-background: var(--meo-inset-background);
-}
-
-html[data-editor-appearance='light'] .cm-editor.meo-mode-live {
-  --meo-live-table-header-background: color-mix(in srgb, var(--meo-inset-background) 70%, var(--meo-background) 30%);
+  --meo-live-table-header-background: var(--meo-document-table);
 }
 
 html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
@@ -3387,6 +3395,14 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   padding: 0.08em 0.25em;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+  box-shadow: inset 0 0 0 1px var(--meo-document-inline-border);
+}
+
+.cm-editor.meo-mode-live .meo-md-math-inline-source {
+  background: var(--meo-document-inline);
+  border-radius: 0.35em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .cm-editor.meo-mode-live .meo-md-tag {
@@ -3699,7 +3715,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   border: 1px solid color-mix(in srgb, var(--meo-semantic-kbdBorder) 85%, transparent);
   border-bottom-width: 2px;
   border-radius: 0.35em;
-  background: var(--meo-semantic-kbdBackground);
+  background: transparent;
   color: var(--meo-foreground);
   -webkit-text-fill-color: currentColor;
   font-family: var(--meo-kbd-font-family);
@@ -3785,7 +3801,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   /* The editing result needs room for its label; reading has no label rail. */
   padding: 24px 0;
   background: var(--meo-code-background);
-  border-top: 1px solid color-mix(in srgb, var(--meo-foreground) 14%, transparent);
+  border-top: 1px solid var(--meo-document-separator);
   border-radius: 0 0 6px 6px;
 }
 
@@ -4150,7 +4166,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   top: 4px;
   bottom: 4px;
   width: 1px;
-  background: color-mix(in srgb, var(--meo-foreground) 18%, transparent);
+  background: var(--meo-document-separator);
   pointer-events: none;
 }
 
@@ -4453,22 +4469,32 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   width: calc(var(--meo-active-editor-line-height) * 1em);
   height: calc(var(--meo-active-editor-line-height) * 1em);
   padding: 0;
-  border: 1px solid var(--meo-border);
+  border: 1px solid var(--meo-document-border-control);
   border-radius: 6px;
   color: var(--meo-semantic-codeCopyForeground);
-  background: var(--meo-background);
+  background: transparent;
   font: inherit;
   cursor: pointer;
 }
 
 .cm-editor .meo-md-html-mode-btn:hover {
   color: var(--meo-semantic-codeCopyHoverForeground, var(--meo-foreground));
-  background: color-mix(in srgb, var(--meo-foreground) 9%, var(--meo-background));
+  background: var(--meo-document-block-hover);
 }
 
 .cm-editor .meo-md-html-mode-btn:active {
   color: var(--meo-semantic-codeCopyHoverForeground, var(--meo-foreground));
-  background: color-mix(in srgb, var(--meo-foreground) 15%, var(--meo-background));
+  background: var(--meo-document-block-pressed);
+}
+
+.cm-editor :is(.meo-copy-code-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
+  .meo-latex-math-mode-btn, .meo-md-html-mode-btn, .meo-long-code-action):active {
+  background: var(--meo-document-block-pressed);
+}
+
+.cm-editor :is(.meo-copy-code-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
+  .meo-latex-math-mode-btn, .meo-md-html-mode-btn, .meo-long-code-action):focus-visible {
+  box-shadow: inset 0 0 0 1px var(--meo-document-focus);
 }
 
 .cm-editor .meo-md-html-block > .meo-md-html-source-toggle {
@@ -5533,7 +5559,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 .outline-tree-children {
   margin-left: 20px;
   padding-left: 5px;
-  border-left: 1px solid color-mix(in srgb, var(--meo-foreground) 12%, transparent);
+  border-left: 1px solid var(--meo-document-separator);
 }
 
 .outline-node {
@@ -6363,7 +6389,7 @@ body.outline-resizing .preview-frame {
   padding-left: 1.5ch;
   padding-right: 0.5ch;
   border: 0;
-  color: var(--meo-semantic-mutedForeground);
+  color: var(--meo-code-action-foreground);
   background: transparent;
   font-family: var(--meo-font-source);
   font-weight: var(--meo-font-source-weight);
@@ -7371,21 +7397,21 @@ html .cm-editor .meo-md-html-table-context-menu {
 
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-frontmatter-boundary, .meo-md-frontmatter-content) {
   box-sizing: border-box;
-  border-right: 1px solid color-mix(in srgb, var(--meo-semantic-tableBorder) 72%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--meo-semantic-tableBorder) 72%, transparent);
+  border-right: 1px solid var(--meo-document-block-border);
+  border-left: 1px solid var(--meo-document-block-border);
   padding-right: 14px;
   padding-left: 14px;
-  background-color: color-mix(in srgb, var(--meo-background) 92%, var(--meo-semantic-tableBorder) 8%);
+  background-color: var(--meo-document-block);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-opening {
   border-radius: 6px 6px 0 0;
-  box-shadow: inset 0 1px color-mix(in srgb, var(--meo-semantic-tableBorder) 72%, transparent);
+  box-shadow: inset 0 1px var(--meo-document-block-border);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-closing {
   border-radius: 0 0 6px 6px;
-  box-shadow: inset 0 -1px color-mix(in srgb, var(--meo-semantic-tableBorder) 72%, transparent);
+  box-shadow: inset 0 -1px var(--meo-document-block-border);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content.meo-md-frontmatter-property {
@@ -7393,7 +7419,7 @@ html .cm-editor .meo-md-html-table-context-menu {
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-frontmatter-content.cm-activeLine {
-  background-color: color-mix(in srgb, var(--meo-background) 84%, var(--meo-semantic-tableBorder) 16%);
+  background-color: var(--meo-document-block-hover);
 }
 
 .cm-editor.meo-mode-source .cm-line.meo-md-frontmatter-content .meo-md-list-marker,

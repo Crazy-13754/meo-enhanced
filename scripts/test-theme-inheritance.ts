@@ -161,6 +161,20 @@ try {
       })]));
     });
     if (!baseline) {
+      const surfaces = await page.evaluate(() => {
+        const role = (name: string) => {
+          const probe = document.createElement('span'); probe.style.color = `var(--meo-document-${name})`; document.body.append(probe);
+          const value = getComputedStyle(probe).color; probe.remove(); return value;
+        };
+        return [
+          ['.meo-md-code-block', 'backgroundColor', 'block'],
+          ['.meo-md-inline-code', 'backgroundColor', 'inline'],
+          ['.meo-copy-code-btn', 'color', 'action-text']
+        ].flatMap(([selector, property, name]) => [...document.querySelectorAll(selector!)].map(element => ({
+          selector, actual: getComputedStyle(element)[property as 'color'], expected: role(name!)
+        })));
+      });
+      for (const surface of surfaces) assert.equal(surface.actual, surface.expected, `${profile.id}: ${surface.selector} consumes the shared document role`);
       const emphasis = await page.evaluate(() => {
         const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-text-emphasis-content)'; document.body.append(probe);
         const color = getComputedStyle(probe).color; probe.remove(); return color;
@@ -169,6 +183,16 @@ try {
         assert.equal(row[1], emphasis, `${profile.id}: Live heading uses text emphasis`);
         assert.equal(row[3], emphasis, `${profile.id}: Live heading currentColor follows text emphasis`);
       }
+      const copyRest = await page.$eval('.meo-copy-code-btn', element => getComputedStyle(element).color);
+      await page.hover('.meo-copy-code-btn');
+      await page.$eval('.meo-copy-code-btn', async element => {
+        await Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => undefined)));
+      });
+      const copyHover = await page.$eval('.meo-copy-code-btn', element => {
+        const style = getComputedStyle(element); return { color: style.color, background: style.backgroundColor, hovered: element.matches(':hover') };
+      });
+      assert.ok(copyHover.hovered && contrastRatio(copyHover.color, copyHover.background) > contrastRatio(copyRest, copyHover.background), `${profile.id}: block action hover strengthens foreground contrast (${JSON.stringify({ copyRest, ...copyHover })})`);
+      await page.mouse.move(0, 0);
     }
     await screenshot(profile.id + '-live.png');
     await page.click('button[data-mode="preview"]');
@@ -532,6 +556,10 @@ try {
     // These fixed fingerprints were captured from the pre-change commit. A
     // normal run must never refresh its oracle from the version under test.
     const expectedContent = JSON.parse(fs.readFileSync('scripts/fixtures/theme-content-baseline.json', 'utf8'));
+    // Only the approved surface/action fields are restored. This fixture was
+    // extracted after validating the original full snapshots against the fixed
+    // hashes above; it is never generated from the implementation under test.
+    const previousSurfaces = JSON.parse(fs.readFileSync('scripts/fixtures/theme-document-surface-before.json', 'utf8'));
     assert.deepEqual(Object.keys(content), Object.keys(expectedContent.hashes));
     for (const [profile, styles] of Object.entries(content)) {
       // Check approved changes explicitly, then restore only those attributes
@@ -544,32 +572,15 @@ try {
           row[1] = row[3] = original;
         }
       }
-      if (profile === 'dark-on-light:live') {
-        for (const selector of ['.meo-md-h1', '.meo-md-quote']) {
-          for (const row of (retainedStyles as Record<string, string[][]>)[selector]!) {
-            assert.equal(row[2], 'rgb(18, 19, 20)', 'manual dark uses the Dark 2026 document background');
-            row[2] = 'rgb(36, 41, 46)';
-          }
+      const restore = (rows: string[][], previous: [number, string][][]) => {
+        assert.equal(rows.length, previous.length, `${profile}: surface migration must preserve content structure`);
+        previous.forEach((fields, index) => fields.forEach(([field, value]) => { rows[index]![field] = value; }));
+      };
+      if (profile.endsWith(':live')) {
+        for (const [selector, previous] of Object.entries(previousSurfaces[profile])) {
+          restore((retainedStyles as Record<string, string[][]>)[selector]!, previous as [number, string][][]);
         }
-      } else if (profile === 'dark-on-light:preview') {
-        // Existing Preview table fills/borders already depend on the document
-        // carrier. Their fixed new values reflect #121314 instead of #24292e;
-        // every foreground, code fill and unrelated attribute stays frozen.
-        for (const row of retainedStyles as string[][]) {
-          if (row[0] === 'BODY') {
-            assert.equal(row[3], 'rgb(18, 19, 20)');
-            row[3] = 'rgb(36, 41, 46)';
-          }
-          if (row[0] === 'TH') {
-            assert.equal(row[3], 'color(srgb 0.132706 0.138196 0.145255)');
-            row[3] = 'color(srgb 0.197647 0.217569 0.239059)';
-          }
-          if (row[0] === 'TH' || row[0] === 'TD') {
-            assert.equal(row[4], 'color(srgb 0.241412 0.249647 0.262196)');
-            row[4] = 'color(srgb 0.296471 0.316941 0.341725)';
-          }
-        }
-      }
+      } else restore(retainedStyles as string[][], previousSurfaces[profile]);
       const fingerprint = createHash('sha256').update(JSON.stringify(retainedStyles)).digest('hex');
       assert.equal(fingerprint, expectedContent.hashes[profile], `${profile}: Live/Preview content styles differ from ${expectedContent.baseCommit}`);
     }

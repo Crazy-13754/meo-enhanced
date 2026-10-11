@@ -3199,7 +3199,10 @@ const themeAdapter = createAppearanceWebviewAdapter({
     applyBuiltInVisualBaseline(appearance, uiColorsPreview ?? uiColors);
   },
   resolveCodePalette: codePaletteAdapter.resolve,
-  applyCodePalette: codePaletteAdapter.apply,
+  applyCodePalette: palette => {
+    codePaletteAdapter.apply(palette);
+    applyUiVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
+  },
   refreshMermaidTheme: () => mermaidDiagramRenderPool.refreshTheme(),
   applyWithEditorViewportPreserved: (action) => {
     if (editor) editor.preserveViewport(action, true);
@@ -3250,11 +3253,17 @@ const copyTableToHost = async (format: 'markdown' | 'csv') => {
 };
 const imageStorageTransport = createImageStorageTransport(request => vscode.postMessage(request));
 const uiColorsTransport = createUiColorsTransport(request => vscode.postMessage(request));
+let committedMermaidBackground = document.documentElement.style.getPropertyValue('--meo-code-background');
 const refreshUiColors = () => {
   const rootStyle = document.documentElement.style;
-  const background = rootStyle.getPropertyValue('--meo-background');
   applyUiVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
-  if (background !== rootStyle.getPropertyValue('--meo-background')) previewController.refreshDocumentBackground();
+  const background = rootStyle.getPropertyValue('--meo-code-background');
+  const refreshMermaid = uiColorsPreview === null && background !== committedMermaidBackground;
+  if (refreshMermaid) {
+    committedMermaidBackground = background;
+    mermaidDiagramRenderPool.refreshTheme();
+  }
+  previewController.refreshDocumentBackground(refreshMermaid);
 };
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
 settingsWindow = createSettingsWindow({

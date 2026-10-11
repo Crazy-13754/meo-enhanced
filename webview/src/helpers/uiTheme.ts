@@ -28,7 +28,7 @@ const neutral = (value: Rgb): Rgb => {
 
 // The cache is only a projection of resolved inputs, never theme state. Theme
 // events invalidate it by changing the key; mode switches reuse the same roles.
-let paletteCache: { key: string; roles: Record<string, string> } | undefined;
+let paletteCache: { key: string; roles: Record<string, string>; documentRoles: Record<string, string> } | undefined;
 
 export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean, overrides: UiColorOverrides = {}): void {
   const style = document.documentElement.style;
@@ -91,12 +91,55 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
     const warning = custom.warning ? sample(custom.warning) : read('editorWarning.foreground', defaults.warning, surface);
     const danger = custom.danger ? sample(custom.danger) : read('errorForeground', defaults.danger, surface);
     const contentSurface = sample(`var(--meo-background, ${rgb(documentSurface)})`, documentSurface);
+    const documentInk = sample('var(--meo-token-foreground-color, var(--meo-content-editor-foreground))', contentSurface);
+    const documentDark = luminance(contentSurface) < 0.18;
+    const documentTint = documentDark ? white : black;
+    // A perceptible floor also covers pure black, where a small OKLab mix alone
+    // is almost invisible. Limit the shift when the existing ink is readable.
+    const documentLayer = (amount: number, floor: number): Rgb => {
+      let layer = fit(mix(contentSurface, documentTint, amount), [contentSurface], floor);
+      if (contrast(documentInk, contentSurface) >= 4.55 && contrast(documentInk, layer) < 4.55) {
+        // Keep the strongest readable layer; halving can make a stronger
+        // requested background weaker than its previous, readable value.
+        let lower = 0, upper = 1;
+        for (let step = 0; step < 8; step += 1) {
+          const middle = (lower + upper) / 2;
+          if (contrast(documentInk, mix(contentSurface, layer, middle)) >= 4.55) lower = middle;
+          else upper = middle;
+        }
+        layer = mix(contentSurface, layer, lower);
+      }
+      return highContrast ? contentSurface : layer;
+    };
+    // Match the pre-migration Live distinction, not its fixed RGB values:
+    // inline/body was ~1.79 in dark mode and ~1.23 in light mode.
+    const inlineSurface = documentLayer(0, documentDark ? 1.80 : 1.23);
+    const blockReference = documentLayer(documentDark ? 0.10 : 0.055, 1.12);
+    // Keep 75%/60% of the preview reference's OKLab shift. Its 1.12 floor
+    // belongs to the reference only; reapplying it would undo the softer fill.
+    let blockSurface = mix(contentSurface, blockReference, documentDark ? 0.75 : 0.60);
+    const codeInk = sample('var(--meo-code-palette-foreground, var(--meo-token-foreground-color))', contentSurface);
+    const codeComment = sample('var(--meo-code-palette-comment, var(--meo-token-comment-color))', contentSurface);
+    const codeCarrier = sample('var(--meo-code-palette-background, var(--meo-content-editor-background))', contentSurface);
+    const codeReadable = (carrier: Rgb) => contrast(codeInk, carrier) >= Math.min(4.5, contrast(codeInk, codeCarrier))
+      && contrast(codeComment, carrier) >= Math.min(3, contrast(codeComment, codeCarrier));
+    let pairedCodeSurface = false;
+    if (!highContrast) {
+      for (let step = 0; step < 8 && !codeReadable(blockSurface); step += 1) blockSurface = mix(blockSurface, contentSurface, 0.5);
+      if (!codeReadable(blockSurface)) { blockSurface = codeCarrier; pairedCodeSurface = true; }
+    }
+    document.documentElement.dataset.meoDocumentCodeSurface = pairedCodeSurface ? 'paired' : 'derived';
+    // Legacy header/stripe fills were ~1.09/1.05 against the document. Derive
+    // this separately so a code-token readability fallback cannot erase them.
+    const tableSurface = documentLayer(0, documentDark ? 1.09 : 1.05);
+    document.documentElement.dataset.meoDocumentContrast = contrast(documentInk, contentSurface) < 4.5
+      || documentDark !== (appearance === 'dark') ? 'low' : 'normal';
     // Matches start from the final heading ink. Keep it unchanged when readable,
     // otherwise apply only the existing contrast correction for the menu carrier.
     const textEmphasis = custom.textEmphasis ? sample(custom.textEmphasis) : read('textLink.foreground', defaults.textEmphasis, contentSurface);
     const footnoteBackground = `color-mix(in srgb, ${rgb(textEmphasis)} 12%, transparent)`;
     const contentSurfaces = [contentSurface,
-      sample(`var(--meo-inline-code-background, ${rgb(contentSurface)})`, contentSurface),
+      inlineSurface,
       sample(footnoteBackground, contentSurface)];
     const tint = endpoint([surface]);
     // All ordinary surfaces must admit one shared neutral foreground. Near
@@ -108,7 +151,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
     const nativeActiveBorder = highContrast ? read('contrastActiveBorder', color('focusBorder', rgb(accent)), raised) : undefined;
     const nativeSelection = highContrast ? read('list.activeSelectionBackground', rgb(raised), raised) : undefined;
     const nativeSelectionText = highContrast ? read('list.activeSelectionForeground', rgb(foreground), nativeSelection) : undefined;
-    const key = JSON.stringify([appearance, highContrast, surface, raised, foreground, accent, success, warning, danger, textEmphasis, contentSurfaces,
+    const key = JSON.stringify([appearance, highContrast, surface, raised, foreground, accent, success, warning, danger, textEmphasis, contentSurfaces, documentInk, blockSurface,
       nativeFocus, nativeBorder, nativeActiveBorder, nativeSelection, nativeSelectionText]);
 
     if (paletteCache?.key !== key) {
@@ -149,9 +192,47 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
       roles.scrollbar = `color-mix(in srgb, ${rgb(text)} 32%, transparent)`;
       roles['scrollbar-hover'] = `color-mix(in srgb, ${rgb(text)} 48%, transparent)`;
       roles['scrollbar-active'] = `color-mix(in srgb, ${rgb(text)} 62%, transparent)`;
-      paletteCache = { key, roles };
+      const documentSurfaces = [contentSurface, inlineSurface, blockSurface, tableSurface];
+      const documentLine = nativeBorder ?? fit(mix(contentSurface, documentTint, 0.06), [contentSurface, blockSurface, tableSurface], 1.4);
+      const blockHover = highContrast ? blockSurface : mix(blockSurface, documentTint, documentDark ? 0.07 : 0.04);
+      const blockPressed = highContrast ? blockSurface : mix(blockSurface, documentTint, documentDark ? 0.11 : 0.07);
+      const actionSurfaces = [blockSurface, blockHover, blockPressed];
+      const actionText = fit(neutral(documentInk), actionSurfaces, 4.55);
+      const softenLightActions = appearance === 'light' && !highContrast;
+      // Resting light controls sit on the block itself. Hover/pressed carriers
+      // have their own stronger foreground and should not constrain this tone.
+      const actionMuted = fit(mix(actionText, blockSurface, softenLightActions ? 0.50 : 0.22), softenLightActions ? [blockSurface] : actionSurfaces, softenLightActions ? 3.55 : 4.55);
+      const actionHover = fit(mix(actionText, endpoint(actionSurfaces), 0.82), actionSurfaces, 4.55);
+      const documentRoles = Object.fromEntries(Object.entries({
+        inline: inlineSurface, block: blockSurface, table: tableSurface, separator: documentLine,
+        'inline-border': nativeBorder ?? mix(documentLine, inlineSurface, 0.65),
+        'block-border': nativeBorder ?? fit(documentLine, [blockSurface, contentSurface], documentDark ? 1.75 : 1.65),
+        'border-control': nativeBorder ?? fit(documentLine, documentSurfaces, 3.05),
+        focus: nativeFocus ?? fit(accent, [...documentSurfaces, blockHover, blockPressed], 3.05),
+        'block-hover': blockHover, 'block-pressed': blockPressed,
+        'action-text': actionMuted, 'action-hover-text': actionHover,
+        'active-line': highContrast ? contentSurface : mix(contentSurface, documentTint, documentDark ? 0.06 : 0.025)
+      }).map(([role, value]) => [role, rgb(value)]));
+      paletteCache = { key, roles, documentRoles };
     }
     for (const [role, value] of Object.entries(paletteCache.roles)) style.setProperty('--meo-ui-' + role, value);
+    for (const [role, value] of Object.entries(paletteCache.documentRoles)) style.setProperty('--meo-document-' + role, value);
+    // Existing Live consumers share the resolved roles. Store final values so
+    // the export style environment can carry them without browser-only vars.
+    for (const [property, role] of Object.entries({
+      'code-background': 'block', 'inset-background': 'inline', 'inline-code-background': 'inline',
+      'active-line-bg': 'active-line', 'code-block-active-line-bg': 'block-hover',
+      'code-action-foreground': 'action-text', 'code-action-hover-foreground': 'action-hover-text',
+      'semantic-codeBlockBackground': 'block', 'semantic-codeBlockActiveLineBackground': 'block-hover',
+      'semantic-inlineCodeBackground': 'inline',
+      'semantic-imageBackground': 'block', 'semantic-imageBorder': 'separator',
+      'semantic-frontmatterPillBackground': 'inline', 'semantic-tableHeaderBackground': 'table',
+      'semantic-tableBorder': 'separator', 'semantic-horizontalRule': 'separator',
+      'semantic-blockquoteBorder': 'separator', 'semantic-listGuide': 'separator', 'semantic-kbdBorder': 'separator',
+      'semantic-codeCopyForeground': 'action-text', 'semantic-codeCopyHoverForeground': 'action-hover-text',
+      'semantic-codeLanguageLabelForeground': 'action-text',
+      'semantic-codeCopyHoverBackground': 'block-hover'
+    })) style.setProperty('--meo-' + property, paletteCache.documentRoles[role]!);
   } finally {
     probe.remove();
   }

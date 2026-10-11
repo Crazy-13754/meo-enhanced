@@ -2,6 +2,7 @@ import morphdom from 'morphdom';
 import { createPreviewSearchController, previewSearchStyles } from './previewSearch';
 import { createElement as createIconElement, PenLine, TextCursor, Info, Palette, FileText, Check, Settings2 } from 'lucide';
 import { getExportStyleEnvironment } from './export';
+import { documentSurfaceVariables } from '../../../src/shared/documentSurfaceRoles';
 import { createPreviewMermaidRenderer } from './previewMermaid';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
 import { logWebviewRenderError } from './errors';
@@ -1518,8 +1519,13 @@ export function createPreviewController({
     // Default follows the document carrier; independent presets and an opposite
     // preview appearance retain their own paired colors. No render is needed.
     frameDocument.documentElement.style.removeProperty('--meo-bg');
+    for (const property of Object.keys(documentSurfaceVariables)) frameDocument.documentElement.style.removeProperty(property);
     if (presetPreference === 'default' && appearance === getEditorAppearance()) {
       frameDocument.documentElement.style.setProperty('--meo-bg', getComputedStyle(document.body).backgroundColor);
+      const rootStyles = getComputedStyle(document.documentElement);
+      for (const [property, role] of Object.entries(documentSurfaceVariables)) {
+        frameDocument.documentElement.style.setProperty(property, rootStyles.getPropertyValue('--meo-document-' + role).trim());
+      }
     }
   };
 
@@ -1998,6 +2004,7 @@ export function createPreviewController({
   };
 
   const getStyleEnvironment = () => getExportStyleEnvironment({
+    captureDocumentSurfaces: presetPreference === 'default' && appearance === getEditorAppearance(),
     previewFontFamily: fontFamilyPreference,
     previewSourceColoring: sourceColoring,
     previewShowComments: showComments,
@@ -3018,9 +3025,16 @@ export function createPreviewController({
       refreshTheme();
     },
     refreshTheme,
-    refreshDocumentBackground: () => {
+    refreshDocumentBackground: (refreshMermaid = false) => {
       const frameDocument = getFrameDocument();
-      if (frameDocument) syncDocumentBackground(frameDocument);
+      if (!frameDocument) return;
+      syncDocumentBackground(frameDocument);
+      if (refreshMermaid && presetPreference === 'default' && appearance === getEditorAppearance()) {
+        for (const block of frameDocument.querySelectorAll<HTMLElement>('.meo-export-mermaid[data-source-b64]')) delete block.dataset.meoPreviewMermaidAppearance;
+        void previewMermaidRenderer.render(frameDocument, appearance, () => { sourceMapDirty = true; },
+          () => !disposed && getFrameDocument() === frameDocument,
+          mutate => withViewportTransaction(mutate));
+      }
     },
     getAppearance: () => appearance,
     getSourceColoring: isSourceColoringEnabled,

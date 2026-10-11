@@ -2976,6 +2976,7 @@ function addMathDecorations(
     }
 
     if (editingBoundary) {
+      if (mathRange.mode === 'inline') builder.push(Decoration.mark({ class: 'meo-md-math-inline-source' }).range(mathRange.from, mathRange.to));
       continue;
     }
 

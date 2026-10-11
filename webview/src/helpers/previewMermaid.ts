@@ -51,6 +51,8 @@ export function createPreviewMermaidRenderer(
     activeGroup?.end();
     const preset = frameDocument.documentElement.dataset.meoPreviewPreset ?? 'default';
     const revision = frameDocument.documentElement.dataset.meoPreviewPresetRevision ?? '';
+    // A preserved SVG can outlive a theme change with the same appearance.
+    let themeKey: string | undefined;
     const hasPendingBlocks = Array.from(frameDocument.querySelectorAll<HTMLElement>(
       '.meo-export-mermaid[data-source-b64]'
     )).some((block) => (
@@ -58,6 +60,7 @@ export function createPreviewMermaidRenderer(
       || block.dataset.meoPreviewMermaidAppearance !== appearance
       || (block.dataset.meoPreviewMermaidPreset ?? 'default') !== preset
       || (block.dataset.meoPreviewMermaidPresetRevision ?? '') !== revision
+      || block.dataset.meoPreviewMermaidTheme !== (themeKey ??= JSON.stringify(readPreviewMermaidPalette(frameDocument, appearance)))
     ));
     if (!hasPendingBlocks) return Promise.resolve();
     const scheduled = renderTail.catch(() => undefined).then(async () => {
@@ -111,6 +114,8 @@ async function renderMermaidBlocks(
   if (!isCurrent()) return;
   const preset = frameDocument.documentElement.dataset.meoPreviewPreset ?? 'default';
   const revision = frameDocument.documentElement.dataset.meoPreviewPresetRevision ?? '';
+  const palette = readPreviewMermaidPalette(frameDocument, appearance);
+  const themeKey = JSON.stringify(palette);
   const viewportCenter = (frameDocument.defaultView?.innerHeight ?? 0) / 2;
   const blocks = Array.from(frameDocument.querySelectorAll<HTMLElement>('.meo-export-mermaid[data-source-b64]'))
     .filter((block) => (
@@ -118,6 +123,7 @@ async function renderMermaidBlocks(
       || block.dataset.meoPreviewMermaidAppearance !== appearance
       || (block.dataset.meoPreviewMermaidPreset ?? 'default') !== preset
       || (block.dataset.meoPreviewMermaidPresetRevision ?? '') !== revision
+      || block.dataset.meoPreviewMermaidTheme !== themeKey
     ))
     .map((block, documentIndex) => ({ block, documentIndex }))
     .sort((left, right) =>
@@ -128,7 +134,6 @@ async function renderMermaidBlocks(
 
   const mermaid = await loadMermaidRuntime();
   if (!isCurrent()) return;
-  const palette = readPreviewMermaidPalette(frameDocument, appearance);
   const github = frameDocument.documentElement.dataset.meoPreviewRenderer === 'github-readme' || preset === 'github-readme';
   mermaid.initialize(github ? getGithubMermaidConfig(appearance === 'dark') : {
     startOnLoad: false,
@@ -238,6 +243,7 @@ async function renderMermaidBlocks(
       block.dataset.meoPreviewMermaidAppearance = appearance;
       block.dataset.meoPreviewMermaidPreset = preset;
       block.dataset.meoPreviewMermaidPresetRevision = revision;
+      block.dataset.meoPreviewMermaidTheme = themeKey;
       const copyActions = block.querySelector(':scope > .meo-preview-code-actions');
       const languageLabel = block.querySelector(':scope > .meo-export-code-language-label');
       block.innerHTML = `<div class="meo-export-mermaid-svg">${svg}</div>`;

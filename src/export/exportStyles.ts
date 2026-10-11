@@ -9,6 +9,7 @@ import {
 import { normalizePreviewFontFamily, type PreviewAppearance } from '../shared/preview';
 import type { EditorStyleEnvironment } from '../protocol/editorStyleEnvironment';
 import { getMermaidPalette } from '../shared/mermaidPalette';
+import { documentSurfaceVariables } from '../shared/documentSurfaceRoles';
 
 const styleValueInjectionPattern = /[\n\r;{}]/g;
 const isolatedDarkBackgroundColor = '#20252b';
@@ -158,6 +159,12 @@ function buildReadingStyles(
   const headingWeightVarsCss = headingFontWeights
     .map((fontWeight, index) => `  --meo-heading-${index + 1}-weight: ${fontWeight};`)
     .join('\n');
+  const documentSurfaceCss = editorAppearanceIsDark === previewAppearanceIsDark
+    ? Object.entries(documentSurfaceVariables).map(([property, role]) => {
+      const value = sanitizeStandaloneCssColor(environment.meoThemeColors?.['document-' + role] ?? '');
+      return value ? `  ${property}: ${value};` : '';
+    }).join('\n')
+    : '';
   const headingRulesCss = headingFontSizes
     .map((_fontSize, index) => {
       const level = index + 1;
@@ -239,11 +246,12 @@ ${headingWeightVarsCss}
   --meo-hr: color-mix(in srgb, var(--meo-border) 70%, transparent);
   --meo-table-border: ${tableBorderColor};
   --meo-table-header-bg: var(--meo-sidebar-bg);
-  --meo-kbd-bg: color-mix(in srgb, var(--meo-sidebar-bg) 88%, var(--meo-bg) 12%);
+  --meo-kbd-bg: transparent;
   --meo-kbd-border: color-mix(in srgb, var(--meo-border) 85%, transparent);
   --meo-kbd-shadow: color-mix(in srgb, var(--meo-border) 55%, transparent);
   --meo-mermaid-error-border: color-mix(in srgb, var(--meo-heading) 70%, var(--meo-border) 30%);
   --meo-mermaid-error-fg: color-mix(in srgb, var(--meo-heading) 75%, var(--meo-fg) 25%);
+${documentSurfaceCss}
 }
 
 * { box-sizing: border-box; }
@@ -430,10 +438,10 @@ body[data-meo-export-target='pdf'] .meo-export-toc {
   --meo-properties-key-width: 124px;
   margin: 0 0 1.35em;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--meo-border) 72%, transparent);
+  border: 1px solid var(--meo-frontmatter-border, color-mix(in srgb, var(--meo-border) 72%, transparent));
   border-radius: 6px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--meo-bg) 92%, var(--meo-border) 8%);
+  background: var(--meo-frontmatter-bg, color-mix(in srgb, var(--meo-bg) 92%, var(--meo-border) 8%));
   color: var(--meo-fg);
   font-family: var(--meo-font-body);
   font-weight: var(--meo-font-weight-body);
@@ -476,7 +484,7 @@ body[data-meo-export-target='pdf'] .meo-export-toc {
 .meo-export-frontmatter-line {
   min-height: 1.7em;
   padding: 5px 12px;
-  border-top: 1px solid color-mix(in srgb, var(--meo-border) 62%, transparent);
+  border-top: 1px solid var(--meo-frontmatter-border, color-mix(in srgb, var(--meo-border) 62%, transparent));
   border-radius: 0;
 }
 
@@ -512,8 +520,8 @@ body[data-meo-export-target='pdf'] .meo-export-toc {
   min-width: 0;
   min-height: 100%;
   padding: 5px 10px 5px 12px;
-  border-right: 1px solid color-mix(in srgb, var(--meo-border) 82%, transparent);
-  background: color-mix(in srgb, var(--meo-border) 13%, transparent);
+  border-right: 1px solid var(--meo-frontmatter-border, color-mix(in srgb, var(--meo-border) 82%, transparent));
+  background: var(--meo-frontmatter-key-bg, color-mix(in srgb, var(--meo-border) 13%, transparent));
   color: var(--meo-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -817,6 +825,7 @@ code:not(pre code) {
   padding: 0.08em 0.25em;
   border-radius: 0.35em;
   background: var(--meo-inline-code-bg);
+  box-shadow: inset 0 0 0 1px var(--meo-inline-code-border, transparent);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -1027,7 +1036,7 @@ pre.meo-export-code-block code {
 blockquote {
   margin-left: 0;
   padding: 0 0 0 3ch;
-  border-left: 3px solid var(--meo-quote);
+  border-left: 3px solid var(--meo-quote-border, var(--meo-quote));
   background: transparent;
   border-radius: 0;
   color: var(--meo-quote);
@@ -1065,6 +1074,10 @@ th, td {
 th {
   background: var(--meo-table-header-bg);
   color: var(--meo-fg);
+}
+
+tbody tr:nth-child(even) td {
+  background: var(--meo-table-row-bg, transparent);
 }
 
 .meo-table-scroll {
