@@ -5233,6 +5233,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   recalcLayout() {
     if (this.pendingResizeRows) {
       this.resizeAllRows();
+      this.domRefs?.shell.style.removeProperty('min-height');
     }
     this.syncTableLineNumbers();
     this.syncTableDiffMarkers();
@@ -5865,6 +5866,9 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     }
     const shell = document.createElement('div');
     shell.className = 'meo-md-html-table-shell';
+    // A remounted table sizes its native inputs in the next layout frame. Keep
+    // the measured block height until then so virtualization cannot shrink it.
+    if (this.measuredHeight > 0) shell.style.minHeight = `${this.measuredHeight}px`;
     tableDomOwners.set(shell, this);
     applyLiveBlockIndent(shell, this.tableData.visualIndent);
     shell.style.setProperty(

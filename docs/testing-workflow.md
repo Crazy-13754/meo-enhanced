@@ -25,7 +25,8 @@ must reach both boundaries; a capped or stalled loop cannot report full traversa
 `scripts/test-long-document-scroll.ts` exercises the production Webview in Live,
 Source, Preview and split views, using shared visible-content witnesses in both
 scroll directions. The targeted viewport gate uses a bounded rich-document fixture
-and verifies that unchanged tables retain their measured height. For a reported
+and verifies that unchanged tables retain their measured height, including the
+first mounted geometry after virtualization before queued row sizing completes. For a reported
 local document, use `--document=<path>`; `--full` requires reaching both boundaries,
 and `--gesture` checks continuous native mouse scrolling. Full traversal follows
 the long-run authorization policy below.

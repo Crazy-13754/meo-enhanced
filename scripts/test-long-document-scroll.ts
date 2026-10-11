@@ -115,7 +115,7 @@ try {
       if (mode === 'live') {
         await frames(page, 12);
         const result = await page.evaluate(async () => {
-          const { EditorView, isolateHistory, redo, undo } = (window as any).LongDocumentScrollHarness;
+          const { EditorView, getViewportController, isolateHistory, redo, undo } = (window as any).LongDocumentScrollHarness;
           const view = EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor')!);
           const tables = () => {
             const widgets: any[] = [];
@@ -164,7 +164,34 @@ try {
           const redone = measure();
           if (!undo(view)) throw new Error('Table height edit could not be restored');
           await settle();
-          return { ...result, edited, restored, redone, final: measure(), documentRestored: view.state.doc.toString() === originalDocument };
+          const final = measure();
+          const controller = getViewportController(view);
+          const reveal = async (line: number) => {
+            controller.revealPositionUntilStable(view.state.doc.line(line).from,
+              { y: 'start', geometry: 'line-block' }, controller.beginNavigationReveal());
+            for (let frame = 0; frame < 20; frame++) await new Promise(requestAnimationFrame);
+          };
+          await reveal(Math.min(startLine + 400, view.state.doc.lines));
+          const unmounted = !document.querySelector(
+            `.meo-md-html-table-shell[data-meo-rendered-block-start-line="${startLine}"]`
+          );
+          // Observe the actual DOM at the WidgetType mount boundary, before the
+          // queued row sizing can conceal a provisional height in a later frame.
+          const prototype = Object.getPrototypeOf(current());
+          const originalToDOM = prototype.toDOM;
+          const remountedHeights: number[] = [];
+          prototype.toDOM = function (...args: any[]) {
+            const dom = originalToDOM.apply(this, args);
+            if (this.tableData.startLine === startLine) queueMicrotask(() => {
+              if (dom.isConnected) remountedHeights.push(dom.getBoundingClientRect().height);
+            });
+            return dom;
+          };
+          try { await reveal(startLine); }
+          finally { prototype.toDOM = originalToDOM; }
+          const remounted = measure();
+          return { ...result, edited, restored, redone, final, unmounted, remountedHeights, remounted,
+            documentRestored: view.state.doc.toString() === originalDocument };
         });
         assert.ok(result.after > 0 && Math.abs(result.after - result.measured) <= 1, 'Unchanged table lost its measured height during decoration replacement: ' + JSON.stringify(result));
         assert.ok(result.edited.measured > result.measured + 1, 'Cell content edit did not increase table height');
@@ -173,6 +200,11 @@ try {
         }
         assert.ok(Math.abs(result.redone.measured - result.edited.measured) <= 1, 'Redo did not restore the edited height');
         assert.ok(Math.abs(result.restored.measured - result.measured) <= 1 && Math.abs(result.final.measured - result.measured) <= 1 && result.documentRestored, 'Table content or geometry was not restored');
+        assert.ok(result.unmounted && result.remountedHeights.length > 0, 'Table remount contract did not exercise virtualization');
+        assert.ok(result.remountedHeights.every(height => height >= result.final.measured - 1),
+          'Remounted table collapsed before row sizing: ' + JSON.stringify(result));
+        assert.ok(Math.abs(result.remounted.measured - result.final.measured) <= 1,
+          'Unchanged remounted table did not settle at its previous geometry');
         console.log('Unchanged table measurement survives decoration replacement');
         await frames(page, 30);
       }
