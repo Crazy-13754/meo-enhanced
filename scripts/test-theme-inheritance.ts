@@ -384,17 +384,39 @@ try {
           };
           return { normal: resolve('text-emphasis'), selected: resolve('text-emphasis-selected'),
             heading: getComputedStyle(document.querySelector('.meo-md-heading-content')!).color,
-            prefixes: [...document.querySelectorAll('.meo-suggestion-trigger, .meo-suggestion-slash')].map(el => getComputedStyle(el).color),
+            normalBackground: resolve('surface-raised'), hoverBackground: resolve('surface-hover'),
+            prefixes: [...document.querySelectorAll('.meo-suggestion-trigger, .meo-suggestion-slash')].map(el => ({
+              color: getComputedStyle(el).color, selected: el.closest('.meo-input-suggestion')!.getAttribute('aria-selected') === 'true' })),
             rows: [...document.querySelectorAll('.meo-suggestion-match')].map(el => {
+              const row = el.closest('.meo-input-suggestion')!, background = getComputedStyle(row).backgroundColor;
+              const selected = row.getAttribute('aria-selected') === 'true', popup = getComputedStyle(el.closest('.meo-input-suggestions')!);
+              // Selected rows are transparent; their carrier is the popup gradient.
+              const carrier = selected ? popup.backgroundImage.match(/rgb\([^)]+\)/)?.[0] : popup.backgroundColor;
               return { color: getComputedStyle(el).color, weight: getComputedStyle(el).fontWeight,
-                selected: el.closest('.meo-input-suggestion')!.getAttribute('aria-selected') === 'true' };
+                background: background === 'rgba(0, 0, 0, 0)' ? carrier! : background, selected };
             }) };
         });
         assert.ok(matches.rows.some(row => row.selected) && matches.rows.some(row => !row.selected), `${profile.id}: selected and ordinary matched suggestions`);
-        assert.equal(matches.normal, matches.heading, `${profile.id}: ordinary match role equals final heading ink`);
-        assert.equal(matches.selected, matches.heading, `${profile.id}: selected match role equals final heading ink`);
-        assert.ok(matches.rows.every(row => row.color === matches.heading && row.weight === '600'), `${profile.id}: all suggestion matches exactly share heading color and keep their identifying weight`);
-        assert.ok(matches.prefixes.length && matches.prefixes.every(color => color === matches.heading), `${profile.id}: suggestion prefixes share exact heading ink`);
+        if ([matches.normalBackground, matches.hoverBackground].every(background => contrastRatio(matches.heading, background) >= 4.55)) {
+          assert.equal(matches.normal, matches.heading, `${profile.id}: readable heading ink remains unchanged for ordinary and hovered matches`);
+        }
+        for (const row of matches.rows.filter(row => row.selected)) {
+          if (contrastRatio(matches.heading, row.background) >= 4.55) assert.equal(matches.selected, matches.heading, `${profile.id}: readable heading ink remains unchanged for selected matches`);
+          else if (contrastRatio(matches.heading, row.background) < 4.5) assert.notEqual(matches.selected, matches.heading, `${profile.id}: insufficient heading contrast is corrected on selection`);
+        }
+        assert.ok(matches.rows.every(row => row.color === (row.selected ? matches.selected : matches.normal) && row.weight === '600'), `${profile.id}: matches use the heading-based carrier role and identifying weight`);
+        assert.ok(matches.rows.every(row => contrastRatio(row.color, row.background) >= 4.5), `${profile.id}: ordinary and selected matches remain readable`);
+        assert.ok(matches.prefixes.length && matches.prefixes.every(prefix => prefix.color === (prefix.selected ? matches.selected : matches.normal)), `${profile.id}: prefixes and matches share their carrier role`);
+        await page.hover('.meo-input-suggestion:not([aria-selected="true"]) .meo-suggestion-match');
+        const hoveredMatch = await page.$eval('.meo-input-suggestion:hover .meo-suggestion-match', el => {
+          const row = el.closest('.meo-input-suggestion')!, background = getComputedStyle(row).backgroundColor;
+          const selected = row.getAttribute('aria-selected') === 'true', popup = getComputedStyle(el.closest('.meo-input-suggestions')!);
+          const carrier = selected ? popup.backgroundImage.match(/rgb\([^)]+\)/)?.[0] : popup.backgroundColor;
+          return { color: getComputedStyle(el).color, selected, background: background === 'rgba(0, 0, 0, 0)' ? carrier! : background };
+        });
+        assert.equal(hoveredMatch.color, hoveredMatch.selected ? matches.selected : matches.normal, `${profile.id}: hover uses the actual selection's match ink`);
+        assert.ok(contrastRatio(hoveredMatch.color, hoveredMatch.background) >= 4.5, `${profile.id}: hovered match remains readable on its real background (${JSON.stringify(hoveredMatch)})`);
+        await page.mouse.move(10, 1000);
         await screenshot(profile.id + '-slash.png');
         await page.keyboard.press('Escape');
         await page.evaluate(() => (window as any).ThemeAcceptance.replaceText('# **标题** `代码`\n\n普通正文'));

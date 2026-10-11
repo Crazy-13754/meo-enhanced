@@ -83,8 +83,8 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
     const warning = read('editorWarning.foreground', fallback['--meo-notice-warning'], surface);
     const danger = read('errorForeground', fallback['--meo-notice-error'], surface);
     const contentSurface = sample(`var(--meo-background, ${rgb(documentSurface)})`, documentSurface);
-    // Text emphasis is independent of button fills. Matches reuse the final
-    // heading ink exactly, including selected rows, without another correction.
+    // Matches start from the final heading ink. Keep it unchanged when readable,
+    // otherwise apply only the existing contrast correction for the menu carrier.
     const textEmphasis = read('textLink.foreground',
       `var(--meo-semantic-headingForeground, ${appearance === 'light' ? '#0550ae' : '#79b8ff'})`, contentSurface);
     const footnoteBackground = `color-mix(in srgb, ${rgb(textEmphasis)} 12%, transparent)`;
@@ -130,9 +130,9 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
         focus: nativeFocus ?? fit(accent, [surface, raised, field], 3.05),
         'selection-border': nativeActiveBorder ?? selected,
         accent, 'accent-hover': accentHover, 'on-accent': onAccent, 'accent-text': accentText,
-        'text-emphasis': contentEmphasis,
+        'text-emphasis': fit(contentEmphasis, [raised, hover], 4.55),
         'text-emphasis-content': contentEmphasis,
-        'text-emphasis-selected': contentEmphasis,
+        'text-emphasis-selected': fit(contentEmphasis, [selected], 4.55),
         success: fit(success, surfaces, 4.55), warning: fit(warning, surfaces, 4.55), danger: fit(danger, surfaces, 4.55),
         'switch-off': switchOff, 'on-switch-off': fit(mix(text, neutral(raised), 0.20), [switchOff], 3.05)
       }).map(([role, value]) => [role, rgb(value)]));
