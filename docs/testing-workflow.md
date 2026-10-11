@@ -63,6 +63,13 @@ exact commands without running them.
 
 ## Daily repair loop
 
+`scripts/test-shiki-empty-line-recovery.ts` checks the shared Source, Live and
+Preview token caches in light and dark themes. Raw HTML followed by a blank line
+must recover Markdown headings, emphasis and inline code, regardless of language
+loading order or a token batch boundary. It also checks CRLF offsets, quote/list
+exits and open multiline strings/comments. It belongs to quick and appearance
+gates; Source DOM recovery and installed Node export have separate checks.
+
 `scripts/test-input-focus-return-production.ts` checks production Find, Replace
 and Settings search in Live, Source and Preview. It uses separate browser
 documents to exercise window focus ownership, backward/forward/collapsed ranges,

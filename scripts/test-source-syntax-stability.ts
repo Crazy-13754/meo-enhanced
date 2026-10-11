@@ -118,7 +118,18 @@ try {
   });
   await page.waitForSelector('.meo-source-token');
   assert.equal((await observe()).uncolored, 0);
+  await page.evaluate(() => {
+    const editor = (window as any).__sourceSyntaxEditor;
+    editor.setText('</table>\n\n## Recovered heading\n\n**Recovered bold** and `inline code`');
+    editor.scrollToLine(1, 'top');
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>('.meo-source-token')]
+    .some(span => span.textContent === '## Recovered heading' && Number(getComputedStyle(span).fontWeight) >= 600));
+  const recovered = await observe();
+  assert.equal(recovered.uncolored, 0);
+  assert.ok(new Set(recovered.styles['**Recovered bold** and `inline code`']).size > 1,
+    'Source must restore emphasis and inline-code styles after a raw HTML block');
   await page.evaluate(() => (window as any).__sourceSyntaxEditor.destroy());
   assert.deepEqual(errors, []);
-  console.log('Source syntax stability: pending edits, viewport recoloring, successive position mappings and latest-token publication passed.');
+  console.log('Source syntax stability: pending edits, viewport recoloring, successive position mappings, latest-token publication and HTML recovery passed.');
 } finally { await closeTestBrowser(browser); }

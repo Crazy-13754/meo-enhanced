@@ -19,6 +19,12 @@ Install the locked dependencies with the same command used by CI:
 bun install --frozen-lockfile
 ```
 
+The locked Shiki 4.2.0 tokenizer has a small patch in `patches/` so empty lines
+advance TextMate state. Without it, HTML blocks can suppress all following
+Markdown syntax colors. Bun applies it during installation to both Webview and
+Node export builds. When upgrading Shiki, run
+`bun scripts/test-shiki-empty-line-recovery.ts` before removing or updating it.
+
 For visual CSS work, follow [the UI design guidelines](docs/ui-design-guidelines.md).
 Start the `Run` launch configuration with F5; its prelaunch task builds the
 extension and webview. In the **Extension Development Host** window, open a

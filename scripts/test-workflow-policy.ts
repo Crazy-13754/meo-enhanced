@@ -133,6 +133,7 @@ function targetedCommands(
     case 'appearance':
       return [
         packageScript('test:theme-inheritance'),
+        script('scripts/test-shiki-empty-line-recovery.ts'),
         script('scripts/test-source-syntax-stability.ts'),
         script('scripts/test-source-theme-customizations.ts'),
         script('scripts/test-preview-preset-host.ts'),
@@ -269,6 +270,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
         stages: [serialStage('Quick regression contracts', [
           packageScript('typecheck'),
           script('scripts/test-source-theme-customizations.ts'),
+          script('scripts/test-shiki-empty-line-recovery.ts'),
           script('scripts/test-source-syntax-stability.ts'),
           script('scripts/test-preview-presets.ts'),
           script('scripts/test-editor-shortcuts.ts'),

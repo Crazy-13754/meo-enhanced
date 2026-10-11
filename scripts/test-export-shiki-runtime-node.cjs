@@ -64,6 +64,16 @@ async function main() {
           '',
           '```wolfram',
           'Plot[x^2, {x, 0, 1}]',
+          '```',
+          '',
+          '```html-derivative',
+          '<div>HTML</div>',
+          '```',
+          '',
+          '```markdown',
+          '</table>',
+          '',
+          '## Recovered heading',
           '```'
         ].join('\n'),
         appearance: 'dark',
@@ -96,7 +106,9 @@ async function main() {
     assert.ok(!github.htmlDocument.includes('Georgia'));
     assert.ok(github.htmlDocument.includes('color:#FF7B72'), 'GitHub code colors must load in the installed runtime');
 
-    assert.equal((rendered.htmlDocument.match(/<div class="meo-export-code-block-wrap/g) ?? []).length, 3);
+    assert.equal((rendered.htmlDocument.match(/<div class="meo-export-code-block-wrap/g) ?? []).length, 5);
+    assert.match(rendered.htmlDocument, /style="[^"]*font-weight:bold[^"]*">## Recovered heading/,
+      'Installed export must recover Markdown heading syntax after HTML and a blank line');
     assert.ok(
       (rendered.htmlDocument.match(/<span style="color:/g) ?? []).length >= 3,
       'installed Node export runtime must highlight common and uncommon languages through relocated assets'

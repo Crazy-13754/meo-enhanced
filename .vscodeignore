@@ -6,6 +6,7 @@ out/**
 output/**
 tmp/**
 node_modules/**
+patches/**
 bun.lock
 tsconfig.json
 webview/node_modules/**

@@ -1,0 +1,17 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 303b47661cbfd7fe595c3496117fb52901fb467a..4492ccbde262937b6f1ce69334c0acebd503b66f 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -631,5 +631,7 @@ function _tokenizeWithTheme(code, grammar, theme, colorMap, options) {
+-		if (line === "") {
+-			actual = [];
+-			final.push([]);
+-			continue;
+-		}
++		if (line === "") {
++			// Empty lines can end TextMate while rules (for example Markdown HTML).
++			stateStack = grammar.tokenizeLine2(line, stateStack, tokenizeTimeLimit).ruleStack;
++			actual = [];
++			final.push([]);
++			continue;
++		}
