@@ -163,8 +163,8 @@ try {
   await openSettings();
   await page.click('[data-appearance-mode="light"]'); assert.equal(await value('surface'), '', 'light profile is independent');
   await checkControlLayout();
-  await checkColorFocus();
   if (screenshots) await page.screenshot({ path: path.join(screenshots, '060-appearance-light.png') });
+  await checkColorFocus();
   await edit('surface', '#F8F4EF'); await page.click(apply); await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('.appearance-footer .settings-primary')!.disabled);
   assert.equal(owner.getUiColors().light.surface, '#F8F4EF'); assert.equal(owner.getUiColors().dark.surface, '#102537');
   await page.click('[data-appearance-mode="dark"]'); assert.equal(await value('surface'), '#102537');

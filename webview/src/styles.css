@@ -7767,6 +7767,7 @@ html .cm-editor .meo-md-html-table-context-menu {
 .appearance-color-controls { display: flex; align-items: center; gap: 8px; flex: 0 1 240px; width: 240px; max-width: 100%; min-width: 0; margin-left: auto; }
 .appearance-color-field { box-sizing: border-box; display: flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; height: 32px; padding: 0 8px; border: 0; border-radius: 8px; background: var(--meo-ui-surface-field); }
 /* Inset feedback keeps the focused swatch within the field. */
+:where(html[data-editor-appearance='light']) .appearance-color-field { box-shadow: inset 0 0 0 1px var(--meo-ui-border-float); }
 .appearance-color-field:hover { box-shadow: inset 0 0 0 1px var(--meo-ui-border-float); }
 .appearance-color-field:focus-within { box-shadow: inset 0 0 0 1px var(--meo-ui-focus); }
 .appearance-color-field:has([aria-invalid='true']) { box-shadow: inset 0 0 0 1px var(--meo-ui-danger); }
