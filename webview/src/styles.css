@@ -228,10 +228,10 @@ body {
   justify-content: center;
   box-sizing: border-box;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--meo-foreground) 22%, transparent);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 50%;
-  color: var(--meo-foreground);
-  background: var(--meo-background);
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface);
   box-shadow: 0 2px 6px rgb(0 0 0 / 16%);
   cursor: pointer;
 }
@@ -242,11 +242,15 @@ body {
 
 .document-scroll-top:hover,
 .document-scroll-top:focus-visible {
-  background-color: color-mix(in srgb, var(--meo-background) 80%, var(--meo-foreground) 20%);
+  background-color: var(--meo-ui-surface-hover);
+}
+
+.document-scroll-top:focus-visible {
+  border-color: var(--meo-ui-focus);
 }
 
 .document-scroll-top:active {
-  background-color: color-mix(in srgb, var(--meo-background) 72%, var(--meo-foreground) 28%);
+  background-color: var(--meo-ui-surface-pressed);
 }
 
 .document-scroll-top svg {
@@ -297,14 +301,14 @@ body {
   padding: 0;
   border: 0;
   border-radius: 5px;
-  color: var(--meo-ui-menu-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
   cursor: pointer;
 }
 
 .selection-inline-button:hover {
-  color: var(--meo-ui-menu-hover-foreground);
-  background-color: var(--meo-ui-menu-hover);
+  color: var(--meo-ui-text);
+  background-color: var(--meo-ui-surface-hover);
 }
 
 .selection-inline-button[data-action='highlight'] svg path {
@@ -319,7 +323,7 @@ body {
   align-items: center;
   min-height: var(--meo-editor-toolbar-height);
   padding: 7px 14px 7px 10px;
-  background-color: var(--meo-ui-vscode-sideBar-background);
+  background-color: var(--meo-ui-surface);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -332,44 +336,13 @@ body {
   right: 0;
   box-sizing: border-box;
   --editor-notice-accent: var(--meo-notice-info, #3794ff);
-  --editor-notice-surface: var(
-    --meo-notice-surface,
-    color-mix(
-      in srgb,
-      var(--meo-surface-background, var(--meo-ui-vscode-sideBar-background, var(--meo-background))) 88%,
-      var(--meo-ui-foreground) 12%
-    )
-  );
-  --editor-notice-foreground: var(
-    --meo-notice-foreground,
-    var(--meo-ui-foreground, var(--meo-ui-vscode-editor-foreground))
-  );
-  --editor-notice-hover-surface: color-mix(
-    in srgb,
-    var(--editor-notice-surface) 90%,
-    var(--editor-notice-foreground) 10%
-  );
-  --editor-notice-action-surface: var(
-    --meo-notice-action-surface,
-    #0e639c
-  );
-  --editor-notice-action-foreground: var(
-    --meo-notice-action-foreground,
-    white
-  );
-  --editor-notice-action-hover-surface: var(
-    --meo-notice-action-hover-surface,
-    color-mix(
-      in srgb,
-      var(--editor-notice-action-surface) 88%,
-      white 12%
-    )
-  );
-  --editor-notice-border: color-mix(
-    in srgb,
-    var(--editor-notice-surface) 78%,
-    var(--editor-notice-foreground) 22%
-  );
+  --editor-notice-surface: var(--meo-ui-surface-raised);
+  --editor-notice-foreground: var(--meo-ui-text);
+  --editor-notice-hover-surface: var(--meo-ui-surface-hover);
+  --editor-notice-action-surface: var(--meo-ui-accent);
+  --editor-notice-action-foreground: var(--meo-ui-on-accent);
+  --editor-notice-action-hover-surface: var(--meo-ui-accent-hover);
+  --editor-notice-border: var(--meo-ui-border-float);
   padding: 9px 14px 9px 12px;
   border: solid var(--editor-notice-border);
   border-width: 1px 0;
@@ -438,7 +411,7 @@ html[data-editor-appearance='light'] .editor-notice {
   width: 1px;
   height: 20px;
   margin: 0 4px 0 2px;
-  background: color-mix(in srgb, var(--editor-notice-foreground) 16%, transparent);
+  background: var(--meo-ui-separator);
 }
 
 .editor-notice-button {
@@ -471,7 +444,7 @@ html[data-editor-appearance='light'] .editor-notice {
 }
 
 .editor-notice-button:focus-visible {
-  outline: 1px solid var(--meo-ui-vscode-focusBorder, currentColor);
+  outline: 1px solid var(--meo-ui-focus, currentColor);
   outline-offset: 2px;
 }
 
@@ -551,9 +524,9 @@ html[data-editor-appearance='light'] .editor-notice {
   max-width: calc(100vw - 24px);
   box-sizing: border-box;
   padding: 8px;
-  border: 1px solid color-mix(in srgb, var(--meo-ui-vscode-panel-border) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--meo-ui-border-control) 50%, transparent);
   border-radius: 8px;
-  background-color: var(--meo-ui-vscode-sideBar-background);
+  background-color: var(--meo-ui-surface);
   box-shadow: var(--meo-ui-shadow, 0 4px 12px rgba(0, 0, 0, 0.24));
   /* Right-side controls intentionally stay above Find when their menus cross. */
   z-index: var(--meo-layer-toolbar-floating-panel);
@@ -579,6 +552,7 @@ html[data-editor-appearance='light'] .editor-notice {
 
 .find-input-wrap {
   position: relative;
+  display: flex;
   flex: 0 0 var(--find-input-width);
   width: var(--find-input-width);
 }
@@ -589,12 +563,13 @@ html[data-editor-appearance='light'] .editor-notice {
   box-sizing: border-box;
   padding: 0 7px;
   border: none;
-  color: var(--meo-ui-vscode-input-foreground);
-  background: var(--meo-ui-vscode-input-background);
+  border-radius: 4px;
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-field);
 }
 
 .find-input::placeholder {
-  color: var(--meo-ui-vscode-input-placeholderForeground, var(--meo-ui-vscode-input-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
   opacity: 1;
 }
 
@@ -628,17 +603,8 @@ html[data-editor-appearance='light'] .editor-notice {
   padding: 0;
 }
 
-.find-close-button {
-  color: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-icon-foreground));
-}
-
-.find-close-button:hover {
-  color: var(--meo-ui-vscode-editor-foreground);
-}
-
 .find-input:focus {
-  outline: 1px solid var(--meo-ui-vscode-focusBorder);
-  outline-offset: 0;
+  outline: none;
 }
 
 .find-status {
@@ -648,29 +614,33 @@ html[data-editor-appearance='light'] .editor-notice {
   transform: translateY(-50%);
   font-size: 11px;
   line-height: 1;
-  color: var(--meo-ui-vscode-descriptionForeground);
+  color: var(--meo-ui-text-muted);
   pointer-events: none;
 }
 
 .find-status.is-error {
-  color: var(--meo-ui-vscode-errorForeground, #f48771);
+  color: var(--meo-ui-danger, #f48771);
 }
 
 .find-input-wrap .find-clear-button {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 1px;
+  right: 1px;
   width: 24px;
   min-width: 24px;
-  height: 24px;
+  height: 22px;
   padding: 0;
-  color: var(--meo-ui-vscode-input-placeholderForeground, var(--meo-ui-vscode-input-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
   background: transparent;
 }
 
 .find-input-wrap .find-clear-button:hover {
-  color: var(--meo-ui-vscode-input-placeholderForeground, var(--meo-ui-vscode-input-foreground));
-  background: var(--meo-ui-vscode-toolbar-hoverBackground);
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
+  background: transparent;
+}
+
+.find-input:placeholder-shown ~ .find-clear-button {
+  display: none;
 }
 
 .format-group,
@@ -720,7 +690,7 @@ html[data-editor-appearance='light'] .editor-notice {
   padding: 0 8px;
   border: 0;
   border-radius: 0;
-  color: color-mix(in srgb, var(--meo-ui-foreground) 72%, var(--meo-ui-vscode-sideBar-background) 28%);
+  color: var(--meo-ui-text-muted);
   background: transparent;
   font: inherit;
   font-size: 12px;
@@ -765,7 +735,7 @@ html[data-editor-appearance='light'] .editor-notice {
 
 .segmented-control-button.is-active {
   z-index: 1;
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
 }
 
 .segmented-control-button.is-active .segmented-control-button-indicator {
@@ -777,17 +747,17 @@ html[data-editor-appearance='light'] .segmented-control-button.is-active .segmen
 }
 
 html[data-editor-appearance='light'] .segmented-control-button:not(.is-active) {
-  color: color-mix(in srgb, var(--meo-ui-foreground) 62%, var(--meo-ui-vscode-sideBar-background) 38%);
+  color: var(--meo-ui-text-muted);
 }
 
 .segmented-control-button:not(.is-active):hover,
 .segmented-control-button:not(.is-active):focus-visible {
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
 }
 
 html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):is(:hover, :focus-visible) {
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
 }
 
 .segmented-control-button:focus-visible {
@@ -795,7 +765,7 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 }
 
 .segmented-control-button:focus-visible .segmented-control-button-indicator {
-  box-shadow: inset 0 0 0 1px var(--meo-ui-vscode-focusBorder, currentColor);
+  box-shadow: inset 0 0 0 1px var(--meo-ui-focus, currentColor);
 }
 
 .preview-select-control {
@@ -805,11 +775,11 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
   min-width: 0;
   height: 26px;
   color-scheme: inherit;
-  --preview-select-background: var(--meo-ui-vscode-sideBar-background);
-  --preview-select-foreground: var(--meo-ui-vscode-editor-foreground);
+  --preview-select-background: var(--meo-ui-surface);
+  --preview-select-foreground: var(--meo-ui-text);
   --preview-select-border: var(--meo-segmented-control-background);
   --preview-select-hover-border: var(--meo-segmented-control-background);
-  --preview-select-label-foreground: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-editor-foreground));
+  --preview-select-label-foreground: var(--meo-ui-text-muted, var(--meo-ui-text));
 }
 
 .preview-select-label {
@@ -927,7 +897,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown {
 
 .preview-toolbar-dropdown:focus-visible {
   border-color: var(--preview-select-hover-border);
-  outline: 1px solid color-mix(in srgb, var(--meo-segmented-control-background) 45%, var(--meo-ui-foreground) 55%);
+  outline: 1px solid color-mix(in srgb, var(--meo-segmented-control-background) 45%, var(--meo-ui-text) 55%);
   outline-offset: 1px;
   box-shadow: none;
 }
@@ -965,8 +935,8 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown {
   padding: 4px;
   border: 1px solid var(--meo-segmented-control-background);
   border-radius: 9px;
-  color: var(--meo-ui-vscode-editor-foreground);
-  background: var(--meo-ui-vscode-sideBar-background);
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface);
   color-scheme: inherit;
   box-shadow: none;
 }
@@ -999,17 +969,17 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown {
 .preview-dropdown-option:hover,
 .preview-dropdown-option:focus-visible {
   outline: none;
-  background: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background: var(--meo-ui-surface-hover);
 }
 
 .preview-dropdown-option.is-selected {
-  background: color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 14%, transparent);
+  background: var(--meo-ui-surface-selected);
 }
 
 .preview-preset-dropdown-panel {
   width: min(216px, calc(100vw - 16px));
   padding: 4px;
-  border-color: color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 12%, var(--meo-ui-vscode-sideBar-background));
+  border-color: var(--meo-ui-border-float);
   box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
 }
 
@@ -1030,11 +1000,11 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .preview-preset-dropdown-panel .preview-dropdown-option.is-selected {
-  background: color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 6%, transparent);
+  background: var(--meo-ui-surface-selected);
 }
 
 .preview-preset-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible) {
-  background: color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 10%, transparent);
+  background: var(--meo-ui-surface-hover);
 }
 
 .preview-preset-option-name {
@@ -1072,7 +1042,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 5px;
-  color: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-editor-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
   background: transparent;
   font: inherit;
   font-size: 12px;
@@ -1082,8 +1052,8 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .preview-toolbar-action:hover {
-  color: var(--meo-ui-vscode-editor-foreground);
-  background: var(--meo-ui-vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.18));
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-hover, rgba(127, 127, 127, 0.18));
 }
 
 .preview-preset-info {
@@ -1094,12 +1064,12 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .preview-preset-info:focus-visible {
-  outline: 1px solid var(--meo-ui-vscode-focusBorder, currentColor);
+  outline: 1px solid var(--meo-ui-focus, currentColor);
   outline-offset: 1px;
 }
 
 .preview-toolbar-action:focus-visible {
-  outline: 1px solid var(--meo-ui-vscode-focusBorder, currentColor);
+  outline: 1px solid var(--meo-ui-focus, currentColor);
   outline-offset: 1px;
 }
 
@@ -1120,10 +1090,10 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   visibility: hidden;
   pointer-events: none;
   transform: translateY(-2px);
-  border-color: var(--meo-ui-vscode-panel-border);
+  border-color: var(--meo-ui-border-control);
   border-radius: 8px;
-  color: var(--meo-ui-vscode-editor-foreground);
-  background: var(--meo-ui-vscode-sideBar-background);
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface);
   transition:
     opacity 80ms ease,
     transform 80ms ease,
@@ -1165,20 +1135,20 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 
 .preview-export-menu-action:hover,
 .preview-export-menu-action:focus-visible {
-  background: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background: var(--meo-ui-surface-hover);
 }
 
-.preview-preset-info.has-error { color: var(--vscode-errorForeground, #ff6b6b); }
+.preview-preset-info.has-error { color: var(--meo-ui-danger); }
 
 .preview-export-note {
   max-width: 248px;
   margin-top: 4px;
   padding: 8px 10px 4px;
-  border-top: 1px solid var(--vscode-panel-border);
+  border-top: 1px solid var(--meo-ui-separator);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-line;
-  color: var(--vscode-descriptionForeground);
+  color: var(--meo-ui-text-muted);
 }
 
 .preview-appearance-control .preview-setting-button:disabled {
@@ -1217,30 +1187,30 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   width: 100%;
   height: 22px;
   padding: 0 7px 2px;
-  border: 1px solid var(--meo-ui-input-border, #54595e);
+  border: 1px solid var(--meo-ui-border-control, #54595e);
   border-radius: 8px;
   outline: none;
-  color: var(--meo-ui-vscode-input-foreground, var(--meo-ui-vscode-editor-foreground));
+  color: var(--meo-ui-text);
   background: color-mix(
     in srgb,
-    var(--meo-ui-vscode-input-background, var(--meo-ui-vscode-sideBar-background)) 50%,
-    var(--meo-ui-vscode-sideBar-background)
+    var(--meo-ui-surface-field, var(--meo-ui-surface)) 50%,
+    var(--meo-ui-surface)
   );
   font: inherit;
   line-height: 18px;
 }
 
 .line-jump-input::placeholder {
-  color: var(--meo-ui-vscode-input-placeholderForeground, var(--meo-ui-vscode-descriptionForeground));
+  color: var(--meo-ui-text-muted);
   text-align: center;
 }
 
 .line-jump-input:focus {
-  border-color: var(--meo-ui-vscode-focusBorder);
+  border-color: var(--meo-ui-focus);
 }
 
 .line-jump-control.is-error .line-jump-input {
-  border-color: var(--meo-ui-vscode-inputValidation-errorBorder, #be1100);
+  border-color: var(--meo-ui-danger, #be1100);
 }
 
 .right-group {
@@ -1274,7 +1244,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .toolbar-overflow-indicator.is-active {
-  background-color: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background-color: var(--meo-ui-surface-hover);
 }
 
 .toolbar-overflow-indicator[hidden] {
@@ -1306,7 +1276,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   padding: 0 4px;
   border: 0;
   border-radius: 6px;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
   font: inherit;
   font-size: 11px;
@@ -1317,7 +1287,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 .changes-review-trigger:hover,
 .changes-review-trigger:focus-visible,
 .changes-review-trigger.is-open {
-  background: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background: var(--meo-ui-surface-hover);
   outline: none;
 }
 
@@ -1372,15 +1342,15 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .changes-review-count.is-added {
-  color: color-mix(in srgb, var(--git-added) 70%, var(--meo-ui-foreground) 30%);
+  color: var(--meo-ui-success);
 }
 
 .changes-review-count.is-deleted {
-  color: color-mix(in srgb, var(--git-deleted) 70%, var(--meo-ui-foreground) 30%);
+  color: var(--meo-ui-danger);
 }
 
 .changes-review-empty {
-  color: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-editor-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
 }
 
 .changes-review-panel {
@@ -1391,10 +1361,10 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   box-sizing: border-box;
   width: min(268px, calc(100vw - 24px));
   padding: 4px;
-  border: 1px solid var(--meo-ui-vscode-panel-border);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 8px;
-  color: var(--meo-ui-vscode-editor-foreground);
-  background: var(--meo-ui-vscode-sideBar-background);
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface);
   box-shadow: var(--meo-ui-shadow, 0 4px 12px rgba(0, 0, 0, 0.24));
 }
 
@@ -1412,7 +1382,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   min-height: 36px;
   padding: 2px 8px 3px;
   overflow: hidden;
-  color: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-editor-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
   font-size: 12px;
   line-height: 16px;
   white-space: nowrap;
@@ -1447,7 +1417,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   right: 6px;
   left: 6px;
   height: 1px;
-  background: var(--meo-divider-color, var(--meo-ui-vscode-panel-border));
+  background: var(--meo-ui-separator);
   opacity: 0.8;
   pointer-events: none;
 }
@@ -1458,7 +1428,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 
 .changes-review-section-label {
   padding: 3px 8px 2px;
-  color: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-editor-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
   font-size: 11px;
   line-height: 14px;
 }
@@ -1474,7 +1444,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   padding: 0 6px;
   border: 0;
   border-radius: 6px;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
   font: inherit;
   font-size: 12px;
@@ -1488,7 +1458,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 .changes-review-snapshot-select:focus-visible,
 .changes-review-option.is-selected,
 .changes-review-snapshot-select.is-selected {
-  background: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background: var(--meo-ui-surface-hover);
   outline: none;
 }
 
@@ -1499,7 +1469,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .changes-review-option:disabled {
-  color: var(--meo-ui-vscode-disabledForeground, var(--meo-ui-vscode-descriptionForeground));
+  color: var(--meo-ui-text-disabled, var(--meo-ui-text-muted));
   cursor: default;
 }
 
@@ -1518,15 +1488,15 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .changes-review-option-icon {
-  color: var(--meo-ui-vscode-icon-foreground, var(--meo-ui-vscode-editor-foreground));
+  color: var(--meo-ui-text);
 }
 
 .changes-review-check {
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
 }
 
 .changes-review-check.is-warning {
-  color: var(--meo-ui-vscode-errorForeground, #f14c4c);
+  color: var(--meo-ui-danger, #f14c4c);
 }
 
 .changes-review-snapshot-row {
@@ -1576,7 +1546,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   padding: 0 4px;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
   font: inherit;
   font-size: 11px;
@@ -1586,12 +1556,12 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 
 .changes-review-snapshot-action:hover,
 .changes-review-snapshot-action:focus-visible {
-  background: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background: var(--meo-ui-surface-hover);
   outline: none;
 }
 
 .changes-review-snapshot-action:active {
-  background: var(--meo-ui-vscode-toolbar-activeBackground, var(--meo-ui-vscode-toolbar-hoverBackground));
+  background: var(--meo-ui-surface-pressed, var(--meo-ui-surface-hover));
 }
 
 .more-tools-panel {
@@ -1607,9 +1577,9 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   width: min(288px, calc(100vw - 16px));
   max-height: calc(100vh - 64px);
   padding: 4px;
-  border: 1px solid var(--meo-ui-vscode-panel-border);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 8px;
-  background: var(--meo-ui-vscode-sideBar-background);
+  background: var(--meo-ui-surface);
   box-shadow: var(--meo-ui-shadow, 0 4px 12px rgba(0, 0, 0, 0.24));
   overflow-y: auto;
 }
@@ -1630,9 +1600,9 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   width: max-content;
   max-width: min(268px, calc(100vw - 16px));
   padding: 6px;
-  border: 1px solid var(--meo-ui-vscode-panel-border);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 8px;
-  background: var(--meo-ui-vscode-sideBar-background);
+  background: var(--meo-ui-surface);
   box-shadow: var(--meo-ui-shadow, 0 4px 12px rgba(0, 0, 0, 0.24));
 }
 
@@ -1655,7 +1625,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   padding: 0 8px;
   border: 0;
   border-radius: 6px;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
   font-size: 12px;
   text-align: left;
@@ -1665,7 +1635,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 .more-tools-option:hover:not(:disabled),
 .more-tools-option:focus-visible,
 .changes-baseline-option.is-active {
-  background: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background: var(--meo-ui-surface-hover);
   outline: none;
 }
 
@@ -1717,7 +1687,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   height: 26px;
   padding: 2px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--meo-ui-vscode-sideBar-background) 88%, var(--meo-ui-foreground) 12%);
+  background: var(--meo-ui-segmented-track);
   overflow: hidden;
 }
 
@@ -1732,7 +1702,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   justify-content: center;
   min-width: 0;
   border: 0;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
   font: inherit;
   font-size: 11px;
@@ -1746,7 +1716,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 
 .editor-font-size-stepper-button:hover:not(:disabled),
 .editor-font-size-stepper-button:focus-visible {
-  background: color-mix(in srgb, var(--meo-ui-vscode-editor-background) 72%, transparent);
+  background: var(--meo-ui-surface-hover);
   outline: none;
 }
 
@@ -1760,7 +1730,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 
 .more-tools-control-label {
   overflow: hidden;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   font-size: 12px;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -1798,7 +1768,7 @@ html[lang='zh-CN'] .mode-group .segmented-control-button-label {
 }
 
 .more-tools-option:disabled {
-  color: var(--meo-ui-vscode-disabledForeground, var(--meo-ui-vscode-descriptionForeground));
+  color: var(--meo-ui-text-disabled, var(--meo-ui-text-muted));
   cursor: default;
   opacity: 0.55;
 }
@@ -1821,7 +1791,7 @@ html[lang='zh-CN'] .mode-group .segmented-control-button-label {
 
 .more-tools-section-label {
   padding: 7px 8px 2px;
-  color: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-editor-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
   font-size: 11px;
   line-height: 14px;
   white-space: nowrap;
@@ -1839,7 +1809,7 @@ html[lang='zh-CN'] .mode-group .segmented-control-button-label {
   right: 6px;
   left: 6px;
   height: 1px;
-  background: var(--meo-divider-color, #474b50);
+  background: var(--meo-ui-separator);
 }
 
 .more-tools-feedback {
@@ -1853,7 +1823,7 @@ html[lang='zh-CN'] .mode-group .segmented-control-button-label {
 
 .more-tools-feedback-prompt {
   min-width: 0;
-  color: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-editor-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
   font-size: 12px;
   line-height: 1.3;
 }
@@ -1866,7 +1836,7 @@ html[lang='zh-CN'] .mode-group .segmented-control-button-label {
   padding: 3px 4px;
   border: 0;
   border-radius: 4px;
-  color: var(--meo-semantic-linkForeground, var(--meo-ui-vscode-textLink-foreground));
+  color: var(--meo-semantic-linkForeground, var(--meo-ui-accent-text));
   background: transparent;
   font: inherit;
   font-size: 12px;
@@ -1875,8 +1845,8 @@ html[lang='zh-CN'] .mode-group .segmented-control-button-label {
 
 .more-tools-feedback-link:hover,
 .more-tools-feedback-link:focus-visible {
-  color: var(--meo-ui-vscode-textLink-activeForeground, var(--meo-semantic-linkForeground));
-  background: var(--meo-ui-vscode-toolbar-hoverBackground);
+  color: var(--meo-ui-accent-text, var(--meo-semantic-linkForeground));
+  background: var(--meo-ui-surface-hover);
   outline: none;
 }
 
@@ -1887,13 +1857,13 @@ html[lang='zh-CN'] .mode-group .segmented-control-button-label {
   height: 16px;
   border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 18%, var(--meo-ui-vscode-editor-background));
+  background: color-mix(in srgb, var(--meo-ui-text) 18%, var(--meo-ui-surface-field));
   pointer-events: none;
   transition: background-color 0.15s ease;
 }
 
 html[data-editor-appearance='dark'] .menu-switch {
-  background: color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 27%, var(--meo-ui-vscode-editor-background));
+  background: color-mix(in srgb, var(--meo-ui-text) 27%, var(--meo-ui-surface-field));
 }
 
 .menu-switch::after {
@@ -1928,7 +1898,7 @@ button:focus-visible > .menu-switch {
 .more-tools-separator {
   height: 1px;
   margin: 3px 6px;
-  background-color: var(--meo-divider-color, #474b50);
+  background-color: var(--meo-ui-separator);
 }
 
 .format-separator {
@@ -1936,7 +1906,7 @@ button:focus-visible > .menu-switch {
   height: 18px;
   margin: 3px 4px;
   align-self: center;
-  background-color: var(--meo-divider-color, #474b50);
+  background-color: var(--meo-ui-separator);
 }
 
 .heading-wrapper {
@@ -1960,8 +1930,8 @@ button:focus-visible > .menu-switch {
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  background-color: var(--meo-ui-vscode-sideBar-background);
-  border: 1px solid var(--meo-ui-vscode-panel-border);
+  background-color: var(--meo-ui-surface);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 8px;
 }
 
@@ -1992,8 +1962,8 @@ button:focus-visible > .menu-switch {
   align-items: center;
   gap: 6px;
   padding: 8px;
-  background-color: var(--meo-ui-vscode-sideBar-background);
-  border: 1px solid var(--meo-ui-vscode-panel-border);
+  background-color: var(--meo-ui-surface);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 8px;
 }
 
@@ -2011,19 +1981,19 @@ button:focus-visible > .menu-switch {
 .table-grid-cell {
   width: 16px;
   height: 16px;
-  border: 1px solid var(--meo-ui-vscode-panel-border);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 2px;
   background-color: transparent;
   cursor: pointer;
 }
 
 .table-grid-cell.is-highlighted {
-  background-color: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background-color: var(--meo-ui-surface-hover);
 }
 
 .table-size-label {
   font-size: 11px;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   text-align: center;
 }
 
@@ -2049,7 +2019,7 @@ button:focus-visible > .menu-switch {
 
 .format-button,
 .heading-dropdown-option {
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   background-color: transparent;
 }
 
@@ -2068,7 +2038,7 @@ button:focus-visible > .menu-switch {
 .format-button:hover,
 .heading-dropdown-option:hover,
 .more-tools-wrapper > .format-button.is-active {
-  background-color: var(--meo-ui-vscode-toolbar-hoverBackground);
+  background-color: var(--meo-ui-surface-hover);
 }
 
 .format-button.is-discard-armed:hover {
@@ -2077,7 +2047,7 @@ button:focus-visible > .menu-switch {
 }
 
 .format-button.toggle-button:not(.is-active) {
-  color: var(--meo-ui-vscode-descriptionForeground, var(--meo-ui-vscode-icon-foreground));
+  color: var(--meo-ui-text-muted, var(--meo-ui-text));
   opacity: 0.5;
 }
 
@@ -3476,15 +3446,15 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   padding: 14px;
   border: 1px solid var(--meo-table-context-border);
   border-radius: 10px;
-  box-shadow: 0 10px 28px var(--meo-ui-vscode-widget-shadow, rgb(0 0 0 / 0.18));
+  box-shadow: var(--meo-ui-shadow);
   box-sizing: border-box;
-  font-family: var(--meo-ui-vscode-font-family, sans-serif);
+  font-family: var(--meo-ui-font-family, sans-serif);
   font-size: 13px;
 }
 
 /* CodeMirror's light tooltip skin can remain active while the Webview editor uses a dark appearance. */
 body .cm-tooltip.meo-hex-color-adjustment {
-  color: var(--meo-ui-menu-foreground);
+  color: var(--meo-ui-text);
   background: var(--meo-table-context-surface);
 }
 
@@ -3510,11 +3480,11 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   width: 32px;
   height: 32px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--meo-ui-text) 28%, transparent);
   border-radius: 6px;
   box-sizing: border-box;
-  background-color: var(--meo-ui-vscode-editor-background);
-  background-image: linear-gradient(45deg, color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 18%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 18%, transparent) 75%), linear-gradient(45deg, color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 18%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 18%, transparent) 75%);
+  background-color: var(--meo-ui-surface-field);
+  background-image: linear-gradient(45deg, color-mix(in srgb, var(--meo-ui-text) 18%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--meo-ui-text) 18%, transparent) 75%), linear-gradient(45deg, color-mix(in srgb, var(--meo-ui-text) 18%, transparent) 25%, transparent 25%, transparent 75%, color-mix(in srgb, var(--meo-ui-text) 18%, transparent) 75%);
   background-position: 0 0, 4px 4px;
   background-size: 8px 8px;
 }
@@ -3526,29 +3496,29 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .meo-hex-color-adjustment-preview-fill.is-current {
-  box-shadow: inset 1px 0 color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 30%, transparent);
+  box-shadow: inset 1px 0 color-mix(in srgb, var(--meo-ui-text) 30%, transparent);
 }
 
 .meo-hex-color-adjustment-value {
   min-width: 0;
   height: 32px;
   padding: 6px 10px;
-  color: var(--meo-ui-vscode-input-foreground, var(--meo-ui-vscode-editor-foreground));
-  background: var(--meo-ui-vscode-input-background, var(--meo-ui-vscode-editor-background));
-  border: 1px solid var(--meo-ui-vscode-input-border, color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 32%, transparent));
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-field);
+  border: 1px solid var(--meo-ui-border-control, color-mix(in srgb, var(--meo-ui-text) 32%, transparent));
   border-radius: 6px;
   box-sizing: border-box;
-  font-family: var(--meo-ui-vscode-editor-font-family, monospace);
+  font-family: var(--meo-ui-editor-font-family, monospace);
   font-size: 13px;
 }
 
 .meo-hex-color-adjustment-value:focus {
-  border-color: var(--meo-ui-vscode-focusBorder, #007fd4);
-  outline: 1px solid var(--meo-ui-vscode-focusBorder, #007fd4);
+  border-color: var(--meo-ui-focus, #007fd4);
+  outline: 1px solid var(--meo-ui-focus, #007fd4);
 }
 
 .meo-hex-color-adjustment-value[aria-invalid='true'] {
-  border-color: var(--meo-ui-vscode-inputValidation-errorBorder, #be1100);
+  border-color: var(--meo-ui-danger, #be1100);
 }
 
 .meo-hex-color-adjustment-close {
@@ -3566,7 +3536,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .meo-hex-color-adjustment-close:hover,
 .meo-hex-color-adjustment-close:focus-visible {
-  background: var(--meo-ui-vscode-toolbar-hoverBackground, color-mix(in srgb, currentColor 12%, transparent));
+  background: var(--meo-ui-surface-hover, color-mix(in srgb, currentColor 12%, transparent));
   outline: none;
 }
 
@@ -3601,7 +3571,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .meo-hex-color-adjustment-row > span,
 .meo-hex-color-adjustment-row > output {
   overflow: hidden;
-  color: var(--meo-ui-menu-foreground);
+  color: var(--meo-ui-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3616,7 +3586,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   height: 8px;
   margin: 0;
   border-radius: 4px;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--meo-ui-text) 24%, transparent);
   appearance: none;
   cursor: pointer;
 }
@@ -3624,11 +3594,11 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .meo-hex-color-adjustment-row input[type='range']::-webkit-slider-thumb {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--meo-ui-vscode-editor-background);
+  border: 2px solid var(--meo-ui-surface-field);
   border-radius: 50%;
-  box-shadow: 0 0 0 1px var(--meo-ui-vscode-editor-foreground);
+  box-shadow: 0 0 0 1px var(--meo-ui-text);
   appearance: none;
-  background: var(--meo-range-thumb-color, var(--meo-ui-vscode-editor-foreground));
+  background: var(--meo-range-thumb-color, var(--meo-ui-text));
 }
 
 .meo-hex-color-adjustment-row input[type='range']:focus-visible {
@@ -3638,7 +3608,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .meo-hex-color-adjustment-row input[type='range']:focus-visible::-webkit-slider-thumb {
   width: 24px;
   height: 24px;
-  box-shadow: 0 0 0 2px var(--meo-ui-vscode-focusBorder, #007fd4);
+  box-shadow: 0 0 0 2px var(--meo-ui-focus, #007fd4);
 }
 
 .meo-hex-color-adjustment-hue {
@@ -3650,9 +3620,9 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .meo-hex-color-adjustment-row input[type='range'].meo-hex-color-adjustment-opacity {
-  background-color: var(--meo-ui-vscode-editor-background);
+  background-color: var(--meo-ui-surface-field);
   background-image: linear-gradient(to right, transparent, var(--meo-range-opaque, #fff)),
-    repeating-conic-gradient(color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 20%, var(--meo-ui-vscode-editor-background)) 0% 25%, var(--meo-ui-vscode-editor-background) 0% 50%);
+    repeating-conic-gradient(color-mix(in srgb, var(--meo-ui-text) 20%, var(--meo-ui-surface-field)) 0% 25%, var(--meo-ui-surface-field) 0% 50%);
   background-size: auto, 8px 8px;
 }
 
@@ -3667,9 +3637,9 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   min-width: 68px;
   min-height: 30px;
   padding: 4px 12px;
-  color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 50%, transparent);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 7px;
   font: inherit;
   font-weight: 600;
@@ -3677,21 +3647,21 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .meo-hex-color-adjustment-actions button:hover {
-  background: color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 10%, transparent);
+  background: var(--meo-ui-surface-hover);
 }
 
 .meo-hex-color-adjustment-actions .meo-hex-color-adjustment-apply {
-  color: var(--meo-ui-vscode-editor-background);
-  background: var(--meo-ui-vscode-editor-foreground);
-  border-color: var(--meo-ui-vscode-editor-foreground);
+  color: var(--meo-ui-surface-field);
+  background: var(--meo-ui-text);
+  border-color: var(--meo-ui-text);
 }
 
 .meo-hex-color-adjustment-actions .meo-hex-color-adjustment-apply:hover {
-  background: color-mix(in srgb, var(--meo-ui-vscode-editor-foreground) 88%, var(--meo-ui-vscode-editor-background));
+  background: color-mix(in srgb, var(--meo-ui-text) 88%, var(--meo-ui-surface-field));
 }
 
 .meo-hex-color-adjustment-actions button:focus-visible {
-  outline: 2px solid var(--meo-ui-vscode-focusBorder, #007fd4);
+  outline: 2px solid var(--meo-ui-focus, #007fd4);
   outline-offset: 1px;
 }
 
@@ -5350,7 +5320,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   overflow: hidden;
   box-sizing: border-box;
   background-color: var(--meo-outline-background);
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
   user-select: none;
   z-index: var(--meo-layer-document-chrome);
 }
@@ -5422,7 +5392,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   min-width: 0;
   font-size: 13px;
   font-weight: 600;
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
 }
 
 .outline-header-button {
@@ -5440,12 +5410,12 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 }
 
 .outline-header-button:hover {
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
   background: var(--meo-outline-hover-background);
 }
 
 .outline-close-button:hover {
-  color: var(--meo-ui-vscode-errorForeground, #f48771);
+  color: var(--meo-ui-danger, #f48771);
 }
 
 .editor-wrapper[data-outline-mode='fixed'] .outline-header-button {
@@ -5485,7 +5455,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 .outline-sidebar:hover .outline-content {
   scrollbar-color: var(
     --meo-scrollbar-thumb,
-    color-mix(in srgb, var(--meo-ui-foreground) 22%, transparent)
+    color-mix(in srgb, var(--meo-ui-text) 22%, transparent)
   ) transparent;
 }
 
@@ -5532,7 +5502,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 .outline-empty {
   padding: 12px 14px;
   font-size: 12px;
-  color: var(--meo-ui-vscode-descriptionForeground);
+  color: var(--meo-ui-text-muted);
   font-style: italic;
 }
 
@@ -5613,7 +5583,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
   background: transparent;
   cursor: pointer;
 }
@@ -6635,7 +6605,7 @@ body.outline-resizing .preview-frame {
   padding: 0 8px;
   font: inherit;
   font-size: 12px;
-  color: var(--meo-ui-muted);
+  color: var(--meo-ui-text-muted);
 }
 
 .editor-root[data-mode='source'] .source-preview-button {
@@ -6643,12 +6613,12 @@ body.outline-resizing .preview-frame {
 }
 
 .source-preview-button.is-active {
-  color: var(--meo-ui-foreground);
-  background-color: var(--meo-ui-vscode-toolbar-hoverBackground);
+  color: var(--meo-ui-text);
+  background-color: var(--meo-ui-surface-hover);
 }
 
 .source-preview-button > svg {
-  color: var(--meo-ui-vscode-icon-foreground);
+  color: var(--meo-ui-text);
 }
 
 .source-preview-tools {
@@ -6673,24 +6643,24 @@ body.outline-resizing .preview-frame {
   height: 20px;
   box-sizing: border-box;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--meo-foreground) 22%, transparent);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 50%;
-  color: var(--meo-foreground);
-  background: var(--meo-background);
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface);
   cursor: pointer;
 }
 
 .source-preview-tool-button:hover,
 .source-preview-tool-button:focus-visible {
-  background-color: color-mix(in srgb, var(--meo-background) 80%, var(--meo-foreground) 20%);
+  background-color: var(--meo-ui-surface-hover);
 }
 
 .source-preview-tool-button:focus-visible {
-  border-color: var(--vscode-focusBorder, var(--meo-foreground));
+  border-color: var(--meo-ui-focus);
 }
 
 .source-preview-tool-button:active {
-  background-color: color-mix(in srgb, var(--meo-background) 72%, var(--meo-foreground) 28%);
+  background-color: var(--meo-ui-surface-pressed);
 }
 
 .source-preview-tool-button svg {
@@ -6708,10 +6678,10 @@ body.outline-resizing .preview-frame {
   width: max-content;
   max-width: calc(100vw - 16px);
   padding: 8px;
-  border: 1px solid var(--meo-ui-menu-border);
+  border: 1px solid var(--meo-ui-border-float);
   border-radius: 9px;
-  color: var(--meo-ui-menu-foreground);
-  background: var(--meo-ui-menu-background);
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-raised);
   box-shadow: var(--meo-ui-shadow);
 }
 
@@ -7053,37 +7023,10 @@ html[data-editor-appearance='dark'] body.vscode-dark
 .cm-editor .meo-md-html-table-context-trigger,
 .cm-editor .meo-md-html-table-context-menu,
 .cm-tooltip.meo-hex-color-adjustment {
-  --meo-table-context-surface: color-mix(
-    in srgb,
-    var(--meo-background) 84%,
-    black 16%
-  );
-  --meo-table-context-hover-surface: color-mix(
-    in srgb,
-    var(--meo-table-context-surface) 90%,
-    var(--meo-ui-foreground) 10%
-  );
-  --meo-table-context-selected-surface: color-mix(
-    in srgb,
-    var(--meo-table-context-surface) 82%,
-    var(--meo-ui-foreground) 18%
-  );
-  --meo-table-context-border: color-mix(
-    in srgb,
-    var(--meo-background) 70%,
-    var(--meo-ui-foreground) 30%
-  );
-}
-
-html[data-editor-appearance='light'] .selection-inline-menu,
-html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-trigger,
-html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-menu,
-html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
-  --meo-table-context-surface: color-mix(
-    in srgb,
-    var(--meo-background) 84%,
-    white 16%
-  );
+  --meo-table-context-surface: var(--meo-ui-surface-raised);
+  --meo-table-context-hover-surface: var(--meo-ui-surface-hover);
+  --meo-table-context-selected-surface: var(--meo-ui-surface-selected);
+  --meo-table-context-border: var(--meo-ui-border-float);
 }
 
 .cm-editor .meo-md-html-table-context-trigger {
@@ -7099,7 +7042,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   padding: 0;
   border: 1px solid var(--meo-table-context-border);
   border-radius: 6px;
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
   font: 600 17px/1 var(--meo-active-editor-font);
   background: var(--meo-table-context-surface);
   box-shadow: none;
@@ -7129,21 +7072,22 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .cm-editor .meo-md-html-table-context-trigger:hover {
-  color: var(--meo-ui-menu-hover-foreground);
+  color: var(--meo-ui-text);
   background: var(--meo-table-context-hover-surface);
 }
 
 .cm-editor .meo-md-html-table-context-trigger[aria-expanded='true'] {
-  color: var(--meo-ui-selected-foreground);
+  color: var(--meo-ui-text-selected);
   background: var(--meo-table-context-selected-surface);
 }
 
 .cm-editor .meo-md-html-table-context-trigger:focus-visible {
-  outline: 1px solid var(--meo-ui-vscode-focusBorder, #007fd4);
+  outline: 1px solid var(--meo-ui-focus, #007fd4);
   outline-offset: 1px;
 }
 
-.cm-editor .meo-md-html-table-context-menu {
+/* Table actions keep their opaque UI surface above shared visual-control styles. */
+html .cm-editor .meo-md-html-table-context-menu {
   position: absolute;
   left: 32px;
   z-index: 230;
@@ -7158,11 +7102,11 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   overflow-y: hidden;
   border: 1px solid var(--meo-table-context-border);
   border-radius: 8px;
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
   background-color: var(--meo-table-context-surface);
   opacity: 1;
   backdrop-filter: none;
-  box-shadow: 0 10px 28px rgb(0 0 0 / 28%);
+  box-shadow: var(--meo-ui-shadow);
   scrollbar-width: thin;
 }
 
@@ -7207,7 +7151,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   width: 1px;
   height: 18px;
   margin: 0 3px;
-  background: color-mix(in srgb, var(--meo-ui-foreground) 16%, transparent);
+  background: var(--meo-ui-separator);
 }
 
 .cm-editor .meo-md-html-table-context-separator.is-after-leading-control {
@@ -7231,35 +7175,23 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .cm-editor .meo-md-html-table-context-btn:disabled {
-  color: var(--meo-ui-vscode-disabledForeground, var(--meo-color-base03));
+  color: var(--meo-ui-text-disabled, var(--meo-color-base03));
   cursor: default;
   opacity: 0.38;
 }
 
 .cm-editor .meo-md-html-table-context-delete-btn {
-  color: #f48771;
+  color: var(--meo-ui-danger);
 }
 
 .cm-editor .meo-md-html-table-context-page-btn {
   width: 22px;
-  color: var(--meo-ui-menu-foreground);
+  color: var(--meo-ui-text);
   background: var(--meo-table-context-surface);
 }
 
 .cm-editor .meo-md-html-table-context-collapse {
   width: 22px;
-}
-
-html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-menu {
-  box-shadow: 0 6px 20px rgb(31 35 40 / 16%);
-}
-
-html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-menu {
-  background-color: var(--meo-table-context-surface);
-}
-
-html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-delete-btn {
-  color: #c62828;
 }
 
 .cm-editor .meo-md-html-table-context-btn svg {
@@ -7273,7 +7205,7 @@ html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-delet
   z-index: 1;
   width: 10px;
   height: 10px;
-  color: var(--meo-ui-vscode-charts-green, #89d185);
+  color: var(--meo-ui-success, #89d185);
   border-radius: 2px;
   background-color: transparent;
   filter:
@@ -7775,26 +7707,26 @@ html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-delet
 }
 
 /* The native modal layer keeps editor popovers below the settings window. */
-.settings-window { box-sizing: border-box; width: min(840px, calc(100vw - 40px)); height: min(680px, calc(100dvh - 40px)); max-width: none; max-height: none; padding: 0; border: 1px solid var(--meo-ui-vscode-panel-border); border-radius: 12px; background: var(--meo-ui-vscode-sideBar-background); color: var(--meo-ui-foreground); box-shadow: var(--meo-ui-shadow); overflow: hidden; font-size: 13px; }
+.settings-window { box-sizing: border-box; width: min(840px, calc(100vw - 40px)); height: min(680px, calc(100dvh - 40px)); max-width: none; max-height: none; padding: 0; border: 1px solid var(--meo-ui-border-control); border-radius: 12px; background: var(--meo-ui-surface); color: var(--meo-ui-text); box-shadow: var(--meo-ui-shadow); overflow: hidden; font-size: 13px; }
 .settings-window[open] { display: flex; flex-direction: column; }
-.settings-window::backdrop { background: color-mix(in srgb, #000 32%, transparent); }
+.settings-window::backdrop { background: var(--meo-ui-scrim); }
 .settings-titlebar { display: grid; grid-template-columns: minmax(76px, 1fr) minmax(0, 320px) minmax(76px, 1fr); align-items: center; gap: 12px; flex: 0 0 auto; padding: 10px 20px 4px; }
 .settings-title { font-size: 16px; font-weight: 400; margin: 0; white-space: nowrap; }
 .settings-close { justify-self: end; }
 .settings-close, .settings-search-clear { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: 5px; font: inherit; line-height: 1; width: 28px; height: 28px; }
 .settings-close > svg, .settings-search-clear > svg { display: block; width: 16px; height: 16px; flex: none; pointer-events: none; }
-.settings-close:hover, .settings-search-clear:hover { background: var(--meo-ui-vscode-toolbar-hoverBackground); }
-.settings-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: 0 0 auto; margin: 0 20px; border-bottom: 1px solid var(--meo-ui-vscode-panel-border); }
+.settings-close:hover, .settings-search-clear:hover { background: var(--meo-ui-surface-hover); }
+.settings-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: 0 0 auto; margin: 0 20px; border-bottom: 1px solid var(--meo-ui-separator); }
 .settings-tabs { display: flex; align-self: stretch; gap: 26px; }
-.settings-tab { display: flex; align-items: center; gap: 5px; padding: 9px 0; border: 0; color: color-mix(in srgb, var(--meo-ui-foreground) 84%, var(--meo-ui-vscode-sideBar-background)); background: transparent; font: inherit; font-size: 14px; font-weight: 400; line-height: 22px; cursor: pointer; }
-.settings-tab:hover:not([aria-selected='true']) { color: var(--meo-ui-foreground); }
+.settings-tab { display: flex; align-items: center; gap: 5px; padding: 9px 0; border: 0; color: var(--meo-ui-text-muted); background: transparent; font: inherit; font-size: 14px; font-weight: 400; line-height: 22px; cursor: pointer; }
+.settings-tab:hover:not([aria-selected='true']) { color: var(--meo-ui-text); }
 .settings-tab-label { position: relative; }
 .settings-tab[aria-selected='true'] { color: var(--meo-notice-info, #3483ff); }
 .settings-tab[aria-selected='true'] .settings-tab-label::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; bottom: -10px; background: currentColor; }
-.settings-tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 19px; height: 19px; border-radius: 50%; font-size: 10px; background: color-mix(in srgb, var(--meo-ui-foreground) 9%, transparent); color: var(--meo-ui-vscode-descriptionForeground); }
+.settings-tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 19px; height: 19px; border-radius: 50%; font-size: 10px; background: var(--meo-ui-surface-hover); color: var(--meo-ui-text-muted); }
 .settings-tab-badge[hidden] { display: none; }
 /* Keep the opaque input surface and its foreground in the same theme palette. */
-.settings-searchbox { --meo-settings-search-muted: var(--meo-ui-vscode-input-placeholderForeground); --meo-settings-search-border: var(--meo-ui-input-border); --meo-settings-search-focus-border: color-mix(in srgb, var(--meo-ui-vscode-input-foreground) 45%, var(--meo-ui-input-border)); display: flex; align-items: center; gap: 7px; box-sizing: border-box; width: 100%; height: 30px; color: var(--meo-ui-vscode-input-foreground); background: var(--meo-ui-vscode-input-background); border: 1px solid var(--meo-settings-search-border); border-radius: 6px; padding: 0 7px; }
+.settings-searchbox { --meo-settings-search-muted: var(--meo-ui-text-muted); --meo-settings-search-border: var(--meo-ui-border-control); --meo-settings-search-focus-border: var(--meo-ui-focus); display: flex; align-items: center; gap: 7px; box-sizing: border-box; width: 100%; height: 30px; color: var(--meo-ui-text); background: var(--meo-ui-surface-field); border: 1px solid var(--meo-settings-search-border); border-radius: 6px; padding: 0 7px; }
 .settings-searchbox:focus-within { border-color: var(--meo-settings-search-focus-border); }
 .settings-searchbox > svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--meo-settings-search-muted); }
 .settings-search { width: 100%; min-width: 0; color: inherit; background: transparent; border: 0; padding: 0; font: inherit; outline: none; }
@@ -7802,28 +7734,31 @@ html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-delet
 .settings-search::-webkit-search-cancel-button { display: none; }
 .settings-search-clear { width: 24px; height: 24px; flex: 0 0 auto; color: var(--meo-settings-search-muted); }
 .settings-search-clear[hidden] { display: none; }
-.settings-layout { display: grid; grid-template-columns: 170px minmax(0, 1fr); min-height: 0; flex: 1 1 auto; }
+.settings-layout { display: grid; grid-template-columns: minmax(170px, max-content) minmax(0, 1fr); min-height: 0; flex: 1 1 auto; }
 .settings-navigation { padding: 14px 10px 16px 14px; overflow: auto; }
-.settings-jump { display: block; width: 100%; border: 0; padding: 8px 10px; border-radius: 6px; margin: 2px 0; text-align: left; color: var(--meo-ui-vscode-descriptionForeground); background: transparent; font: inherit; cursor: pointer; }
-.settings-jump:hover { background: var(--meo-ui-vscode-toolbar-hoverBackground); }
-.settings-jump.is-active { color: var(--meo-ui-foreground); background: color-mix(in srgb, var(--meo-ui-foreground) 8%, transparent); }
+.settings-jump { display: block; box-sizing: border-box; width: 100%; border: 0; padding: 8px 10px; border-radius: 6px; margin: 2px 0; text-align: left; white-space: nowrap; color: var(--meo-ui-text-muted); background: transparent; font: inherit; cursor: pointer; }
+.settings-jump:hover { background: var(--meo-ui-surface-hover); }
+.settings-jump.is-active { color: var(--meo-ui-text-selected); background: var(--meo-ui-surface-selected); }
 .settings-content { min-height: 0; overflow: auto; padding: 16px 20px 20px 12px; scroll-behavior: auto; }
-.settings-section { padding-bottom: 6px; border-bottom: 1px solid var(--meo-ui-vscode-panel-border); }
+.settings-section { padding-bottom: 6px; border-bottom: 1px solid var(--meo-ui-separator); }
 .settings-section + .settings-section { margin-top: 30px; }
 .settings-section-title { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
-.settings-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid color-mix(in srgb, var(--meo-ui-vscode-panel-border) 65%, transparent); }
+.settings-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--meo-ui-separator); }
 .settings-item:last-child { border-bottom: 0; }
 .settings-item-text { flex: 1 1 180px; min-width: 0; }
 .settings-item-title { font-size: 13px; font-weight: 400; line-height: 1.5; }
-.settings-description { color: var(--meo-ui-vscode-descriptionForeground); margin: 4px 0 0; font-size: 12px; line-height: 1.5; max-width: 480px; }
+.settings-description { color: var(--meo-ui-text-muted); margin: 4px 0 0; font-size: 12px; line-height: 1.5; max-width: 480px; }
 .settings-paste-contexts { flex-basis: 100%; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 12px; line-height: 1.65; }
-.settings-paste-contexts dt { color: var(--meo-ui-foreground); }
-.settings-paste-contexts dd { margin: 0; color: var(--meo-ui-vscode-descriptionForeground); }
+.settings-paste-contexts dt { color: var(--meo-ui-text); }
+.settings-paste-contexts dd { margin: 0; color: var(--meo-ui-text-muted); }
 .settings-switch { flex: 0 0 auto; display: inline-flex; padding: 5px; border: 0; background: transparent; border-radius: 5px; cursor: pointer; }
-.settings-switch:focus-visible { outline: 1px solid var(--meo-ui-vscode-focusBorder); outline-offset: 2px; }
+.settings-switch:focus-visible { outline: 1px solid var(--meo-ui-focus); outline-offset: 2px; }
 .settings-radio-group { flex-basis: 100%; display: grid; gap: 8px; padding: 3px 0 0; }
 .settings-radio { display: flex; align-items: flex-start; gap: 9px; width: fit-content; cursor: pointer; line-height: 1.5; }
-.settings-radio input { cursor: pointer; margin: 3px 0 0; accent-color: var(--meo-notice-info, #3483ff); }
+.settings-radio input { appearance: none; flex: 0 0 auto; box-sizing: border-box; width: 14px; height: 14px; margin: 3px 0 0; border: 1px solid var(--meo-ui-border-control); border-radius: 50%; background: var(--meo-ui-surface-field); cursor: pointer; }
+.settings-radio input:checked { border: 2px solid var(--meo-ui-accent-text); background: radial-gradient(circle, var(--meo-ui-accent-text) 0 3px, var(--meo-ui-surface-field) 3px); }
+.settings-radio input:focus-visible { outline: 1px solid var(--meo-ui-focus); outline-offset: 2px; }
+.settings-radio input:disabled { opacity: .5; cursor: default; }
 .settings-choice { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 1 240px; width: 240px; max-width: 100%; }
 .settings-segmented { display: flex; align-items: stretch; flex: 1 1 0; width: 0; min-width: 0; height: 30px; }
 .settings-choice-button { flex: 1 1 0; height: 100%; font-size: 13px; font-weight: 400; padding-inline: 8px; }
@@ -7831,48 +7766,48 @@ html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-delet
 .settings-choice .editor-font-size-stepper-button, .settings-choice .editor-font-size-value { font-size: 13px; line-height: 1; }
 .settings-shortcut-controls { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; flex: 0 1 auto; }
 .settings-shortcut-keys { display: flex; flex-wrap: wrap; gap: 5px; }
-.settings-key { border: 1px solid var(--meo-ui-vscode-panel-border); padding: 3px 6px; border-radius: 4px; background: color-mix(in srgb, var(--meo-ui-foreground) 4%, transparent); color: inherit; font: 11px var(--meo-ui-vscode-editor-font-family, monospace); }
-.settings-button { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; min-height: 30px; padding: 0 12px; border: 1px solid var(--meo-ui-vscode-panel-border); border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 12px; font-weight: 400; line-height: 18px; cursor: pointer; white-space: nowrap; }
-.settings-button:hover:not(:disabled) { background: var(--meo-ui-vscode-toolbar-hoverBackground); }
-.settings-button:active:not(:disabled) { background: color-mix(in srgb, var(--meo-ui-foreground) 13%, transparent); }
-.settings-button:focus-visible, .settings-tab:focus-visible, .settings-jump:focus-visible { outline: 1px solid var(--meo-ui-vscode-focusBorder); outline-offset: 2px; }
+.settings-key { border: 1px solid var(--meo-ui-border-control); padding: 3px 6px; border-radius: 4px; background: var(--meo-ui-surface-field); color: inherit; font: 11px var(--meo-ui-editor-font-family, monospace); }
+.settings-button { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; min-height: 30px; padding: 0 12px; border: 1px solid var(--meo-ui-border-control); border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 12px; font-weight: 400; line-height: 18px; cursor: pointer; white-space: nowrap; }
+.settings-button:hover:not(:disabled) { background: var(--meo-ui-surface-hover); }
+.settings-button:active:not(:disabled) { background: var(--meo-ui-surface-pressed); }
+.settings-button:focus-visible, .settings-tab:focus-visible, .settings-jump:focus-visible { outline: 1px solid var(--meo-ui-focus); outline-offset: 2px; }
 .settings-button:disabled, .settings-switch:disabled { opacity: .5; cursor: default; }
-.settings-subtle { border-color: transparent; color: var(--meo-ui-vscode-descriptionForeground); }
-.settings-native, .settings-unassigned, .settings-context { color: var(--meo-ui-vscode-descriptionForeground); font-size: 11px; }
+.settings-subtle { border-color: transparent; color: var(--meo-ui-text-muted); }
+.settings-native, .settings-unassigned, .settings-context { color: var(--meo-ui-text-muted); font-size: 11px; }
 .settings-context { display: block; margin-top: 3px; }
-.settings-recorder { box-sizing: border-box; width: 168px; height: 30px; padding: 4px 7px; border: 1px solid var(--meo-ui-vscode-panel-border); border-radius: 5px; background: var(--meo-ui-vscode-editor-background); color: inherit; outline: none; font: 12px var(--meo-ui-vscode-editor-font-family, monospace); }
-.settings-recorder:focus { border-color: color-mix(in srgb, var(--meo-ui-foreground) 55%, var(--meo-ui-vscode-panel-border)); }
+.settings-recorder { box-sizing: border-box; width: 168px; height: 30px; padding: 4px 7px; border: 1px solid var(--meo-ui-border-control); border-radius: 5px; background: var(--meo-ui-surface-field); color: inherit; outline: none; font: 12px var(--meo-ui-editor-font-family, monospace); }
+.settings-recorder:focus { border-color: var(--meo-ui-focus); }
 .settings-item[data-command] { padding-block: 8px; }
-.settings-warning, .settings-shortcut-conflict, .settings-status { color: var(--meo-ui-vscode-errorForeground, #be1100); }
+.settings-warning, .settings-shortcut-conflict, .settings-status { color: var(--meo-ui-danger, #be1100); }
 .settings-shortcut-conflict { flex-basis: 100%; margin: 0; font-size: 12px; }
 .settings-status { margin: 10px 24px 0; font-size: 12px; }
-.settings-empty { color: var(--meo-ui-vscode-descriptionForeground); }
-.settings-footer { position: relative; flex: 0 0 auto; padding: 10px 20px; text-align: right; border-top: 1px solid var(--meo-ui-vscode-panel-border); }
+.settings-empty { color: var(--meo-ui-text-muted); }
+.settings-footer { position: relative; flex: 0 0 auto; padding: 10px 20px; text-align: right; border-top: 1px solid var(--meo-ui-separator); }
 .settings-footer[hidden] { display: none; }
-.settings-reset-popover { position: absolute; bottom: calc(100% + 7px); right: 20px; width: min(300px, calc(100vw - 100px)); padding: 16px; border: 1px solid var(--meo-ui-vscode-panel-border); border-radius: 8px; background: var(--meo-ui-vscode-sideBar-background); box-shadow: var(--meo-ui-shadow); text-align: left; }
+.settings-reset-popover { position: absolute; bottom: calc(100% + 7px); right: 20px; width: min(300px, calc(100vw - 100px)); padding: 16px; border: 1px solid var(--meo-ui-border-control); border-radius: 8px; background: var(--meo-ui-surface); box-shadow: var(--meo-ui-shadow); text-align: left; }
 .settings-reset-popover[hidden] { display: none; }
 .settings-reset-title { font-size: 13px; font-weight: 600; }
-.settings-reset-description { font-size: 12px; line-height: 1.6; color: var(--meo-ui-vscode-descriptionForeground); margin: 7px 0 14px; }
+.settings-reset-description { font-size: 12px; line-height: 1.6; color: var(--meo-ui-text-muted); margin: 7px 0 14px; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.settings-primary { color: var(--meo-ui-vscode-editor-background); background: var(--meo-ui-foreground); border-color: var(--meo-ui-foreground); }
-.settings-primary:hover:not(:disabled) { color: var(--meo-ui-vscode-editor-background); background: color-mix(in srgb, var(--meo-ui-foreground) 88%, var(--meo-ui-vscode-editor-background)); }
-.meo-secondary-selection { background: var(--meo-ui-vscode-editor-selectionBackground); }
-.meo-secondary-cursor { display: inline; border-left: 1px solid var(--meo-ui-foreground); margin-left: -1px; pointer-events: none; }
+.settings-primary { color: var(--meo-ui-surface-field); background: var(--meo-ui-text); border-color: var(--meo-ui-text); }
+.settings-primary:hover:not(:disabled) { color: var(--meo-ui-surface-field); background: color-mix(in srgb, var(--meo-ui-text) 88%, var(--meo-ui-surface-field)); }
+.meo-secondary-selection { background: var(--meo-content-editor-selectionBackground); }
+.meo-secondary-cursor { display: inline; border-left: 1px solid var(--meo-ui-text); margin-left: -1px; pointer-events: none; }
 .more-tools-section-label { font-size: 12px; font-weight: 400; }
 .more-tools-section-label:not(:first-child) { margin-top: 6px; padding-top: 11px; }
 .more-tools-preferences { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 8px 7px; }
-.more-tools-preferences-label { color: var(--meo-ui-vscode-editor-foreground); font-size: 12px; white-space: nowrap; }
+.more-tools-preferences-label { color: var(--meo-ui-text); font-size: 12px; white-space: nowrap; }
 .more-tools-settings-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 4px; box-sizing: border-box; padding: 0 10px; font-size: 12px; line-height: 18px; height: 28px; min-height: 28px; }
 .more-tools-feedback { box-sizing: border-box; min-height: 30px; }
 .more-tools-feedback-link { border-radius: 4px; padding: 3px 7px; }
-.more-tools-feedback-link:hover, .more-tools-feedback-link:focus-visible { background: var(--meo-ui-vscode-toolbar-hoverBackground); color: var(--meo-ui-vscode-textLink-foreground); }
-.more-tools-feedback-link:active { background: color-mix(in srgb, var(--meo-ui-foreground) 13%, transparent); }
+.more-tools-feedback-link:hover, .more-tools-feedback-link:focus-visible { background: var(--meo-ui-surface-hover); color: var(--meo-ui-accent-text); }
+.more-tools-feedback-link:active { background: var(--meo-ui-surface-pressed); }
 @media (max-width: 620px) {
   .settings-window { width: calc(100vw - 16px); height: calc(100dvh - 16px); }
   .settings-titlebar { padding-inline: 16px; }
   .settings-top { flex-wrap: wrap; gap: 0; margin-inline: 16px; }
   .settings-tabs { gap: 20px; }
-  .settings-layout { grid-template-columns: 112px minmax(0, 1fr); }
+  .settings-layout { grid-template-columns: minmax(112px, max-content) minmax(0, 1fr); }
   .settings-navigation { padding: 14px 6px 16px; }
   .settings-jump { padding-inline: 7px; font-size: 12px; }
   .settings-content { padding: 16px 16px 20px 8px; }
@@ -7881,10 +7816,10 @@ html[data-editor-appearance='light'] .cm-editor .meo-md-html-table-context-delet
   .settings-item[data-setting='fontSize'] .settings-segmented { min-width: 100px; }
   .settings-shortcut-controls { justify-content: flex-start; }
 }
-html[data-editor-appearance='dark'] :is(.settings-warning, .settings-shortcut-conflict, .settings-status) { color: var(--meo-ui-vscode-errorForeground, #f48771); }
+html[data-editor-appearance='dark'] :is(.settings-warning, .settings-shortcut-conflict, .settings-status) { color: var(--meo-ui-danger, #f48771); }
 
 .meo-input-suggestions {
-  --meo-suggestion-selected-background: color-mix(in srgb, var(--meo-ui-vscode-sideBar-background) 90%, var(--meo-ui-foreground) 10%);
+  --meo-suggestion-selected-background: var(--meo-ui-surface-selected);
   --meo-suggestion-match-color: var(--meo-notice-info, #3483ff);
   --meo-suggestion-shadow-color: rgb(31 35 40 / 18%);
   --meo-suggestion-preferred-height: 342px;
@@ -7892,8 +7827,8 @@ html[data-editor-appearance='dark'] :is(.settings-warning, .settings-shortcut-co
   position: fixed;
   z-index: var(--meo-layer-document-popover);
   box-sizing: border-box;
-  border: 1px solid var(--meo-ui-vscode-panel-border, var(--vscode-panel-border));
-  background-color: var(--meo-ui-vscode-sideBar-background);
+  border: 1px solid var(--meo-ui-border-control, var(--vscode-panel-border));
+  background-color: var(--meo-ui-surface);
   display: flex;
   flex-direction: column;
   width: min(360px, calc(100vw - 16px));
@@ -7913,7 +7848,7 @@ html[data-editor-appearance='dark'] :is(.settings-warning, .settings-shortcut-co
 .meo-narrow-suggestions { width: min(240px, calc(100vw - 16px)); }
 .meo-input-suggestions[hidden] { display: none; }
 html[data-editor-appearance='dark'] .meo-input-suggestions {
-  --meo-suggestion-match-color: var(--meo-semantic-headingForeground, #79b8ff);
+  --meo-suggestion-match-color: var(--meo-ui-accent-text);
   --meo-suggestion-shadow-color: rgb(0 0 0 / 36%);
 }
 .meo-suggestion-list {
@@ -7930,8 +7865,8 @@ html[data-editor-appearance='dark'] .meo-input-suggestions {
 .meo-suggestion-list::-webkit-scrollbar-track, .meo-suggestion-list::-webkit-scrollbar-track-piece { background: transparent; box-shadow: none; border: 0; }
 .meo-suggestion-list::-webkit-scrollbar-corner { background: transparent; }
 .meo-suggestion-list::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 999px; background: transparent; background-clip: padding-box; }
-.meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--meo-ui-foreground) 22%, transparent); }
-.meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--meo-ui-foreground) 32%, transparent); }
+.meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb { background-color: var(--meo-ui-scrollbar); }
+.meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb:hover { background-color: var(--meo-ui-scrollbar-hover); }
 .meo-suggestion-list::-webkit-scrollbar-button { display: none; }
 .meo-input-suggestion {
   display: grid;
@@ -7939,7 +7874,7 @@ html[data-editor-appearance='dark'] .meo-input-suggestions {
   width: 100%;
   border: 0;
   background: transparent;
-  color: var(--meo-ui-foreground);
+  color: var(--meo-ui-text);
   text-align: left;
   cursor: pointer;
   align-items: center;
@@ -7964,13 +7899,13 @@ html[data-editor-appearance='dark'] .meo-input-suggestions {
 .meo-link-suggestions .meo-suggestion-label { grid-column: 2; grid-row: 1; }
 .meo-link-suggestions .meo-input-suggestion-detail { grid-column: 2; grid-row: 2; text-align: left; }
 .meo-input-suggestion:hover, .meo-input-suggestion[aria-selected='true'] { background: transparent; }
-.meo-suggestion-marker { visibility: hidden; justify-self: center; display: flex; width: 16px; height: 14px; color: var(--meo-ui-foreground); }
+.meo-suggestion-marker { visibility: hidden; justify-self: center; display: flex; width: 16px; height: 14px; color: var(--meo-ui-text); }
 .meo-suggestion-marker svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
 .meo-input-suggestion[aria-selected='true'] .meo-suggestion-marker { visibility: visible; }
 .meo-suggestion-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit; }
 .meo-suggestion-trigger, .meo-suggestion-slash, .meo-suggestion-match { color: var(--meo-suggestion-match-color); }
-.meo-suggestion-parameters { color: var(--meo-ui-vscode-descriptionForeground); }
-.meo-input-suggestion-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--meo-ui-vscode-descriptionForeground); font: inherit; text-align: right; white-space: nowrap; overflow-wrap: normal; }
+.meo-suggestion-parameters { color: var(--meo-ui-text-muted); }
+.meo-input-suggestion-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--meo-ui-text-muted); font: inherit; text-align: right; white-space: nowrap; overflow-wrap: normal; }
 
 /* The prefix and generated suffix are outside the editable folder field. */
 .image-location-settings { display: grid; justify-content: stretch; gap: 10px; min-width: 0; }
@@ -7979,23 +7914,23 @@ html[data-editor-appearance='dark'] .meo-input-suggestions {
 .image-location-mode-caption { min-width: 0; }
 .image-location-mode-description { display: block; margin-top: 2px; }
 .image-location-details { margin: 8px 0 4px 22px; min-width: 0; }
-.image-location-preview { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 0; padding: 12px; border-radius: 6px; background: color-mix(in srgb, var(--meo-ui-foreground) 4%, transparent); font-size: 12px; line-height: 1.5; }
-.image-location-preview dt { color: var(--meo-ui-vscode-descriptionForeground); }
+.image-location-preview { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 0; padding: 12px; border-radius: 6px; background: var(--meo-ui-surface-field); font-size: 12px; line-height: 1.5; }
+.image-location-preview dt { color: var(--meo-ui-text-muted); }
 .image-location-preview dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .image-location-field-label { display: block; margin-bottom: 5px; font-size: 12px; }
-.image-location-path { display: flex; align-items: center; min-width: 0; border: 1px solid var(--meo-ui-input-border); border-radius: 5px; background: var(--meo-ui-vscode-input-background); color: var(--meo-ui-vscode-input-foreground); }
-.image-location-path:focus-within { border-color: var(--meo-ui-vscode-focusBorder); }
-.image-location-prefix, .image-location-suffix { flex: 0 1 auto; padding: 0 9px; font: 12px var(--meo-ui-vscode-editor-font-family, monospace); color: var(--meo-ui-vscode-descriptionForeground); overflow-wrap: anywhere; }
+.image-location-path { display: flex; align-items: center; min-width: 0; border: 1px solid var(--meo-ui-border-control); border-radius: 5px; background: var(--meo-ui-surface-field); color: var(--meo-ui-text); }
+.image-location-path:focus-within { border-color: var(--meo-ui-focus); }
+.image-location-prefix, .image-location-suffix { flex: 0 1 auto; padding: 0 9px; font: 12px var(--meo-ui-editor-font-family, monospace); color: var(--meo-ui-text-muted); overflow-wrap: anywhere; }
 .image-location-prefix { flex-shrink: 0; }
-.image-location-input { box-sizing: border-box; width: 100%; min-width: 0; height: 30px; padding: 4px 8px; border: 0; border-radius: 5px; outline: none; font: 12px var(--meo-ui-vscode-editor-font-family, monospace); color: var(--meo-ui-vscode-input-foreground); background: var(--meo-ui-vscode-input-background); }
+.image-location-input { box-sizing: border-box; width: 100%; min-width: 0; height: 30px; padding: 4px 8px; border: 0; border-radius: 5px; outline: none; font: 12px var(--meo-ui-editor-font-family, monospace); color: var(--meo-ui-text); background: var(--meo-ui-surface-field); }
 .image-location-path .image-location-input { flex: 1 1 100px; width: 0; }
 .image-location-rule-box { display: flex; gap: 7px; min-width: 0; }
-.image-location-rule { border: 1px solid var(--meo-ui-input-border); }
-.image-location-rule:focus { border-color: var(--meo-ui-vscode-focusBorder); }
+.image-location-rule { border: 1px solid var(--meo-ui-border-control); }
+.image-location-rule:focus { border-color: var(--meo-ui-focus); }
 .image-location-variables { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-.image-location-token { position: relative; height: auto; min-height: 27px; padding: 4px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-family: var(--meo-ui-vscode-editor-font-family, monospace); font-size: 11px; }
-.image-location-feedback { margin: 0; min-height: 18px; color: var(--meo-ui-vscode-descriptionForeground); font-size: 12px; overflow-wrap: anywhere; }
-.image-location-feedback.is-error { color: var(--meo-ui-vscode-errorForeground, #be1100); }
+.image-location-token { position: relative; height: auto; min-height: 27px; padding: 4px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-family: var(--meo-ui-editor-font-family, monospace); font-size: 11px; }
+.image-location-feedback { margin: 0; min-height: 18px; color: var(--meo-ui-text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.image-location-feedback.is-error { color: var(--meo-ui-danger, #be1100); }
 .image-location-retry { justify-self: start; }
 @media (max-width: 520px) {
   .image-location-preview { grid-template-columns: minmax(0, 1fr); gap: 3px; }
@@ -8042,88 +7977,90 @@ html[data-editor-appearance='dark'] .meo-input-suggestions {
   background: var(--meo-code-background);
 }
 /* Peripheral UI roles are separate from the retained document palette. */
-.mode-toolbar { background: var(--meo-ui-surface); color: var(--meo-ui-foreground); }
-:is(.more-tools-panel, .heading-dropdown, .table-dropdown, .preview-export-menu, .toolbar-overflow-panel, .selection-inline-menu) {
-  color: var(--meo-ui-menu-foreground);
-  background: var(--meo-ui-menu-background);
-  border-color: var(--meo-ui-menu-border);
+.mode-toolbar { background: var(--meo-ui-surface); color: var(--meo-ui-text); }
+:is(.more-tools-panel, .heading-dropdown, .table-dropdown, .preview-export-menu, .toolbar-overflow-panel, .selection-inline-menu, .find-panel, .preview-dropdown-panel, .settings-window, .settings-reset-popover, .changes-review-panel, .source-preview-more-panel) {
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-raised);
+  border-color: var(--meo-ui-border-float);
   box-shadow: var(--meo-ui-shadow);
 }
 :is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action):is(:hover, :focus-visible, .is-selected) {
-  color: var(--meo-ui-menu-hover-foreground);
-  background: var(--meo-ui-menu-hover);
-  outline: 1px solid var(--meo-ui-menu-selection-border);
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-hover);
+  outline: 1px solid var(--meo-ui-selection-border);
   outline-offset: -1px;
 }
-:is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action):disabled { color: var(--meo-ui-disabled); background: transparent; }
+:is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action):disabled { color: var(--meo-ui-text-disabled); background: transparent; }
 .more-tools-option:is(:hover, :focus-visible) :is(.more-tools-option-label, .more-tools-option-icon) { color: inherit; }
-.mode-toolbar .format-separator, .more-tools-separator, .more-tools-section-label::before { background: var(--meo-ui-menu-separator); }
-.more-tools-option-info { color: var(--meo-ui-muted); }
-.more-tools-feedback-link { color: var(--meo-ui-vscode-textLink-foreground); }
-.find-panel { background: var(--meo-ui-surface); border-color: var(--meo-ui-border); color: var(--meo-ui-foreground); }
+.mode-toolbar .format-separator, .more-tools-separator, .more-tools-section-label::before { background: var(--meo-ui-separator); }
+.more-tools-option-info { color: var(--meo-ui-text-muted); }
+.more-tools-feedback-link { color: var(--meo-ui-accent-text); }
 .find-input, .line-jump-input {
-  color: var(--meo-ui-field-foreground);
-  background: var(--meo-ui-field-background);
-  border: 1px solid var(--meo-ui-field-border);
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-field);
+  border: 1px solid var(--meo-ui-border-control);
 }
 .find-input::placeholder, .line-jump-input::placeholder,
-.find-input-wrap .find-clear-button { color: var(--meo-ui-muted); }
-.segmented-control { background: var(--meo-ui-segmented-background); }
-.segmented-control-button, html[data-editor-appearance='light'] .segmented-control-button:not(.is-active) { color: var(--meo-ui-segmented-foreground); }
-.segmented-control-button.is-active { color: var(--meo-ui-foreground); }
+.find-input-wrap .find-clear-button { color: var(--meo-ui-text-muted); }
+html[data-meo-ui-contrast='normal'] .find-input { border-color: var(--meo-ui-border-float); }
+html .find-input:focus { border-color: var(--meo-ui-focus); }
+.segmented-control { background: var(--meo-ui-segmented-track); }
+.segmented-control-button, html[data-editor-appearance='light'] .segmented-control-button:not(.is-active) { color: var(--meo-ui-text-muted); }
+.segmented-control-button.is-active { color: var(--meo-ui-text); }
 .segmented-control-button.is-active .segmented-control-button-indicator,
 html[data-editor-appearance='light'] .segmented-control-button.is-active .segmented-control-button-indicator {
-  background: var(--meo-ui-segmented-selected-background);
-  box-shadow: inset 0 0 0 1px var(--meo-ui-segmented-selected-border), 0 1px 2px rgb(0 0 0 / 15%);
+  background: var(--meo-ui-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--meo-ui-border-float), 0 1px 2px rgb(0 0 0 / 15%);
 }
 .segmented-control-button:not(.is-active):is(:hover, :focus-visible),
-html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):is(:hover, :focus-visible) { color: var(--meo-ui-foreground); background: transparent; }
+html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):is(:hover, :focus-visible) { color: var(--meo-ui-text); background: transparent; }
 .segmented-control-button:focus-visible .segmented-control-button-indicator { box-shadow: inset 0 0 0 1px var(--meo-ui-focus); }
-.preview-select-control { --preview-select-background: var(--meo-ui-dropdown-background); --preview-select-foreground: var(--meo-ui-dropdown-foreground); --preview-select-border: var(--meo-ui-dropdown-border); --preview-select-hover-border: var(--meo-ui-focus); }
-.preview-preset-dropdown, html[data-editor-appearance='dark'] .preview-preset-dropdown { --preview-preset-accent: var(--meo-ui-vscode-icon-foreground); border-color: var(--meo-ui-dropdown-border); }
-.preview-preset-control .preview-preset-dropdown:is(:hover, [aria-expanded='true'], :focus-visible) { border-color: var(--meo-ui-focus); background: var(--meo-ui-dropdown-background); outline-color: var(--meo-ui-focus); }
-.preview-dropdown-panel, html[data-editor-appearance='dark'] .preview-preset-dropdown-panel { color: var(--meo-ui-dropdown-foreground); background: var(--meo-ui-dropdown-list); border-color: var(--meo-ui-dropdown-border); box-shadow: var(--meo-ui-shadow); }
-.preview-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible, .is-selected) { color: var(--meo-ui-dropdown-foreground); background: var(--meo-ui-dropdown-selected); outline: 1px solid var(--meo-ui-menu-selection-border); outline-offset: -1px; }
+.preview-select-control { --preview-select-background: var(--meo-ui-surface-field); --preview-select-foreground: var(--meo-ui-text); --preview-select-border: var(--meo-ui-border-control); --preview-select-hover-border: var(--meo-ui-focus); }
+.preview-preset-dropdown, html[data-editor-appearance='dark'] .preview-preset-dropdown { --preview-preset-accent: var(--meo-ui-text); border-color: var(--meo-ui-border-control); }
+.preview-preset-control .preview-preset-dropdown:is(:hover, [aria-expanded='true'], :focus-visible) { border-color: var(--meo-ui-focus); background: var(--meo-ui-surface-field); outline-color: var(--meo-ui-focus); }
+html[data-editor-appearance='dark'] .preview-preset-dropdown-panel { border-color: var(--meo-ui-border-float); }
+.preview-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible, .is-selected) { color: var(--meo-ui-text-selected); background: var(--meo-ui-surface-selected); outline: 1px solid var(--meo-ui-selection-border); outline-offset: -1px; }
 .preview-preset-dropdown-panel .preview-dropdown-option.is-selected .preview-preset-option-name { color: inherit; }
 button:focus-visible > .menu-switch { outline-color: var(--meo-ui-focus); }
-.settings-window { background: var(--meo-ui-surface); color: var(--meo-ui-foreground); border-color: var(--meo-ui-border); }
-.settings-primary { background: var(--meo-ui-button-background); color: var(--meo-ui-button-foreground); border-color: var(--meo-ui-button-background); }
-.settings-primary:hover:not(:disabled) { background: var(--meo-ui-button-hover); color: var(--meo-ui-button-foreground); }
-.settings-radio input { accent-color: var(--meo-ui-focus); }
-.settings-button:disabled { color: var(--meo-ui-disabled); }
-.settings-reset-popover { background: var(--meo-ui-menu-background); border-color: var(--meo-ui-menu-border); }
-.selection-inline-menu,
-.cm-editor .meo-md-html-table-context-trigger,
-.cm-editor .meo-md-html-table-context-menu,
-.cm-tooltip.meo-hex-color-adjustment,
-html[data-editor-appearance='light'] :is(.selection-inline-menu, .cm-editor .meo-md-html-table-context-trigger, .cm-editor .meo-md-html-table-context-menu, .cm-tooltip.meo-hex-color-adjustment) {
-  --meo-table-context-surface: var(--meo-ui-menu-background);
-  --meo-table-context-hover-surface: var(--meo-ui-menu-hover);
-  --meo-table-context-selected-surface: var(--meo-ui-selected-background);
-  --meo-table-context-border: var(--meo-ui-menu-border);
+.settings-primary { background: var(--meo-ui-accent); color: var(--meo-ui-on-accent); border-color: var(--meo-ui-accent); }
+.settings-primary:hover:not(:disabled) { background: var(--meo-ui-accent-hover); color: var(--meo-ui-on-accent); }
+.settings-button:disabled { color: var(--meo-ui-text-disabled); }
+:is(.selection-inline-menu, .cm-editor .meo-md-html-table-context-trigger, .cm-editor .meo-md-html-table-context-menu) { color: var(--meo-ui-text); }
+.cm-editor .meo-md-html-table-context-menu :is(button:hover, button:focus-visible) { color: var(--meo-ui-text); }
+.cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-btn.is-active { color: var(--meo-ui-text-selected); }
+.cm-editor .meo-md-html-table-context-delete-btn { color: var(--meo-ui-danger); }
+
+/* Native high-contrast selection is an explicit foreground/background pair. */
+html[data-meo-ui-contrast='high'] .segmented-control-button.is-active {
+  color: var(--meo-ui-text-selected);
 }
-:is(.selection-inline-menu, .cm-editor .meo-md-html-table-context-trigger, .cm-editor .meo-md-html-table-context-menu) { color: var(--meo-ui-menu-foreground); }
-.cm-editor .meo-md-html-table-context-menu :is(button:hover, button:focus-visible) { color: var(--meo-ui-menu-hover-foreground); }
-.cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-btn.is-active { color: var(--meo-ui-selected-foreground); }
-.cm-editor .meo-md-html-table-context-delete-btn { color: var(--meo-ui-error); }
-.cm-editor .meo-md-html-table-context-delete-btn:is(:hover, :focus-visible) { color: var(--meo-ui-menu-hover-foreground); }
+html[data-meo-ui-contrast='high'] .segmented-control-button.is-active .segmented-control-button-indicator {
+  background: var(--meo-ui-surface-selected);
+  box-shadow: inset 0 0 0 1px var(--meo-ui-selection-border);
+}
+html[data-meo-ui-contrast='high'] :is(.preview-dropdown-option, .meo-input-suggestion)[aria-selected='true'],
+html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table-context-btn.is-active {
+  outline: 1px solid var(--meo-ui-selection-border);
+  outline-offset: -1px;
+}
+.cm-editor .meo-md-html-table-context-delete-btn:is(:hover, :focus-visible) { color: var(--meo-ui-text); }
 .cm-tooltip.meo-hex-color-adjustment { box-shadow: var(--meo-ui-shadow); }
 .meo-input-suggestions, html[data-editor-appearance='dark'] .meo-input-suggestions {
-  --meo-suggestion-selected-background: var(--meo-ui-suggest-selected);
-  --meo-suggestion-match-color: var(--meo-ui-suggest-match);
-  background-color: var(--meo-ui-suggest-background);
-  border-color: var(--meo-ui-suggest-border, var(--vscode-panel-border));
-  color: var(--meo-ui-suggest-foreground);
+  --meo-suggestion-selected-background: var(--meo-ui-surface-selected);
+  --meo-suggestion-match-color: var(--meo-ui-accent-text);
+  background-color: var(--meo-ui-surface-raised);
+  border-color: var(--meo-ui-border-float, var(--vscode-panel-border));
+  color: var(--meo-ui-text);
   box-shadow: var(--meo-ui-shadow);
 }
-.meo-input-suggestion, .meo-suggestion-marker { color: var(--meo-ui-suggest-foreground); }
-.meo-input-suggestion[aria-selected='true'], .meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-suggest-selected-foreground); }
-.meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-trigger, .meo-suggestion-slash, .meo-suggestion-match) { color: var(--meo-ui-suggest-selected-match); }
-.meo-input-suggestion:hover:not([aria-selected='true']) { background: var(--meo-ui-list-hover); color: var(--meo-ui-list-hover-foreground); }
+.meo-input-suggestion, .meo-suggestion-marker { color: var(--meo-ui-text); }
+.meo-input-suggestion[aria-selected='true'], .meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-text-selected); }
+.meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-trigger, .meo-suggestion-slash, .meo-suggestion-match) { color: var(--meo-ui-text-selected); }
+.meo-input-suggestion:hover:not([aria-selected='true']) { background: var(--meo-ui-surface-hover); color: var(--meo-ui-text); }
 :is(.settings-content, .preview-dropdown-panel, .meo-suggestion-list) { scrollbar-color: var(--meo-ui-scrollbar) transparent; }
 .meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb { background-color: var(--meo-ui-scrollbar); }
 .meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb:hover { background-color: var(--meo-ui-scrollbar-hover); }
-.outline-sidebar, .outline-header-label, .outline-item { color: var(--meo-ui-outline-foreground); }
+.outline-sidebar, .outline-header-label, .outline-item { color: var(--meo-outline-foreground); }
 .outline-item:is(:hover, .is-visible-first) { color: var(--meo-semantic-headingForeground, #79b8ff); }
 /* Source owns native editor chrome and TextMate styling; Live is unchanged. */
 .cm-editor.meo-mode-source {
@@ -8142,21 +8079,77 @@ html[data-editor-appearance='light'] :is(.selection-inline-menu, .cm-editor .meo
 .cm-editor.meo-mode-source .cm-line.cm-activeLine:not(.meo-diff-added-line):not(.meo-diff-changed-line):not(.meo-git-diff-current-line) { background: var(--meo-source-line) !important; box-shadow: inset 0 0 0 1px var(--meo-source-line-border); }
 .cm-editor.meo-mode-source .cm-line.meo-src-code-block:not(.cm-activeLine):not(.meo-diff-added-line):not(.meo-diff-changed-line):not(.meo-git-diff-current-line) { background: var(--meo-background) !important; }
 .cm-editor.meo-mode-source:not(.cm-focused) .cm-selectionBackground { background: var(--meo-source-inactive-selection) !important; }
-.changes-review-panel { background: var(--meo-ui-menu-background); color: var(--meo-ui-menu-foreground); border-color: var(--meo-ui-menu-border); box-shadow: var(--meo-ui-shadow); }
-:is(.changes-review-option, .changes-review-snapshot-select):is(:hover, :focus-visible, .is-selected):not(:disabled) { color: var(--meo-ui-menu-hover-foreground); background: var(--meo-ui-menu-hover); outline: 1px solid var(--meo-ui-menu-selection-border); outline-offset: -1px; }
-:is(.changes-review-header::after, .changes-review-section::before, .cm-editor .meo-md-html-table-context-separator) { background: var(--meo-ui-menu-separator); }
+:is(.changes-review-option, .changes-review-snapshot-select):is(:hover, :focus-visible, .is-selected):not(:disabled) { color: var(--meo-ui-text); background: var(--meo-ui-surface-hover); outline: 1px solid var(--meo-ui-selection-border); outline-offset: -1px; }
+:is(.changes-review-header::after, .changes-review-section::before, .cm-editor .meo-md-html-table-context-separator) { background: var(--meo-ui-separator); }
 .changes-review-check.is-warning { color: var(--meo-ui-warning); }
-.table-grid-cell { border-color: var(--meo-ui-dropdown-border); }
-.table-grid-cell.is-highlighted { background: var(--meo-ui-selected-background); border-color: var(--meo-ui-selected-border); }
-.menu-switch, html[data-editor-appearance='dark'] .menu-switch { background: var(--meo-ui-switch-background); box-shadow: inset 0 0 0 1px var(--meo-ui-switch-border); }
-.menu-switch::after { background: #fff; }
-[aria-checked='true'] > .menu-switch, html[data-editor-appearance='dark'] [aria-checked='true'] > .menu-switch { background: var(--meo-ui-switch-active-background); box-shadow: inset 0 0 0 1px var(--meo-ui-switch-active-border); }
-.settings-section-title { color: var(--meo-ui-settings-header); }
-.settings-window :is(.settings-search-input, .settings-recorder, .image-location-input, .image-location-path) { color: var(--meo-ui-settings-input-foreground); background: var(--meo-ui-settings-input-background); border-color: var(--meo-ui-settings-input-border); }
+.table-grid-cell { border-color: var(--meo-ui-border-control); }
+.table-grid-cell.is-highlighted { background: var(--meo-ui-surface-selected); border-color: var(--meo-ui-selection-border); }
+.menu-switch, html[data-editor-appearance='dark'] .menu-switch { background: var(--meo-ui-switch-off); box-shadow: none; }
+.menu-switch::after { background: var(--meo-ui-on-switch-off); }
+[aria-checked='true'] > .menu-switch::after { background: #fff; }
+[aria-checked='true'] > .menu-switch, html[data-editor-appearance='dark'] [aria-checked='true'] > .menu-switch { background: var(--meo-ui-accent); box-shadow: none; }
+.settings-section-title { color: var(--meo-ui-text); }
+.settings-window :is(.settings-search-input, .settings-recorder, .image-location-input, .image-location-path) { color: var(--meo-ui-text); background: var(--meo-ui-surface-field); border-color: var(--meo-ui-border-control); }
 .settings-window :is(.settings-search-input, .settings-recorder, .image-location-input):focus, .settings-window .image-location-path:focus-within { border-color: var(--meo-ui-focus); }
-.meo-hex-color-adjustment-actions .meo-hex-color-adjustment-apply { color: var(--meo-ui-button-foreground); background: var(--meo-ui-button-background); border-color: var(--meo-ui-button-background); }
-.meo-hex-color-adjustment-actions .meo-hex-color-adjustment-apply:hover { color: var(--meo-ui-button-foreground); background: var(--meo-ui-button-hover); }
-.editor-notice { border-color: var(--meo-ui-notice-border); box-shadow: var(--meo-ui-shadow); }
+.meo-hex-color-adjustment-actions .meo-hex-color-adjustment-apply { color: var(--meo-ui-on-accent); background: var(--meo-ui-accent); border-color: var(--meo-ui-accent); }
+.meo-hex-color-adjustment-actions .meo-hex-color-adjustment-apply:hover { color: var(--meo-ui-on-accent); background: var(--meo-ui-accent-hover); }
+.editor-notice { border-color: var(--meo-ui-border-float); box-shadow: var(--meo-ui-shadow); }
 .meo-secondary-selection { background: var(--meo-content-editor-selectionBackground); }
 .meo-secondary-cursor { border-left-color: var(--meo-foreground); }
 .cm-editor.meo-mode-source .meo-secondary-selection { background: var(--meo-source-selection); }
+
+/* Shared foreground hierarchy for peripheral controls and their icons. */
+:is(.mode-toolbar, .more-tools-panel, .heading-dropdown, .table-dropdown, .preview-export-menu, .toolbar-overflow-panel, .selection-inline-menu, .find-panel, .preview-dropdown-panel, .settings-window, .changes-review-panel),
+:is(.format-button, .heading-dropdown-option, .more-tools-option, .more-tools-control-label, .more-tools-preferences-label, .changes-review-trigger, .changes-review-option, .changes-review-snapshot-select, .changes-review-snapshot-action, .settings-section-title, .preview-toolbar-dropdown, .preview-toolbar-action, .editor-font-size-stepper-button, .editor-font-size-value),
+:is(.find-input, .line-jump-input, .settings-searchbox, .meo-hex-color-adjustment-value),
+.settings-window :is(.settings-search-input, .settings-recorder, .image-location-input, .image-location-path),
+.cm-editor :is(.meo-md-html-table-context-trigger, .meo-md-html-table-context-menu),
+body .cm-tooltip.meo-hex-color-adjustment,
+.meo-hex-color-adjustment-row > :is(span, output),
+.meo-input-suggestion, .meo-suggestion-marker { color: var(--meo-ui-text); }
+.preview-preset-dropdown > svg,
+.preview-toolbar-action:is(:hover, :focus-visible) { color: var(--meo-ui-text); }
+.preview-select-control .preview-select-label,
+.preview-preset-dropdown .preview-select-label,
+.preview-toolbar-dropdown-chevron,
+.preview-toolbar-dropdown:is(:hover, [aria-expanded='true'], :focus-visible) .preview-toolbar-dropdown-chevron { color: var(--meo-ui-text-muted); }
+.changes-review-option-icon,
+.changes-review-check:not(.is-warning) { color: inherit; }
+:is(.more-tools-section-label, .more-tools-feedback-prompt, .more-tools-option-info, .preview-export-note, .find-status, .settings-description, .settings-jump, .settings-native, .settings-unassigned, .settings-context, .settings-empty, .settings-reset-description, .settings-tab-badge, .settings-subtle, .meo-input-suggestion-detail, .meo-suggestion-parameters),
+.changes-review-empty, .changes-review-header, .changes-review-section-label,
+.settings-paste-contexts dd,
+.settings-searchbox > svg,
+.settings-search-clear { color: var(--meo-ui-text-muted); }
+.settings-tab:not([aria-selected='true']) { color: var(--meo-ui-text-muted); }
+.settings-tab:hover:not([aria-selected='true']) { color: var(--meo-ui-text); }
+.meo-hex-color-adjustment-actions button:not(.meo-hex-color-adjustment-apply) { color: var(--meo-ui-text); }
+:is(.find-input, .line-jump-input, .settings-search)::placeholder,
+.find-input-wrap .find-clear-button { color: var(--meo-ui-text-muted); }
+.find-panel .find-clear-button:is(:hover, :focus-visible) { color: var(--meo-ui-text-muted); background: transparent; }
+.find-panel .find-clear-button:focus-visible { outline: 1px solid var(--meo-ui-focus); outline-offset: -2px; }
+html[data-meo-ui-contrast='normal'] .find-panel .find-clear-button:not(:hover):not(:focus-visible) { color: color-mix(in srgb, var(--meo-ui-text-muted) 80%, var(--meo-ui-surface-field)); }
+html[data-meo-ui-contrast='normal'] .find-panel .find-clear-button > svg { stroke-width: 1.5; }
+.find-panel .find-clear-button:is(:hover, :focus-visible) { color: var(--meo-ui-text); }
+html .find-panel .find-clear-button:is(:hover, :focus-visible) > svg { stroke-width: 2; }
+html[data-meo-ui-contrast='high'] .find-panel .find-clear-button:is(:hover, :focus-visible) > svg { stroke-width: 2.5; }
+.format-button.toggle-button:not(.is-active) { color: var(--meo-ui-text-muted); }
+.segmented-control-button,
+html[data-editor-appearance='light'] .segmented-control-button:not(.is-active) { color: var(--meo-ui-text-muted); }
+.segmented-control-button:is(.is-active, :hover, :focus-visible),
+html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):is(:hover, :focus-visible),
+.settings-paste-contexts dt { color: var(--meo-ui-text); }
+.settings-jump.is-active { color: var(--meo-ui-text-selected); }
+.preview-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible, .is-selected) { color: var(--meo-ui-text-selected); }
+:is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action, .changes-review-option, .changes-review-snapshot-select):is(:hover, :focus-visible, .is-selected):not(:disabled),
+.cm-editor .meo-md-html-table-context-menu :is(button:hover, button:focus-visible) { color: var(--meo-ui-text); }
+.cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-btn.is-active { color: var(--meo-ui-text-selected); }
+.meo-input-suggestion[aria-selected='true'],
+.meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-text-selected); }
+.meo-input-suggestion:hover:not([aria-selected='true']) { color: var(--meo-ui-text); }
+:is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action, .settings-button, .changes-review-option, .changes-review-snapshot-select, .changes-review-snapshot-action):disabled,
+.cm-editor .meo-md-html-table-context-btn:disabled { color: var(--meo-ui-text-disabled); }
+/* These actions retain their semantic foregrounds and paired button fills. */
+.format-button.is-discard-armed, .format-button.is-discard-armed:hover { color: #fff; }
+.find-status.is-error { color: var(--meo-ui-danger); }
+.preview-preset-info.has-error { color: var(--meo-ui-danger); }
+.cm-editor .meo-md-html-table-context-delete-btn { color: var(--meo-ui-danger); }

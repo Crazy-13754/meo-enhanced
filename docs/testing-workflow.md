@@ -128,6 +128,13 @@ still checking type safety, workflow policy, history, tables, rendered blocks,
 input-derived work, viewport behavior, and one production browser scenario in
 the quick gate.
 
+For semantic UI colors, `test:theme-inheritance` covers shared surfaces, neutral
+text and icons, switch states, cached palette reuse and invalidation when the
+base surface changes. It also checks that unrelated native menu colors cannot
+recolor the palette. `scripts/test-webview-search-controls.ts` covers empty,
+typed and cleared inputs, inset clear-button geometry and hover feedback in
+light/dark appearances; the panel close action retains toolbar button styling.
+
 `scripts/test-line-number-rendered-block-stability.ts` runs in the quick, targeted
 viewport, and high-risk browser gates. With real Mermaid, KaTeX and fonts, it
 samples every animation frame while typing and deleting above rendered blocks.

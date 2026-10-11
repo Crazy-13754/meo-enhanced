@@ -759,6 +759,10 @@ async function main() {
         triggerText: document.querySelector('.changes-review-trigger')?.textContent
       };
     });
+    const warningForeground = await page.evaluate(() => {
+      const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-warning)'; document.body.append(probe);
+      const color = getComputedStyle(probe).color; probe.remove(); return color;
+    });
     if (JSON.stringify(unavailableGitBaseline) !== JSON.stringify({
       label: '与 Git HEAD 比较 · 非 Git 仓库',
       checked: 'true',
@@ -768,7 +772,7 @@ async function main() {
       checkIconCount: 0,
       warningIconCount: 1,
       circleWarningIconCount: 1,
-      warningColor: 'rgb(204, 167, 0)',
+      warningColor: warningForeground,
       headerText: '无法比较·非 Git 仓库',
       triggerText: '无法比较'
     })) {
@@ -2153,8 +2157,11 @@ async function main() {
       panel.style.setProperty('--vscode-editor-foreground', 'rgb(255, 255, 255)');
       const findInput = panel.querySelector<HTMLInputElement>('.find-row:first-child .find-input')!;
       const replaceInput = panel.querySelector<HTMLInputElement>('.find-replace-row .find-input')!;
+      findInput.value = 'Tall Mermaid';
+      findInput.dispatchEvent(new Event('input', { bubbles: true }));
       return {
-        nativePlaceholder: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-vscode-input-placeholderForeground)'; document.body.appendChild(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })(),
+        mutedText: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-text-muted)'; document.body.appendChild(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })(),
+        mainText: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-text)'; document.body.appendChild(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })(),
         findPlaceholder: getComputedStyle(findInput, '::placeholder').color,
         replacePlaceholder: getComputedStyle(replaceInput, '::placeholder').color,
         findClear: getComputedStyle(panel.querySelector<HTMLElement>('.find-row:first-child .find-clear-button')!).color,
@@ -2167,14 +2174,15 @@ async function main() {
       (element) => getComputedStyle(element).color
     );
     if (
-      findClearColors.findPlaceholder !== findClearColors.nativePlaceholder ||
+      findClearColors.findPlaceholder !== findClearColors.mutedText ||
       findClearColors.replacePlaceholder !== findClearColors.findPlaceholder ||
-      findClearColors.findClear !== findClearColors.findPlaceholder ||
-      findClearColors.replaceClear !== findClearColors.replacePlaceholder ||
-      hoveredFindClearColor !== findClearColors.findPlaceholder
+      findClearColors.findClear !== findClearColors.replaceClear ||
+      findClearColors.findClear === hoveredFindClearColor ||
+      hoveredFindClearColor !== findClearColors.mainText
     ) {
-      throw new Error(`Find and Replace clear icons did not match their placeholder text: ${JSON.stringify({ ...findClearColors, hoveredFindClearColor })}`);
+      throw new Error(`Find and Replace clear icons lost their shared foreground hierarchy: ${JSON.stringify({ ...findClearColors, hoveredFindClearColor })}`);
     }
+    await page.click('.find-panel .find-row:first-child .find-clear-button');
     await page.type('.find-panel .find-row:first-child .find-input', 'Tall Mermaid');
     await waitForFrames(page, 2);
     const previewFindState = await page.evaluate(() => {
@@ -2975,13 +2983,13 @@ async function main() {
           height: style.height,
           borderRadius: style.borderRadius,
           background: style.backgroundColor,
-          documentBackground: getComputedStyle(document.querySelector<HTMLElement>('.editor-host')!).backgroundColor
+          toolbarBackground: getComputedStyle(document.querySelector<HTMLElement>('.mode-toolbar')!).backgroundColor
         };
       });
       if (
         !hiddenAtTop || !visibleAfterScroll || afterClick.scrollTop !== 0 || !afterClick.hidden ||
         afterClick.width !== afterClick.height || afterClick.borderRadius !== '50%' ||
-        afterClick.background !== afterClick.documentBackground ||
+        afterClick.background !== afterClick.toolbarBackground ||
         Math.abs(visibleGeometry.centerXDelta) > 0.01 || Math.abs(visibleGeometry.centerYDelta - 1) > 0.01 ||
         visibleGeometry.iconLeftFraction > 0.01 || visibleGeometry.iconTopFraction > 0.01
       ) {

@@ -1199,11 +1199,19 @@ async function main(): Promise<void> {
         panelHidden: panel.hidden,
         panelBackground: panelStyle.backgroundColor,
         triggerBackground: triggerStyle.backgroundColor,
-        nativeDropdownBackground: (() => {
+        fieldBackground: (() => {
           const probe = document.createElement('span');
-          probe.style.backgroundColor = 'var(--meo-ui-dropdown-background)';
+          probe.style.backgroundColor = 'var(--meo-ui-surface-field)';
           document.body.append(probe);
           const value = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return value;
+        })(),
+        floatingShadow: (() => {
+          const probe = document.createElement('span');
+          probe.style.boxShadow = 'var(--meo-ui-shadow)';
+          document.body.append(probe);
+          const value = getComputedStyle(probe).boxShadow;
           probe.remove();
           return value;
         })(),
@@ -1215,21 +1223,21 @@ async function main(): Promise<void> {
     });
     assert.equal(dropdownThemeContract.panelBackground, dropdownThemeContract.exportMenuBackground,
       'Preview font dropdown must use the export menu surface');
-    assert.equal(dropdownThemeContract.triggerBackground, dropdownThemeContract.nativeDropdownBackground,
-      'Preview font trigger must use the native dropdown surface');
+    assert.equal(dropdownThemeContract.triggerBackground, dropdownThemeContract.fieldBackground,
+      'Preview font trigger must use the shared field surface');
+    assert.equal(dropdownThemeContract.panelShadow, dropdownThemeContract.floatingShadow,
+      'Preview font popup must share the floating surface shadow');
     assert.deepEqual({
       controlAppearance: dropdownThemeContract.controlAppearance,
       panelAppearance: dropdownThemeContract.panelAppearance,
       panelHidden: dropdownThemeContract.panelHidden,
       panelRadius: dropdownThemeContract.panelRadius,
-      panelShadow: dropdownThemeContract.panelShadow,
       triggerShadow: dropdownThemeContract.triggerShadow
     }, {
       controlAppearance: 'light',
       panelAppearance: 'light',
       panelHidden: false,
       panelRadius: 9,
-      panelShadow: 'rgba(31, 35, 40, 0.12) 0px 4px 12px 0px',
       triggerShadow: 'none'
     }, 'Preview dropdown popup must keep its rounded native UI surface and shadow');
     await page.keyboard.press('Escape');

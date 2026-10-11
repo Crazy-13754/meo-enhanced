@@ -74,6 +74,50 @@ async function main() {
         document.querySelector<HTMLButtonElement>(`[data-editor-appearance="${value}"]`)!.click();
         document.querySelector<HTMLButtonElement>('[data-action="find"]')!.click();
       }, appearance);
+      for (const row of ['.find-row:first-child', '.find-replace-row']) {
+        const inputSelector = '.find-panel ' + row + ' .find-input';
+        const clearSelector = '.find-panel ' + row + ' .find-clear-button';
+        await page.$eval(inputSelector, input => { (input as HTMLInputElement).value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); });
+        const empty = await page.$eval(clearSelector, button => getComputedStyle(button).display);
+        if (empty !== 'none') throw new Error(`${appearance} ${row}: empty input exposes a clear button`);
+        await page.type(inputSelector, 'needle');
+        await page.mouse.move(10, 610);
+        const normal = await page.$eval(clearSelector, button => {
+          const style = getComputedStyle(button), input = button.parentElement!.querySelector('input')!;
+          const box = button.getBoundingClientRect(), inputBox = input.getBoundingClientRect();
+          return { display: style.display, color: style.color, background: style.backgroundColor,
+            radius: getComputedStyle(input).borderRadius, inset: box.left >= inputBox.left && box.right <= inputBox.right && box.top > inputBox.top && box.bottom < inputBox.bottom,
+            buttonBox: box.toJSON(), inputBox: inputBox.toJSON() };
+        });
+        await page.hover(clearSelector);
+        const hovered = await page.$eval(clearSelector, button => ({ color: getComputedStyle(button).color, background: getComputedStyle(button).backgroundColor }));
+        if (normal.display === 'none' || normal.radius !== '4px' || !normal.inset || normal.color === hovered.color
+          || normal.background !== 'rgba(0, 0, 0, 0)' || hovered.background !== 'rgba(0, 0, 0, 0)') {
+          throw new Error(`${appearance} ${row}: clear button visibility, hover or input geometry regressed: ${JSON.stringify({ normal, hovered })}`);
+        }
+        await page.click(clearSelector);
+        const cleared = await page.$eval(clearSelector, button => ({ value: button.parentElement!.querySelector('input')!.value, display: getComputedStyle(button).display }));
+        if (cleared.value !== '' || cleared.display !== 'none') throw new Error(`${appearance} ${row}: clearing did not hide the button`);
+      }
+      const closeSelector = '.find-close-button';
+      const nextSelector = '.find-row:first-child > .format-button:last-child';
+      const readToolbarButton = (selector: string) => page.$eval(selector, button => {
+        const style = getComputedStyle(button);
+        return { color: style.color, background: style.backgroundColor,
+          stroke: getComputedStyle(button.querySelector('svg')!).strokeWidth };
+      });
+      await page.mouse.move(10, 610);
+      const closeNormal = await readToolbarButton(closeSelector);
+      const nextNormal = await readToolbarButton(nextSelector);
+      await page.hover(closeSelector);
+      const closeHover = await readToolbarButton(closeSelector);
+      await page.hover(nextSelector);
+      const nextHover = await readToolbarButton(nextSelector);
+      if (JSON.stringify(closeNormal) !== JSON.stringify(nextNormal)
+        || JSON.stringify(closeHover) !== JSON.stringify(nextHover)
+        || closeNormal.background === closeHover.background) {
+        throw new Error(`${appearance}: panel close must share toolbar button styling: ${JSON.stringify({ closeNormal, nextNormal, closeHover, nextHover })}`);
+      }
       await page.click('.more-tools-wrapper > button');
       const popupLayout = await page.evaluate(() => {
         const find = document.querySelector<HTMLElement>('.find-panel')!;

@@ -180,16 +180,37 @@ try {
         button.classList.remove('is-active');
         return { inactive, active, activeBackground, icon: read('.source-preview-button > svg'),
           inline: read('.selection-inline-button'), menu: read('.source-preview-more-panel'), menuBackground: read('.source-preview-more-panel', 'backgroundColor'),
-          muted: role('--meo-ui-muted'), foreground: role('--meo-ui-foreground'), hover: role('--meo-ui-vscode-toolbar-hoverBackground'),
-          iconForeground: role('--meo-ui-vscode-icon-foreground'), menuForeground: role('--meo-ui-menu-foreground'), menuSurface: role('--meo-ui-menu-background') };
+          muted: role('--meo-ui-text-muted'), foreground: role('--meo-ui-text'), hover: role('--meo-ui-surface-hover'),
+          iconForeground: role('--meo-ui-text'), menuForeground: role('--meo-ui-text'), menuSurface: role('--meo-ui-surface-raised') };
       });
-      assert.equal(controls.inactive, controls.muted, `${profile.id}: Source preview button normal text`);
+      assert.equal(controls.inactive, controls.foreground, `${profile.id}: Source preview button shares the ordinary toolbar foreground`);
       assert.equal(controls.active, controls.foreground, `${profile.id}: Source preview button active text`);
       assert.equal(controls.activeBackground, controls.hover, `${profile.id}: Source preview button active surface`);
       assert.equal(controls.icon, controls.iconForeground, `${profile.id}: Source preview icon`);
       assert.equal(controls.inline, controls.menuForeground, `${profile.id}: selected-text toolbar button`);
       assert.equal(controls.menu, controls.menuForeground, `${profile.id}: Source preview menu text`);
       assert.equal(controls.menuBackground, controls.menuSurface, `${profile.id}: Source preview menu background`);
+      const foregroundChannels = controls.foreground.match(/\d+/g)!.map(Number);
+      assert.equal(foregroundChannels[0], foregroundChannels[1], `${profile.id}: ordinary UI foreground is neutral`);
+      assert.equal(foregroundChannels[1], foregroundChannels[2], `${profile.id}: ordinary UI icons share the neutral foreground`);
+      if (profile.id === 'dark') {
+        const palette = await page.evaluate(() => {
+          const root = document.documentElement, style = root.style;
+          const read = () => Object.fromEntries([...style].filter(name => name.startsWith('--meo-ui-')).map(name => [name, style.getPropertyValue(name)]));
+          const before = read(), oldMenu = style.getPropertyValue('--vscode-menu-background'), oldWidget = style.getPropertyValue('--vscode-editorWidget-background');
+          const refresh = () => (window as any).ThemeAcceptance.refreshUiTheme();
+          refresh(); const reused = read();
+          style.setProperty('--vscode-menu-background', '#ff00ff'); refresh(); const independent = read();
+          style.setProperty('--vscode-editorWidget-background', '#122b38'); refresh(); const changed = read();
+          style.setProperty('--vscode-menu-background', oldMenu); style.setProperty('--vscode-editorWidget-background', oldWidget); refresh();
+          return { before, reused, independent, changed, restored: read() };
+        });
+        assert.deepEqual(palette.reused, palette.before, 'Reapplying identical inputs preserves all UI roles');
+        assert.deepEqual(palette.independent, palette.before, 'Floating UI derives from the toolbar base independently of native menu fills');
+        assert.notEqual(palette.changed['--meo-ui-surface'], palette.before['--meo-ui-surface'], 'Changing the shared base invalidates the resolved palette');
+        assert.notEqual(palette.changed['--meo-ui-surface-raised'], palette.before['--meo-ui-surface-raised'], 'Floating UI follows the changed shared base');
+        assert.deepEqual(palette.restored, palette.before, 'Restoring shared inputs restores the entire palette');
+      }
       await page.waitForSelector('.meo-source-token', { timeout: 10000 }).catch(async error => {
         console.log(await page.evaluate(() => ({ mode: document.querySelector('.editor-root')?.getAttribute('data-mode'), lines: document.querySelectorAll('.cm-line').length, html: document.querySelector('.cm-editor')?.outerHTML.slice(0, 1200) })));
         throw error;
@@ -231,9 +252,10 @@ try {
       await screenshot(profile.id + '-source-tail.png');
       await page.evaluate(() => { document.querySelector<HTMLElement>('.cm-scroller')!.scrollTop = 0; });
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-      assert.equal(await page.$eval('.mode-toolbar', el => getComputedStyle(el).backgroundColor), 'manual' in profile ? profile.manual === 'light' ? 'rgb(246, 248, 250)' : 'rgb(31, 36, 40)' : await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--vscode-editorWidget-background')) .then(hex => {
-        const h = hex.replace('#', ''); return `rgb(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)})`;
-      }));
+      assert.equal(await page.$eval('.mode-toolbar', el => getComputedStyle(el).backgroundColor), await page.evaluate(() => {
+        const probe = document.createElement('span'); probe.style.backgroundColor = 'var(--meo-ui-surface)'; document.body.append(probe);
+        const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color;
+      }), `${profile.id}: toolbar uses the shared derived surface`);
     }
     await page.waitForFunction(() => document.querySelector<HTMLElement>('.preview-host')?.hidden === true && !document.querySelector('[data-preview-cover]'));
     await screenshot(profile.id + '-source.png');
@@ -243,9 +265,15 @@ try {
       for (const selector of ['.toolbar-right', '.toolbar-overflow-indicator']) {
         assert.equal(await page.$eval(selector, el => getComputedStyle(el).backgroundColor), toolbar, `${profile.id}: ${selector} shares the toolbar surface`);
       }
-      const knobs = await page.$$eval('.more-tools-panel .menu-switch', switches => switches.map(el => getComputedStyle(el, '::after').backgroundColor));
+      const knobs = await page.$$eval('.more-tools-panel .menu-switch', switches => {
+        const probe = document.createElement('span'); probe.style.backgroundColor = 'var(--meo-ui-on-switch-off)'; document.body.append(probe);
+        const off = getComputedStyle(probe).backgroundColor; probe.remove();
+        return switches.map(el => ({ checked: el.parentElement?.getAttribute('aria-checked') === 'true',
+          color: getComputedStyle(el, '::after').backgroundColor, shadow: getComputedStyle(el).boxShadow, off }));
+      });
       assert.ok(knobs.length > 0);
-      assert.ok(knobs.every(color => color === 'rgb(255, 255, 255)'), `${profile.id}: switches retain the original white knob in both states`);
+      assert.ok(knobs.every(knob => knob.color === (knob.checked ? 'rgb(255, 255, 255)' : knob.off)), `${profile.id}: switches use white when on and derived gray when off`);
+      assert.ok(knobs.every(knob => knob.shadow === 'none'), `${profile.id}: switches have no permanent outline`);
     }
     await screenshot(profile.id + '-menu.png');
     if (!baseline) {
@@ -297,10 +325,10 @@ try {
       await page.mouse.move(700, 900);
       {
         const surfaces = await page.evaluate(() => {
-          const read = (selector: string) => {
+          const read = (selector: string, property = 'backgroundColor') => {
             const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
             const context = canvas.getContext('2d')!;
-            context.fillStyle = getComputedStyle(document.querySelector(selector)!).backgroundColor;
+            context.fillStyle = getComputedStyle(document.querySelector(selector)!).getPropertyValue(property === 'backgroundColor' ? 'background-color' : property);
             context.fillRect(0, 0, 1, 1); return [...context.getImageData(0, 0, 1, 1).data];
           };
           const wrapper = document.querySelector<HTMLElement>('.editor-wrapper')!;
@@ -311,14 +339,23 @@ try {
           wrapper.dataset.outlineMode = mode;
           return { fixed, floating, content: read('.editor-host'), toolbar: read('.mode-toolbar'),
             track: read('.mode-group.segmented-control'), indicator: read('.mode-group .is-active .segmented-control-button-indicator'),
-            activeChapter: read('.outline-item.is-visible-first') };
+            activeChapter: read('.outline-item.is-visible-first'),
+            selectedText: read('.mode-group .is-active', 'color'),
+            selectedShadow: getComputedStyle(document.querySelector('.mode-group .is-active .segmented-control-button-indicator')!).boxShadow };
         });
         assert.deepEqual(surfaces.fixed, surfaces.content, `${profile.id}: outline and content backgrounds`);
         assert.deepEqual(surfaces.floating, surfaces.content, `${profile.id}: floating outline and content backgrounds`);
         assert.equal(surfaces.activeChapter[3], 0, `${profile.id}: current chapter uses the original transparent item background`);
         const luminance = (color: number[]) => color.slice(0, 3).map(value => { const c = value / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0);
         const contrast = (left: number[], right: number[]) => { const a = luminance(left), b = luminance(right); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
-        assert.ok(contrast(surfaces.track, surfaces.toolbar) >= 1.2, `${profile.id}: segmented track must stand apart from toolbar`);
+        if (profile.kind.includes('contrast')) {
+          assert.deepEqual(surfaces.track, surfaces.toolbar, `${profile.id}: high contrast keeps the shared native surface`);
+          assert.ok(surfaces.selectedShadow.includes('rgb(243, 133, 24)') && surfaces.selectedShadow.includes('inset'),
+            `${profile.id}: selected segment needs the explicit native contrast border`);
+          assert.ok(contrast(surfaces.selectedText, surfaces.indicator) >= 4.5, `${profile.id}: native selection text remains readable`);
+        } else {
+          assert.ok(contrast(surfaces.track, surfaces.toolbar) >= 1.2, `${profile.id}: segmented track must stand apart from toolbar`);
+        }
         assert.ok(contrast(surfaces.indicator, surfaces.track) >= 1.2, `${profile.id}: selected segment must stand apart from track`);
       }
       await screenshot(profile.id + '-outline-live.png');
@@ -355,7 +392,7 @@ try {
         await screenshot(profile.id + '-outline-preview-opposite.png');
         await page.click('button[data-mode="live"]');
         await page.waitForFunction(() => getComputedStyle(document.querySelector('.outline-sidebar')!).backgroundColor === getComputedStyle(document.querySelector('.editor-host')!).backgroundColor);
-        assert.equal(await page.$eval('.outline-sidebar', el => (el as HTMLElement).style.getPropertyValue('--meo-ui-outline-foreground')), '', 'Outline text has no Preview-specific color override');
+        assert.equal(await page.$eval('.outline-sidebar', el => (el as HTMLElement).style.getPropertyValue('--meo-outline-foreground')), '', 'Outline text has no Preview-specific color override');
       }
     }
   }
@@ -383,10 +420,10 @@ try {
       (window as any).ThemeAcceptance.replaceText('# Final theme\n\nOnly the latest document may publish.');
     });
     await page.waitForFunction(() => [...document.querySelectorAll('.meo-source-token')].some(el => el.textContent?.includes('Final theme') && getComputedStyle(el).color === 'rgb(255, 153, 51)'));
-    assert.equal(await page.evaluate(() => {
-      const probe = document.createElement('span'); probe.style.background = 'var(--meo-ui-selected-background)'; document.body.append(probe);
+    assert.notEqual(await page.evaluate(() => {
+      const probe = document.createElement('span'); probe.style.background = 'var(--meo-ui-surface-selected)'; document.body.append(probe);
       const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color;
-    }), 'rgba(0, 0, 0, 0)', 'Transparent native tokens remain valid for other selected UI');
+    }), 'rgba(0, 0, 0, 0)', 'Derived selected UI remains visible independently of transparent native radio tokens');
     assert.notEqual(await page.$eval('.segmented-control-button.is-active .segmented-control-button-indicator', el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)', 'Segmented controls keep a distinct surface even with a transparent native radio token');
     assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue('--vscode-editor-foreground')), '#ccffdd', 'Theme transitions must preserve native variables');
     await screenshot('runtime-theme-source.png');

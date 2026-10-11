@@ -36,21 +36,24 @@ function assertOpaqueColor(value: string, label: string): void {
 
 function assertTableActionsAppearance(
   appearance: Record<string, string>,
-  native: { background: string; selected: string; foreground: string; selectedForeground: string; hoverForeground: string; border: string },
+  palette: { background: string; selected: string; foreground: string; selectedForeground: string; border: string },
   label: string
 ): void {
   for (const key of ['triggerBackground', 'menuBackground', 'moreButtonBackground']) {
     assertOpaqueColor(appearance[key], `${label} ${key}`);
-    assert.equal(appearance[key], native.background, `${label} ${key} must use menu.background`);
+    assert.equal(appearance[key], palette.background, `${label} ${key} must use the shared floating surface`);
   }
   for (const key of ['triggerActiveBackground', 'moreButtonActiveBackground']) {
-    assert.equal(appearance[key], native.selected, `${label} ${key} must use radio.activeBackground`);
-    assert.notEqual(appearance[key], native.background, `${label} active state must remain distinguishable`);
+    assert.equal(appearance[key], palette.selected, `${label} ${key} must use the shared selected surface`);
+    assert.notEqual(appearance[key], palette.background, `${label} active state must remain distinguishable`);
   }
-  assert.equal(appearance.moreButtonColor, native.foreground, `${label} must use menu.foreground`);
-  assert.equal(appearance.moreButtonActiveColor, native.selectedForeground, `${label} selected state must use radio.activeForeground`);
-  assert.equal(appearance.triggerActiveColor, native.selectedForeground, `${label} expanded trigger must use radio.activeForeground`);
-  assert.equal(appearance.menuBorder, native.border, `${label} must use menu.border`);
+  assert.equal(appearance.moreButtonColor, palette.foreground, `${label} uses the shared ordinary foreground`);
+  assert.equal(appearance.moreButtonActiveColor, palette.selectedForeground, `${label} uses the paired selected foreground`);
+  assert.equal(appearance.triggerActiveColor, palette.selectedForeground, `${label} expanded trigger uses the paired selected foreground`);
+  assert.equal(appearance.menuBorder, palette.border, `${label} uses the shared floating border`);
+  const foreground = parseComputedColor(appearance.moreButtonColor);
+  assert.equal(foreground.red, foreground.green, `${label} ordinary text is neutral`);
+  assert.equal(foreground.green, foreground.blue, `${label} ordinary icons are neutral`);
 }
 
 async function waitForFrames(page: import('puppeteer-core').Page, count = 6): Promise<void> {
@@ -455,7 +458,15 @@ async function main(): Promise<void> {
         (cell) => cell.getBoundingClientRect().width
       );
       const root = document.documentElement;
+      const readPalette = () => {
+        const probe = document.createElement('span'); document.body.append(probe);
+        const color = (role: string) => { probe.style.color = `var(--meo-ui-${role})`; return getComputedStyle(probe).color; };
+        const palette = { background: color('surface-raised'), selected: color('surface-selected'),
+          foreground: color('text'), selectedForeground: color('text-selected'), border: color('border-float') };
+        probe.remove(); return palette;
+      };
       (window as any).TableStabilityHarness.applyUiTheme('dark', true);
+      const darkPalette = readPalette();
       const darkTrigger = document.querySelector<HTMLElement>('.meo-md-html-table-context-trigger')!;
       const darkMoreButton = document.querySelector<HTMLElement>('.meo-md-html-table-context-next')!;
       if (document.querySelector<HTMLDivElement>('.meo-md-html-table-context-menu')!.hidden) pointer(darkTrigger);
@@ -490,6 +501,7 @@ async function main(): Promise<void> {
         'radio-activeBackground': '#aac9e8', 'radio-activeForeground': '#184c2d'
       })) root.style.setProperty('--vscode-' + name, value);
       (window as any).TableStabilityHarness.applyUiTheme('light', true);
+      const lightPalette = readPalette();
       const lightTrigger = document.querySelector<HTMLElement>('.meo-md-html-table-context-trigger')!;
       const lightMoreButton = document.querySelector<HTMLElement>('.meo-md-html-table-context-next')!;
       const lightTriggerBackground = getComputedStyle(lightTrigger).backgroundColor;
@@ -571,7 +583,9 @@ async function main(): Promise<void> {
         constrainedFits: constrainedTable.getBoundingClientRect().width <= constrainedWrap.clientWidth + 1,
         constrainedOverflow: constrainedWrap.classList.contains('is-table-overflowing'),
         darkAppearance,
-        lightAppearance
+        lightAppearance,
+        darkPalette,
+        lightPalette
       };
       app.style.width = '780px';
       editor.view.scrollDOM.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }));
@@ -794,11 +808,14 @@ async function main(): Promise<void> {
         document.querySelector('.cm-editor')!.append(menu);
       }, { appearance, foreground });
       await page.mouse.move(0, 0); await page.hover('#menu-foreground-probe');
-      assert.equal(await page.$eval('#menu-foreground-probe', button => getComputedStyle(button).color), appearance === 'dark' ? 'rgb(248, 210, 171)' : 'rgb(101, 67, 33)');
+      assert.equal(await page.$eval('#menu-foreground-probe', button => getComputedStyle(button).color), await page.evaluate(() => {
+        const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-text)'; document.body.append(probe);
+        const color = getComputedStyle(probe).color; probe.remove(); return color;
+      }), 'Table hover keeps the common neutral foreground despite a colored native menu selection token');
       await page.$eval('#menu-foreground-probe', button => button.parentElement!.remove());
     }
-    assertTableActionsAppearance(result.darkAppearance, { background: 'rgb(24, 44, 64)', selected: 'rgb(35, 81, 118)', foreground: 'rgb(215, 233, 251)', selectedForeground: 'rgb(169, 243, 198)', hoverForeground: 'rgb(248, 210, 171)', border: 'rgb(70, 97, 124)' }, 'dark table actions');
-    assertTableActionsAppearance(result.lightAppearance, { background: 'rgb(234, 242, 250)', selected: 'rgb(170, 201, 232)', foreground: 'rgb(24, 44, 64)', selectedForeground: 'rgb(24, 76, 45)', hoverForeground: 'rgb(101, 67, 33)', border: 'rgb(139, 163, 186)' }, 'light table actions');
+    assertTableActionsAppearance(result.darkAppearance, result.darkPalette, 'dark table actions');
+    assertTableActionsAppearance(result.lightAppearance, result.lightPalette, 'light table actions');
     console.log('table context menu production checks passed');
   } finally {
     await browser.close();

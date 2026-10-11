@@ -27,6 +27,7 @@ async function main(): Promise<void> {
         await page.addStyleTag({ content: `:root {
           --vscode-menu-background: ${dark ? '#1c3448' : '#eef6ff'};
           --vscode-menu-foreground: ${dark ? '#e6f3ff' : '#18202a'};
+          --vscode-foreground: ${dark ? '#e6f3ff' : '#18202a'};
           --vscode-menu-border: ${dark ? '#46617c' : '#8ba3ba'};
           --vscode-editor-background: ${dark ? '#24292f' : '#f7f8fa'};
           --vscode-editor-foreground: ${dark ? '#f0f2f4' : '#22262b'};
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
             hue.dispatchEvent(new Event('input', { bubbles: true }));
             const toolbarProbe = document.createElement('div');
             toolbarProbe.className = 'meo-md-html-table-context-menu';
+            toolbarProbe.style.color = 'var(--meo-ui-text)';
             editor.view.dom.appendChild(toolbarProbe);
             dialogs.push({
               background: getComputedStyle(dialog).backgroundColor,
@@ -82,6 +84,7 @@ async function main(): Promise<void> {
               border: getComputedStyle(dialog).borderTopColor,
               toolbarBackground: getComputedStyle(toolbarProbe).backgroundColor,
               toolbarBorder: getComputedStyle(toolbarProbe).borderTopColor,
+              uiForeground: getComputedStyle(toolbarProbe).color,
               width: dialog.getBoundingClientRect().width,
               height: dialog.getBoundingClientRect().height,
               applyBackground: getComputedStyle(dialog.querySelector<HTMLButtonElement>('.meo-hex-color-adjustment-apply')!).backgroundColor,
@@ -139,11 +142,10 @@ async function main(): Promise<void> {
           throw new Error(`${appearance}/${language} must preserve the original sample while updating the new sample: ${JSON.stringify(result)}`);
         }
         const editorBackground = dark ? 'rgb(36, 41, 47)' : 'rgb(247, 248, 250)';
-        const targetForeground = dark ? 'rgb(230, 243, 255)' : 'rgb(24, 32, 42)';
         if (result.some((dialog) => dialog.background !== dialog.toolbarBackground ||
           dialog.border !== dialog.toolbarBorder || dialog.background === editorBackground ||
-          dialog.foreground !== targetForeground || dialog.closeForeground !== targetForeground ||
-          dialog.labelForegrounds.length !== 8 || dialog.labelForegrounds.some((color) => color !== targetForeground))) {
+          dialog.foreground !== dialog.uiForeground || dialog.closeForeground !== dialog.uiForeground ||
+          dialog.labelForegrounds.length !== 8 || dialog.labelForegrounds.some((color) => color !== dialog.uiForeground))) {
           throw new Error(`${appearance}/${language} popover must share the table toolbar surface: ${JSON.stringify(result)}`);
         }
         const luminance = (color: string) => {
@@ -162,6 +164,10 @@ async function main(): Promise<void> {
         if (result.some((dialog) => contrast(dialog.applyForeground, dialog.applyBackground) < 4.5)) {
           throw new Error(`${appearance}/${language} Apply label must reach 4.5:1 contrast: ${JSON.stringify(result)}`);
         }
+        if (result.some(dialog => {
+          const channels = dialog.foreground.match(/\d+/g)!.map(Number);
+          return channels[0] !== channels[1] || channels[1] !== channels[2] || contrast(dialog.foreground, dialog.background) < 4.5;
+        })) throw new Error(`${appearance}/${language} ordinary popover text must stay neutral and readable`);
       }
     }
   } finally {

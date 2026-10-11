@@ -338,6 +338,7 @@ try {
       root.style.setProperty('--vscode-panel-border', appearance === 'dark' ? '#454b51' : '#d4d8de');
       root.style.setProperty('--meo-foreground', appearance === 'dark' ? '#dce1e6' : '#24292f');
       root.style.setProperty('--vscode-descriptionForeground', appearance === 'dark' ? '#959da5' : '#68727d');
+      (window as any).EditingFeaturesHarness.applyUiTheme(appearance, true);
       (window as any).editor.setUiLanguage(language);
       view.contentDOM.style.fontFamily = 'Consolas, monospace'; view.contentDOM.style.fontSize = '17px';
       view.dispatch({ scrollIntoView: true }); view.requestMeasure();

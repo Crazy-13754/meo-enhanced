@@ -43,7 +43,7 @@ const factory = createMermaidDiagramPresentationFactory({
 export function createEditor(options: Parameters<typeof createProductionEditor>[0]) {
   // Standalone browser fixtures bypass the webview bootstrap. Initialize its
   // native UI and Source surfaces without overwriting a fixture's explicit theme.
-  if (!document.documentElement.style.getPropertyValue('--meo-ui-menu-background')) {
+  if (!document.documentElement.style.getPropertyValue('--meo-ui-surface')) {
     const light = document.documentElement.dataset.editorAppearance === 'light'
       || document.body.classList.contains('vscode-light');
     applyUiTheme(light ? 'light' : 'dark', true);

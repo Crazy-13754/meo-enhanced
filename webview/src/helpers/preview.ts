@@ -1543,7 +1543,7 @@ export function createPreviewController({
       '--meo-preview-source-active-line-bg',
       background
     );
-    probe.style.backgroundColor = 'var(--meo-ui-list-hover, var(--meo-active-line-bg))';
+    probe.style.backgroundColor = 'var(--meo-ui-surface-hover, var(--meo-active-line-bg))';
     document.body.appendChild(probe);
     const hoverBackground = window.getComputedStyle(probe).backgroundColor;
     probe.remove();
