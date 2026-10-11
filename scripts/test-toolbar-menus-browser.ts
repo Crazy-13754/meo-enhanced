@@ -132,7 +132,7 @@ try {
           })
       }));
       modeWidthsByLanguage.push(modeLayout.width);
-      assert.ok(modeLayout.optionWidths.every(width => Math.abs(width - 56) <= 0.5) && modeLayout.contentFits, JSON.stringify(modeLayout));
+      assert.ok(modeLayout.optionWidths.every(width => Math.abs(width - (170 - 4) / 3) <= 0.05) && modeLayout.contentFits, JSON.stringify(modeLayout));
     }
   }
   assert.deepEqual(modeWidthsByLanguage, [170, 170, 170]);
@@ -196,7 +196,21 @@ try {
       outerRight: outer.right - indicators[1].right
     };
   });
-  assert.deepEqual(segmentGaps, { outerLeft: 2, between: 4, outerRight: 2 }, 'each selected pill keeps the same inset on every side');
+  assert.deepEqual(segmentGaps, { outerLeft: 2, between: 0, outerRight: 2 }, 'shared outer insets preserve seamless internal segments');
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations()
+      .filter(animation => (animation.effect as KeyframeEffect | null)?.target instanceof Element
+        && ((animation.effect as KeyframeEffect).target as Element).classList.contains('segmented-control-button-indicator'))
+      .map(animation => animation.finished));
+  });
+  const segmentCenters = await page.$$eval('.segmented-control', controls => controls
+    .filter(control => control.getBoundingClientRect().width > 0)
+    .flatMap(control => Array.from(control.querySelectorAll('.segmented-control-button')).map(button => {
+      const indicator = button.querySelector('.segmented-control-button-indicator')!.getBoundingClientRect();
+      const content = button.querySelector('.segmented-control-button-content')!.getBoundingClientRect();
+      return { text: button.textContent, offset: (content.left + content.right - indicator.left - indicator.right) / 2 };
+    })));
+  assert.ok(segmentCenters.every(segment => Math.abs(segment.offset) <= 0.05), JSON.stringify(segmentCenters));
   await page.mouse.click(4, 10);
   assert.equal(await page.$eval('.more-tools-panel', panel => (panel as HTMLElement).hidden), true);
   await page.close();

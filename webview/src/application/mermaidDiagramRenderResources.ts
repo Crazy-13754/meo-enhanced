@@ -9,6 +9,8 @@ export type MermaidDiagramRenderRequest = {
   readonly themeKey: string;
   readonly configKey: string;
   readonly priority?: MermaidRenderPriority;
+  /** An already-visible diagram update should not yield to deferred document refreshes. */
+  readonly interactive?: boolean;
 };
 
 export type MermaidDiagramRenderResult =

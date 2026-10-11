@@ -17,6 +17,30 @@ type SegmentedControlOptions<Value extends string> = {
   options: readonly SegmentedControlOption<Value>[];
 };
 
+const textMeasurementContexts = new WeakMap<Document, CanvasRenderingContext2D | null>();
+
+function centerLabels(element: HTMLElement): void {
+  const doc = element.ownerDocument, view = doc.defaultView!;
+  if (!element.isConnected || !view.CSS.supports('text-box-trim', 'trim-both')
+    || !view.CSS.supports('text-box-edge', 'cap alphabetic')) return;
+  let context = textMeasurementContexts.get(doc);
+  if (context === undefined) { context = doc.createElement('canvas').getContext('2d'); textMeasurementContexts.set(doc, context); }
+  if (!context) return;
+  const scale = view.devicePixelRatio || 1;
+  for (const label of element.querySelectorAll<HTMLElement>('.segmented-control-button-label')) {
+    const style = view.getComputedStyle(label), size = Number.parseFloat(style.fontSize);
+    if (!Number.isFinite(size)) continue;
+    context.font = `${style.fontStyle} ${style.fontWeight} ${size * scale}px ${style.fontFamily}`;
+    const metrics = context.measureText(label.textContent ?? '');
+    // CSS trims to cap/alphabetic metrics. Correct that reference for this
+    // label's actual glyphs, including fallback fonts and Latin descenders.
+    const cap = context.measureText('H').actualBoundingBoxAscent;
+    const offset = (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent - cap) / (2 * scale);
+    const value = `${offset}px`;
+    if (label.style.getPropertyValue('--segmented-label-offset') !== value) label.style.setProperty('--segmented-label-offset', value);
+  }
+}
+
 export const createSegmentedControl = <Value extends string>(options: SegmentedControlOptions<Value>) => {
   const element = document.createElement('div');
   element.className = `segmented-control ${options.className}`;
@@ -54,6 +78,12 @@ export const createSegmentedControl = <Value extends string>(options: SegmentedC
     buttons.set(option.value, button);
     element.append(button);
   }
+
+  const recenter = () => centerLabels(element);
+  const resizeObserver = new ResizeObserver(recenter);
+  for (const label of element.querySelectorAll('.segmented-control-button-label')) resizeObserver.observe(label);
+  element.ownerDocument.fonts.addEventListener('loadingdone', recenter);
+  window.addEventListener('resize', recenter);
 
   return {
     element,
@@ -97,6 +127,12 @@ export const createSegmentedControl = <Value extends string>(options: SegmentedC
         const labelElement = button.querySelector<HTMLElement>('.segmented-control-button-label');
         if (labelElement) labelElement.textContent = label;
       }
+      recenter();
+    },
+    dispose() {
+      resizeObserver.disconnect();
+      element.ownerDocument.fonts.removeEventListener('loadingdone', recenter);
+      window.removeEventListener('resize', recenter);
     }
   };
 };

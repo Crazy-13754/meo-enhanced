@@ -356,14 +356,16 @@ async function main(): Promise<void> {
       editor.view.dispatch({ selection: { anchor: 4 } });
       editor.setMode('live');
     }, { slowOld: slowOldSource, latest: latestSource });
-    await page.waitForFunction((source) => (
-      (window as typeof window & { __mermaidCalls?: string[] }).__mermaidCalls?.includes(source)
-    ), {}, slowOldSource);
+    // A Source switch can now cancel the old job before physical layout.
+    // If it had already started, release it; either route must admit latest.
+    await page.waitForFunction(({ old, latest }) => {
+      const calls = (window as typeof window & { __mermaidCalls?: string[] }).__mermaidCalls ?? [];
+      return calls.includes(old) || calls.includes(latest);
+    }, {}, { old: slowOldSource, latest: latestSource });
     await page.evaluate((source) => {
-      const resolved = (window as typeof window & {
+      (window as typeof window & {
         __resolveMermaid?: (source: string, marker: string) => boolean;
       }).__resolveMermaid?.(source, 'rapid-old');
-      if (!resolved) throw new Error('Rapid old Mermaid render was not found');
     }, slowOldSource);
     await page.waitForFunction((source) => (
       (window as typeof window & { __mermaidCalls?: string[] }).__mermaidCalls?.includes(source)

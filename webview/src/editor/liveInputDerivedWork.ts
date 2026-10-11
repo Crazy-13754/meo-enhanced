@@ -12,6 +12,8 @@ type LiveInputDerivedWorkSchedulerOptions = {
   cancelFrame(frameId: number): void;
   apply(): void;
   reportError(error: unknown): void;
+  /** Keep asynchronous foreground presentation ahead of a full-document rebuild. */
+  shouldWaitForPresentation?(): boolean;
 } & ({
   requestDeferred(callback: () => void, timeoutMs: number): number;
   cancelDeferred(taskId: number): void;
@@ -52,6 +54,13 @@ export function createLiveInputDerivedWorkScheduler(
 
   const applyCurrentGeneration = (currentGeneration: number): void => {
     if (disposed || currentGeneration !== generation) return;
+    if (options.shouldWaitForPresentation?.()) {
+      frameId = options.requestFrame(() => {
+        frameId = null;
+        applyCurrentGeneration(currentGeneration);
+      });
+      return;
+    }
     try {
       options.apply();
     } catch (error) {
@@ -559,6 +568,12 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
   const schedulerOptions = {
     requestFrame: (callback: () => void) => window.requestAnimationFrame(() => callback()),
     cancelFrame: (frameId: number) => window.cancelAnimationFrame(frameId),
+    // Mermaid yields internally while measuring SVG labels. A full-document
+    // rebuild in those gaps can turn a tiny split edit into a second-long wait.
+    shouldWaitForPresentation: () => Boolean(view.dom.querySelector(
+      '.meo-mermaid-editing-block[data-meo-mermaid-rendering="true"], '
+        + '.meo-mermaid-editing-block [data-meo-mermaid-rendering="true"]'
+    )),
     apply() {
       try {
         view.dispatch({ effects: refreshLiveInputDerivedWorkEffect.of(true) });

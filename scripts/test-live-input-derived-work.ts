@@ -186,6 +186,33 @@ scheduler.documentChanged();
 assert.equal(frames.pendingCount, 0, 'disposed schedulers must ignore new input');
 
 const budgetFrames = createFrameHarness();
+const presentationFrames = createFrameHarness();
+let presentationPending = true;
+let presentationApplies = 0;
+const presentationScheduler = createLiveInputDerivedWorkScheduler({
+  requestFrame: callback => presentationFrames.requestFrame(callback),
+  cancelFrame: id => presentationFrames.cancelFrame(id),
+  shouldWaitForPresentation: () => presentationPending,
+  apply: () => { presentationApplies += 1; },
+  reportError: error => { throw error; }
+});
+presentationScheduler.documentChanged();
+for (let frame = 0; frame < 5; frame += 1) presentationFrames.flushFrame();
+assert.equal(presentationApplies, 0, 'Full-document work must not interrupt pending foreground presentation');
+assert.equal(presentationFrames.pendingCount, 1, 'Waiting presentation must retain only one current frame');
+presentationPending = false;
+presentationFrames.flushFrame();
+assert.equal(presentationApplies, 1, 'Settled foreground presentation must release derived work once');
+presentationPending = true;
+presentationScheduler.documentChanged();
+presentationFrames.flushFrame();
+presentationFrames.flushFrame();
+presentationScheduler.cancelPending();
+presentationPending = false;
+presentationFrames.flushFrame();
+assert.equal(presentationApplies, 1, 'Cancelled presentation waits must never apply stale derived work');
+presentationScheduler.dispose();
+
 const deferred = createFrameHarness();
 const deferredDeadlines: Array<number | undefined> = [];
 let budgetedApplies = 0;

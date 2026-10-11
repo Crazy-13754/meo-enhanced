@@ -939,8 +939,8 @@ async function main() {
         modeControlHeight: modeControl.getBoundingClientRect().height,
         modeControlRadius: Number.parseFloat(getComputedStyle(modeControl).borderRadius),
         activeModeRadius: Number.parseFloat(getComputedStyle(activeModeIndicator).borderRadius),
-        activeModeLabelOffset: activeModeBounds.top + activeModeBounds.height / 2
-          - (activeModeLabelBounds.top + activeModeLabelBounds.height / 2),
+        activeModeLabelHorizontalOffset: activeModeBounds.left + activeModeBounds.width / 2
+          - (activeModeLabelBounds.left + activeModeLabelBounds.width / 2),
         modeButtonWidths: Object.fromEntries(modeButtons.map((button) => [
           button.dataset.mode,
           button.getBoundingClientRect().width
@@ -984,9 +984,9 @@ async function main() {
       initialToolbarStart.modeControlHeight !== 28 ||
       initialToolbarStart.modeControlRadius !== 8 ||
       initialToolbarStart.activeModeRadius !== 6 ||
-      initialToolbarStart.activeModeLabelOffset !== 0.5 ||
-      Object.values(initialToolbarStart.modeButtonWidths).some((width) => width !== 56) ||
-      JSON.stringify(initialToolbarStart.activeModeInsets) !== JSON.stringify({ top: 2, bottom: 2, left: 3 }) ||
+      Math.abs(initialToolbarStart.activeModeLabelHorizontalOffset) > 0.05 ||
+      Object.values(initialToolbarStart.modeButtonWidths).some((width) => Math.abs(width - (170 - 2 * 2) / 3) > 0.05) ||
+      JSON.stringify(initialToolbarStart.activeModeInsets) !== JSON.stringify({ top: 2, bottom: 2, left: 2 }) ||
       initialToolbarStart.modeSegmentGap !== 0 ||
       !initialToolbarStart.modeUsesSharedComponent ||
       inactiveModeHoverBackground !== 'rgba(0, 0, 0, 0)' ||
@@ -1079,7 +1079,7 @@ async function main() {
       }) ||
       lightAppearanceState.active !== 'light' ||
       lightAppearanceState.labelExists ||
-      JSON.stringify(lightAppearanceState.indicatorInsets) !== JSON.stringify({ top: 2, right: 2, bottom: 2, left: 2 }) ||
+      JSON.stringify(lightAppearanceState.indicatorInsets) !== JSON.stringify({ top: 2, right: 0, bottom: 2, left: 0 }) ||
       JSON.stringify(lightAppearanceState.messages) !== JSON.stringify(['light'])
     ) {
       throw new Error(`Editor light appearance did not preserve established accents: ${JSON.stringify({ darkAppearanceState, lightAppearanceState })}`);

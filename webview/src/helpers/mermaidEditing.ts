@@ -755,7 +755,7 @@ class MermaidEditingController {
   private previewSticky: HTMLElement | null = null;
   private previewWidget: MermaidDiagramWidget | null = null;
   private previewTimer: number | null = null;
-  private unsubscribeThemeRefresh: () => void;
+  private scheduledPreviewSource: string | null = null;
   private presentationFactory: MermaidDiagramPresentationConsumer;
   private syncingFromOuter = false;
   private searchReveal: MermaidSearchReveal;
@@ -972,11 +972,6 @@ class MermaidEditingController {
       }
     });
 
-    this.unsubscribeThemeRefresh = this.presentationFactory.subscribeThemeRefresh(() => {
-      if (this.mode === 'split') {
-        this.renderPreview();
-      }
-    });
     this.setMode(mode, true);
     this.setSearchReveal(searchReveal);
     this.root.__meoMermaidEditingController = this;
@@ -1098,7 +1093,11 @@ class MermaidEditingController {
     this.setMode(mode, false);
     this.setSearchReveal(searchReveal);
     if (mode === 'split') {
-      this.schedulePreviewRender();
+      if (this.previewWidget?.diagramText !== block.diagramText) {
+        this.schedulePreviewRender();
+      } else {
+        this.previewWidget.updateSource(block.diagramText, block.startLine, block.endLine);
+      }
     }
     return true;
   }
@@ -1171,21 +1170,35 @@ class MermaidEditingController {
   }
 
   private schedulePreviewRender(): void {
+    // Decoration/preload refreshes for the same source must not restart the
+    // typing delay, otherwise a ready cached diagram still waits again.
+    if (this.previewTimer !== null && this.scheduledPreviewSource === this.block.diagramText) return;
+    // Protect the preview's input-coalescing window as well as its render.
+    // Otherwise a deferred full-document rebuild can occupy this timer turn.
+    this.root.dataset.meoMermaidRendering = 'true';
     if (this.previewTimer !== null) {
       window.clearTimeout(this.previewTimer);
     }
+    this.scheduledPreviewSource = this.block.diagramText;
     this.previewTimer = window.setTimeout(() => {
       this.previewTimer = null;
+      this.scheduledPreviewSource = null;
       this.renderPreview();
-    }, 200);
+    }, 80);
   }
 
   private renderPreview(): void {
+    delete this.root.dataset.meoMermaidRendering;
     if (!this.previewSticky) {
       return;
     }
+    if (this.previewWidget) {
+      // Reuse the presentation handle: it retains the old SVG while rendering,
+      // reuses cached results, and rejects superseded completions.
+      this.previewWidget.updateSource(this.block.diagramText, this.block.startLine, this.block.endLine);
+      return;
+    }
     const apply = () => {
-      this.destroyPreview();
       this.previewWidget = new MermaidDiagramWidget(
         this.block.diagramText,
         this.block.startLine,
@@ -1223,6 +1236,7 @@ class MermaidEditingController {
   }
 
   private destroyPreview(): void {
+    delete this.root.dataset.meoMermaidRendering;
     this.previewWidget?.destroy();
     this.previewWidget = null;
     this.previewSticky?.replaceChildren();
@@ -1231,7 +1245,6 @@ class MermaidEditingController {
   destroy(): void {
     this.innerInteractionContinuity?.dispose();
     this.innerInteractionContinuity = null;
-    this.unsubscribeThemeRefresh();
     const projectionLock = mermaidSourceProjectionLocks.get(this.outerView)?.get(this.block.anchor);
     if (projectionLock) {
       releaseMermaidSourceProjectionLockAfterFrame(

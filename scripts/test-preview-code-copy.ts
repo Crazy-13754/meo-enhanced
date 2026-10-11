@@ -101,20 +101,11 @@ try {
   assert.equal(await frame.$$eval('.meo-preview-code-actions', nodes => nodes.length), 7);
   assert.equal(await frame.$$eval('.meo-export-math-inline .meo-preview-code-actions', nodes => nodes.length), 0,
     'Inline equations must not acquire block copy controls');
-  assert.equal(await frame.$$eval('.meo-export-math-display .meo-select-all-code-btn', nodes => nodes.length), 3,
-    'Display formulas retain select-all, including legacy and invalid formula fences');
-  await frame.$eval('.meo-export-math-fenced-display .meo-select-all-code-btn', element => (element as HTMLElement).click());
-  const selectedFormula = await frame.evaluate(() => getSelection()!.toString());
-  assert.ok(selectedFormula.length > 0 && !selectedFormula.includes('Preview'));
-  const actionStyle = await frame.$eval('.meo-export-math-fenced-display .meo-preview-code-actions', element => {
-    const copy = element.querySelector('.meo-copy-code-btn')!;
-    const select = element.querySelector('.meo-select-all-code-btn')!;
-    return { copy: getComputedStyle(copy).color, select: getComputedStyle(select).color,
-      overlap: select.getBoundingClientRect().right > copy.getBoundingClientRect().left };
-  });
-  assert.equal(actionStyle.copy, actionStyle.select);
-  assert.equal(actionStyle.overlap, false);
-  await frame.evaluate(() => getSelection()!.removeAllRanges());
+  assert.equal(await frame.$$eval('.meo-export-math-display .meo-select-all-code-btn', nodes => nodes.length), 0,
+    'Preview formulas expose only copy, including legacy and invalid formula fences');
+  assert.deepEqual(await frame.$$eval('.meo-export-math-display', nodes => nodes.map(node =>
+    node.querySelectorAll(':scope > .meo-preview-code-actions > [role="button"]').length)), [1, 1, 1],
+  'Every Preview formula block has exactly one action');
   await page.evaluate(() => {
     (window as any).__originalMathBlock = document.querySelector<HTMLIFrameElement>('iframe')!
       .contentDocument!.querySelector('.meo-export-math-display');
@@ -159,8 +150,11 @@ try {
     for (const language of ['en', 'zh-CN'] as const) {
       await page.evaluate(language => (window as any).__previewController.setUiLanguage(language), language);
       const point = await copyPoint();
-      await page.mouse.move(point.x, point.y);
+      // Reveal the hover actions before targeting a button that initially ignores pointer events.
+      await page.mouse.move(point.x - 28, point.y);
       await frame.waitForFunction(() => getComputedStyle(document.querySelector('.meo-preview-code-actions')!).opacity === '1', { polling: 50 });
+      const visiblePoint = await copyPoint();
+      await page.mouse.move(visiblePoint.x, visiblePoint.y);
       let visibleHint: { label: string | null; opacity: string } | null = null;
       for (let attempt = 0; attempt < 100; attempt += 1) {
         visibleHint = await frame.$eval('.meo-tooltip.is-visible', node => ({
@@ -334,6 +328,9 @@ try {
         const actual = await frame.$$eval('.meo-export-math-display', nodes => nodes.map(node => node.getAttribute('data-source-b64')));
         throw new Error(`Preview copy payload failed for ${language}/${JSON.stringify(prefix)}: ${JSON.stringify(actual)}`, { cause: error });
       }
+      assert.deepEqual(await frame.$$eval('.meo-export-math-display .meo-preview-code-actions > [role="button"]', nodes =>
+        nodes.map(node => node.classList.contains('meo-copy-code-btn'))), [true],
+      `${language}/${JSON.stringify(prefix)}: formula controls contain only copy`);
       await frame.$eval('.meo-export-math-display .meo-copy-code-btn', node => (node as HTMLElement).click());
       assert.equal(await readClipboard(), spacedMath, `${language}/${JSON.stringify(prefix)}: preserve body whitespace, omit container and delimiters`);
       mathCopyCases++;

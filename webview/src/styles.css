@@ -680,7 +680,8 @@ html[data-editor-appearance='light'] .editor-notice {
   align-items: center;
   gap: 0;
   height: 26px;
-  padding: 0;
+  /* Shared outer insets keep each label centered in its full-width indicator. */
+  padding: 0 var(--segmented-control-inset);
   border: 0;
   border-radius: var(--segmented-control-radius);
   background: var(--meo-segmented-control-background);
@@ -722,7 +723,7 @@ html[data-editor-appearance='light'] .editor-notice {
 
 .segmented-control-button-indicator {
   position: absolute;
-  inset: var(--segmented-control-inset);
+  inset: var(--segmented-control-inset) 0;
   z-index: 0;
   border-radius: var(--segmented-control-indicator-radius);
   background: transparent;
@@ -741,6 +742,14 @@ html[data-editor-appearance='light'] .editor-notice {
 
 .segmented-control-button-label {
   transform: translateY(-0.5px);
+}
+
+@supports (text-box-trim: trim-both) and (text-box-edge: cap alphabetic) {
+  .segmented-control-button-label {
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+    transform: translateY(var(--segmented-label-offset, 0px));
+  }
 }
 
 .segmented-control-button.is-active {
@@ -1186,16 +1195,16 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   position: relative;
   flex: 0 0 52px;
   width: 52px;
-  height: 24px;
+  height: 26px;
 }
 
 .line-jump-input {
   box-sizing: border-box;
   position: absolute;
-  top: 1px;
+  top: 0;
   left: 0;
   width: 100%;
-  height: 22px;
+  height: 26px;
   padding: 0 7px 2px;
   border: 1px solid var(--meo-ui-border-control, #54595e);
   border-radius: 8px;
@@ -1764,7 +1773,6 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 .mode-group {
   height: 28px;
   margin-inline: -1px;
-  padding-inline: 1px;
 }
 
 .mode-group .mode-button {
@@ -2849,6 +2857,12 @@ html[data-editor-appearance='dark'] .meo-tooltip {
 }
 .meo-tooltip-label:lang(zh) { text-box-edge: cap alphabetic; }
 .meo-tooltip--wrap .meo-tooltip-label { white-space: pre-wrap; }
+/* Wrapped text uses measured glyph bounds; the single-line button layout remains intact. */
+.meo-tooltip-text { display: contents; }
+.meo-tooltip-baseline { display: none; }
+.meo-tooltip--wrap .meo-tooltip-label { text-box-trim: none; }
+.meo-tooltip--wrap .meo-tooltip-text { display: block; }
+.meo-tooltip--wrap .meo-tooltip-baseline { display: inline-block; width: 0; height: 0; vertical-align: baseline; }
 .meo-tooltip-shortcut {
   flex: none;
   display: inline-block;
@@ -3505,7 +3519,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   width: 32px;
   height: 32px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--meo-ui-text) 28%, transparent);
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 6px;
   box-sizing: border-box;
   background-color: var(--meo-ui-surface-field);
@@ -3518,10 +3532,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.meo-hex-color-adjustment-preview-fill.is-current {
-  box-shadow: inset 1px 0 color-mix(in srgb, var(--meo-ui-text) 30%, transparent);
 }
 
 .meo-hex-color-adjustment-value {
@@ -6276,6 +6286,11 @@ body.outline-resizing .preview-frame {
   overflow: clip;
 }
 
+/* Fence rows own the outer corners; the Mermaid middle joins must stay square. */
+.cm-editor .meo-mermaid-editing-block {
+  border-radius: 0;
+}
+
 .cm-editor .meo-rendered-block-mode-shell[data-meo-rendered-block-layout="source-only"] {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -7945,6 +7960,7 @@ html[data-editor-appearance='dark'] .meo-input-suggestions {
   overflow-y: scroll;
   scrollbar-gutter: stable;
   scrollbar-width: auto;
+  /* Non-auto scrollbar-color suppresses the hover-only WebKit skin in Chromium. */
   scrollbar-color: auto;
   background: transparent;
 }
@@ -7990,6 +8006,9 @@ html[data-editor-appearance='dark'] .meo-input-suggestions {
 .meo-suggestion-marker svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
 .meo-input-suggestion[aria-selected='true'] .meo-suggestion-marker { visibility: visible; }
 .meo-suggestion-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit; }
+html[data-meo-ui-contrast='normal'] .meo-input-suggestions:not(.meo-narrow-suggestions) .meo-suggestion-label { color: var(--meo-ui-text-strong, var(--meo-ui-text)); }
+html[data-meo-ui-contrast='normal'] .meo-input-suggestions:not(.meo-narrow-suggestions) :is(.meo-input-suggestion-detail, .meo-suggestion-parameters) { color: color-mix(in oklab, var(--meo-ui-text-muted) 70%, var(--meo-ui-surface)); }
+html[data-meo-ui-contrast='normal'] .meo-input-suggestions:not(.meo-narrow-suggestions) .meo-input-suggestion-detail .meo-suggestion-match { color: color-mix(in oklab, var(--meo-suggestion-match-color) 70%, var(--meo-ui-surface)); }
 .meo-suggestion-trigger, .meo-suggestion-slash, .meo-suggestion-match { color: var(--meo-suggestion-match-color); }
 .meo-suggestion-parameters { color: var(--meo-ui-text-muted); }
 .meo-input-suggestion-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--meo-ui-text-muted); font: inherit; text-align: right; white-space: nowrap; overflow-wrap: normal; }
@@ -8141,11 +8160,11 @@ html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table-context-btn.is-a
   box-shadow: var(--meo-ui-shadow);
 }
 .meo-input-suggestion, .meo-suggestion-marker { color: var(--meo-ui-text); }
-.meo-input-suggestion[aria-selected='true'], .meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-text-selected); }
-.meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-trigger, .meo-suggestion-slash, .meo-suggestion-match) { color: var(--meo-ui-text-emphasis-selected); }
+html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'], html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-text-selected); }
+html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-trigger, .meo-suggestion-slash, .meo-suggestion-match) { color: var(--meo-ui-text-selected); }
 .meo-suggestion-match { font-weight: 600; }
 .meo-input-suggestion:hover:not([aria-selected='true']) { background: var(--meo-ui-surface-hover); color: var(--meo-ui-text); }
-:is(.settings-content, .preview-dropdown-panel, .meo-suggestion-list) { scrollbar-color: var(--meo-ui-scrollbar) transparent; }
+:is(.settings-content, .preview-dropdown-panel) { scrollbar-color: var(--meo-ui-scrollbar) transparent; }
 .meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb { background-color: var(--meo-ui-scrollbar); }
 .meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb:hover { background-color: var(--meo-ui-scrollbar-hover); }
 .outline-sidebar, .outline-header-label, .outline-item { color: var(--meo-outline-foreground); }
@@ -8231,8 +8250,8 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 :is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action, .changes-review-option, .changes-review-snapshot-select):is(:hover, :focus-visible, .is-selected):not(:disabled),
 .cm-editor .meo-md-html-table-context-menu :is(button:hover, button:focus-visible) { color: var(--meo-ui-text); }
 .cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-btn.is-active { color: var(--meo-ui-text-selected); }
-.meo-input-suggestion[aria-selected='true'],
-.meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-text-selected); }
+html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'],
+html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-text-selected); }
 .meo-input-suggestion:hover:not([aria-selected='true']) { color: var(--meo-ui-text); }
 :is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action, .settings-button, .changes-review-option, .changes-review-snapshot-select, .changes-review-snapshot-action):disabled,
 .cm-editor .meo-md-html-table-context-btn:disabled { color: var(--meo-ui-text-disabled); }

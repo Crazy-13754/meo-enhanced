@@ -444,12 +444,17 @@ export async function initializeMermaidEditorRuntime(
   runtime.initialize(config);
 }
 
-export async function renderMermaidRuntime(renderId: string, source: string): Promise<string> {
+export async function renderMermaidRuntime(renderId: string, source: string, signal?: AbortSignal, interactive = false): Promise<string> {
   await document.fonts?.ready;
+  signal?.throwIfAborted();
   const runtime = await loadMermaidRuntime();
-  // Cached results bypass this path. Give pending input a turn before an
-  // uncached diagram adds synchronous layout work to editor initialization.
-  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  // Opening/background work yields before layout. A visible graph update has
+  // already accepted input; another turn lets heavy document refreshes jump
+  // ahead of it and can turn a small text edit into a second-long wait.
+  if (!interactive) await new Promise<void>(resolve => setTimeout(resolve, 0));
+  // A superseded warm-up may have been waiting for fonts or the input turn.
+  // Drop it before Mermaid's synchronous layout can delay the current edit.
+  signal?.throwIfAborted();
   return renderMermaidSvgInDocument(runtime, renderId, source, document);
 }
 
@@ -580,6 +585,7 @@ export function getFencedCodeContent(state: EditorState, node: SyntaxNodeRef): s
 }
 
 export class MermaidDiagramWidget extends WidgetType {
+  private container: HTMLElement | null = null;
   diagramText: string;
   startLine: number;
   endLine: number;
@@ -685,14 +691,35 @@ export class MermaidDiagramWidget extends WidgetType {
     );
   }
 
+  /** Update an embedded split preview without discarding its SVG or camera. */
+  updateSource(diagramText: string, startLine: number, endLine: number): void {
+    const sourceChanged = this.diagramText !== diagramText;
+    this.diagramText = diagramText;
+    this.startLine = startLine;
+    this.endLine = endLine;
+    this.isDisplayMath = isDisplayMathDiagram(diagramText);
+    if (this.container) {
+      this.container.dataset.meoRenderedBlockStartLine = String(startLine);
+      this.container.dataset.meoRenderedBlockEndLine = String(endLine);
+      this.container.classList.toggle('meo-mermaid-math-block', this.isDisplayMath);
+    }
+    const identity = getMermaidEditorPresentationIdentity();
+    if (!sourceChanged && this.themeSignature === identity.themeKey) return;
+    this.themeSignature = identity.themeKey;
+    if (this.container) this.container.dataset.meoMermaidRendering = 'true';
+    this.presentationHandle?.present(diagramText, identity.themeKey, identity.configKey);
+  }
+
   toDOM(view?: EditorView) {
     const container = document.createElement('div');
+    this.container = container;
     let presentationGeneration = 0;
     let releaseBusyAfterLayout = false;
     const finishPresentation = () => {
       presentationGeneration += 1;
       releaseBusyAfterLayout = false;
       container.removeAttribute('aria-busy');
+      delete container.dataset.meoMermaidRendering;
     };
     const releaseBusyWhenSettled = (generation: number, waitForLayout: Promise<void>) => {
       void waitForLayout.then(() => {
@@ -756,7 +783,9 @@ export class MermaidDiagramWidget extends WidgetType {
     }
 
     this.presentationHandle = this.presentationFactory.create({
+      hasDiagram: () => Boolean(container.querySelector('.meo-mermaid-svg-wrapper')),
       showPending: () => {
+        container.dataset.meoMermaidRendering = 'true';
         presentationGeneration += 1;
         releaseBusyAfterLayout = false;
         container.setAttribute('aria-busy', 'true');
@@ -794,13 +823,30 @@ export class MermaidDiagramWidget extends WidgetType {
         container.style.removeProperty('min-height');
         container.replaceChildren();
         this.renderSvg(container, svg, view);
+        const presentedSource = this.diagramText;
+        const presentedTheme = this.themeSignature;
+        const presentedWrapper = container.querySelector('.meo-mermaid-svg-wrapper');
+        // Let the replacement paint before deferred document work resumes.
+        // A newer source/theme or replacement must retain its own wait marker.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (container.isConnected && this.diagramText === presentedSource
+            && this.themeSignature === presentedTheme
+            && container.querySelector('.meo-mermaid-svg-wrapper') === presentedWrapper) {
+            delete container.dataset.meoMermaidRendering;
+          }
+        }));
       },
       showError: (_source, error) => {
         finishPresentation();
-        this.embeddedControlsCleanup();
-        // Keep the height reserved while loading. A failed diagram must not
-        // contract just after a mode switch exposes the Live viewport.
-        container.replaceChildren();
+        if (container.querySelector('.meo-mermaid-svg-wrapper')) {
+          // Incomplete input keeps the last valid diagram and its camera;
+          // the error badge makes clear that it is not the current source.
+          container.querySelector('.meo-mermaid-error-badge')?.remove();
+        } else {
+          this.embeddedControlsCleanup();
+          // Keep the initial loading height reserved until a valid diagram.
+          container.replaceChildren();
+        }
         this.renderError(container, error);
       },
       clearPresentation: () => {
@@ -1606,17 +1652,19 @@ export class MermaidDiagramWidget extends WidgetType {
   }
 
   renderError(container: HTMLElement, errorMsg: string): void {
-    const fallback = document.createElement('pre');
-    fallback.className = 'meo-mermaid-fallback';
-    const code = document.createElement('code');
-    code.textContent = this.diagramText;
-    fallback.appendChild(code);
+    if (!container.querySelector('.meo-mermaid-svg-wrapper')) {
+      const fallback = document.createElement('pre');
+      fallback.className = 'meo-mermaid-fallback';
+      const code = document.createElement('code');
+      code.textContent = this.diagramText;
+      fallback.appendChild(code);
+      container.appendChild(fallback);
+    }
 
     const badge = document.createElement('div');
     badge.className = 'meo-mermaid-error-badge';
     badge.textContent = getUiStrings(this.uiLanguage).mermaidError(errorMsg);
 
-    container.appendChild(fallback);
     container.appendChild(badge);
   }
 
@@ -1625,6 +1673,7 @@ export class MermaidDiagramWidget extends WidgetType {
   }
 
   destroy() {
+    this.container = null;
     this.embeddedControlsCleanup();
     const errors: unknown[] = [];
     try {

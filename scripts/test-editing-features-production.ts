@@ -2,7 +2,23 @@ import assert from 'node:assert/strict';
 import { launchTestBrowser, closeTestBrowser } from './browser-test-helpers';
 import { defaultInputAssistance } from '../src/foundation/editingPreferences';
 import type { LinkCandidate } from '../src/protocol/editorServices';
+import { detectSuggestionContext } from '../webview/src/application/inputSuggestions';
 import { parseDelimitedTable, serializeDelimitedTable, splitMarkdownTableRow, parseMarkdownTable } from '../webview/src/application/delimitedTable';
+
+const imePreferences = { ...defaultInputAssistance, emoji: true };
+for (const [before, type, query, length] of [
+  [":s'mi", 'emoji', 'smi', 5], [":smi'", 'emoji', 'smi', 5],
+  ["[[no'te", 'documents', 'note', 5], ["[Go](no'te", 'paths', 'note', 5],
+  ["[Go](O'Reilly#ti'tle", 'headings', 'title', 6]
+] as const) {
+  const context = detectSuggestionContext(before, imePreferences, true);
+  assert.equal(context?.type, type, before + ': IME keeps the candidate context');
+  assert.equal(context?.query, query, before + ': pinyin separators affect filtering only');
+  assert.equal(context?.length, length, before + ': replacement retains the raw input span');
+}
+assert.equal(detectSuggestionContext("[Go](O'Reilly", imePreferences)?.query, "O'Reilly", 'literal apostrophes remain valid in file paths');
+assert.equal(detectSuggestionContext("[Go](O'Reilly#ti'tle", imePreferences, true)?.target, "O'Reilly", 'IME filtering never rewrites the target document');
+assert.equal(detectSuggestionContext(":s'mi", imePreferences), null, 'non-IME emoji names keep their original syntax');
 
 for (const delimiter of [',', '\t'] as const) {
   const cells = [['a,b', '"quote"', ''], ['line\nnext', 'a\tb', ' a ']];
@@ -407,6 +423,72 @@ try {
       await waitText(inserted);
       assert.equal(await page.evaluate(() => (window as any).editor.view.hasFocus), true, kind + ': accepting keeps document input connected');
     }
+  }
+  const imePrefix = Array.from({ length: 35 }, (_, index) => 'Paragraph ' + index + '\n\n').join('');
+  const imeTail = '\n\n' + imePrefix;
+  for (const mode of ['source', 'live']) for (const kind of ['documents', 'paths', 'emoji']) for (const slashPreferAbove of [false, true]) {
+    const label = [mode, kind, slashPreferAbove ? 'above' : 'below'].join(':');
+    const query = kind === 'documents' ? '[[No' : kind === 'paths' ? '[Go](No' : ':s';
+    const preedit = kind === 'emoji' ? "m'i" : "'te";
+    const committed = kind === 'emoji' ? 'mi' : 'te';
+    await prepare(mode, imePrefix + imeTail, imePrefix.length, imePrefix.length, { pairMode: 'off', emoji: true, slashPreferAbove }, kind === 'emoji' ? undefined : candidates);
+    await page.evaluate(() => { (window as any).editor.view.dispatch({ scrollIntoView: true }); });
+    await settleSuggestions();
+    const placeCaret = async (top: number) => {
+      await page.evaluate(top => { const view = (window as any).editor.view, coords = view.coordsAtPos(view.state.selection.main.head); view.scrollDOM.scrollTop += coords.top - top; }, top);
+      await settleSuggestions();
+    };
+    await placeCaret(360); await page.keyboard.type(query); await openSuggestions(); await settleSuggestions();
+    const geometry = () => page.evaluate(() => {
+      const view = (window as any).editor.view, caret = view.coordsAtPos(view.state.selection.main.head);
+      const popup = document.querySelector<HTMLElement>('.meo-input-suggestions:not([hidden])')!, bounds = popup.getBoundingClientRect();
+      const rows = Array.from(popup.querySelectorAll<HTMLElement>('[role="option"]'));
+      return { top: bounds.top, bottom: bounds.bottom, caretTop: caret.top, caretBottom: caret.bottom, order: rows.map(row => Number(row.dataset.suggestionIndex)) };
+    });
+    const initial = await geometry();
+    assert.ok(slashPreferAbove ? initial.bottom <= initial.caretTop - 3 : initial.top >= initial.caretBottom + 3, label + ': uses the shared preferred side');
+    assert.equal(slashPreferAbove ? initial.order.at(-1) : initial.order[0], 0, label + ': best match stays at the preferred edge');
+    await page.keyboard.press(slashPreferAbove ? 'ArrowUp' : 'ArrowDown');
+    assert.equal(await page.$eval('.meo-input-suggestion[aria-selected="true"]', row => Number((row as HTMLElement).dataset.suggestionIndex)), 1, label + ': arrows follow visual order');
+    await page.$eval('.cm-content', content => {
+      content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+      content.dispatchEvent(new CompositionEvent('compositionend', { data: '', bubbles: true }));
+    });
+    await page.waitForFunction(() => !(window as any).editor.view.compositionStarted && document.querySelector('.meo-input-suggestions:not([hidden]) [aria-selected="true"]')?.getAttribute('aria-disabled') === 'false');
+    await page.keyboard.press(slashPreferAbove ? 'ArrowUp' : 'ArrowDown');
+    assert.equal(await page.$eval('.meo-input-suggestion[aria-selected="true"]', row => Number((row as HTMLElement).dataset.suggestionIndex)), 2, label + ': empty IME cycles preserve the highlighted selection');
+    await page.keyboard.press(slashPreferAbove ? 'ArrowDown' : 'ArrowUp');
+    await page.keyboard.press(slashPreferAbove ? 'ArrowDown' : 'ArrowUp');
+    const ime = await page.createCDPSession();
+    await ime.send('Input.imeSetComposition', { text: preedit, selectionStart: preedit.length, selectionEnd: preedit.length });
+    await page.waitForFunction(() => {
+      const rows = Array.from(document.querySelectorAll('.meo-input-suggestions:not([hidden]) [role="option"]'));
+      return rows.length > 0 && rows.every(row => row.getAttribute('aria-disabled') === 'true');
+    });
+    if (kind === 'emoji') assert.equal(await page.$$eval('.meo-input-suggestion', rows => rows.length), 1, label + ': apostrophes filter to smile');
+    const preeditText = await text();
+    await page.click('.meo-input-suggestion[aria-selected="true"]');
+    assert.equal(await text(), preeditText, label + ': clicking does not commit an IME candidate');
+    for (const key of ['ArrowUp', 'ArrowDown', 'Enter', 'Tab', 'Escape']) {
+      assert.equal(await page.evaluate(key => {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, isComposing: true });
+        document.activeElement!.dispatchEvent(event); return event.defaultPrevented;
+      }, key), false, label + ': leaves ' + key + ' to the IME');
+    }
+    await ime.send('Input.insertText', { text: committed });
+    await page.waitForFunction(() => document.querySelector('.meo-input-suggestions:not([hidden]) [aria-selected="true"]')?.getAttribute('aria-disabled') === 'false');
+    await page.keyboard.press('Tab');
+    const inserted = kind === 'emoji' ? '😄' : kind === 'documents' ? '[[docs/0/Note with space' : '[Go](docs/0/Note%20with%20space.md';
+    await waitText(imePrefix + inserted + imeTail); await ime.detach();
+    await prepare(mode, imePrefix + imeTail, imePrefix.length, imePrefix.length, { pairMode: 'off', emoji: true, slashPreferAbove }, kind === 'emoji' ? undefined : candidates);
+    await page.evaluate(() => { (window as any).editor.view.dispatch({ scrollIntoView: true }); });
+    await settleSuggestions(); await placeCaret(360); await page.keyboard.type(query); await openSuggestions();
+    await placeCaret(slashPreferAbove ? 22 : 675);
+    const fallback = await geometry();
+    assert.ok(slashPreferAbove ? fallback.top >= fallback.caretBottom + 3 : fallback.bottom <= fallback.caretTop - 3, label + ': falls back when the preferred side has no room');
+    assert.deepEqual(fallback.order, initial.order, label + ': fallback does not reverse the list');
+    await page.keyboard.press('Escape');
+    assert.equal(await text(), imePrefix + query + imeTail, label + ': dismissal leaves literal input intact');
   }
   for (const kind of ['documents', 'emoji']) {
     await prepare('source', '', 0, 0, { pairMode: 'off', emoji: true }, kind === 'documents' ? candidates : undefined);

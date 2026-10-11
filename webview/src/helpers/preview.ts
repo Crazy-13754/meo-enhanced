@@ -4,7 +4,7 @@ import { createElement as createIconElement, PenLine, TextCursor, Info, Palette,
 import { getExportStyleEnvironment } from './export';
 import { documentSurfaceVariables } from '../../../src/shared/documentSurfaceRoles';
 import { createPreviewMermaidRenderer } from './previewMermaid';
-import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
+import { createCopyCodeButton } from './codeBlockControls';
 import { logWebviewRenderError } from './errors';
 import { normalizeDocumentText } from '../../../src/foundation/documentText';
 import { createDocumentScrollToTopController } from './scrollToTop';
@@ -286,27 +286,6 @@ function addPreviewCodeCopyControls(root: ParentNode, language: UiLanguage): voi
     }
     button.dataset.tooltip = strings.copyCode;
     button.setAttribute('aria-label', strings.copyCode);
-    if (block.classList.contains('meo-export-math-display')) {
-      const actions = button.parentElement!;
-      let select = actions.querySelector<HTMLElement>('.meo-select-all-code-btn');
-      if (!select) {
-        const selectButton = createSelectAllCodeButton(() => {
-          const current = selectButton.closest<HTMLElement>('.meo-export-math-display');
-          const visible = current?.querySelector('.katex-html') ?? current?.querySelector('.katex-error');
-          if (!visible) return;
-          const range = block.ownerDocument.createRange();
-          range.selectNodeContents(visible);
-          const selection = block.ownerDocument.getSelection();
-          selection?.removeAllRanges(); selection?.addRange(range);
-        }, language, block.ownerDocument);
-        selectButton.addEventListener('mousedown', event => event.preventDefault());
-        actions.prepend(selectButton);
-        select = selectButton;
-      }
-      const label = language === 'zh-CN' ? '全选公式' : 'Select formula';
-      select.dataset.tooltip = label;
-      select.setAttribute('aria-label', label);
-    }
   }
 }
 
@@ -320,12 +299,12 @@ const previewCodeCopyStyles = `
 }
 :is(.meo-export-code-block-wrap, .meo-export-mermaid, .meo-export-math-display):hover > .meo-preview-code-actions,
 .meo-preview-code-actions:focus-within { opacity: 1; pointer-events: auto; }
-.meo-preview-code-actions > :is(.meo-copy-code-btn, .meo-select-all-code-btn) {
+.meo-preview-code-actions > .meo-copy-code-btn {
   display: inline-flex; align-items: center; justify-content: center;
   box-sizing: border-box; width: 22px; height: 20px; padding: 0; border: 0; border-radius: 6px;
   cursor: pointer; color: var(--meo-preview-code-copy-fg); background: var(--meo-preview-code-copy-bg);
 }
-.meo-preview-code-actions > :is(.meo-copy-code-btn, .meo-select-all-code-btn):is(:hover, :focus-visible) {
+.meo-preview-code-actions > .meo-copy-code-btn:is(:hover, :focus-visible) {
   color: var(--meo-preview-code-copy-hover-fg); background: var(--meo-preview-code-copy-hover-bg);
 }
 .meo-preview-code-actions > .meo-copy-code-btn:focus-visible {
@@ -3098,6 +3077,9 @@ export function createPreviewController({
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      appearanceSegments.dispose();
+      sourceColoringSegments.dispose();
+      showCommentsSegments.dispose();
       cancelPaintReady();
       cancelHighlightFrame();
       requestGeneration += 1;
