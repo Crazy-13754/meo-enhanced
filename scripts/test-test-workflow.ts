@@ -10,6 +10,11 @@ import {
 } from './test-workflow-policy';
 
 const quick = createTestWorkflowPlan(parseTestWorkflowRequest(['quick']));
+const lightUi = createTestWorkflowPlan(parseTestWorkflowRequest(['ui-light', '--dry-run']));
+assert.equal(lightUi.tier, 'ui-light');
+assert.equal(lightUi.longRunning, false);
+assert.deepEqual(flattenTestWorkflowCommands(lightUi), [{args: ['run', 'build:webview']}], 'light UI must not schedule broad regression packs');
+assert.doesNotThrow(() => validateTestWorkflowAuthorization(lightUi, false, false));
 const quickCommands = flattenTestWorkflowCommands(quick);
 assert.equal(quick.tier, 'quick');
 assert.equal(quick.longRunning, false);
@@ -245,6 +250,7 @@ const packageJson = JSON.parse(
 ) as { scripts?: Record<string, string> };
 const packageScripts = packageJson.scripts ?? {};
 assert.equal(packageScripts['test:quick'], 'bun scripts/test-workflow.ts quick');
+assert.equal(packageScripts['test:ui-light'], 'bun scripts/test-workflow.ts ui-light');
 assert.equal(packageScripts['test:theme-inheritance'], 'bun scripts/test-theme-inheritance.ts');
 assert.match(packageScripts['test:unit'] ?? '', /bun scripts\/test-source-theme-customizations\.ts/);
 assert.match(packageScripts['test:browser'] ?? '', /bun run test:theme-inheritance/);
@@ -362,6 +368,7 @@ for (const link of featureCoverageGuide.matchAll(/\]\(\.\.\/(scripts\/test-[^)]+
   assert.ok(releaseDirectScripts.has(link[1]!), `Documented feature contract is absent from the release gate: ${link[1]}`);
 }
 for (const command of [
+  'bun run test:ui-light',
   'bun run test:quick',
   'bun run test:targeted',
   'bun run test:release',

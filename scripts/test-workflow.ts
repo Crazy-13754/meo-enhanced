@@ -9,12 +9,17 @@ import {
 const help = `MEO Enhanced test workflow
 
 Usage:
+  bun scripts/test-workflow.ts ui-light [--dry-run]
   bun scripts/test-workflow.ts quick [--dry-run]
   bun scripts/test-workflow.ts targeted <history|table|rendered|appearance|search|viewport|changes> [--dry-run]
   bun scripts/test-workflow.ts targeted uat <document> [--dry-run]
   bun scripts/test-workflow.ts release --confirm-long-run [--dry-run]
   bun scripts/test-workflow.ts endurance <document> --confirm-long-run [--dry-run]
   bun scripts/test-workflow.ts large-document <document> --confirm-long-run [--dry-run]
+
+Light UI runs the automated Webview build only. Complete separate Chinese/English,
+light/dark visual smoke and the affected control's functional smoke before reporting
+UI validation complete. Use this path only for presentation changes within the guide.
 
 Long-running workflows require explicit user authorization for the current task
 and the --confirm-long-run flag. A dry run only prints the plan.`;
@@ -111,6 +116,9 @@ async function main(): Promise<void> {
   validateTestWorkflowAuthorization(plan, request.confirmLongRun, request.dryRun);
 
   console.log(`${plan.title} (${plan.expectedDuration})`);
+  if (plan.tier === 'ui-light') {
+    console.log('Required separate smoke: Chinese/English, light/dark, visible layout and relevant hover/focus states; verify the affected control outcome.');
+  }
   let commandNumber = 0;
   for (const [stageIndex, stage] of plan.stages.entries()) {
     const concurrency = Math.max(1, stage.maxConcurrency ?? 1);
@@ -134,6 +142,9 @@ async function main(): Promise<void> {
   }
   const elapsedSeconds = Math.round((performance.now() - startedAt) / 100) / 10;
   console.log(`\n${plan.title} passed in ${elapsedSeconds}s`);
+  if (plan.tier === 'ui-light') {
+    console.log('Build evidence only. Complete and report the separate visual/functional smoke evidence before marking UI validation complete.');
+  }
 }
 
 try {

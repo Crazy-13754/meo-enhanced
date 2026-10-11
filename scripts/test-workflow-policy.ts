@@ -1,4 +1,5 @@
 export type TestWorkflowTier =
+  | 'ui-light'
   | 'quick'
   | 'targeted'
   | 'release'
@@ -231,10 +232,10 @@ export function parseTestWorkflowRequest(argv: string[]): TestWorkflowRequest {
   const tier = positional[0] as TestWorkflowTier | undefined;
   if (
     !tier
-    || !['quick', 'targeted', 'release', 'endurance', 'large-document'].includes(tier)
+    || !['ui-light', 'quick', 'targeted', 'release', 'endurance', 'large-document'].includes(tier)
   ) {
     throw new Error(
-      'Expected one tier: quick, targeted, release, endurance, or large-document'
+      'Expected one tier: ui-light, quick, targeted, release, endurance, or large-document'
     );
   }
 
@@ -264,11 +265,19 @@ export function parseTestWorkflowRequest(argv: string[]): TestWorkflowRequest {
 
 export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkflowPlan {
   switch (request.tier) {
+    case 'ui-light':
+      return {
+        tier: 'ui-light',
+        title: 'Light UI automated build checks',
+        expectedDuration: 'Webview build plus separate focused smoke checks',
+        longRunning: false,
+        stages: [serialStage('Webview build', [packageScript('build:webview')])]
+      };
     case 'quick':
       return {
         tier: 'quick',
         title: 'Quick regression gate',
-        expectedDuration: 'about 2-4 minutes',
+        expectedDuration: 'about 5-10 minutes, depending on the host',
         longRunning: false,
         stages: [serialStage('Quick regression contracts', [
           packageScript('typecheck'),

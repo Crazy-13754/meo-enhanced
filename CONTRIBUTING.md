@@ -44,8 +44,11 @@ contract for the live style path is `bun scripts/test-development-style-refresh.
 ## Develop and verify
 
 Use the tiered workflow in [docs/testing-workflow.md](docs/testing-workflow.md).
-For normal development, run the quick gate after a coherent change and add the
-targeted pack for the affected high-risk area:
+For copy, existing icon replacements and local visual style changes, use the
+guide's Light UI path: `bun run test:ui-light` builds the Webview, then complete
+the scoped bilingual light/dark visual and affected-control functional smoke.
+For behavior or other implementation changes, run the quick gate after a
+coherent change and add the targeted pack for the affected high-risk area:
 
 ```shell
 bun run test:quick

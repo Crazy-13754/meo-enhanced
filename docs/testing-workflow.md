@@ -32,11 +32,41 @@ the long-run authorization policy below.
 
 | Tier | Use it when | Expected time | Command |
 | --- | --- | --- | --- |
-| Quick | A coherent implementation change is ready for a general regression check | About 2–4 minutes | `bun run test:quick` |
+| Light UI | Copy, existing icon replacements, or local visual style changes meet the boundary below | Build plus a scoped smoke pass | `bun run test:ui-light` |
+| Quick | A behavior or other implementation change is ready for a general regression check | About 5–10 minutes, depending on the host | `bun run test:quick` |
 | Targeted | A change affects one high-risk area, or a quick check identifies that area | About 1–5 minutes | `bun run test:targeted -- <area>` |
 | Release | A milestone or release candidate needs the complete gate | About 12–25 minutes | `bun run test:release -- --confirm-long-run` |
 | Large document | A shorter production-like document stress pass is specifically needed | About 1–3 minutes | `bun run test:large-document -- <document> --confirm-long-run` |
 | Endurance | Full-document edit, undo/redo, cursor, and viewport stress is specifically needed | About 20–35 minutes per run | `bun run test:endurance -- <document> --confirm-long-run` |
+
+## Light UI changes
+
+Use this path only for copy, replacing an existing icon, or local visual styling.
+The diff must preserve interaction behavior, Protocol, persistence, configuration
+structure, and other high-risk logic. Changes to event handling, focus, keyboard
+routing, input, state, theme derivation, or multiple interactions use the normal
+quick and relevant targeted gates. When the boundary is unclear, use that path.
+
+Completion requires:
+
+1. A build or type check appropriate to the changed files. `bun run test:ui-light`
+   builds the Webview; its success reports automated build evidence only.
+2. One focused visual smoke of the changed control in Chinese/English and
+   light/dark appearances. Check legibility, wrapping, clipping, overlap, and
+   the relevant hover/focus states; include a narrow view when layout is affected.
+3. A functional smoke of the affected entry or control, observing its actual
+   outcome, such as opening and closing the intended Settings window.
+4. Update existing expectations affected by the copy/icon change and run the
+   relevant contract when needed. Simple copy does not need new mirror tests.
+
+Use the existing preview/browser path and retain screenshots plus the observed
+action results. Report build and smoke evidence separately; running the command
+alone does not complete this path. Reuse evidence that still covers the current
+diff instead of rebuilding or repeating unchanged checks. This path does not
+automatically run unrelated history, table, scrolling, or broad regression packs.
+Behavior changes and accumulated interaction risk still require quick/targeted
+checks. Release coverage, long-run authorization, privacy and commit Hook checks
+retain their existing requirements.
 
 ## Long-run recommendation and authorization
 
@@ -132,7 +162,8 @@ This focused pack typically takes less than a minute.
 
 1. Reproduce the reported behavior with the smallest relevant contract.
 2. While implementing, rerun only that contract.
-3. Once the change is coherent, run `bun run test:quick` once.
+3. For a coherent change within the Light UI boundary, complete that path.
+   For behavior or other implementation changes, run `bun run test:quick` once.
 4. Add the matching targeted pack when the change touches a high-risk area.
 5. Assess the long-run triggers above. If one applies, recommend the matching
    run and wait for authorization; otherwise stop.
