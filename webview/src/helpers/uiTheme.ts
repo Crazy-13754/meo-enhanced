@@ -104,6 +104,9 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
       const switchOff = mix(raised, tint, appearance === 'light' ? 0.28 : 0.32);
       const surfaces = [surface, raised, field, hover, pressed, track, ...(highContrast ? [] : [selected])];
       const text = fit(foreground, surfaces, 4.55);
+      // Gray selection surfaces can lift both text levels to the same minimum.
+      // A stronger label restores hierarchy without reducing detail readability.
+      const strongText = highContrast ? text : fit(text, surfaces, 7);
       const muted = highContrast ? text : fit(mix(text, neutral(raised), 0.34), surfaces, 4.55);
       const separator = nativeBorder ?? mix(raised, tint, appearance === 'light' ? 0.13 : 0.12);
       const floatBorder = nativeBorder ?? fit(mix(raised, tint, appearance === 'light' ? 0.20 : 0.19), [surface, raised], 1.3);
@@ -115,7 +118,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
       const roles: Record<string, string> = Object.fromEntries(Object.entries({
         surface, 'surface-raised': raised, 'surface-field': field, 'surface-hover': hover,
         'surface-pressed': pressed, 'surface-selected': selected, 'segmented-track': track,
-        text, 'text-muted': muted, 'text-disabled': mix(text, neutral(raised), 0.55),
+        text, 'text-strong': strongText, 'text-muted': muted, 'text-disabled': mix(text, neutral(raised), 0.55),
         'text-selected': selectedText, separator, 'border-float': floatBorder, 'border-control': controlBorder,
         focus: nativeFocus ?? fit(accent, [surface, raised, field], 3.05),
         'selection-border': nativeActiveBorder ?? selected,
