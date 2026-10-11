@@ -1,0 +1,17 @@
+{
+  "$schema": "../../preset.schema.json",
+  "schemaVersion": 1,
+  "id": "paper-notes",
+  "name": "纸页笔记",
+  "description": "适合长文、笔记和代码阅读，支持浅色与深色主题。",
+  "base": "default",
+  "controls": {
+    "htmlComments": { "mode": "editable" },
+    "codeColoring": { "mode": "editable" }
+  },
+  "styles": { "common": "common.css" },
+  "themes": {
+    "light": { "css": "light.css", "codeTheme": "light-plus" },
+    "dark": { "css": "dark.css", "codeTheme": "dark-plus" }
+  }
+}
