@@ -86,6 +86,9 @@ type HighlighterRecord = {
 type PendingHighlight = {
   readonly generation: number;
   readonly consumers: Set<() => boolean>;
+  readonly foregroundConsumers: Set<() => boolean>;
+  priority: 'foreground' | 'background';
+  resumeForeground?: () => void;
 };
 
 const alwaysNeeded = () => true;
@@ -228,7 +231,8 @@ export function requestShikiTokens(
   lang: string,
   code: string,
   surface: ShikiSurface = 'editor',
-  isNeeded: () => boolean = alwaysNeeded
+  isNeeded: () => boolean = alwaysNeeded,
+  priority: 'foreground' | 'background' = 'foreground'
 ): void {
   const state = getRuntimeState(surface);
   if (!state.rawTheme || state.activeHighlightConsumers === 0) {
@@ -239,10 +243,17 @@ export function requestShikiTokens(
   const pending = state.pending.get(key);
   if (pending) {
     pending.consumers.add(isNeeded);
+    if (priority === 'foreground') {
+      pending.foregroundConsumers.add(isNeeded);
+      pending.priority = priority;
+      pending.resumeForeground?.();
+    }
     return;
   }
   const request: PendingHighlight = {
     generation: state.workGeneration,
+    priority,
+    foregroundConsumers: new Set(priority === 'foreground' ? [isNeeded] : []),
     consumers: new Set([isNeeded])
   };
   state.pending.set(key, request);
@@ -348,7 +359,9 @@ function tokenizeInBatches(
   highlighter: HighlighterCore,
   lang: string,
   code: string,
-  isCurrent: () => boolean
+  isCurrent: () => boolean,
+  request: PendingHighlight,
+  waitForForeground: () => Promise<void>
 ): ShikiTokenLines | null | Promise<ShikiTokenLines | null> {
   const lines = /\r?\n/g;
   let start = 0;
@@ -396,7 +409,19 @@ function tokenizeInBatches(
     start = next;
     // Keep publication atomic while letting input run between full-line batches.
     // Microtasks alone would still block the browser for the entire code block.
-    return new Promise<void>((resolve) => {
+    const yieldBatch = new Promise<void>((resolve) => {
+      if (request.priority === 'background' && typeof requestIdleCallback === 'function') {
+        const resume = () => {
+          cancelIdleCallback(idle);
+          request.resumeForeground = undefined;
+          resolve();
+        };
+        const idle = requestIdleCallback(resume, { timeout: 500 });
+        // A click promotes already running preparation without waiting for the
+        // next idle period. Publication still waits for the whole document.
+        request.resumeForeground = resume;
+        return;
+      }
       const channel = new MessageChannel();
       channel.port1.onmessage = () => {
         channel.port1.close();
@@ -404,7 +429,12 @@ function tokenizeInBatches(
         resolve();
       };
       channel.port2.postMessage(null);
-    }).then(runBatch);
+    });
+    return yieldBatch.then(async () => {
+      // Background Source preparation never holds up a visible fence request.
+      if (request.priority === 'background') await waitForForeground();
+      return runBatch();
+    });
   };
   return runBatch();
 }
@@ -417,6 +447,7 @@ async function tokenizeAndCache(
   request: PendingHighlight
 ): Promise<void> {
   const { generation } = request;
+  let ownedBatch: Promise<void> | null = null;
   const finish = (): void => {
     if (state.pending.get(key) === request) state.pending.delete(key);
   };
@@ -426,8 +457,13 @@ async function tokenizeAndCache(
     let needed = false;
     for (const consumer of request.consumers) {
       if (consumer()) needed = true;
-      else request.consumers.delete(consumer);
+      else {
+        request.consumers.delete(consumer);
+        request.foregroundConsumers.delete(consumer);
+      }
     }
+    request.priority = request.foregroundConsumers.size ? 'foreground' : 'background';
+    if (request.priority === 'background' && ownedBatch && activeTokenBatch === ownedBatch) activeTokenBatch = null;
     return needed;
   };
   const continueBatch = (): boolean => {
@@ -476,10 +512,13 @@ async function tokenizeAndCache(
     }
     let mapped = getMatchingSurfaceTokens(state, lang, code);
     if (!mapped) {
-      const tokenization = tokenizeInBatches(record, highlighter, lang, code, continueBatch);
+      const tokenization = tokenizeInBatches(record, highlighter, lang, code, continueBatch, request, async () => {
+        while (activeTokenBatch && activeTokenBatch !== ownedBatch) await activeTokenBatch;
+      });
       if (tokenization instanceof Promise) {
         const completion = tokenization.then(() => undefined, () => undefined);
-        activeTokenBatch = completion;
+        ownedBatch = completion;
+        if (request.priority === 'foreground') activeTokenBatch = completion;
         try {
           mapped = await tokenization;
         } finally {
@@ -531,8 +570,12 @@ export function setShikiTheme(
     notifyRefresh(state);
     return;
   }
+  const themeKey = JSON.stringify(toShikiTheme(theme));
+  // Preset/font/layout updates often reapply an unchanged palette. Preserve
+  // completed and pending work unless the actual Shiki theme input changed.
+  if (state.tokenThemeKey === themeKey) return;
   state.rawTheme = theme;
-  state.tokenThemeKey = JSON.stringify(toShikiTheme(theme));
+  state.tokenThemeKey = themeKey;
   state.themeMeta = computeThemeMeta(theme);
   state.themeVersion += 1;
   state.workGeneration += 1;

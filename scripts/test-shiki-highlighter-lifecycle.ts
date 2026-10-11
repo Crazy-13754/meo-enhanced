@@ -792,6 +792,86 @@ await reuseRequiresEveryTokenInputToMatch();
 await pendingSurfacesRetireIndependently();
 await reusedEntriesRemainBounded();
 await completedBatchRefreshesOnce();
+async function identicalThemesPreserveCompleteAndPendingWork(): Promise<void> {
+  for (const surface of ['editor', 'source', 'preview'] as const) {
+    const palette = theme('stable', 'dark');
+    shiki.setShikiTheme(palette, surface);
+    const release = shiki.activateShikiCodeHighlighting(surface);
+    const before = highlighters.length;
+    planHighlighter();
+    shiki.requestShikiTokens('typescript', 'const cached = 1;', surface);
+    await waitFor(() => !!shiki.getShikiTokens('typescript', 'const cached = 1;', surface), 'cached palette');
+    const cached = shiki.getShikiTokens('typescript', 'const cached = 1;', surface);
+    const generation = shiki.getShikiThemeVersion(surface);
+    shiki.setShikiTheme(structuredClone(palette), surface);
+    assert.equal(shiki.getShikiThemeVersion(surface), generation);
+    assert.equal(shiki.getShikiTokens('typescript', 'const cached = 1;', surface), cached);
+    shiki.requestShikiTokens('typescript', 'const pending = 2;', surface);
+    shiki.setShikiTheme({ ...palette, name: 'renamed' }, surface);
+    await waitFor(() => !!shiki.getShikiTokens('typescript', 'const pending = 2;', surface), 'pending palette');
+    assert.equal(highlighters.length, before + 1, 'Equal theme inputs must retain the runtime');
+    assert.equal(highlighters[before].disposeCalls, 0);
+    planHighlighter();
+    shiki.setShikiTheme({ ...palette, tokenColors: [{ scope: 'keyword', settings: { foreground: '#ff0000' } }] }, surface);
+    assert.equal(shiki.getShikiTokens('typescript', 'const cached = 1;', surface), null, 'Actual rule changes must invalidate tokens');
+    shiki.requestShikiTokens('typescript', 'const cached = 1;', surface);
+    await waitFor(() => !!shiki.getShikiTokens('typescript', 'const cached = 1;', surface), 'changed palette');
+    assert.equal(highlighters.length, before + 2);
+    assert.equal(highlighters[before].disposeCalls, 1);
+    release();
+    shiki.setShikiTheme(null, surface);
+  }
+}
+
+async function backgroundPreparationYieldsAndPromotes(): Promise<void> {
+  const scope = globalThis as any;
+  const previousIdle = scope.requestIdleCallback;
+  const previousCancel = scope.cancelIdleCallback;
+  const idle = new Map<number, () => void>();
+  let sequence = 0;
+  scope.requestIdleCallback = (run: () => void) => {
+    const id = ++sequence;
+    idle.set(id, run);
+    return id;
+  };
+  scope.cancelIdleCallback = (id: number) => idle.delete(id);
+  shiki.setShikiTheme(theme('background', 'dark'), 'source');
+  shiki.setShikiTheme(theme('foreground', 'light'), 'editor');
+  const releaseSource = shiki.activateShikiCodeHighlighting('source');
+  const releaseEditor = shiki.activateShikiCodeHighlighting('editor');
+  const code = 'line\n'.repeat(512);
+  let foregroundNeeded = true;
+  try {
+    planHighlighter({ onTokenize(highlighter) {
+      if (highlighter.tokenizeCalls === 2) foregroundNeeded = false;
+    } });
+    shiki.requestShikiTokens('typescript', code, 'source', () => true, 'background');
+    await waitFor(() => idle.size > 0, 'paused background preparation');
+    planHighlighter();
+    shiki.requestShikiTokens('typescript', 'visible fence', 'editor');
+    await waitFor(() => !!shiki.getShikiTokens('typescript', 'visible fence', 'editor'), 'visible work bypasses background');
+    assert.equal(shiki.getShikiTokens('typescript', code, 'source'), null);
+    shiki.requestShikiTokens('typescript', code, 'source', () => foregroundNeeded);
+    // Promotion wakes the held idle boundary. Cancelling the foreground caller
+    // keeps useful background work, but releases the global foreground turn.
+    await waitFor(() => !foregroundNeeded && idle.size > 0, 'cancelled foreground resumes background priority');
+    shiki.requestShikiTokens('typescript', 'another visible fence', 'editor');
+    await waitFor(() => !!shiki.getShikiTokens('typescript', 'another visible fence', 'editor'), 'demoted work yields');
+    for (let attempt = 0; attempt < 20 && !shiki.getShikiTokens('typescript', code, 'source'); attempt++) {
+      for (const run of [...idle.values()]) run();
+      await drain();
+    }
+    assert.ok(shiki.getShikiTokens('typescript', code, 'source'), 'Demotion must finish without waiting on its own batch');
+  } finally {
+    releaseSource(); releaseEditor();
+    shiki.setShikiTheme(null, 'source'); shiki.setShikiTheme(null, 'editor');
+    scope.requestIdleCallback = previousIdle;
+    scope.cancelIdleCallback = previousCancel;
+  }
+}
+
+await backgroundPreparationYieldsAndPromotes();
+await identicalThemesPreserveCompleteAndPendingWork();
 await sourceWithoutConsumerDoesNoHeavyWork();
 await consumersShareOneInstanceUntilTheLastRelease();
 await pendingInitializationDisposesWithoutPublishing();

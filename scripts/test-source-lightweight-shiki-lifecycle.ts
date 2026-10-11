@@ -193,7 +193,7 @@ async function main(): Promise<void> {
 
     let metrics = await readMetrics(page);
     assert.equal(metrics.initCalls, 2, 'Live owns a separate shared runtime');
-    assert.equal(metrics.instances[0].disposeCalls, 1, 'Source 1→0 releases its runtime');
+    assert.equal(metrics.instances[0].disposeCalls, 0, 'The editor session retains Source across mode switches');
     assert.deepEqual(metrics.instances[1].loadedLanguages, ['typescript']);
     assert.equal(metrics.instances[1].tokenizeCalls, 2, 'Two Live consumers share grammar and tokenize each distinct fence');
     assert.equal(metrics.instances[1].disposeCalls, 0);
@@ -231,10 +231,10 @@ async function main(): Promise<void> {
     metrics = await readMetrics(page);
     await page.waitForSelector('#first .meo-source-token');
     metrics = await readMetrics(page);
-    assert.equal(metrics.initCalls, 3, 'Returning to a zero-consumer Source creates a new runtime');
+    assert.equal(metrics.initCalls, 2, 'Returning to Source reuses the session runtime');
     assert.equal(metrics.instances[1].tokenizeCalls, 3, 'The remaining Live consumer produces latest code tokens');
     assert.equal(metrics.instances[1].disposeCalls, 0, 'Live 2→1 consumers keeps its runtime');
-    assert.deepEqual(metrics.instances[2].tokenizedCodes, [firstText], 'Source does not borrow the Live fence cache');
+    assert.ok(metrics.instances[0].tokenizedCodes.includes(firstText), 'Source retains its own whole-document tokens');
 
     await page.evaluate(() => {
       const state = (window as any).__shikiEditors;
@@ -243,9 +243,9 @@ async function main(): Promise<void> {
     });
     await waitForFrames(page);
     metrics = await readMetrics(page);
-    assert.equal(metrics.instances[1].disposeCalls, 1, 'Last Live consumer releases that surface');
-    assert.equal(metrics.instances[2].disposeCalls, 0, 'Two Source consumers retain their shared runtime');
-    assert.deepEqual(metrics.instances[2].tokenizedCodes, [firstText, latestSecondText]);
+    assert.equal(metrics.instances[1].disposeCalls, 0, 'The editor session retains Live across mode switches');
+    assert.equal(metrics.instances[0].disposeCalls, 0, 'Two editor sessions retain the shared Source runtime');
+    assert.ok(metrics.instances[0].tokenizedCodes.includes(latestSecondText));
 
     // Hidden Source owns a whole-document scope stack, but must defer all work
     // until reveal and publish only the latest revision.
@@ -267,10 +267,10 @@ async function main(): Promise<void> {
       (window as any).__shikiEditors.first.view.requestMeasure();
     });
     await page.waitForFunction(() => Array.from(document.querySelectorAll('#first .meo-source-token')).some(node => node.textContent?.includes('source_latest_0')));
-    await page.waitForFunction(() => (window as any).__shikiLifecycleMetrics.instances[2].tokenizedCodes.some((code: string) => code.includes('source_latest_0')));
+    await page.waitForFunction(() => (window as any).__shikiLifecycleMetrics.instances[0].tokenizedCodes.some((code: string) => code.includes('source_latest_0')));
     metrics = await readMetrics(page);
-    assert.ok(metrics.instances[2].tokenizedCodes.some(code => code.includes('source_latest_0')));
-    assert.equal(metrics.instances[2].tokenizedCodes.some(code => code.includes('source_old_0')), false);
+    assert.ok(metrics.instances[0].tokenizedCodes.some(code => code.includes('source_latest_0')));
+    assert.equal(metrics.instances[0].tokenizedCodes.some(code => code.includes('source_old_0')), false);
 
     const rapidText = '# Rapid latest\n\n```typescript\nconst rapid_latest = 4;\n```';
     await page.evaluate((latest) => {
@@ -284,7 +284,7 @@ async function main(): Promise<void> {
       .some((node) => node.textContent?.includes('rapid_latest')));
     await waitForFrames(page);
     metrics = await readMetrics(page);
-    assert.equal(metrics.instances[2].disposeCalls, 0, 'The remaining Source consumer retains its independent runtime');
+    assert.equal(metrics.instances[0].disposeCalls, 0, 'The remaining Source consumer retains its independent runtime');
     assert.equal(metrics.instances.filter(instance => instance.disposeCalls === 0).length, 2,
       'Rapid changes leave exactly one active runtime per live surface');
     assert.equal(
@@ -352,7 +352,7 @@ async function main(): Promise<void> {
 
     const beforeTheme = await readMetrics(page);
     const beforeThemeChange = beforeTheme.tokenizeCalls;
-    await page.evaluate(() => { (window as any).__lifecycleColor = '#2255aa'; (window as any).SourceLightweightShikiHarness.applyTheme(); });
+    await page.evaluate(() => { (window as any).__lifecycleColor = '#2255aa'; (window as any).SourceLightweightShikiHarness.applyTheme('#2255aa'); });
     await waitForFrames(page);
     metrics = await readMetrics(page);
     assert.equal(metrics.initCalls, beforeTheme.initCalls + 2, 'Theme invalidation refreshes both active surfaces');

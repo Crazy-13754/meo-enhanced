@@ -63,6 +63,14 @@ exact commands without running them.
 
 ## Daily repair loop
 
+`scripts/test-source-syntax-first-paint.ts` checks idle Source preparation through
+the production editor. An unchanged Live/Source roundtrip and reapplying the same
+palette must paint syntax immediately; edits prepare only the latest revision.
+It also checks preparation behind a hidden Preview cover and cancellation.
+The Shiki lifecycle contracts verify bounded shared caches, unchanged palette
+reuse, real palette invalidation, stale-work cancellation and final disposal.
+These checks are small, deterministic regressions rather than long benchmarks.
+
 `scripts/test-shiki-empty-line-recovery.ts` checks the shared Source, Live and
 Preview token caches in light and dark themes. Raw HTML followed by a blank line
 must recover Markdown headings, emphasis and inline code, regardless of language

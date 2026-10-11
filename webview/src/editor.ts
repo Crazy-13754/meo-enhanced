@@ -18,7 +18,7 @@ import { defaultKeymap, history, historyKeymap, indentMore, indentLess, redo, re
 import { markdownKeymap } from '@codemirror/lang-markdown';
 import { editorMarkdownLanguage } from './liveMode';
 import { indentUnit, syntaxTree, forceParsing } from '@codemirror/language';
-import { sourceSyntax } from './helpers/sourceSyntax';
+import { prepareSourceSyntax, sourceSyntax, sourceSyntaxPreparation } from './helpers/sourceSyntax';
 import { shikiCodeHighlight } from './helpers/shikiDecorations';
 import type { UiLanguage } from '../../src/foundation/uiLanguage';
 import { longCodeBlockEnabledFacet } from './helpers/longCodeBlocks';
@@ -2557,6 +2557,7 @@ export function createEditor({
         mermaidDiagramPresentationConsumer
       ),
       markdownInlineStyleTheme,
+      sourceSyntaxPreparation,
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument })] : sourceMode()),
       searchQueryField,
       searchAnchorField,
@@ -3263,6 +3264,10 @@ export function createEditor({
   return {
     view,
     state: view.state,
+    prepareSourceSyntax(isCurrent: () => boolean) {
+      commitActiveTableInput();
+      return prepareSourceSyntax(view, isCurrent);
+    },
     async whenVisiblePresentationReady(timeoutMs: number) {
       if (editorDestroyed) return;
       const presentationMode = currentMode;

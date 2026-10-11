@@ -6,16 +6,21 @@ import { setShikiTheme, activateShikiCodeHighlighting, requestShikiTokens, getSh
 (globalThis as typeof globalThis & {
   SourceLightweightShikiHarness?: {
     createEditor: typeof createEditor;
-    applyTheme(): void;
+    applyTheme(foreground?: string): void;
+    hasSourceTokens(editor: ReturnType<typeof createEditor>): boolean;
     verifyBatchedTokens(): Promise<number>;
     pasteText(editor: ReturnType<typeof createEditor>, from: number, to: number, text: string): void;
   };
 }).SourceLightweightShikiHarness = {
   createEditor,
   verifyBatchedTokens,
-  applyTheme() {
-    setShikiTheme(darkPlus);
-    setShikiTheme(darkPlus, 'source');
+  hasSourceTokens(editor) {
+    return getShikiTokens('markdown', editor.getText(), 'source') !== null;
+  },
+  applyTheme(foreground) {
+    const palette = foreground ? { ...darkPlus, colors: { ...darkPlus.colors, 'editor.foreground': foreground } } : darkPlus;
+    setShikiTheme(palette);
+    setShikiTheme(palette, 'source');
   },
   pasteText(editor, from, to, text) {
     editor.view.dispatch({

@@ -1,8 +1,102 @@
 import { Prec, RangeSetBuilder, StateEffect, type ChangeDesc } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
-import { activateShikiCodeHighlighting, getShikiTokens, getShikiThemeVersion, requestShikiTokens, subscribeShikiRefresh, type ShikiToken } from './shikiHighlighter';
+import { activateShikiCodeHighlighting, getShikiTokens, getShikiThemeVersion, isShikiThemeReady, requestShikiTokens, subscribeShikiRefresh, type ShikiToken } from './shikiHighlighter';
 
 const refreshSourceSyntax = StateEffect.define<null>();
+
+// The editor session retains both syntax runtimes across compartment changes.
+// Preparation has no decorations, so Source's palette never paints Live text.
+export const sourceSyntaxPreparation = ViewPlugin.fromClass(class {
+  private destroyed = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private idle: number | null = null;
+  private inView: boolean;
+  private document: EditorView['state']['doc'] | undefined;
+  private text = '';
+  private generation = getShikiThemeVersion('source');
+  private readonly releaseSource = activateShikiCodeHighlighting('source');
+  private readonly releaseEditor = activateShikiCodeHighlighting('editor');
+  private readonly unsubscribe: () => void;
+
+  constructor(private readonly view: EditorView) {
+    this.inView = view.inView;
+    this.unsubscribe = subscribeShikiRefresh(() => {
+      const generation = getShikiThemeVersion('source');
+      if (generation !== this.generation) {
+        this.generation = generation;
+        this.schedule();
+      }
+    }, 'source');
+    this.schedule();
+  }
+
+  update(update: ViewUpdate): void {
+    const becameVisible = !this.inView && update.view.inView;
+    this.inView = update.view.inView;
+    if (update.docChanged || becameVisible) this.schedule();
+  }
+
+  private cancel(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    if (this.idle !== null) cancelIdleCallback(this.idle);
+    this.timer = this.idle = null;
+  }
+
+  private request(foreground: boolean, isCurrent: () => boolean): boolean {
+    const doc = this.view.state.doc;
+    if (this.document !== doc) {
+      this.document = doc;
+      this.text = doc.toString();
+    }
+    const text = this.text;
+    if (getShikiTokens('markdown', text, 'source')) return true;
+    requestShikiTokens('markdown', text, 'source', () =>
+      !this.destroyed && isCurrent() && this.view.state.doc === doc
+      && (foreground || this.view.inView), foreground ? 'foreground' : 'background');
+    return false;
+  }
+
+  private schedule(): void {
+    this.cancel();
+    if (this.destroyed || !this.view.inView) return;
+    // Coalesce typing before entering the browser's idle queue. Hidden editors
+    // keep their completed cache, but never prepare unseen document revisions.
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      const run = () => {
+        this.idle = null;
+        if (!this.destroyed && this.view.inView) this.request(false, () => true);
+      };
+      if (typeof requestIdleCallback === 'function') this.idle = requestIdleCallback(run, { timeout: 500 });
+      else run();
+    }, 120);
+  }
+
+  async prepare(isCurrent: () => boolean): Promise<boolean> {
+    this.cancel();
+    const deadline = performance.now() + 10000;
+    while (!this.destroyed && isCurrent()) {
+      // A missing theme has no syntax palette to wait for (startup/failure path).
+      if (!isShikiThemeReady('source') || this.request(true, isCurrent)) return true;
+      if (performance.now() >= deadline) throw new Error('Source syntax preparation timed out');
+      await new Promise<void>(resolve => setTimeout(resolve, 16));
+    }
+    return false;
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    this.cancel();
+    this.unsubscribe();
+    this.releaseSource();
+    this.releaseEditor();
+  }
+});
+
+/** Prepare the current revision before committing a visible Source transition. */
+export function prepareSourceSyntax(view: EditorView, isCurrent: () => boolean): Promise<boolean> {
+  return view.plugin(sourceSyntaxPreparation)?.prepare(isCurrent) ?? Promise.resolve(false);
+}
 
 /** Markdown uses TextMate's scope stack, including punctuation and embedded grammars.
  * Source owns this runtime so user token customizations cannot recolor Live or Preview.
@@ -58,8 +152,8 @@ export const sourceSyntax = Prec.highest(ViewPlugin.fromClass(class {
     }
     const doc = this.document;
     // Hidden revisions supersede pending work; tokenize only the latest document on reveal.
-    if (!view.inView) return;
     const tokens = getShikiTokens('markdown', this.text, 'source');
+    if (!tokens && !view.inView) return;
     if (!tokens) {
       requestShikiTokens('markdown', this.text, 'source', () => !this.destroyed && view.inView && this.document === doc);
     } else {
