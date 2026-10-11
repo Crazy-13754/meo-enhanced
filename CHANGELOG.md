@@ -12,6 +12,9 @@ Optimized project. New MEO Enhanced releases start from version 0.1.0.
 - Kept the last valid Mermaid diagram visible during split edits, coalesced typing, reused cached results and prioritized current edits over obsolete background work.
 - Unified input-method handling and popup placement for slash, path and emoji suggestions; restored comments for additional code languages and slash shortcuts on international keyboard layouts.
 - Refined segmented controls, tooltips and candidate text hierarchy, and stabilized rendered-block editing, history, line numbers and mode transitions.
+- Kept Preview copy controls paired with independent preset colors and synchronized matching default controls during live color changes. Preserved readable suggestion matches on selected rows.
+- Prevented Source typing from briefly losing syntax colors inside tokens and at their boundaries, while invalidating replaced source until fresh highlighting arrives.
+- Synchronized table source positions before focus after embedded block edits, and refreshed Mermaid control appearance together with diagram colors.
 - Kept Markdown formatting markers inside code, formulas, link destinations and titles, comments, and HTML code from affecting surrounding text; fixed pointer expressions being shown as italics in Live mode.
 - Aligned punctuation-adjacent emphasis, strikethrough and highlighting across Live prose, tables, Preview, and HTML, PDF and Word exports.
 - Corrected nested and mixed inline formatting, unmatched delimiters and incremental editing while preserving literal code and readable outline labels.
