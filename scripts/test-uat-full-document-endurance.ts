@@ -124,24 +124,37 @@ async function waitForFrames(page: import('puppeteer-core').Page, count = 6): Pr
 async function waitForScrollStability(
   page: import('puppeteer-core').Page,
   stableFrames = 4,
-  maxFrames = 60
+  maxFrames = 60,
+  targetLine?: number
 ): Promise<void> {
-  await page.evaluate(async ({ requiredStableFrames, frameLimit }) => {
-    const scroller = (window as any).__fullUatEditor.view.scrollDOM as HTMLElement;
+  await page.evaluate(async ({ requiredStableFrames, frameLimit, lineNumber }) => {
+    const view = (window as any).__fullUatEditor.view;
+    const scroller = view.scrollDOM as HTMLElement;
     let previousTop = scroller.scrollTop;
     let previousHeight = scroller.scrollHeight;
+    let previousTargetGeometry: string | null = null;
     let stable = 0;
     for (let frame = 0; frame < frameLimit && stable < requiredStableFrames; frame += 1) {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const currentTop = scroller.scrollTop;
       const currentHeight = scroller.scrollHeight;
-      stable = Math.abs(currentTop - previousTop) <= 0.5 && currentHeight === previousHeight
+      const targetPosition = lineNumber === undefined ? null : view.state.doc.line(lineNumber).from;
+      const target = targetPosition === null ? null : view.lineBlockAt(targetPosition);
+      const targetIsVisible = !target || (targetPosition >= view.viewport.from && targetPosition <= view.viewport.to
+        && target.bottom > currentTop && target.top < currentTop + scroller.clientHeight);
+      const targetGeometry = target ? `${target.top}:${target.bottom}` : null;
+      stable = targetIsVisible && targetGeometry === previousTargetGeometry
+        && Math.abs(currentTop - previousTop) <= 0.5 && currentHeight === previousHeight
         ? stable + 1
         : 0;
       previousTop = currentTop;
       previousHeight = currentHeight;
+      previousTargetGeometry = targetGeometry;
     }
-  }, { requiredStableFrames: stableFrames, frameLimit: maxFrames });
+    if (stable < requiredStableFrames) {
+      throw new Error(`Scroll or navigation target did not settle within ${frameLimit} frames: ${lineNumber ?? 'scroll'}`);
+    }
+  }, { requiredStableFrames: stableFrames, frameLimit: maxFrames, lineNumber: targetLine });
 }
 
 async function getText(page: import('puppeteer-core').Page): Promise<string> {
@@ -180,7 +193,9 @@ async function centerLine(page: import('puppeteer-core').Page, lineNumber: numbe
     await (window as any).__fullUatEditor.whenVisiblePresentationReady(1_200);
   });
   await page.evaluate(async () => { await document.fonts.ready; });
-  await waitForScrollStability(page);
+  // Late block measurement can leave the old viewport motionless before the
+  // navigation owner's second phase. Stability must include its actual target.
+  await waitForScrollStability(page, 4, 60, lineNumber);
   const viewport = await page.evaluate((lineNumber) => {
     const editor = (window as any).__fullUatEditor;
     const line = editor.view.state.doc.line(lineNumber);
