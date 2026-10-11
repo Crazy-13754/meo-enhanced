@@ -16,7 +16,8 @@ fs.mkdirSync(output, { recursive: true });
 const baselinePath = path.resolve('tmp/theme-content-before.json');
 const contrastRatio = (foreground: string, background: string): number => {
   const luminance = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(channel => {
-    const c = channel / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    const c = value.startsWith('color(srgb') ? channel : channel / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
   const a = luminance(foreground), b = luminance(background);
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
@@ -407,6 +408,7 @@ try {
             const value = getComputedStyle(probe).color; probe.remove(); return value;
           };
           return { normal: resolve('text-emphasis'), selected: resolve('text-emphasis-selected'),
+            highContrast: document.documentElement.dataset.meoUiContrast === 'high', highContrastSelected: resolve('text-selected'),
             heading: getComputedStyle(document.querySelector('.meo-md-heading-content')!).color,
             normalBackground: resolve('surface-raised'), hoverBackground: resolve('surface-hover'),
             prefixes: [...document.querySelectorAll('.meo-suggestion-trigger, .meo-suggestion-slash')].map(el => ({
@@ -421,16 +423,19 @@ try {
             }) };
         });
         assert.ok(matches.rows.some(row => row.selected) && matches.rows.some(row => !row.selected), `${profile.id}: selected and ordinary matched suggestions`);
-        if ([matches.normalBackground, matches.hoverBackground].every(background => contrastRatio(matches.heading, background) >= 4.55)) {
+        const ordinaryCarriers = [matches.normalBackground, matches.hoverBackground, ...matches.highContrast ? [] : matches.rows.filter(row => row.selected).map(row => row.background)];
+        if (ordinaryCarriers.every(background => contrastRatio(matches.heading, background) >= 4.55)) {
           assert.equal(matches.normal, matches.heading, `${profile.id}: readable heading ink remains unchanged for ordinary and hovered matches`);
         }
         for (const row of matches.rows.filter(row => row.selected)) {
           if (contrastRatio(matches.heading, row.background) >= 4.55) assert.equal(matches.selected, matches.heading, `${profile.id}: readable heading ink remains unchanged for selected matches`);
           else if (contrastRatio(matches.heading, row.background) < 4.5) assert.notEqual(matches.selected, matches.heading, `${profile.id}: insufficient heading contrast is corrected on selection`);
         }
-        assert.ok(matches.rows.every(row => row.color === (row.selected ? matches.selected : matches.normal) && row.weight === '600'), `${profile.id}: matches use the heading-based carrier role and identifying weight`);
-        assert.ok(matches.rows.every(row => contrastRatio(row.color, row.background) >= 4.5), `${profile.id}: ordinary and selected matches remain readable`);
-        assert.ok(matches.prefixes.length && matches.prefixes.every(prefix => prefix.color === (prefix.selected ? matches.selected : matches.normal)), `${profile.id}: prefixes and matches share their carrier role`);
+        const actualMatchInk = (selected: boolean) => matches.highContrast && selected ? matches.highContrastSelected : matches.normal;
+        assert.ok(matches.rows.every(row => row.color === actualMatchInk(row.selected)), `${profile.id}: matches retain ordinary emphasis except for high-contrast selected foreground`);
+        assert.ok(matches.rows.every(row => row.weight === '600'), `${profile.id}: matches keep their identifying weight`);
+        assert.ok(matches.rows.every(row => contrastRatio(row.color, row.background) >= 4.5), `${profile.id}: ordinary and selected matches remain readable (${JSON.stringify(matches.rows.map(row => ({...row, contrast: contrastRatio(row.color, row.background)})))})`);
+        assert.ok(matches.prefixes.length && matches.prefixes.every(prefix => prefix.color === actualMatchInk(prefix.selected)), `${profile.id}: prefixes and matches share their carrier role`);
         await page.hover('.meo-input-suggestion:not([aria-selected="true"]) .meo-suggestion-match');
         const hoveredMatch = await page.$eval('.meo-input-suggestion:hover .meo-suggestion-match', el => {
           const row = el.closest('.meo-input-suggestion')!, background = getComputedStyle(row).backgroundColor;
@@ -438,7 +443,7 @@ try {
           const carrier = selected ? popup.backgroundImage.match(/rgb\([^)]+\)/)?.[0] : popup.backgroundColor;
           return { color: getComputedStyle(el).color, selected, background: background === 'rgba(0, 0, 0, 0)' ? carrier! : background };
         });
-        assert.equal(hoveredMatch.color, hoveredMatch.selected ? matches.selected : matches.normal, `${profile.id}: hover uses the actual selection's match ink`);
+        assert.equal(hoveredMatch.color, actualMatchInk(hoveredMatch.selected), `${profile.id}: hover uses the actual selection's match ink`);
         assert.ok(contrastRatio(hoveredMatch.color, hoveredMatch.background) >= 4.5, `${profile.id}: hovered match remains readable on its real background (${JSON.stringify(hoveredMatch)})`);
         await page.mouse.move(10, 1000);
         await screenshot(profile.id + '-slash.png');
