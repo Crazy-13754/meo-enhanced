@@ -1378,9 +1378,11 @@ export class ViewportController {
       ) : null;
     const visualTop = visualAnchor?.getBoundingClientRect().top;
     mutate();
-    if (immediateLayout && (this.getMode() === 'source' || foldedCodeNearTop
+    // Keep the visible source position in CodeMirror's virtual viewport while
+    // preceding tall blocks acquire their new font-dependent height.
+    if (immediateLayout && (this.getMode() === 'source' || foldedCodeNearTop || (!tableRow && anchorLineTop !== null)
       || topRenderedBlock?.querySelector('.meo-mermaid-toolbar'))) queueMicrotask(() => {
-      if (!this.destroyed) this.view.dispatch({
+      if (!this.destroyed && !this.isUserScrolling()) this.view.dispatch({
         effects: EditorView.scrollIntoView(fontAnchorPosition, { y: 'nearest' })
       });
     });

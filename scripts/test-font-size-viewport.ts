@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { launchTestBrowser } from './browser-test-helpers';
+import { createLargeDocumentFixtures } from './large-document-fixtures';
 
 const root = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-font-viewport-'));
 const build = await Bun.build({
-  entrypoints: [path.join(root, 'scripts/test-webview-viewport-entry.ts')],
+  entrypoints: [path.join(root, 'scripts/test-font-size-full-document-entry.ts')],
   outdir: tempDir,
   target: 'browser',
   format: 'iife',
@@ -250,7 +251,107 @@ try {
   if (Math.abs(jumpedAfter.top - jumpedTop) > 12) {
     throw new Error(`Preview jumped back after a font change: ${JSON.stringify({ jumpedTop, jumpedAfter })}`);
   }
-  console.log('font size viewport checks passed');
+  const tallTableLines = [
+    '# Tall table font anchor', '', '| Name | Content | Result |', '| --- | --- | --- |',
+    ...Array.from({ length: 36 }, (_, row) => `| row-${row} | ${Array.from({ length: 8 }, (_, line) =>
+      `Wrapped row ${row} line ${line} retains a readable position after font changes.`).join('<br>')} | value-${row} |`), ''
+  ];
+  const richText = createLargeDocumentFixtures().find(fixture => fixture.kind === 'rich-heavy')!.text;
+  const regressionText = [...tallTableLines, richText].join('\n');
+  const anchorLine = tallTableLines.length;
+  const regressionPage = await browser.newPage();
+  await regressionPage.setViewport({ width: 1280, height: 760 });
+  await regressionPage.setContent('<!doctype html><body class="vscode-light"><div id="app" class="editor-root"><div class="mode-toolbar meo-preload-toolbar" role="presentation" aria-hidden="true"></div><div class="editor-wrapper meo-preload-editor-shell" role="presentation" aria-hidden="true"><div class="editor-host"></div></div></div></body>');
+  await regressionPage.addStyleTag({ content: ':root{--vscode-editor-background:#fff;--vscode-editor-foreground:#24292f;--vscode-sideBar-background:#f6f8fa;--vscode-panel-border:#d0d7de;--vscode-toolbar-hoverBackground:#eaeef2}html,body,#app{height:100%;margin:0}#app{display:flex;flex-direction:column}' });
+  await regressionPage.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
+  await regressionPage.addScriptTag({ content: 'window.acquireVsCodeApi=()=>({postMessage(){},getState(){return null},setState(){}});window.mermaid={initialize(){},async render(){await new Promise(resolve=>setTimeout(resolve,90));return {svg:\'<svg width="800" height="200" viewBox="0 0 800 200"><rect width="180" height="80"></rect></svg>\'};}};' });
+  await regressionPage.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+  await regressionPage.evaluate((text) => window.dispatchEvent(new MessageEvent('message', { data: {
+    type: 'init', documentId: 'file:///font-tall-table.md', text, version: 1,
+    savedRevision: { version: 1, text }, diagnostics: [], mode: 'live', uiLanguage: 'zh-CN', sourceLineNumbers: 'on',
+    previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, editorAppearance: 'light',
+    gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false,
+    diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false,
+    contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false },
+    outlinePosition: 'right', outlineVisible: false, outlineWidth: 260, vscodeTheme: null
+  } })), regressionText);
+  await regressionPage.waitForFunction((text) => (window as any).__fontTestView()?.state.doc.toString() === text, {}, regressionText);
+  await regressionPage.waitForFunction(() => {
+    const button = document.querySelector<HTMLElement>('.more-tools-wrapper > button');
+    return Boolean(button && !button.closest('.meo-preload-toolbar') && getComputedStyle(button).visibility === 'visible');
+  });
+  await regressionPage.click('.more-tools-wrapper > button');
+  await regressionPage.click('[data-editor-font-size-mode="custom"]');
+  await regressionPage.evaluate(async () => {
+    document.querySelector<HTMLButtonElement>('.editor-font-size-stepper-button:last-child')!.click();
+    for (let frame = 0; frame < 20; frame++) await new Promise(requestAnimationFrame);
+  });
+  await regressionPage.evaluate(async (line) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      (window as any).__fontTestScrollToLine(line);
+      for (let frame = 0; frame < 8; frame++) await new Promise(requestAnimationFrame);
+    }
+  }, anchorLine);
+  const samples = await regressionPage.evaluate(async (line) => {
+    const view = (window as any).__fontTestView();
+    const record = () => {
+      const node = view.domAtPos(view.state.doc.line(line).from).node;
+      const element = node instanceof Element ? node : node.parentElement;
+      const source = element?.closest('.cm-line');
+      return { top: source?.getBoundingClientRect().top ?? null,
+        mappedLine: source ? view.state.doc.lineAt(view.posAtDOM(source, 0)).number : null,
+        scroll: view.scrollDOM.scrollTop };
+    };
+    const result = [record()];
+    for (const direction of [1, -1]) {
+      document.querySelector<HTMLButtonElement>(`.editor-font-size-stepper-button:${direction > 0 ? 'last' : 'first'}-child`)!.click();
+      result.push(record());
+      for (let frame = 0; frame < 20; frame++) { await new Promise(requestAnimationFrame); result.push(record()); }
+    }
+    return result;
+  }, anchorLine);
+  if (samples[0].top === null || samples.some(sample => sample.top === null
+    || sample.mappedLine !== anchorLine || Math.abs(sample.top - samples[0].top!) > 12)) {
+    throw new Error(`Font change after a tall table lost the reading line: ${JSON.stringify(samples)}`);
+  }
+  const wheelStart = await regressionPage.evaluate(() => {
+    const scroller = (window as any).__fontTestView().scrollDOM;
+    const rect = scroller.getBoundingClientRect();
+    scroller.addEventListener('wheel', () => { (window as any).__fontRegressionWheelAt = performance.now(); }, { once: true });
+    return { scroll: scroller.scrollTop, x: rect.left + 100, y: rect.top + 80 };
+  });
+  await regressionPage.mouse.move(wheelStart.x, wheelStart.y);
+  await regressionPage.mouse.wheel({ deltaY: 12 });
+  const activeWheel = await regressionPage.evaluate(async () => {
+    for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame);
+    const view = (window as any).__fontTestView();
+    const scroller = view.scrollDOM;
+    const rect = scroller.getBoundingClientRect();
+    const position = view.posAtCoords({ x: rect.left + 100, y: rect.top + 2 });
+    const node = view.domAtPos(position).node;
+    const source = (node instanceof Element ? node : node.parentElement)?.closest('.cm-line');
+    const before = scroller.scrollTop;
+    const beforeSize = Number(document.querySelector<HTMLOutputElement>('.editor-font-size-value')!.value);
+    const wheelAge = performance.now() - (window as any).__fontRegressionWheelAt;
+    const ctor = view.constructor;
+    const nativeReveal = ctor.scrollIntoView;
+    let reveals = 0;
+    ctor.scrollIntoView = (...args: unknown[]) => { reveals += 1; return nativeReveal(...args); };
+    try {
+      document.querySelector<HTMLButtonElement>('.editor-font-size-stepper-button:last-child')!.click();
+      const positions = [scroller.scrollTop];
+      for (let frame = 0; frame < 8; frame++) { await new Promise(requestAnimationFrame); positions.push(scroller.scrollTop); }
+      return { before, wheelAge, sourceAtTop: Boolean(source), reveals, positions, beforeSize,
+        afterSize: Number(document.querySelector<HTMLOutputElement>('.editor-font-size-value')!.value) };
+    } finally { ctor.scrollIntoView = nativeReveal; }
+  });
+  if (!activeWheel.sourceAtTop || !(activeWheel.wheelAge < 200) || activeWheel.before < wheelStart.scroll + 8
+    || activeWheel.reveals !== 0 || activeWheel.afterSize !== activeWheel.beforeSize + 1
+    || activeWheel.positions.some(position => position < activeWheel.before - 1)) {
+    throw new Error(`Font change displaced the active wheel owner: ${JSON.stringify({ wheelStart, activeWheel })}`);
+  }
+  await regressionPage.close();
+  console.log('font size viewport checks passed, including tall-table source retention');
 } finally {
   await browser.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
