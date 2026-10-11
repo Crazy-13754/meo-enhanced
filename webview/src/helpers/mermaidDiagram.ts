@@ -904,6 +904,12 @@ export class MermaidDiagramWidget extends WidgetType {
     this.unsubscribeThemeRefresh();
     this.unsubscribeThemeRefresh = this.presentationFactory.subscribeThemeRefresh(() => {
       if (!container.isConnected || !this.presentationHandle) return;
+      applyMermaidThemeClass(container);
+      for (const controls of container.querySelectorAll<HTMLElement>('.meo-mermaid-zoom-controls')) applyMermaidThemeClass(controls);
+      if (this.fullscreenSession) {
+        applyMermaidThemeClass(this.fullscreenSession.container);
+        for (const controls of this.fullscreenSession.container.querySelectorAll<HTMLElement>('.meo-mermaid-zoom-controls')) applyMermaidThemeClass(controls);
+      }
       const refreshedIdentity = getMermaidEditorPresentationIdentity();
       this.themeSignature = refreshedIdentity.themeKey;
       this.presentationHandle.present(
@@ -917,6 +923,11 @@ export class MermaidDiagramWidget extends WidgetType {
   }
 
   renderSvg(container: HTMLElement, svgContent: string, view?: EditorView, currentPresentation = true): void {
+    if (currentPresentation && this.fullscreenSession) {
+      // Replace only the SVG; the modal controls, focus and camera remain owned
+      // by the same session throughout a successful presentation refresh.
+      this.fullscreenSession.svgWrapper.innerHTML = svgContent;
+    }
     this.embeddedControlsCleanup();
     const svgWrapper = document.createElement('div');
     svgWrapper.className = 'meo-mermaid-svg-wrapper';
@@ -1234,7 +1245,7 @@ export class MermaidDiagramWidget extends WidgetType {
 
     const fullscreen = document.createElement('button');
     fullscreen.type = 'button';
-    fullscreen.className = 'meo-visual-control-btn meo-mermaid-zoom-btn';
+    fullscreen.className = 'meo-visual-control-btn meo-mermaid-zoom-btn meo-mermaid-fullscreen-btn';
     fullscreen.appendChild(createElement(Maximize2, { width: 16, height: 16 }));
     fullscreen.setAttribute('aria-label', strings.fullscreen);
 
@@ -1603,9 +1614,27 @@ export class MermaidDiagramWidget extends WidgetType {
       ) {
         session.embedded.scroller.scrollTop = session.embedded.scrollTop;
       }
+    }
+    if (isUserExit && this.presentationHandle === session.embedded.presentation) {
       try {
-        if (session.embedded.focus?.isConnected) {
-          session.embedded.focus.focus({ preventScroll: true });
+        // A theme refresh replaces embedded controls while the modal remains
+        // open. Resolve the equivalent trigger only when it owned entry focus.
+        const target = session.embedded.focus?.isConnected ? session.embedded.focus
+          : session.embedded.focus?.classList.contains('meo-mermaid-fullscreen-btn')
+            ? this.container?.querySelector<HTMLElement>('.meo-mermaid-fullscreen-btn') : null;
+        if (target?.isConnected) {
+          target.focus({ preventScroll: true });
+          if (document.activeElement !== target) {
+            // Preview controls become visible after their layout measurement
+            // observes the removed modal. Do not override a newer interaction.
+            const exitFocus = document.activeElement;
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+              if (!this.fullscreenSession && this.presentationHandle === session.embedded.presentation
+                && target.isConnected && document.activeElement === exitFocus) {
+                target.focus({ preventScroll: true });
+              }
+            }));
+          }
         }
       } catch (error) {
         cleanupErrors.push(error);

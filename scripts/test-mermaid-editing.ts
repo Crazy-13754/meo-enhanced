@@ -988,12 +988,20 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1100, height: 720, deviceScaleFactor: 1 });
-    await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
+    await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><body class="vscode-light"><div id="app"></div></body>');
     await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
     await page.addStyleTag({
       content: ':root { --meo-background:#ffffff; --meo-foreground:#24292f; --meo-code-background:#f6f8fa; --meo-surface-background:#ffffff; --meo-color-base05:#0969da; --meo-font-live:Arial; --meo-font-live-weight:400; --meo-font-live-size:16px; --meo-font-source:"Courier New"; --meo-font-source-weight:500; --meo-font-source-size:14px; --meo-semantic-mutedForeground:#57606a; --meo-semantic-codeCopyForeground:#0969da; --meo-semantic-codeCopyBackground:transparent; --meo-semantic-codeCopyHoverForeground:#0969da; --meo-semantic-codeCopyHoverBackground:#eaeef2; --vscode-editor-font-family:monospace; --vscode-editor-font-size:14px; --vscode-editor-line-height:20px; }'
     });
     await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+
+    await page.evaluate(() => {
+      const style = document.documentElement.style;
+      style.setProperty('--vscode-editor-background', '#ffffff');
+      style.setProperty('--vscode-editor-foreground', '#24292f');
+      style.setProperty('--meo-code-palette-background', '#f6f8fa');
+      style.setProperty('--meo-code-palette-foreground', '#24292f');
+    });
 
     await page.evaluate(() => {
       (window as any).mermaid = {
@@ -1529,12 +1537,58 @@ async function main() {
       '.meo-mermaid-editing-block.is-split [data-themed-node]',
       (node) => ({ fill: node.getAttribute('fill'), light: Boolean(node.closest('.meo-mermaid-light-theme')) })
     );
+    await page.focus('.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="Fullscreen"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => Boolean(
+      document.querySelector<HTMLElement>('.meo-mermaid-fullscreen .meo-mermaid-svg-wrapper')?.style.transform
+    ));
+    await page.click('.meo-mermaid-fullscreen .meo-mermaid-zoom-btn[aria-label="Zoom in"]');
+    await page.evaluate(() => {
+      (window as any).__themeFullscreen = {
+        modal: document.querySelector('.meo-mermaid-fullscreen'),
+        wrapper: document.querySelector<HTMLElement>('.meo-mermaid-fullscreen .meo-mermaid-svg-wrapper'),
+        focus: document.activeElement
+      };
+      (window as any).__themeFullscreen.transform = (window as any).__themeFullscreen.wrapper.style.transform;
+    });
+    const assertFullscreenTheme = async (appearance: 'light' | 'dark', fill: string | null) => {
+      const state = await page.evaluate(({ appearance, fill }) => {
+        const before = (window as any).__themeFullscreen;
+        const modal = document.querySelector('.meo-mermaid-fullscreen');
+        const controls = [...document.querySelectorAll(
+          '.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-controls, .meo-mermaid-fullscreen .meo-mermaid-zoom-controls'
+        )];
+        const opposite = appearance === 'light' ? 'dark' : 'light';
+        return {
+          sameModal: modal === before.modal,
+          sameWrapper: modal?.querySelector('.meo-mermaid-svg-wrapper') === before.wrapper,
+          sameCamera: before.wrapper.style.transform === before.transform,
+          sameFocus: document.activeElement === before.focus,
+          themedModal: modal?.classList.contains(`meo-mermaid-${appearance}-theme`) &&
+            !modal.classList.contains(`meo-mermaid-${opposite}-theme`),
+          themedControls: controls.length === 2 && controls.every((control) =>
+            control.classList.contains(`meo-mermaid-${appearance}-theme`) &&
+            !control.classList.contains(`meo-mermaid-${opposite}-theme`)),
+          sameFill: modal?.querySelector('[data-themed-node]')?.getAttribute('fill') === fill
+        };
+      }, { appearance, fill });
+      if (Object.values(state).some((value) => value !== true)) {
+        throw new Error(`Fullscreen Mermaid lost theme or session state: ${JSON.stringify({ appearance, state })}`);
+      }
+    };
     await page.evaluate(() => {
       const root = document.documentElement.style;
       root.setProperty('--meo-code-background', '#1b1f23');
       root.setProperty('--meo-surface-background', '#2f343d');
       root.setProperty('--meo-background', '#24292e');
       root.setProperty('--meo-foreground', '#e6edf3');
+      root.setProperty('--vscode-editor-background', '#24292e');
+      root.setProperty('--vscode-editor-foreground', '#e6edf3');
+      root.setProperty('--meo-code-palette-background', '#1b1f23');
+      root.setProperty('--meo-code-palette-foreground', '#e6edf3');
+      document.body.className = 'vscode-dark';
+      document.documentElement.dataset.editorAppearance = 'dark';
+      (window as any).MermaidEditingHarness.applyUiTheme('dark', true);
       (window as any).MermaidEditingHarness.refreshMermaidTheme();
       (window as any).__mermaidEditingEditor.refreshDecorations();
     });
@@ -1547,12 +1601,20 @@ async function main() {
     if (!lightSplitTheme.light || !darkSplitTheme.dark || darkSplitTheme.fill === lightSplitTheme.fill) {
       throw new Error(`Split Mermaid did not rerender for dark appearance: ${JSON.stringify({ lightSplitTheme, darkSplitTheme })}`);
     }
+    await assertFullscreenTheme('dark', darkSplitTheme.fill);
     await page.evaluate(() => {
       const root = document.documentElement.style;
       root.setProperty('--meo-code-background', '#f6f8fa');
       root.setProperty('--meo-surface-background', '#ffffff');
       root.setProperty('--meo-background', '#ffffff');
       root.setProperty('--meo-foreground', '#24292f');
+      root.setProperty('--vscode-editor-background', '#ffffff');
+      root.setProperty('--vscode-editor-foreground', '#24292f');
+      root.setProperty('--meo-code-palette-background', '#f6f8fa');
+      root.setProperty('--meo-code-palette-foreground', '#24292f');
+      document.body.className = 'vscode-light';
+      document.documentElement.dataset.editorAppearance = 'light';
+      (window as any).MermaidEditingHarness.applyUiTheme('light', true);
       (window as any).MermaidEditingHarness.refreshMermaidTheme();
       (window as any).__mermaidEditingEditor.refreshDecorations();
     });
@@ -1565,6 +1627,22 @@ async function main() {
     if (!restoredLightSplitTheme.light || restoredLightSplitTheme.fill !== lightSplitTheme.fill) {
       throw new Error(`Split Mermaid did not rerender for light appearance: ${JSON.stringify({ lightSplitTheme, restoredLightSplitTheme })}`);
     }
+    await assertFullscreenTheme('light', restoredLightSplitTheme.fill);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.meo-mermaid-fullscreen-scrim'));
+    await waitForFrames(page, 3);
+    const restoredThemeFocus = await page.evaluate(() => {
+      const target = document.querySelector<HTMLButtonElement>(
+        '.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="Fullscreen"]'
+      );
+      return {
+        restored: Boolean(target?.isConnected && document.activeElement === target),
+        active: document.activeElement?.className,
+        target: target?.className,
+        visibility: target ? getComputedStyle(target).visibility : null
+      };
+    });
+    if (!restoredThemeFocus.restored) throw new Error(`Theme rerender prevented fullscreen exit from restoring the current trigger focus: ${JSON.stringify(restoredThemeFocus)}`);
 
     await page.evaluate(() => {
       const editor = (window as any).__mermaidEditingEditor;
