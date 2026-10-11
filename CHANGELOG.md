@@ -4,6 +4,14 @@ This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
 ## 0.3.29
+- Added GitHub README and custom Preview presets, with import, update, sharing, visibility and removal controls in Settings. Preset authoring guides and examples are available on GitHub; HTML and PDF follow the selected preset and appearance while Word retains its fixed document format.
+- Preserved the reading position when switching presets in full and split Preview, including rapid changes and late render responses.
+- Added Obsidian wiki images and vault-aware resource lookup, with readable Unicode link targets.
+- Added eight configurable UI colors and an independent document background, with live appearance previews, save/cancel controls, readable surface layers and consistent light, dark and high-contrast controls.
+- Let Source inherit VS Code syntax colors and retain session caches, reducing repeated highlighting and work for hidden content.
+- Kept the last valid Mermaid diagram visible during split edits, coalesced typing, reused cached results and prioritized current edits over obsolete background work.
+- Unified input-method handling and popup placement for slash, path and emoji suggestions; restored comments for additional code languages and slash shortcuts on international keyboard layouts.
+- Refined segmented controls, tooltips and candidate text hierarchy, and stabilized rendered-block editing, history, line numbers and mode transitions.
 - Kept Markdown formatting markers inside code, formulas, link destinations and titles, comments, and HTML code from affecting surrounding text; fixed pointer expressions being shown as italics in Live mode.
 - Aligned punctuation-adjacent emphasis, strikethrough and highlighting across Live prose, tables, Preview, and HTML, PDF and Word exports.
 - Corrected nested and mixed inline formatting, unmatched delimiters and incremental editing while preserving literal code and readable outline labels.
