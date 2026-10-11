@@ -1,9 +1,9 @@
-import { createElement, Moon, Sun } from 'lucide';
+import { createElement, Moon, RotateCcw, Sun } from 'lucide';
 import { normalizeUiColor, uiColorKeys, type UiColorKey, type UiColors } from '../../../src/foundation/uiColors';
 import type { EditorAppearance } from '../../../src/protocol/editorCommands';
 import type { UiColorsResult } from '../../../src/protocol/uiColors';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-import { appearanceCatalog, settingsSearchMatches, settingsText } from '../application/settingsCatalog';
+import { appearanceCatalog, sectionTitles, settingsSearchMatches, settingsText } from '../application/settingsCatalog';
 import { createSegmentedControl } from './segmentedControl';
 
 export type AppearanceSettingsOptions = {
@@ -29,7 +29,6 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
   let session = 0;
   let saving = false;
   let closed = false;
-  let advancedOpen = false;
   let invalid = new Set<UiColorKey>();
   let presenters: (() => void)[] = [];
   let inputRegistrations: (() => void)[] = [];
@@ -81,24 +80,31 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
     present();
   });
 
-  const items = (query: string) => appearanceCatalog.filter(item => settingsSearchMatches(query, '外观 Appearance', ...item.title, ...item.description, ...item.keywords, '跟随 VS Code 主题 Follow VS Code theme', item.id));
+  const sectionFor = (item: typeof appearanceCatalog[number]) => item.id === 'mode' ? 'appearanceMode' : item.advanced ? 'appearanceAdvanced' : 'appearanceColors';
+  const items = (query: string) => appearanceCatalog.filter(item => settingsSearchMatches(query, '外观 Appearance', ...sectionTitles[sectionFor(item)], ...item.title, ...item.description, ...item.keywords, '跟随 VS Code 主题 Follow VS Code theme', item.id));
   function render(nextLanguage: UiLanguage, query: string) {
     for (const unregister of inputRegistrations) unregister(); inputRegistrations = [];
     language = nextLanguage; scheme = options.getScheme(); presenters = []; invalid.clear();
-    const visible = items(query); const section = node('section', 'settings-section appearance-section'); section.id = 'meo-settings-appearance';
-    section.append(node('h3', 'settings-section-title', t('视觉风格', 'Visual style')));
+    const visible = items(query); const container = node('div', 'appearance-settings');
+    const sections = new Map<string, HTMLElement>();
+    for (const id of ['appearanceMode', 'appearanceColors', 'appearanceAdvanced'] as const) {
+      if (!visible.some(item => sectionFor(item) === id)) continue;
+      const section = node('section', 'settings-section appearance-section'); section.id = 'meo-settings-' + id;
+      const titles = sectionTitles[id];
+      const heading = node('div', 'appearance-section-heading'); heading.append(node('h3', 'settings-section-title', t(titles[0], titles[1])));
+      section.append(heading); sections.set(id, section); container.append(section);
+    }
     const note = node('p', 'settings-description appearance-note');
+    const schemeLabel = node('span', 'appearance-scheme');
     presenters.push(() => {
       const high = document.documentElement.dataset.meoUiContrast === 'high';
+      schemeLabel.textContent = t(scheme === 'light' ? '浅色配色' : '深色配色', `${scheme === 'light' ? 'Light' : 'Dark'} colors`);
       note.textContent = high ? t('高对比度模式使用 VS Code 配色。自定义颜色会保留，切回普通主题后生效。', 'High contrast uses VS Code colors. Custom colors are retained for other themes.')
-        : t(scheme === 'light' ? '正在编辑浅色配色。颜色实时预览，点击“应用”保存。' : '正在编辑深色配色。颜色实时预览，点击“应用”保存。', `Editing ${scheme} colors. Changes preview live; Apply saves them.`);
+        : t('留空跟随 VS Code 主题。颜色实时预览，应用后保存。', 'Leave empty to follow the VS Code theme. Preview live; Apply to save.');
     });
-    section.append(note, status);
-    const common = node('div', 'appearance-group');
-    const advanced = node('details', 'appearance-advanced'); advanced.open = advancedOpen || query.length > 0;
-    advanced.addEventListener('toggle', () => { if (!query.length) advancedOpen = advanced.open; });
-    advanced.append(node('summary', '', t('高级颜色', 'Advanced colors')));
-    const advancedGroup = node('div', 'appearance-group'); advanced.append(advancedGroup);
+    const common = sections.get('appearanceColors');
+    common?.querySelector('.appearance-section-heading')?.append(schemeLabel); common?.append(note, status);
+    if (!common) container.prepend(status);
     for (const item of visible) {
       const row = node('div', 'settings-item appearance-item'); row.dataset.setting = item.id;
       const text = node('div', 'settings-item-text'); text.append(node('div', 'settings-item-title', t(item.title[0], item.title[1])), node('p', 'settings-description', t(item.description[0], item.description[1]))); row.append(text);
@@ -114,12 +120,14 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
         row.append(modeControl.element);
       } else {
         const key = item.id; const controls = node('div', 'appearance-color-controls');
+        const field = node('div', 'appearance-color-field');
         const chip = node('label', 'appearance-color-chip');
         const swatchInput = node('input', 'appearance-color-swatch'); swatchInput.type = 'color'; swatchInput.setAttribute('aria-label', t(item.title[0], item.title[1]));
         const input = node('input', 'appearance-color-hex'); input.type = 'text'; input.setAttribute('spellcheck', 'false'); input.maxLength = 7; input.placeholder = t('跟随 VS Code 主题', 'Follow VS Code theme'); input.setAttribute('aria-label', t(item.title[0], item.title[1]) + ' HEX'); input.title = t('输入 #RGB 或 #RRGGBB；留空跟随 VS Code 主题。', 'Enter #RGB or #RRGGBB; leave empty to follow the VS Code theme.');
         const unregister = options.registerInput?.(input); if (unregister) inputRegistrations.push(unregister);
-        const restore = button(t('重置', 'Reset'), 'settings-button settings-subtle appearance-color-reset'); restore.setAttribute('aria-label', t(item.title[0], item.title[1]) + ' · ' + t('跟随 VS Code 主题', 'Follow VS Code theme'));
-        chip.append(swatchInput); controls.append(chip, input, restore); row.append(controls);
+        const restore = button('', 'settings-button settings-subtle appearance-color-reset'); restore.setAttribute('aria-label', t(item.title[0], item.title[1]) + ' · ' + t('跟随 VS Code 主题', 'Follow VS Code theme'));
+        restore.append(createElement(RotateCcw, { width: 14, height: 14, 'aria-hidden': 'true' }));
+        chip.append(swatchInput); field.append(chip, input); controls.append(field, restore); row.append(controls);
         let shownScheme = scheme;
         presenters.push(() => {
           const color = (draft ?? options.getColors())[scheme][key];
@@ -141,12 +149,10 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
         input.addEventListener('blur', () => { if (!invalid.has(key)) { input.value = (draft ?? options.getColors())[scheme][key] ?? ''; } });
         restore.addEventListener('click', () => { input.value = ''; change(key, undefined); });
       }
-      (item.advanced ? advancedGroup : common).append(row);
+      sections.get(sectionFor(item))!.append(row);
     }
-    if (common.childNodes.length) section.append(common);
-    if (advancedGroup.childNodes.length) section.append(advanced);
-    if (!visible.length) section.append(node('p', 'settings-empty', t('没有匹配的设置', 'No matching settings')));
-    present(); return section;
+    if (!visible.length) container.append(node('p', 'settings-empty', t('没有匹配的设置', 'No matching settings')));
+    present(); return container;
   }
   return { footer, render, present, count: (query: string) => items(query).length,
     open() { session++; closed = false; baseline = copy(options.getColors()); draft = copy(baseline); invalid.clear(); status.hidden = true; },

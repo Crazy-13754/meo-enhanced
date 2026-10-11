@@ -81,15 +81,41 @@ try {
     }), {aligned: true, rightOfTitle: true, compact: true, icons: 2, labelsFit: true}, 'mode reuses the menu control and aligns with the color column');
   };
   await checkControlLayout();
-  assert.equal(await page.$eval('.appearance-advanced', e => (e as HTMLDetailsElement).open), false);
+  assert.deepEqual(await page.$$eval('.settings-jump', elements => elements.map(e => e.textContent)), ['界面模式', '基础颜色', '高级颜色']);
   const screenshots = process.env.MEO_UI_COLORS_SCREENSHOT_DIR;
-  if (screenshots) { await fs.mkdir(screenshots, { recursive: true }); await page.screenshot({ path: path.join(screenshots, '049-appearance-dark.png') }); }
+  if (screenshots) await fs.mkdir(screenshots, { recursive: true });
+  for (const [index, tab] of ['general', 'appearance', 'typing', 'shortcuts'].entries()) {
+    await page.click(`[data-tab="${tab}"]`);
+    assert.deepEqual(await page.evaluate(() => {
+      const navigation = document.querySelector('.settings-navigation')!;
+      const content = document.querySelector('.settings-content')!;
+      const jumps = [...navigation.querySelectorAll<HTMLButtonElement>('.settings-jump')];
+      const sections = [...content.querySelectorAll<HTMLElement>('.settings-section')];
+      return {
+        twoColumns: navigation.getBoundingClientRect().width > 0 && navigation.getBoundingClientRect().right <= content.getBoundingClientRect().left,
+        matchingSections: jumps.length > 0 && jumps.length === sections.length && jumps.every((jump, index) => sections[index].id === 'meo-settings-' + jump.dataset.section)
+      };
+    }), {twoColumns: true, matchingSections: true}, tab + ' shares the left navigation/right settings layout');
+    if (screenshots) await page.screenshot({path: path.join(screenshots, `${String(53 + index).padStart(3, '0')}-${tab}-layout.png`)});
+  }
+  await page.click('[data-tab="appearance"]');
+  await page.click('[data-section="appearanceAdvanced"]');
+  assert.ok(await page.$eval('.settings-content', e => e.scrollTop > 0), 'advanced navigation scrolls the same settings surface');
+  await page.waitForFunction(() => document.querySelector('.settings-jump.is-active')?.getAttribute('data-section') === 'appearanceAdvanced');
+  assert.equal(await page.$eval('[data-setting="success"]', e => {const item = e.getBoundingClientRect(); const content = document.querySelector('.settings-content')!.getBoundingClientRect(); return item.top >= content.top && item.bottom <= content.bottom;}), true, 'advanced navigation reveals its settings');
+  if (screenshots) await page.screenshot({path: path.join(screenshots, '057-appearance-advanced.png')});
+  await page.click('[data-section="appearanceMode"]');
+  await page.click('.settings-search'); await page.keyboard.type('危险');
+  assert.deepEqual(await page.$$eval('.settings-jump', elements => elements.map(e => e.textContent)), ['高级颜色'], 'filtered navigation contains only matching sections');
+  await page.click('.settings-search-clear');
   await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="en"]'); await page.click('[data-tab="appearance"]');
   assert.equal(await page.$eval('[data-appearance-mode="auto"]', e => e.textContent), 'Auto');
   await checkControlLayout();
-  if (screenshots) await page.screenshot({ path: path.join(screenshots, '052-appearance-english.png') });
+  if (screenshots) await page.screenshot({ path: path.join(screenshots, '058-appearance-english.png') });
   await page.setViewport({width: 360, height: 740});
   assert.equal(await page.$eval('.settings-content', e => e.scrollWidth <= e.clientWidth), true, 'English color controls fit a narrow window');
+  assert.equal(await page.$$eval('.appearance-color-reset svg', elements => elements.every(e => e.getBoundingClientRect().width === 14)), true, 'reset icons remain legible inside compact buttons');
+  if (screenshots) await page.screenshot({path: path.join(screenshots, '059-appearance-narrow.png')});
   await page.setViewport({width: 1100, height: 820});
   await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="zh-CN"]'); await page.click('[data-tab="appearance"]');
   const originalSurface = await role('surface'); const sourceBefore = await source();
@@ -120,12 +146,10 @@ try {
   await openSettings();
   await page.click('[data-appearance-mode="light"]'); assert.equal(await value('surface'), '', 'light profile is independent');
   await checkControlLayout();
-  if (screenshots) await page.screenshot({ path: path.join(screenshots, '050-appearance-light.png') });
+  if (screenshots) await page.screenshot({ path: path.join(screenshots, '060-appearance-light.png') });
   await edit('surface', '#F8F4EF'); await page.click(apply); await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('.appearance-footer .settings-primary')!.disabled);
   assert.equal(owner.getUiColors().light.surface, '#F8F4EF'); assert.equal(owner.getUiColors().dark.surface, '#102537');
   await page.click('[data-appearance-mode="dark"]'); assert.equal(await value('surface'), '#102537');
-  await page.click('.appearance-advanced summary');
-  if (screenshots) { await page.$eval('.settings-content', e => { e.scrollTop = e.scrollHeight; }); await page.screenshot({ path: path.join(screenshots, '051-appearance-advanced.png') }); await page.$eval('.settings-content', e => { e.scrollTop = 0; }); }
   await page.setViewport({width: 360, height: 740});
   assert.equal(await page.$eval('.settings-window', e => e.scrollWidth <= e.clientWidth), true, 'narrow window has no horizontal clipping');
   assert.equal(await page.$eval('.settings-content', e => e.scrollWidth <= e.clientWidth), true, 'narrow color controls fit their scroll surface');

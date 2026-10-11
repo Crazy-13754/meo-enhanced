@@ -263,7 +263,10 @@ export function createSettingsWindow(options: {
       if (!items.length) continue;
       const block = element('section', 'settings-section'); block.id = `meo-settings-${section}`;
       block.append(element('h3', 'settings-section-title', titleFor(section)), ...items); content.append(block);
-      const jump = button(titleFor(section), 'settings-jump'); jump.dataset.section = section;
+    }
+    // Every tab derives its navigation from the sections that survived filtering.
+    for (const block of content.querySelectorAll<HTMLElement>('.settings-section')) {
+      const jump = button(block.querySelector('.settings-section-title')!.textContent!, 'settings-jump'); jump.dataset.section = block.id.slice('meo-settings-'.length);
       jump.addEventListener('click', () => { content.scrollTop += block.getBoundingClientRect().top - content.getBoundingClientRect().top - 20; updateNavigation(); }); navigation.append(jump);
     }
     if (!content.childNodes.length) content.append(element('p', 'settings-empty', t('没有匹配的设置', 'No matching settings')));
@@ -272,7 +275,8 @@ export function createSettingsWindow(options: {
   }
   function updateNavigation() {
     const blocks = [...content.querySelectorAll<HTMLElement>('.settings-section')];
-    const current = blocks.find(block => block.getBoundingClientRect().bottom > content.getBoundingClientRect().top + 30) ?? blocks.at(-1);
+    const atEnd = content.scrollTop > 0 && content.scrollHeight - content.clientHeight - content.scrollTop <= 1;
+    const current = atEnd ? blocks.at(-1) : blocks.find(block => block.getBoundingClientRect().bottom > content.getBoundingClientRect().top + 30) ?? blocks.at(-1);
     for (const jump of navigation.querySelectorAll<HTMLButtonElement>('button')) {
       const active = current?.id === `meo-settings-${jump.dataset.section}`; jump.classList.toggle('is-active', active);
       if (active) jump.setAttribute('aria-current', 'location'); else jump.removeAttribute('aria-current');
