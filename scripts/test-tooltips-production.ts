@@ -512,7 +512,13 @@ try {
       assert.equal(hint.inside, true, 'the full destination fits inside the viewport');
       const width = await page.$eval('.meo-tooltip.is-visible', element => element.getBoundingClientRect().width);
       assert.ok(width <= 320, 'link targets retain their maximum width');
-      if (destination.text === longHref) assert.equal(width, 320, 'long destinations wrap at the width limit');
+      if (destination.text === longHref) {
+        const lineCount = await page.$eval('.meo-tooltip.is-visible .meo-tooltip-text', element => {
+          const range = document.createRange(); range.selectNodeContents(element);
+          return new Set(Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0).map(rect => rect.top)).size;
+        });
+        assert.ok(lineCount > 1, 'long destinations wrap completely within the width limit');
+      }
       if (destination.text === '#安装说明') assert.ok(width < 160, 'short anchors do not leave an empty fixed-width panel');
       await page.mouse.move(0, 0);
       if (destination.modifier) await page.keyboard.up('Control');

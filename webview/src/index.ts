@@ -3620,6 +3620,10 @@ window.addEventListener('focus', () => {
 
 window.addEventListener('beforeunload', () => {
   settingsWindow?.dispose();
+  editorAppearanceControl.dispose();
+  uiLanguageControl.dispose();
+  editorFontSizeModeControl.dispose();
+  modeControl.dispose();
   largeDocumentTooltip?.dispose();
   tooltipBinding.dispose();
   imageLocationSettings.dispose();

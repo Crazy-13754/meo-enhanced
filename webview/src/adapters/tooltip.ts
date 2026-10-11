@@ -20,6 +20,7 @@ let activeTooltip: { hide(reason?: Dismissal): void; reposition(): void; pointer
 // One module clock keeps parent and Preview frame time origins out of the sequence.
 let hoverReadyUntil = 0;
 const ownedAnchors = new WeakSet<HTMLElement>();
+const textMeasurementContexts = new WeakMap<Document, CanvasRenderingContext2D | null>();
 const menuSelector = '.heading-dropdown, .table-dropdown, .preview-dropdown-panel, [role="menu"], .changes-review-popover, .meo-md-html-table-context-menu';
 const modalSelector = 'dialog[open], .meo-md-image-fullscreen-scrim, .meo-mermaid-fullscreen-scrim, .meo-latex-math-fullscreen-scrim';
 const intersects = (a: Bounds, b: Bounds) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -56,6 +57,51 @@ function visibleBounds(anchor: HTMLElement, area: Bounds): Bounds | null {
     }
   }
   return clipped.right > clipped.left && clipped.bottom > clipped.top ? clipped : null;
+}
+
+/** Fit the actual wrapped glyphs; font leading must not determine visual centering. */
+function fitTooltipText(text: HTMLElement, minimumLineHeight: number): number {
+  const doc = text.ownerDocument, view = doc.defaultView!;
+  text.style.height = ''; text.style.transform = '';
+  const node = text.firstChild;
+  if (!node || node.nodeType !== Node.TEXT_NODE) return 0;
+  const range = doc.createRange();
+  const lines = new Map<number, { left: number; right: number; text: string }>();
+  let offset = 0;
+  // DOM ranges retain the browser's real wrapping, bidi layout and fallback fonts.
+  for (const character of node.textContent ?? '') {
+    range.setStart(node, offset); offset += character.length; range.setEnd(node, offset);
+    if (character === '\n' || character === '\r') continue;
+    const rect = range.getBoundingClientRect();
+    const line = lines.get(rect.top);
+    lines.set(rect.top, { left: Math.min(line?.left ?? rect.left, rect.left), right: Math.max(line?.right ?? rect.right, rect.right), text: (line?.text ?? '') + character });
+  }
+  const width = Math.max(0, ...[...lines.values()].map(line => line.right - line.left));
+  let context = textMeasurementContexts.get(doc);
+  if (context === undefined) { context = doc.createElement('canvas').getContext('2d'); textMeasurementContexts.set(doc, context); }
+  if (!context || !lines.size) return width;
+  const style = view.getComputedStyle(text);
+  context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  context.textBaseline = 'alphabetic';
+  // Reuse the inline probe: inserting it during layout would retrigger bindTooltips' observer.
+  const probe = text.firstElementChild!;
+  const baselineOffset = probe.getBoundingClientRect().top - Math.max(...lines.keys());
+  let inkTop = Infinity, inkBottom = -Infinity, lineInkHeight = 0;
+  for (const [top, line] of lines) {
+    const metrics = context.measureText(line.text);
+    if (metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent <= 0) continue;
+    lineInkHeight = Math.max(lineInkHeight, metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent);
+    inkTop = Math.min(inkTop, top + baselineOffset - metrics.actualBoundingBoxAscent);
+    inkBottom = Math.max(inkBottom, top + baselineOffset + metrics.actualBoundingBoxDescent);
+  }
+  if (inkBottom > inkTop) {
+    const leading = inkTop - text.getBoundingClientRect().top;
+    // Retain the breathing room supplied by a button hint's minimum height, even after wrapping.
+    const inset = Math.max(0, (minimumLineHeight - lineInkHeight) / 2);
+    text.style.height = inkBottom - inkTop + inset * 2 + 'px';
+    text.style.transform = `translateY(${inset - leading}px)`;
+  }
+  return width;
 }
 
 /**
@@ -96,6 +142,11 @@ export function createTooltip(anchor: HTMLElement, options: {
   }
   const label = doc.createElement('span'); label.className = 'meo-tooltip-label';
   const shortcut = doc.createElement('kbd'); shortcut.className = 'meo-tooltip-shortcut';
+  const labelText = doc.createElement('span'); labelText.className = 'meo-tooltip-text'; label.append(labelText);
+  const labelContent = doc.createTextNode('');
+  // Keep the probe in place; measuring must not mutate the observed DOM.
+  const probe = doc.createElement('span'); probe.className = 'meo-tooltip-baseline';
+  labelText.append(labelContent, probe);
   const details = doc.createElement('div'); details.className = 'meo-tooltip-details'; details.hidden = true;
   const errorDetails = doc.createElement('div'); errorDetails.className = 'meo-tooltip-error'; errorDetails.hidden = true;
   tooltip.append(label, shortcut, details, errorDetails);
@@ -167,6 +218,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     // Scrolling can move a large hit surface away from a stationary pointer.
     if (point && (point.x < viewport.left || point.x > viewport.right || point.y < viewport.top || point.y > viewport.bottom
       || !anchor.contains(doc.elementFromPoint(point.x, point.y)))) { hide(); return; }
+    tooltip.style.width = '';
     tooltip.style.maxWidth = '';
     tooltip.classList.toggle('meo-tooltip--wrap', content.kind === 'fulltext' || content.kind === 'description' || content.kind === 'link');
     tooltip.classList.toggle('meo-tooltip--link', content.kind === 'link');
@@ -177,6 +229,22 @@ export function createTooltip(anchor: HTMLElement, options: {
       tooltip.classList.add('meo-tooltip--wrap');
       tooltip.style.maxWidth = Math.max(0, area.right - area.left) + 'px';
       hint = tooltip.getBoundingClientRect();
+    }
+    if (tooltip.classList.contains('meo-tooltip--wrap')) {
+      // Only wrapping hints need glyph measurement; ordinary button / shortcut layout stays unchanged.
+      const style = view.getComputedStyle(tooltip);
+      const minimumLineHeight = Math.max(0, (Number.parseFloat(style.minHeight) || 0)
+        - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom));
+      const contentWidth = fitTooltipText(labelText, minimumLineHeight);
+      hint = tooltip.getBoundingClientRect();
+      if (!tooltip.classList.contains('meo-tooltip--details')) {
+        const fittedWidth = Math.ceil(contentWidth + hint.width - label.getBoundingClientRect().width);
+        if (fittedWidth < hint.width) {
+          tooltip.style.width = fittedWidth + 'px';
+          fitTooltipText(labelText, minimumLineHeight);
+          hint = tooltip.getBoundingClientRect();
+        }
+      }
     }
     const menus = [...doc.querySelectorAll<HTMLElement>(menuSelector)].filter(element => painted(element));
     const requested = options.placement ?? anchor.dataset.tooltipPlacement;
@@ -330,7 +398,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     // Preview document language can differ from the tooltip UI language.
     const language = doc.documentElement.dataset.meoTooltipLanguage ?? doc.documentElement.lang;
     if (tooltip.lang !== language) tooltip.lang = language;
-    if (label.textContent !== content.text) label.textContent = content.text;
+    if (labelContent.data !== content.text) labelContent.data = content.text;
     if (shortcut.textContent !== (content.shortcut ?? '')) shortcut.textContent = content.shortcut ?? '';
     if (shortcut.hidden !== !content.shortcut) shortcut.hidden = !content.shortcut;
     tooltip.classList.toggle('meo-tooltip--shortcut', !!content.shortcut);

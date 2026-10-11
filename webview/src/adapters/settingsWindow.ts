@@ -43,6 +43,7 @@ export function createSettingsWindow(options: {
   let disposed = false;
   let renderedSignature = '';
   let valuePresenters: (() => void)[] = [];
+  let disposeSegmentedControls: (() => void)[] = [];
   const pending = new Set<string>();
   const scrollPositions: Record<SettingsTab, number> = { general: 0, typing: 0, shortcuts: 0 };
   const abort = new AbortController();
@@ -118,6 +119,7 @@ export function createSettingsWindow(options: {
       const slot = element('div', 'settings-choice');
       const choices = control.kind === 'font' ? [{ value: 'auto', label: t('自动', 'Auto') }, { value: 'custom', label: t('自定义', 'Custom') }] : control.options;
       const segmented = createSegmentedControl({ ariaLabel: item.title, className: 'settings-segmented', buttonClassName: 'settings-choice-button', datasetKey: 'value', role: 'group', options: choices, buttonTitles: false });
+      disposeSegmentedControls.push(segmented.dispose);
       const presentChoice = () => segmented.setActive(control.kind === 'font' ? control.get().mode : control.get());
       valuePresenters.push(presentChoice); presentChoice(); slot.append(segmented.element); row.append(slot);
       for (const choice of choices) segmented.getButton(choice.value).addEventListener('click', () => {
@@ -243,6 +245,7 @@ export function createSettingsWindow(options: {
     renderedSignature = signature;
     const oldScroll = content.scrollTop;
     const activeRecorder = document.activeElement?.classList.contains('settings-recorder');
+    disposeSegmentedControls.forEach(dispose => dispose()); disposeSegmentedControls = [];
     valuePresenters = []; content.replaceChildren(); navigation.replaceChildren();
     const groups = tab === 'general' ? ['display', 'opening', 'interface'] : tab === 'typing' ? typingSections : Object.keys(shortcutSections);
     for (const name of groups) {
@@ -300,5 +303,5 @@ export function createSettingsWindow(options: {
   present();
   return { open() { if (disposed || dialog.open) return; present(); void options.imageLocation?.refresh(); dialog.showModal(); updateNavigation(); search.focus(); }, close: closeWindow,
     isOpen: () => dialog.open, present, setLanguage(next: UiLanguage) { language = next; present(); },
-    dispose() { disposed = true; abort.abort(); disposeSearchFocus?.(); if (dialog.open) dialog.close(); dialog.remove(); } };
+    dispose() { disposed = true; abort.abort(); disposeSegmentedControls.forEach(dispose => dispose()); disposeSegmentedControls = []; disposeSearchFocus?.(); if (dialog.open) dialog.close(); dialog.remove(); } };
 }
