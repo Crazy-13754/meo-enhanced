@@ -7,6 +7,7 @@ import type { UiColorKey } from '../../../src/foundation/uiColors';
 export const defaultUiColors = {
   light: {
     surface: '#FAFAFD',
+    documentBackground: '#FFFFFF',
     text: '#202020',
     accent: '#0069CC',
     textEmphasis: '#0069CC',
@@ -16,6 +17,7 @@ export const defaultUiColors = {
   },
   dark: {
     surface: '#202122',
+    documentBackground: '#121314',
     text: '#BFBFBF',
     accent: '#297AA0',
     textEmphasis: '#48A0C7',

@@ -118,7 +118,7 @@ const matchesHostAppearance = (appearance: Exclude<EditorAppearance, 'auto'>): b
     || document.body.classList.contains('vscode-high-contrast'));
 };
 
-/** UI previews reuse the semantic palette without rewriting document colors or typography. */
+/** Color previews update carriers and semantic roles without rewriting syntax or typography. */
 export const applyUiVisualBaseline = (appearance: Exclude<EditorAppearance, 'auto'>, colors?: UiColors): void => {
   applyUiTheme(appearance, matchesHostAppearance(appearance), colors?.[appearance]);
 };

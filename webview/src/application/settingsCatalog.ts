@@ -5,6 +5,7 @@ export type SettingsTab = 'general' | 'appearance' | 'typing' | 'shortcuts';
 export const appearanceCatalog = [
   { id: 'mode', title: ['模式', 'Mode'], description: ['自动跟随 VS Code 主题，切换后立即保存。', 'Auto follows the VS Code theme. Mode changes save immediately.'], keywords: ['主题 深色 暗色 夜间 浅色 亮色 自动 跟随 外观', 'theme dark night light auto appearance'], advanced: false },
   { id: 'surface', title: ['界面背景', 'UI background'], description: ['菜单栏、面板与弹出菜单的背景来源。', 'Base surface for toolbars, panels and menus.'], keywords: ['背景 底色 面板 菜单', 'background surface panel menu'], advanced: false },
+  { id: 'documentBackground', title: ['文档背景', 'Document background'], description: ['Live、Source、目录及默认预览的背景颜色。', 'Background for Live, Source, outline and default preview.'], keywords: ['正文 文档 背景 底色 画布', 'document content background canvas live source'], advanced: false },
   { id: 'text', title: ['界面文字', 'UI text'], description: ['控件文字与图标共用的颜色。', 'Shared text and icon color for controls.'], keywords: ['前景 字体 图标 文字', 'foreground text font icon'], advanced: false },
   { id: 'accent', title: ['操作强调', 'Action accent'], description: ['开关、焦点与操作状态的强调色。', 'Accent for switches, focus and action states.'], keywords: ['强调 开关 焦点 选中', 'accent switch focus selected'], advanced: false },
   { id: 'textEmphasis', title: ['内容强调', 'Content emphasis'], description: ['Live 标题、列表、目录强调、菜单匹配文字与脚注底色。', 'Live headings, lists, outline emphasis, menu matches and footnote tint.'], keywords: ['标题 列表 目录 斜杠 匹配 脚注', 'heading list outline slash match footnote'], advanced: false },

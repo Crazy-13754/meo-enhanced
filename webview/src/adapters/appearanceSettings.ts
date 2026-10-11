@@ -160,7 +160,7 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
           restore.setAttribute('aria-label', t(item.title[0], item.title[1]) + ' · ' + colorSourceLabel());
           if ((!invalid.has(key) && document.activeElement !== input) || shownScheme !== scheme) { input.value = color ?? ''; input.removeAttribute('aria-invalid'); shownScheme = scheme; }
           restore.disabled = saving || !color && !invalid.has(key); swatchInput.disabled = saving; input.disabled = saving;
-          const role = key === 'textEmphasis' ? 'text-emphasis-content' : key;
+          const role = key === 'textEmphasis' ? 'text-emphasis-content' : key === 'documentBackground' ? 'document-background' : key;
           const value = color ?? getComputedStyle(document.documentElement).getPropertyValue('--meo-ui-' + role).trim();
           chip.style.backgroundColor = value;
           const rgb = value.match(/^rgb\((\d+)[, ]+(\d+)[, ]+(\d+)/);

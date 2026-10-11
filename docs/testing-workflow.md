@@ -93,7 +93,7 @@ exact commands without running them.
 
 ## Daily repair loop
 
-`scripts/test-ui-colors.ts` checks the seven base inputs, configuration ownership,
+`scripts/test-ui-colors.ts` checks the eight base inputs, configuration ownership,
 strict Protocol decoding and correlated saves. `scripts/test-ui-colors-production.ts`
 uses the production Settings window and the same configuration owner to verify
 preview/cancel, save failure/retry, reload, separate light/dark profiles, external
@@ -104,8 +104,12 @@ default source in Chinese/English hints, reset labels and search. Returning to
 Auto must follow the active host again. Continuous swatch input
 must coalesce derivation into one frame, retain the latest value and avoid feedback
 writes to the native input. Apply and discard are also checked before that frame.
-Both are quick and targeted appearance checks; Source content must remain
-unchanged during UI edits.
+Both are quick and targeted appearance checks; ordinary UI edits must preserve
+Source content. Document background edits change only its carrier, retaining
+native Source ink and keeping the toolbar surface independent.
+`scripts/test-editor-background-theme.ts` additionally checks Live/Source/Default
+Preview backgrounds, CSS-only Preview color updates without Markdown rendering,
+and independent Preview presets retaining their paired backgrounds.
 
 `scripts/test-source-syntax-first-paint.ts` checks idle Source preparation through
 the production editor. An unchanged Live/Source roundtrip and reapplying the same

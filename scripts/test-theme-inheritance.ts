@@ -534,14 +534,40 @@ try {
     const expectedContent = JSON.parse(fs.readFileSync('scripts/fixtures/theme-content-baseline.json', 'utf8'));
     assert.deepEqual(Object.keys(content), Object.keys(expectedContent.hashes));
     for (const [profile, styles] of Object.entries(content)) {
-      // Only the approved Live heading foreground (and its currentColor border)
-      // may change. Preserve the fixed oracle for every other content attribute.
+      // Check approved changes explicitly, then restore only those attributes
+      // for comparison with the immutable pre-change content fingerprints.
       const retainedStyles = structuredClone(styles);
       if (profile.endsWith(':live')) {
         const original = expectedContent.liveHeadingForegrounds[profile];
         assert.ok(original, `${profile}: missing original Live heading foreground`);
         for (const row of (retainedStyles as Record<string, string[][]>)['.meo-md-h1']!) {
           row[1] = row[3] = original;
+        }
+      }
+      if (profile === 'dark-on-light:live') {
+        for (const selector of ['.meo-md-h1', '.meo-md-quote']) {
+          for (const row of (retainedStyles as Record<string, string[][]>)[selector]!) {
+            assert.equal(row[2], 'rgb(18, 19, 20)', 'manual dark uses the Dark 2026 document background');
+            row[2] = 'rgb(36, 41, 46)';
+          }
+        }
+      } else if (profile === 'dark-on-light:preview') {
+        // Existing Preview table fills/borders already depend on the document
+        // carrier. Their fixed new values reflect #121314 instead of #24292e;
+        // every foreground, code fill and unrelated attribute stays frozen.
+        for (const row of retainedStyles as string[][]) {
+          if (row[0] === 'BODY') {
+            assert.equal(row[3], 'rgb(18, 19, 20)');
+            row[3] = 'rgb(36, 41, 46)';
+          }
+          if (row[0] === 'TH') {
+            assert.equal(row[3], 'color(srgb 0.132706 0.138196 0.145255)');
+            row[3] = 'color(srgb 0.197647 0.217569 0.239059)';
+          }
+          if (row[0] === 'TH' || row[0] === 'TD') {
+            assert.equal(row[4], 'color(srgb 0.241412 0.249647 0.262196)');
+            row[4] = 'color(srgb 0.296471 0.316941 0.341725)';
+          }
         }
       }
       const fingerprint = createHash('sha256').update(JSON.stringify(retainedStyles)).digest('hex');

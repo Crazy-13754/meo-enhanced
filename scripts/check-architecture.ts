@@ -2147,7 +2147,7 @@ for (const path of customThemeCapabilityScope) {
 }
 
 // Product boundary guard: document color editing stays limited to Live HEX adjustment.
-// Appearance additionally exposes seven validated HEX settings; only its native
+// Appearance additionally exposes eight validated HEX settings; only its native
 // swatch input is allowed, without restoring generic document picker owners.
 // Non-HEX decorators and generic picker/chooser/palette owners remain retired.
 // Ordinary CSS color text and current theme/code palettes remain.

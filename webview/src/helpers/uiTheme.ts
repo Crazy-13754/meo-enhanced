@@ -77,7 +77,10 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
   };
 
   try {
-    const documentSurface = read('editor.background', fallback['--vscode-editor-background']);
+    const documentSurface = custom.documentBackground ? sample(custom.documentBackground) : read('editor.background', defaults.documentBackground);
+    // Document and UI carriers are independent. Color previews update CSS only,
+    // leaving native Source tokens and document parsing untouched.
+    style.setProperty('--meo-background', rgb(documentSurface));
     const nativeSurface = custom.surface ? sample(custom.surface) : read('editorWidget.background', defaults.surface, documentSurface);
     // Large UI areas share the toolbar's low-chroma family. Native menu fills
     // can have an unrelated, strong tint and are not another default input.
@@ -127,7 +130,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
       const selectedText = fit(custom.text ? text : neutral(nativeSelectionText ?? text), [selected], 4.55);
       const contentEmphasis = fit(textEmphasis, contentSurfaces, 4.55);
       const roles: Record<string, string> = Object.fromEntries(Object.entries({
-        surface, 'surface-raised': raised, 'surface-field': field, 'surface-hover': hover,
+        surface, 'document-background': documentSurface, 'surface-raised': raised, 'surface-field': field, 'surface-hover': hover,
         'surface-pressed': pressed, 'surface-selected': selected, 'segmented-track': track,
         text, 'text-muted': muted, 'text-disabled': mix(text, neutral(raised), 0.55),
         'text-selected': selectedText, separator, 'border-float': floatBorder, 'border-control': controlBorder,

@@ -601,7 +601,7 @@ try {
         query: element.querySelector('.settings-item-title')!.textContent!,
         values: [...element.querySelectorAll('.settings-key, .image-location-mode-title, .image-location-field-label, .image-location-picker, .image-location-token')].map(control => control.getAttribute('aria-label') ?? control.textContent!)
       })));
-      assert.equal(items.length, tab === 'general' ? 10 : tab === 'appearance' ? 8 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
+      assert.equal(items.length, tab === 'general' ? 10 : tab === 'appearance' ? 9 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
       searchCases.push(...items.flatMap(item => [item.query, ...item.values].map(query => ({tab, id: item.id, query}))));
     }
     await page.click('.settings-close');
@@ -611,7 +611,7 @@ try {
     ['general', 'width', '版心', 'reading width'], ['general', 'strongColor', '加粗颜色', 'bold color'],
     ['general', 'boldHeadings', '标题字重', 'heading weight'], ['general', 'stickyHeader', '冻结表头', 'freeze header'],
     ['general', 'restorePosition', '上次位置', 'remember position'], ['general', 'largeDocument', '启动速度', 'large file'],
-    ['appearance', 'mode', '夜间', 'night'], ['appearance', 'surface', '底色', 'surface'], ['appearance', 'textEmphasis', '脚注', 'footnote'], ['general', 'language', '本地化', 'locale'], ['general', 'fontSize', '文字大小', 'zoom'],
+    ['appearance', 'mode', '夜间', 'night'], ['appearance', 'surface', '底色', 'surface'], ['appearance', 'documentBackground', '画布', 'canvas'], ['appearance', 'textEmphasis', '脚注', 'footnote'], ['general', 'language', '本地化', 'locale'], ['general', 'fontSize', '文字大小', 'zoom'],
     ['typing', 'selectionToolbar', '浮动工具栏', 'floating toolbar'], ['typing', 'wrapSelection', '环绕选区', 'surround selection'],
     ['typing', 'pairMode', '自动闭合', 'auto close'], ['typing', 'skipMode', '跳出符号', 'overtype'],
     ['typing', 'deleteMode', '一起删除', 'paired deletion'], ['typing', 'lists', '清单', 'list continuation'],

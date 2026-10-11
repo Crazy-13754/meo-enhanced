@@ -1514,7 +1514,17 @@ export function createPreviewController({
     updatePresetInfo();
   };
 
+  const syncDocumentBackground = (frameDocument: Document): void => {
+    // Default follows the document carrier; independent presets and an opposite
+    // preview appearance retain their own paired colors. No render is needed.
+    frameDocument.documentElement.style.removeProperty('--meo-bg');
+    if (presetPreference === 'default' && appearance === getEditorAppearance()) {
+      frameDocument.documentElement.style.setProperty('--meo-bg', getComputedStyle(document.body).backgroundColor);
+    }
+  };
+
   const syncPreviewCodeHighlight = (frameDocument: Document): void => {
+    syncDocumentBackground(frameDocument);
     frameDocument.documentElement.dataset.meoPreviewSourceColoring = String(isSourceColoringEnabled());
     if (isSourceColoringEnabled()) applyPreviewCodeHighlight(frameDocument, true, currentCodeHighlight(frameDocument));
   };
@@ -3008,6 +3018,10 @@ export function createPreviewController({
       refreshTheme();
     },
     refreshTheme,
+    refreshDocumentBackground: () => {
+      const frameDocument = getFrameDocument();
+      if (frameDocument) syncDocumentBackground(frameDocument);
+    },
     getAppearance: () => appearance,
     getSourceColoring: isSourceColoringEnabled,
     getStyleEnvironment,

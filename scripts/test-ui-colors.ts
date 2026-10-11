@@ -20,7 +20,7 @@ for (const invalid of [null, [], { surface: '#123' }, { dark: [] }, { light: { u
   assert.equal(decodeWebviewToHostMessage({ type: 'updateUiColors', requestId: 'test', colors: invalid }), null);
   assert.equal(decodeHostToWebviewMessage({ type: 'uiColorsChanged', colors: invalid }), null);
 }
-const colors = { light: { accent: '#226644' }, dark: { textEmphasis: '#99CCAA' } };
+const colors = { light: { accent: '#226644', documentBackground: '#FFFAEE' }, dark: { textEmphasis: '#99CCAA', documentBackground: '#182C38' } };
 assert.deepEqual(decodeWebviewToHostMessage({ type: 'updateUiColors', requestId: 'save', colors }), { type: 'updateUiColors', requestId: 'save', colors });
 assert.equal(decodeWebviewToHostMessage({ type: 'updateUiColors', requestId: '', colors }), null);
 assert.equal(decodeHostToWebviewMessage({ type: 'uiColorsResult', requestId: 'save', result: { ok: true, value: { dark: { text: 'red' } } } }), null);

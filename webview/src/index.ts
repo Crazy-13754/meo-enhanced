@@ -3250,7 +3250,12 @@ const copyTableToHost = async (format: 'markdown' | 'csv') => {
 };
 const imageStorageTransport = createImageStorageTransport(request => vscode.postMessage(request));
 const uiColorsTransport = createUiColorsTransport(request => vscode.postMessage(request));
-const refreshUiColors = () => applyUiVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
+const refreshUiColors = () => {
+  const rootStyle = document.documentElement.style;
+  const background = rootStyle.getPropertyValue('--meo-background');
+  applyUiVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
+  if (background !== rootStyle.getPropertyValue('--meo-background')) previewController.refreshDocumentBackground();
+};
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
 settingsWindow = createSettingsWindow({
   appearance: {

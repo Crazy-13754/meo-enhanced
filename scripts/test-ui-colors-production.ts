@@ -139,7 +139,7 @@ try {
   await page.setViewport({width: 1100, height: 820});
   await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="zh-CN"]'); await page.click('[data-tab="appearance"]');
   // A manual appearance must not inherit UI colors from the opposite host.
-  const hostInputs = ['editorWidget-background', 'foreground', 'button-background', 'textLink-foreground', 'testing-iconPassed', 'editorWarning-foreground', 'errorForeground'];
+  const hostInputs = ['editor-background', 'editorWidget-background', 'foreground', 'button-background', 'textLink-foreground', 'testing-iconPassed', 'editorWarning-foreground', 'errorForeground'];
   const originalHostInputs = await page.evaluate(ids => ids.map(id => {
     const key = '--vscode-' + id; const style = document.documentElement.style;
     return [key, style.getPropertyValue(key), style.getPropertyPriority(key)];
@@ -178,7 +178,7 @@ try {
   assert.match(await page.$eval('.appearance-note', e => e.textContent!), /dark default palette/);
   assert.match(await page.$eval('.appearance-color-reset', e => e.getAttribute('aria-label')!), /Default dark palette/);
   await page.click('.settings-search'); await page.keyboard.type('Default dark palette');
-  assert.equal(await page.$$eval('.appearance-item', elements => elements.length), 7, 'default palette searches expose all color inputs');
+  assert.equal(await page.$$eval('.appearance-item', elements => elements.length), 8, 'default palette searches expose all color inputs');
   await page.click('.settings-search-clear');
   await page.evaluate(inputs => { for (const [key, value, priority] of inputs) document.documentElement.style.setProperty(key!, value!, priority!); }, originalHostInputs);
   await changeHost('dark'); await page.click('[data-appearance-mode="auto"]');
@@ -187,6 +187,14 @@ try {
   await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="zh-CN"]'); await page.click('[data-tab="appearance"]');
   assert.deepEqual(owner.getUiColors(), {light: {}, dark: {}}, 'bundled defaults and previews are never persisted as overrides');
   const originalSurface = await role('surface'); const sourceBefore = await source();
+  const originalDocumentBackground = await page.$eval('body', e => getComputedStyle(e).backgroundColor);
+  await edit('documentBackground', '#182C38');
+  assert.equal(await page.$eval('body', e => getComputedStyle(e).backgroundColor), 'rgb(24, 44, 56)');
+  assert.equal(await page.$eval('.cm-editor', e => getComputedStyle(e).backgroundColor), 'rgb(24, 44, 56)');
+  assert.equal(await role('surface'), originalSurface, 'document background does not change the UI surface');
+  assert.deepEqual((await source()).map(([text, color]) => [text, color]), sourceBefore.map(([text, color]) => [text, color]), 'document background preserves native Source ink');
+  await page.click(cancel);
+  assert.equal(await page.$eval('body', e => getComputedStyle(e).backgroundColor), originalDocumentBackground, 'cancel restores the document carrier');
   const drag = await page.evaluate(async () => {
     const swatch = document.querySelector<HTMLInputElement>('[data-setting="surface"] .appearance-color-swatch')!;
     const readback = CanvasRenderingContext2D.prototype.getImageData;
@@ -250,13 +258,15 @@ try {
   }
   await edit('accent', '#1234'); assert.equal(await page.$eval(apply, e => (e as HTMLButtonElement).disabled), true); assert.equal(await page.$eval(input('accent'), e => e.getAttribute('aria-invalid')), 'true');
   await edit('accent', '#2AF'); await page.click('[data-setting="accent"] .appearance-color-reset'); assert.equal(await value('accent'), '');
-  await edit('surface', '#102537'); await edit('textEmphasis', '#99CCAA');
+  await edit('surface', '#102537'); await edit('textEmphasis', '#99CCAA'); await edit('documentBackground', '#182C38');
   fail = true; await page.click(apply); await page.waitForFunction(() => !document.querySelector<HTMLElement>('.appearance-status')!.hidden);
   assert.equal(await value('surface'), '#102537'); assert.equal(await role('surface'), 'rgb(16, 37, 55)'); assert.deepEqual(owner.getUiColors(), {light: {}, dark: {}});
   fail = false; await page.click(apply); await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('.appearance-footer .settings-primary')!.disabled);
-  assert.deepEqual(owner.getUiColors(), {light: {}, dark: {surface: '#102537', textEmphasis: '#99CCAA'}});
+  assert.deepEqual(owner.getUiColors(), {light: {}, dark: {surface: '#102537', textEmphasis: '#99CCAA', documentBackground: '#182C38'}});
   await page.click('.settings-close'); await openFixture(); await openSettings();
   assert.equal(await value('surface'), '#102537', 'a reloaded Webview receives persisted colors');
+  assert.equal(await value('documentBackground'), '#182C38');
+  assert.equal(await page.$eval('body', e => getComputedStyle(e).backgroundColor), 'rgb(24, 44, 56)', 'reload restores the independent document background');
   await page.click('.settings-close'); await page.click('[data-mode="live"]');
   await page.waitForSelector('.meo-md-heading-content');
   assert.equal(await page.$eval('.meo-md-heading-content', e => getComputedStyle(e).color), 'rgb(153, 204, 170)', 'saved content emphasis colors the actual Live heading');
@@ -288,6 +298,7 @@ try {
   await page.click('[data-appearance-mode="auto"]');
   await page.evaluate(() => { document.body.className = 'vscode-high-contrast'; window.dispatchEvent(new MessageEvent('message', {data: {type: 'vscodeCodeThemeChanged', appearance: 'dark', vscodeTheme: {name: 'HC', type: 'dark', colors: {}, tokenColors: []}}})); });
   assert.equal(await role('surface'), 'rgb(34, 39, 46)', 'high contrast uses native surface instead of saved custom surface');
+  assert.equal(await page.$eval('body', e => getComputedStyle(e).backgroundColor), 'rgb(34, 39, 46)', 'high contrast also preserves the native document carrier');
   assert.ok(await page.$eval('.appearance-note', e => e.textContent?.includes('高对比度')));
   await page.evaluate(() => { document.body.className = 'vscode-dark'; window.dispatchEvent(new MessageEvent('message', {data: {type: 'vscodeCodeThemeChanged', appearance: 'dark', vscodeTheme: {name: 'dark', type: 'dark', colors: {}, tokenColors: []}}})); });
   assert.equal(await role('surface'), 'rgb(17, 38, 56)');
