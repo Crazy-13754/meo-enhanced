@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createPreviewPresetLibrary, validatePresetCss, type StoredPreviewPreset } from '../src/host/customPreviewPresets';
 import { createCustomPreviewPreset, decodeCustomPreviewPresets, parseCustomPreviewPresetManifest } from '../src/foundation/customPreviewPreset';
-import { decodePreviewPresetState, getPreviewPreset, replaceCustomPreviewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
+import { decodePreviewPresetState, getPreviewPreset, getPreviewPresetCodeTheme, replaceCustomPreviewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
+import { buildPresetPreviewStyles } from '../src/preview/presetStyles';
 import { decodePreviewPresetsChanged, decodePreviewPresetRequest, decodePreviewPresetResponse } from '../src/protocol/previewPresets';
 import { decodePreviewRenderRequest } from '../src/protocol/previewRender';
 import exportRuntime from '../src/export/runtime';
@@ -137,6 +138,39 @@ assert.deepEqual(await restarted.load(), []);
 
 const environment = { previewFontFamily: 'Georgia', previewSourceColoring: true, editorBackgroundColor: '#23272b' };
 const text = '# Test\n\n> [!NOTE]\n> Note\n\n```typescript\nconst value = 42;\n```';
+const changedEditorEnvironment = { ...environment, editorBackgroundColor: '#302010', editorForegroundColor: '#fedcba',
+  codeBlockBackgroundColor: '#503010', sideBarBackgroundColor: '#403010', panelBorderColor: '#ebba99',
+  frontmatterKeyColor: '#edbc98', frontmatterValueColor: '#cba987', frontmatterPillBackgroundColor: '#543210',
+  meoThemeColors: Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`base0${index + 1}`, '#ff0099'])),
+  previewCodePalettes: { light: { foreground: '#ff0099', comment: '#ff0099', keyword: '#ff0099', string: '#ff0099', number: '#ff0099', type: '#ff0099', property: '#ff0099', link: '#ff0099' },
+    dark: { foreground: '#ff0099', comment: '#ff0099', keyword: '#ff0099', string: '#ff0099', number: '#ff0099', type: '#ff0099', property: '#ff0099', link: '#ff0099' } } };
+assert.equal(getPreviewPresetCodeTheme(getPreviewPreset('default'), 'dark'), undefined);
+assert.equal(getPreviewPresetCodeTheme(getPreviewPreset('github-readme'), 'light'), 'github-light-default');
+assert.notEqual(buildPresetPreviewStyles('default', environment, 'dark'), buildPresetPreviewStyles('default', changedEditorEnvironment, 'dark'), 'Default keeps editor color inheritance');
+for (const base of ['default', 'github-readme'] as const) {
+  const manifest = parseCustomPreviewPresetManifest({ ...basic, base, themes: { light: { css: 'light.css' }, dark: { css: 'dark.css' } } });
+  const fixedPalettePreset = createCustomPreviewPreset(manifest, { light: '', dark: '' }, 'a'.repeat(64));
+  for (const appearance of ['light', 'dark'] as const) {
+    const styles = buildPresetPreviewStyles(fixedPalettePreset.id, environment, appearance, 'responsive', fixedPalettePreset);
+    assert.equal(styles, buildPresetPreviewStyles(fixedPalettePreset.id, changedEditorEnvironment, appearance, 'responsive', fixedPalettePreset), `${base}/${appearance}: unspecified custom colors use a fixed base`);
+    assert.ok(!styles.includes('--vscode-'), 'Fixed base colors do not reference editor variables');
+    const expectedTheme = base === 'default' ? appearance === 'light' ? 'light-plus' : 'dark-plus'
+      : appearance === 'light' ? 'github-light-default' : 'github-dark-default';
+    assert.equal(getPreviewPresetCodeTheme(fixedPalettePreset, appearance), expectedTheme);
+    const renderFixedPalette = (styleEnvironment: typeof environment) => exportRuntime.renderExportHtmlDocument({
+      readingSnapshot: { snapshotId: 'fixed-palette', text, appearance, uiLanguage: 'en', environment: styleEnvironment,
+        preset: fixedPalettePreset.id, presetRevision: fixedPalettePreset.custom!.revision,
+        codeTheme: { name: 'Editor-only palette', type: appearance, colors: {}, tokenColors: [{ scope: ['keyword', 'variable', 'constant'], settings: { foreground: '#ff0099' } }] } },
+      presetDefinition: fixedPalettePreset, sourceDocumentPath: 'C:/tmp/test.md', outputFilePath: 'C:/tmp/test.html', target: 'html',
+      mermaidRuntimeSrc: '', baseHref: '', title: 'Fixed palette', shikiLanguageAssetsRoot: path.resolve('webview/dist')
+    });
+    const fixedHtml = (await renderFixedPalette(environment)).htmlDocument;
+    assert.equal(fixedHtml, (await renderFixedPalette(changedEditorEnvironment)).htmlDocument, `${base}/${appearance}: exports ignore editor colors and syntax palettes`);
+    assert.ok(!fixedHtml.toLowerCase().includes('#ff0099'), 'The captured editor syntax palette cannot leak into an export');
+    const explicitPalette = createCustomPreviewPreset({ ...manifest, themes: { ...manifest.themes, [appearance]: { css: `${appearance}.css`, codeTheme: 'github-light-default' } } }, fixedPalettePreset.custom!.css, 'b'.repeat(64));
+    assert.equal(getPreviewPresetCodeTheme(explicitPalette, appearance), 'github-light-default', 'The author can explicitly choose a palette');
+  }
+}
 const preview = exportRuntime.renderPreviewDocument({ markdownText: text, sourceDocumentPath: 'C:/tmp/test.md', uiLanguage: 'en', styleEnvironment: environment, preset: dual.id, presetDefinition: dual });
 assert.equal(preview.presetRevision, dual.custom!.revision);
 const options = { readingSnapshot: { snapshotId: 'custom', text, appearance: 'dark' as const, uiLanguage: 'en' as const, environment, preset: dual.id, presetRevision: dual.custom!.revision }, presetDefinition: dual, sourceDocumentPath: 'C:/tmp/test.md', outputFilePath: 'C:/tmp/test.html', target: 'html' as const, mermaidRuntimeSrc: '', baseHref: '', title: 'Test', shikiLanguageAssetsRoot: path.resolve('webview/dist') };

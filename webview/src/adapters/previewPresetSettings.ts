@@ -1,3 +1,4 @@
+import { BookOpen, createElement, Download, FolderInput, Trash2 } from 'lucide';
 import { isPreviewPresetEnabled, previewPresets, type PreviewPresetDefinition, type PreviewPresetDiagnostic } from '../../../src/foundation/previewPresets';
 import type { PreviewPresetAction, PreviewPresetResponse } from '../../../src/protocol/previewPresets';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
@@ -15,13 +16,19 @@ export function createPreviewPresetSettings(options: {
   let pending = false;
   let error = '';
   let disposed = false;
+  let removal: { anchor: HTMLButtonElement; close(restoreFocus?: boolean): void } | undefined;
   const infos: ReturnType<typeof createPreviewPresetInfo>[] = [];
-  const clear = () => { for (const info of infos.splice(0)) info.dispose(); };
+  const clear = () => { removal?.close(); for (const info of infos.splice(0)) info.dispose(); };
   const t = (language: UiLanguage, zh: string, en: string) => settingsText(language, zh, en);
   const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) => {
     const element = document.createElement(tag); element.className = className; if (text !== undefined) element.textContent = text; return element;
   };
   const button = (text: string, className = 'settings-button') => { const element = node('button', className, text); element.type = 'button'; element.disabled = pending; return element; };
+  const actionButton = (label: string, icon: typeof Download, warning = false) => {
+    const element = button(label, `settings-button settings-subtle settings-preset-button${warning ? ' settings-warning' : ''}`);
+    element.setAttribute('aria-label', label);
+    element.prepend(createElement(icon, { width: 15, height: 15, 'aria-hidden': 'true' })); return element;
+  };
   const perform = async (action: PreviewPresetAction) => {
     if (pending || disposed) return;
     pending = true; error = ''; options.changed();
@@ -30,6 +37,47 @@ export function createPreviewPresetSettings(options: {
       if (!result.ok) error = result.error.message;
     } catch (failure) { error = String(failure); }
     pending = false; if (!disposed) options.changed();
+  };
+  const confirmRemoval = (anchor: HTMLButtonElement, preset: PreviewPresetDefinition, language: UiLanguage) => {
+    if (pending || disposed) return;
+    if (removal?.anchor === anchor) { removal.close(true); return; }
+    removal?.close();
+    const owner = anchor.closest('dialog') ?? document.body;
+    const popover = node('div', 'settings-preset-remove-popover');
+    popover.id = 'settings-preset-remove-confirmation';
+    popover.setAttribute('role', 'dialog'); popover.setAttribute('aria-labelledby', `${popover.id}-title`);
+    const title = node('p', 'settings-preset-remove-title', t(language, `移除预设“${preset.name[language]}”？`, `Remove preset “${preset.name[language]}”?`));
+    title.id = `${popover.id}-title`;
+    const actions = node('div', 'settings-actions');
+    const cancel = button(t(language, '取消', 'Cancel')); cancel.dataset.presetConfirm = 'cancel';
+    const confirm = button(t(language, '移除', 'Remove'), 'settings-button settings-warning'); confirm.dataset.presetConfirm = 'remove';
+    actions.append(cancel, confirm); popover.append(title, actions);
+    // Keep the confirmation outside the scrolling list so it does not change row layout.
+    owner.append(popover);
+    const bounds = owner === document.body ? { left: 0, top: 0, right: innerWidth, bottom: innerHeight } : owner.getBoundingClientRect();
+    popover.style.maxWidth = `${Math.max(0, bounds.right - bounds.left - 16)}px`;
+    const target = anchor.getBoundingClientRect(); const size = popover.getBoundingClientRect();
+    const below = target.bottom + 6;
+    popover.style.left = `${Math.max(bounds.left + 8, Math.min(target.right - size.width, bounds.right - size.width - 8))}px`;
+    popover.style.top = `${Math.max(bounds.top + 8, Math.min(below + size.height <= bounds.bottom - 8 ? below : target.top - size.height - 6, bounds.bottom - size.height - 8))}px`;
+    const events = new AbortController();
+    const close = (restoreFocus = false) => {
+      events.abort(); popover.remove(); removal = undefined; anchor.setAttribute('aria-expanded', 'false'); anchor.removeAttribute('aria-controls');
+      if (restoreFocus && anchor.isConnected) anchor.focus({ preventScroll: true });
+    };
+    removal = { anchor, close };
+    anchor.setAttribute('aria-expanded', 'true'); anchor.setAttribute('aria-controls', popover.id);
+    cancel.addEventListener('click', () => close(true), { signal: events.signal });
+    confirm.addEventListener('click', () => { close(); void perform({ action: 'remove', preset: preset.id, language }); }, { signal: events.signal });
+    const dismissOutside = (event: Event) => { if (event.target instanceof Node && !popover.contains(event.target) && !anchor.contains(event.target)) close(); };
+    document.addEventListener('pointerdown', dismissOutside, { capture: true, signal: events.signal });
+    document.addEventListener('focusin', dismissOutside, { signal: events.signal });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); } }, { capture: true, signal: events.signal });
+    window.addEventListener('scroll', () => close(), { capture: true, signal: events.signal });
+    window.addEventListener('resize', () => close(), { signal: events.signal });
+    window.addEventListener('blur', () => close(), { signal: events.signal });
+    owner.addEventListener('close', () => close(), { signal: events.signal });
+    cancel.focus({ preventScroll: true });
   };
   return {
     items(query: string): PresetSettingItem[] {
@@ -48,21 +96,21 @@ export function createPreviewPresetSettings(options: {
         input.checked = isPreviewPresetEnabled(preset.id); input.disabled = pending || builtIn;
         input.setAttribute('aria-label', `${t(language, '显示预设：', 'Show preset: ')}${preset.name[language]}`);
         input.addEventListener('change', () => { void perform({ action: 'setEnabled', preset: preset.id, enabled: input.checked, language }); });
-        const text = node('span', 'settings-item-text'); text.append(node('span', 'settings-item-title', preset.name[language]), node('span', 'settings-context', builtIn ? t(language, '内置 · 始终启用', 'Built-in · Always enabled') : `${t(language, '自定义', 'Custom')} · ${preset.id.slice(5)}`));
+        const text = node('span', 'settings-item-text'); text.append(node('span', 'settings-item-title', preset.name[language]), node('span', 'settings-context', builtIn ? t(language, '内置', 'Built-in') : preset.id.slice(5)));
         label.append(input, text); row.append(label);
         const info = createPreviewPresetInfo('settings-preset-info');
         const errors = options.getDiagnostics().filter(diagnostic => diagnostic.preset === preset.id).map(diagnostic => diagnostic.message);
         info.present(preset, language, errors); infos.push(info); row.append(info.element);
         if (!builtIn) {
-          const actions = node('details', 'settings-preset-actions'); const summary = node('summary', 'settings-button settings-subtle', t(language, '更多', 'More'));
-          summary.setAttribute('aria-label', `${preset.name[language]} · ${t(language, '更多操作', 'More actions')}`);
-          const controls = node('div', 'settings-preset-action-list');
           for (const action of ['export', 'remove'] as const) {
-            const control = button(action === 'export' ? t(language, '导出', 'Export') : t(language, '移除', 'Remove'), `settings-button settings-subtle${action === 'remove' ? ' settings-warning' : ''}`);
+            const caption = action === 'export' ? t(language, '导出', 'Export') : t(language, '移除', 'Remove');
+            const control = button('', `settings-button settings-subtle settings-preset-button settings-preset-icon${action === 'remove' ? ' settings-warning' : ''}`);
+            control.setAttribute('aria-label', `${preset.name[language]} · ${caption}`); control.dataset.tooltip = caption;
+            control.append(createElement(action === 'export' ? Download : Trash2, { width: 15, height: 15, 'aria-hidden': 'true' }));
             control.dataset.presetAction = action;
-            control.addEventListener('click', () => { actions.open = false; void perform({ action, preset: preset.id, language }); }); controls.append(control);
+            if (action === 'remove') { control.setAttribute('aria-haspopup', 'dialog'); control.setAttribute('aria-expanded', 'false'); }
+            control.addEventListener('click', () => { if (action === 'remove') confirmRemoval(control, preset, language); else void perform({ action, preset: preset.id, language }); }); row.append(control);
           }
-          actions.append(summary, controls); row.append(actions);
         }
         return row;
       }
@@ -70,9 +118,10 @@ export function createPreviewPresetSettings(options: {
       const text = node('div', 'settings-item-text');
       text.append(node('div', 'settings-item-title', action === 'import' ? t(language, '导入预设', 'Import preset') : t(language, '制作指南', 'Creation guide')));
       text.append(node('p', 'settings-description', action === 'import'
-        ? t(language, '选择预设文件夹。复制保存，原始文件保留；相同 ID 可更新。', 'Select a preset folder. Import keeps the original files; the same ID updates an existing preset.')
+        ? t(language, '选择预设文件夹；相同 ID 可更新。', 'Select a preset folder. Reuse an ID to update its preset.')
         : t(language, '在 GitHub 查看制作步骤、配置说明和示例。', 'View authoring steps, configuration and examples on GitHub.')));
-      const control = button(action === 'import' ? t(language, '导入预设…', 'Import preset…') : t(language, '制作指南 ↗', 'Creation guide ↗'));
+      const control = actionButton(action === 'import' ? t(language, '导入预设', 'Import preset') : t(language, '制作指南', 'Creation guide'), action === 'import' ? FolderInput : BookOpen);
+      control.classList.remove('settings-subtle');
       control.addEventListener('click', () => { void perform({ action, language }); }); row.append(text, control);
       return row;
     },

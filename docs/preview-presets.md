@@ -33,9 +33,17 @@ Preview 的“预设”入口提供 **默认** 和 **GitHub README**。独立预
 
 新增内置预设时，先新增定义及需要的 CSS，再在 `src/foundation/previewPresets.ts` 注册 ID 与定义。复用现有 renderer 不需要复制工具栏逻辑；只有出现新的解析行为时才增加渲染实现。用户预设通过 Host 校验配置与本地 CSS 后加入同一目录，ID 使用 `user:` 前缀；写法与导入、保存规则见 [自定义预设指南](../preview-presets/README.zh-CN.md)。脚本与远程 CSS 不支持。
 
-自定义预设的 `base` 只继承外观和默认代码配色，统一使用 `meo` 渲染。`controls` 独立配置 HTML 注释和代码着色；省略时可切换，固定项隐藏。`codeTheme` 只选择配色，不锁定着色开关。单主题的主题控件保留并禁用；字体和正文宽度交由 CSS 控制，隐藏对应控件。默认、GitHub 和自定义预设统一显示说明入口：作者文案下方通过分隔线展示主题支持、当前主题和各项配置能力，错误时入口变红并显示详情。内置预设的规则由扩展提供，不能被用户配置文件替换。
+自定义预设的 `base` 只继承外观和默认代码配色，统一使用 `meo` 渲染。`controls` 独立配置 HTML 注释和代码着色；省略时可切换，固定项隐藏。`codeTheme` 只选择配色，不锁定着色开关。单主题的主题控件保留并禁用；字体和正文宽度交由 CSS 控制，隐藏对应控件。默认、GitHub 和自定义预设统一显示说明入口：作者文案下方通过分隔线展示主题支持和各项配置能力，不展示当前明暗或用户开关状态，错误时入口变红并显示详情。内置预设的规则由扩展提供，不能被用户配置文件替换。
 
 CSS 通过 `github-readme/styles.js` 的 Bun 文本导入打包进 `dist/export-runtime.js`，运行时无需读取源码目录。定义文件同时被 Host 与 Webview 使用，固定设置由 `resolvePreviewPresetSettings` 统一解析，样式由 `src/preview/presetStyles.ts` 适配现有 DOM。样式文件名也是维护索引；新增独立样式需要相应的静态导入，不能仅修改 JSON 就执行新的代码。
+
+## 文档配色归属
+
+只有内置“默认”预设保留编辑器主题配色。GitHub 与自定义预设拥有各自固定的浅／深色文档配色；自动模式只选择明暗方案，同一方案不随 VS Code 主题改变。工具栏、菜单和设置面板继续使用统一 UI 语义色，不套用文档配色。
+
+自定义 CSS 按“固定基础样式 → common → 当前主题”加载，未覆盖的颜色由固定基础补齐。`presetStyles.ts` 只将字体、排版和布尔控件传给基础样式，不传编辑器的背景、语义色、Frontmatter 或代码调色板。预设内部可以用变量与 `color-mix()` 复用和派生颜色，页面、代码、表格、引用及分割线的颜色集中写在主题 CSS 中。
+
+`getPreviewPresetCodeTheme` 是 Preview 与 HTML/PDF 的统一代码主题来源。自定义预设省略 `codeTheme` 时，默认基础使用 Light+／Dark+，GitHub 基础使用 GitHub 浅／深色；都不继承编辑器的语法主题或括号彩虹颜色。CSS 决定代码背景，Shiki 只负责语法颜色。旧配置继续兼容，不增加必填字段；Word 的固定格式保持原有行为。
 
 ## GitHub README 的范围
 

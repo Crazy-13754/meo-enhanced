@@ -62,7 +62,9 @@ function visibleBounds(anchor: HTMLElement, area: Bounds): Bounds | null {
  * One shared hint: 200ms hover/focus, above/below/right/left placement, menu avoidance.
  * After a shown pointer hint, another hover within 500ms of leaving skips the wait.
  * Explicit dismissal and owner disposal end the sequence; only hover handoff keeps it.
+ * Immediate hints skip the hover/focus wait for menus that show details as the target changes.
  * Optional placement prefers that side, then its opposite, while keeping the hint visible.
+ * Side alignment can match the anchor's top edge; other hints stay centered.
  * List full-text hints prefer right/left outside the list, aligned with the target row.
  * Pointer positioning defaults right; keyboard focus uses the element. Forwarded
  * input uses ownerDocument client coordinates in show / setPointerPosition.
@@ -76,15 +78,17 @@ export function createTooltip(anchor: HTMLElement, options: {
   readonly id?: string;
   readonly focusTarget?: HTMLElement;
   readonly placement?: TooltipPlacement;
+  readonly sideAlign?: 'start' | 'center';
   readonly positioning?: TooltipPositioning;
   readonly liveUpdate?: boolean;
+  readonly immediate?: boolean;
 }) {
   const doc = anchor.ownerDocument, view = doc.defaultView!;
   const focusTarget = options.focusTarget ?? anchor;
   const tooltip = doc.createElement('span');
   tooltip.id = options.id ?? 'meo-tooltip-' + ++nextTooltipId;
   tooltip.className = 'meo-tooltip';
-  tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, dialog'));
+  tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, .preview-dropdown-panel, dialog'));
   tooltip.setAttribute('role', 'tooltip');
   const frameOwner = view.frameElement?.ownerDocument;
   if (frameOwner) {
@@ -156,7 +160,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     const modal = anchor.closest<HTMLElement>(modalSelector);
     const owner = modal ?? doc.fullscreenElement ?? doc.body;
     if (tooltip.parentElement !== owner) owner.append(tooltip);
-    tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, dialog'));
+    tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, .preview-dropdown-panel, dialog'));
     const container = modal?.getBoundingClientRect();
     const margin = 4, gap = 6;
     const area: Bounds = { left: Math.max(viewport.left, container?.left ?? viewport.left) + margin, top: Math.max(viewport.top, container?.top ?? viewport.top) + margin,
@@ -200,8 +204,8 @@ export function createTooltip(anchor: HTMLElement, options: {
       else if (rect.right <= bounds.left) obstacles.push({ left: rect.right, right: bounds.left, top: Math.max(rect.top, bounds.top), bottom: Math.min(rect.bottom, bounds.bottom) });
     }
     const x = Math.max(area.left, Math.min((bounds.left + bounds.right - hint.width) / 2, area.right - hint.width));
-    const y = Math.max(area.top, Math.min((bounds.top + bounds.bottom - hint.height) / 2, area.bottom - hint.height));
-    const enclosing = placement ? [] : menus.filter(menu => menu.contains(anchor)).map(menu => menu.getBoundingClientRect());
+    const y = Math.max(area.top, Math.min(options.sideAlign === 'start' ? bounds.top : (bounds.top + bounds.bottom - hint.height) / 2, area.bottom - hint.height));
+    const enclosing = placement && anchor.getAttribute('role') !== 'option' ? [] : menus.filter(menu => menu.contains(anchor)).map(menu => menu.getBoundingClientRect());
     const outer = { left: Math.min(bounds.left, list?.left ?? bounds.left, ...enclosing.map(rect => rect.left)), right: Math.max(bounds.right, list?.right ?? bounds.right, ...enclosing.map(rect => rect.right)),
       top: Math.min(bounds.top, ...enclosing.map(rect => rect.top)), bottom: Math.max(bounds.bottom, ...enclosing.map(rect => rect.bottom)) };
     const pointerX = point ? Math.max(area.left, Math.min(point.x + 12, area.right - hint.width)) : x;
@@ -254,7 +258,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     if (!pointerSession) hoverReadyUntil = 0;
     if (activeTooltip !== handle) { activeTooltip?.hide(pointerSession ? 'leave' : 'dismiss'); activeTooltip = handle; }
     const started = view.performance.now();
-    if (pointerSession && performance.now() < hoverReadyUntil) {
+    if (options.immediate || (pointerSession && performance.now() < hoverReadyUntil)) {
       revealAt = started;
       reveal();
       return;

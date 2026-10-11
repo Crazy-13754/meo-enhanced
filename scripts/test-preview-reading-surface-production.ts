@@ -1197,6 +1197,8 @@ async function main(): Promise<void> {
         controlAppearance: control.dataset.previewAppearance,
         panelAppearance: panel.dataset.previewAppearance,
         panelHidden: panel.hidden,
+        panelScrollHeight: panel.scrollHeight,
+        panelClientHeight: panel.clientHeight,
         panelBackground: panelStyle.backgroundColor,
         triggerBackground: triggerStyle.backgroundColor,
         fieldBackground: (() => {
@@ -1223,6 +1225,8 @@ async function main(): Promise<void> {
     });
     assert.equal(dropdownThemeContract.panelBackground, dropdownThemeContract.exportMenuBackground,
       'Preview font dropdown must use the export menu surface');
+    assert.equal(dropdownThemeContract.panelScrollHeight, dropdownThemeContract.panelClientHeight,
+      'Font options and their gaps fit without a scrollbar when the viewport has enough space');
     assert.equal(dropdownThemeContract.triggerBackground, dropdownThemeContract.fieldBackground,
       'Preview font trigger must use the shared field surface');
     assert.equal(dropdownThemeContract.panelShadow, dropdownThemeContract.floatingShadow,

@@ -30,6 +30,7 @@ const cloneDirectory = (from: TestUri, to: TestUri) => {
   for (const [file, value] of descendants(from)) put(TestUri.joinPath(to, path.relative(from.fsPath, file)), new TextDecoder().decode(value.bytes), value.type);
 };
 const confirmations: (string | undefined)[] = [];
+let warnings = 0;
 const external: string[] = [];
 const dialogOptions: any[] = [];
 const state = new Map<string, unknown>();
@@ -85,7 +86,7 @@ mock.module('vscode', () => ({
   window: {
     showOpenDialog: async (options: any) => { dialogOptions.push(options); return dialogs.shift(); },
     showInformationMessage: async () => undefined,
-    showWarningMessage: async (_message: string, _options: unknown, ...items: string[]) => confirmations.length ? confirmations.shift() : items[0]
+    showWarningMessage: async (_message: string, _options: unknown, ...items: string[]) => { warnings++; return confirmations.length ? confirmations.shift() : items[0]; }
   }
 }));
 const { createVscodePreviewPresets } = await import('../src/host/vscodePreviewPresets');
@@ -251,10 +252,9 @@ assert.equal(entries.has(TestUri.joinPath(savedDirectory, 'unreferenced.css').fs
 cloneDirectory(savedDirectory, previous);
 failDelete = uri => uri.fsPath === previous.fsPath;
 put(TestUri.joinPath(root, 'native-test.json'), JSON.stringify(legacyRecord('native-test')));
-confirmations.push(undefined);
-assert.deepEqual(await owner.perform({ action: 'remove', preset: original.id, language: 'zh-CN' }), { changed: false });
-assert.ok(owner.get(original.id), 'Canceling removal keeps the preset');
+const beforeRemovalWarnings = warnings;
 assert.deepEqual(await owner.perform({ action: 'remove', preset: original.id, language: 'zh-CN' }), { changed: true });
+assert.equal(warnings, beforeRemovalWarnings, 'Removal confirmed by the Webview does not open a native prompt');
 failDelete = undefined;
 assert.equal(owner.get(original.id), undefined);
 assert.equal(entries.has(savedDirectory.fsPath) || entries.has(previous.fsPath), false);

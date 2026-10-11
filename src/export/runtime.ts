@@ -8,7 +8,7 @@ import type { PreviewAppearance, PreviewRenderResult } from '../shared/preview';
 import type { ReadingSnapshot } from '../protocol/exportSnapshot';
 import type { CodeThemeDto } from '../protocol/hostConfigurationEvents';
 import { createExportCodeHighlighter } from './shikiCodeHighlighter';
-import { getPreviewPreset, resolvePresetAppearance, resolvePreviewPresetSettings, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
+import { getPreviewPreset, getPreviewPresetCodeTheme, resolvePresetAppearance, resolvePreviewPresetSettings, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
 import { buildPresetPreviewStyles } from '../preview/presetStyles';
 import type { ResolvedWikiResources } from '../foundation/wikiReference';
 
@@ -40,13 +40,9 @@ async function renderExportHtmlDocument(
   const exportAppearance = options.target === 'docx' ? 'light' : resolvePresetAppearance(definition, snapshot.appearance, snapshot.appearance);
   const environment = options.target === 'docx' ? snapshot.environment
     : { ...snapshot.environment, ...resolvePreviewPresetSettings(preset, snapshot.environment, definition) };
-  const namedTheme = definition.custom?.codeThemes[exportAppearance];
+  const namedTheme = getPreviewPresetCodeTheme(definition, exportAppearance);
   const fallbackTheme = namedTheme
     ? (await importPresetCodeTheme(namedTheme))
-    : githubStyle
-    ? (exportAppearance === 'light'
-      ? (await import('@shikijs/themes/github-light-default')).default
-      : (await import('@shikijs/themes/github-dark-default')).default) as CodeThemeDto
     : options.target === 'docx' || !snapshot.codeTheme
     ? (await importPresetCodeTheme(options.target === 'docx' || exportAppearance === 'light' ? 'light-plus' : 'dark-plus'))
     : snapshot.codeTheme;

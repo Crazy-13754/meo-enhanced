@@ -10,6 +10,6 @@
     "codeColoring": { "mode": "fixed", "value": true }
   },
   "themes": {
-    "light": { "css": "light.css" }
+    "light": { "css": "light.css", "codeTheme": "github-light-default" }
   }
 }

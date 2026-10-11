@@ -8,7 +8,7 @@ Each preset consists of one UTF-8 JSON/JSONC configuration file and one to three
 
 1. Copy the [Paper Notes example](examples/paper-notes/) (light and dark) or the [GitHub Paper example](examples/github-paper/) (light only). Keep the CSS files referenced by the configuration.
 2. Edit `id`, `name`, `description`, and the CSS. Keeping the same `id` updates an existing preset; changing it creates another preset. Names and descriptions are displayed as written, so you can replace the example's Chinese text with your own text.
-3. Choose **Custom presets…** at the bottom of Preview's **Preset** menu to open **Settings → Preview presets**. Click **Import preset…** and select a folder containing exactly one `preset.jsonc` or `preset.json` at its root. The command palette's **MEO Enhanced: Manage custom preview presets** opens the same page.
+3. Choose **Custom presets…** at the bottom of Preview's **Preset** menu to open **Settings → Preview presets**. Click **Import preset** and select a folder containing exactly one `preset.jsonc` or `preset.json` at its root. The command palette's **MEO Enhanced: Manage custom preview presets** opens the same page.
 4. New imports are enabled without switching the current Preview. Select the new preset in Preview's toolbar. Dual-theme presets support Auto / Light / Dark; single-theme controls remain visible but disabled, with an explanation.
 5. Check the Preview before exporting HTML/PDF. After editing CSS, import the folder again. The same ID prompts for an update; a failed update retains the previous version.
 
@@ -17,7 +17,7 @@ Each preset consists of one UTF-8 JSON/JSONC configuration file and one to three
 - Default and GitHub README are built in, always enabled, and cannot be removed.
 - Check a custom preset to show it in Preview's menu. Unchecking hides the entry but keeps its files. Open previews using that preset return to Default; enabling it again does not switch the preview.
 - Each information icon shares the Preview toolbar component and shows the author's notes, supported themes and setting policies. Management does not mark the currently selected preset.
-- **More** on each custom row offers export and removal. Removal asks for confirmation and deletes only the managed copy, keeping the original files.
+- Each custom row has **Export** and **Remove** icons after the information icon. Confirm removal in the small popover below the icon.
 - Import copies validated configuration and referenced CSS without moving the originals. Updates preserve visibility; new imports are enabled.
 - **Creation guide** opens the Chinese or English GitHub guide in your browser, following the current MEO interface language. Guides and examples live in this repository and are excluded from the extension package. Imported presets work offline; the small configuration Schema remains bundled for offline completion and validation.
 
@@ -48,11 +48,11 @@ Each preset consists of one UTF-8 JSON/JSONC configuration file and one to three
 | `id` | Required stable identifier, up to 64 characters. Start with a lowercase letter, followed by lowercase letters, digits, or hyphens. |
 | `name` | Required menu label, up to 80 characters. Presets with the same name remain distinct by ID. |
 | `description` | Required text for the preset information tooltip, up to 500 characters. |
-| `base` | Optional: `default` or `github-readme`. Inherits document styles and the default code palette only. Defaults to `default`. |
+| `base` | Optional: `default` or `github-readme`. Inherits fixed document styles and light/dark base palettes, without editor colors. Defaults to `default`. |
 | `controls.htmlComments` / `controls.codeColoring` | Optional independent policies for HTML comments and code coloring. Omitted controls are editable. |
 | `styles.common` | Optional CSS shared by both themes. |
 | `themes.light` / `themes.dark` | Provide at least one. Each theme requires `css`. The entries determine which themes are supported. |
-| `codeTheme` | Optional: `light-plus`, `dark-plus`, `github-light-default`, or `github-dark-default`. Omit it to inherit the base preset's palette. Applies only when coloring is enabled; it does not enable or lock coloring. |
+| `codeTheme` | Optional: `light-plus`, `dark-plus`, `github-light-default`, or `github-dark-default`. When omitted, the Default base uses fixed Light+/Dark+ palettes, and the GitHub base uses fixed GitHub light/dark palettes. Applies only when coloring is enabled; it does not enable or lock coloring. |
 | `author` / `version` / `source` / `license` | Optional sharing metadata, up to 500 characters each. They do not affect rendering. |
 | `$schema` | Optional link to the [JSON Schema](preset.schema.json) for completion and validation. After copying an example, update its relative path or remove this field. |
 
@@ -61,6 +61,14 @@ Each preset consists of one UTF-8 JSON/JSONC configuration file and one to three
 Name the root configuration `preset.jsonc` or `preset.json`. Use `$schema` for completion and validation.
 
 CSS controls custom fonts and document width, so the corresponding menu controls are hidden. `themes` determines theme support. Preset selection and theme preferences are restored for the current document.
+
+### Color ownership
+
+The built-in Default preset continues to follow the editor theme. GitHub and custom presets own their document colors. Changing the VS Code theme may select a different light/dark scheme in Auto mode, but colors within each scheme remain fixed. Preview and HTML/PDF share these color rules. Toolbars, menus, and settings continue to use the extension's shared UI palette.
+
+Define page backgrounds, document text, headings, links, code backgrounds, tables, quotes, and dividers together in each light/dark CSS file. CSS variables and `color-mix()` can derive muted text, borders, and secondary surfaces within the preset. Do not depend on `--vscode-*` variables or editor syntax colors. Unspecified colors fall back to the selected base's fixed palette; existing presets remain importable without new fields.
+
+`--meo-bg` and `--meo-code-bg` control page and code block backgrounds. `codeTheme` controls syntax colors; the syntax theme's background does not replace the CSS background. Explicitly naming `codeTheme` makes each scheme's palette easy to review. See the complete variables and derived colors in the Paper Notes [light](examples/paper-notes/light.css) and [dark](examples/paper-notes/dark.css) examples. Local backgrounds in the GitHub base still need the selector overrides described below.
 
 ### Comments and code coloring
 
@@ -74,7 +82,7 @@ CSS controls custom fonts and document width, so the corresponding menu controls
 
 Fixed comment and code-coloring controls are hidden; their effective values appear in preset information. Theme controls are the exception: a single supported theme keeps them visible but disabled, with an explanatory tooltip. Fixed values do not overwrite user preferences; switching to an editable preset restores the user's choices. `editable` accepts no `value`; `fixed` requires a boolean `value`. These policies apply to Preview and HTML/PDF.
 
-Default, GitHub, and custom presets share the same information and control rules. Built-in configurations are provided by the extension and cannot be replaced by user configuration files. Information shows the author's text first, then a divider and fixed fields: supported themes, current light/dark appearance, and configuration policies for HTML comments, code coloring, font, and document width.
+Default, GitHub, and custom presets share the same information and control rules. Built-in configurations are provided by the extension and cannot be replaced by user configuration files. Information shows the author's text first, then a divider and fixed fields: supported themes and configuration policies for HTML comments, code coloring, font, and document width. It does not show the current appearance or user toggle state.
 
 When import, loading, or rendering fails, the information icon turns red and displays error details. A failed update retains the previous version. A preset that cannot load at startup is skipped and falls back to Default, with its loading error shown in preset information. Correcting and successfully reimporting the package clears its error. Source files and saved copies are not watched automatically; reimport or reload the window after editing.
 

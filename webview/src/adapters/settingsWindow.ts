@@ -262,8 +262,12 @@ export function createSettingsWindow(options: {
       }
       if (!items.length) continue;
       const block = element('section', 'settings-section'); block.id = `meo-settings-${section}`;
-      block.append(element('h3', 'settings-section-title', titleFor(section)), ...items); content.append(block);
-      if (tab === 'presets' && section === 'presetList' && options.previewPresets) block.insertBefore(element('p', 'settings-description settings-preset-description', options.previewPresets.description(language)), items[0]);
+      block.append(element('h3', 'settings-section-title', titleFor(section)));
+      if (tab === 'presets' && section === 'presetList' && options.previewPresets) {
+        const list = element('div', 'settings-preset-list'); list.setAttribute('role', 'group'); list.setAttribute('aria-label', titleFor(section)); list.append(...items);
+        block.append(element('p', 'settings-description settings-preset-description', options.previewPresets.description(language)), list);
+      } else block.append(...items);
+      content.append(block);
       const jump = button(titleFor(section), 'settings-jump'); jump.dataset.section = section;
       jump.addEventListener('click', () => { content.scrollTop += block.getBoundingClientRect().top - content.getBoundingClientRect().top - 20; updateNavigation(); }); navigation.append(jump);
     }

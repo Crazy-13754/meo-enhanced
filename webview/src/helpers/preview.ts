@@ -1,6 +1,6 @@
 import morphdom from 'morphdom';
 import { createPreviewSearchController, previewSearchStyles } from './previewSearch';
-import { createElement as createIconElement, PenLine, TextCursor, Palette, FileText, Check } from 'lucide';
+import { createElement as createIconElement, PenLine, TextCursor, Palette, BookOpen, FileText, Check, Plus } from 'lucide';
 import { getExportStyleEnvironment } from './export';
 import { createPreviewMermaidRenderer } from './previewMermaid';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
@@ -15,7 +15,7 @@ import { attachLatexMathViewport, type LatexMathViewportController } from './lat
 import type { MermaidDiagramRenderResources } from '../application/mermaidDiagramRenderResources';
 import type { PreviewCodePalette } from '../application/finalCodePalette';
 import { normalizePreviewFontFamily } from '../../../src/shared/preview';
-import { decodePreviewPresetState, getPreviewPreset, isPreviewPresetId, isPreviewPresetEnabled, previewPresets, replaceCustomPreviewPresets, normalizePresetAppearance, resolvePresetAppearance, type PreviewPresetDefinition, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetState } from '../../../src/foundation/previewPresets';
+import { decodePreviewPresetState, getPreviewPreset, getPreviewPresetCodeTheme, isPreviewPresetId, isPreviewPresetEnabled, previewPresets, replaceCustomPreviewPresets, normalizePresetAppearance, resolvePresetAppearance, type PreviewPresetDefinition, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetState } from '../../../src/foundation/previewPresets';
 import githubLightTheme from '@shikijs/themes/github-light-default';
 import githubDarkTheme from '@shikijs/themes/github-dark-default';
 import lightPlusTheme from '@shikijs/themes/light-plus';
@@ -949,11 +949,14 @@ export function createPreviewController({
     ? createIconElement([['path', {
       d: 'M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656'
     }]], { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'currentColor', stroke: 'none', 'aria-hidden': 'true' })
-    : createIconElement(FileText, { width: 15, height: 15, 'aria-hidden': 'true' });
-  presetSelectControl.trigger.prepend(
+    : createIconElement(preset === 'default' ? BookOpen : FileText, { width: 15, height: 15, 'aria-hidden': 'true' });
+  const presetHeading = document.createElement('span');
+  presetHeading.className = 'preview-preset-heading';
+  presetHeading.append(
     createIconElement(Palette, { width: 15, height: 15, 'aria-hidden': 'true' }),
     presetSelectControl.label
   );
+  presetSelectControl.trigger.prepend(presetHeading);
   const widthSelectControl = createToolbarDropdown('preview-width-control', uiStrings.previewWidth);
   const widthControl = widthSelectControl.element;
   const widthSelect = widthSelectControl.select;
@@ -961,6 +964,7 @@ export function createPreviewController({
   const presetInfoControl = presetInfo.element;
   // Keep the explanation next to its selector, including in overflow and split views.
   presetControl.append(presetInfoControl);
+  const presetOptionInfos = new Map<PreviewPresetId, ReturnType<typeof createPreviewPresetInfo>>();
   presetSelectControl.setFooterAction(uiStrings.previewPresetManage, () => onManagePresets?.());
   for (const preset of previewPresets) {
     const option = document.createElement('option');
@@ -975,6 +979,8 @@ export function createPreviewController({
     widthSelect.append(option);
   }
   const refreshPresetOptions = () => {
+    for (const info of presetOptionInfos.values()) info.dispose();
+    presetOptionInfos.clear();
     const selected = presetSelect.value;
     presetSelect.replaceChildren(...previewPresets.filter(preset => isPreviewPresetEnabled(preset.id)).map(preset => {
       const option = document.createElement('option');
@@ -996,6 +1002,13 @@ export function createPreviewController({
         name,
         createIconElement(Check, { width: 14, height: 14, class: 'preview-preset-option-check', 'aria-hidden': 'true' })
       );
+      const info = createPreviewPresetInfo(option);
+      info.present(preset, uiLanguage); presetOptionInfos.set(preset.id, info);
+    }
+    const footer = presetSelectControl.panel.querySelector<HTMLButtonElement>('.preview-dropdown-footer');
+    if (footer) {
+      const name = document.createElement('span'); name.className = 'preview-preset-option-name'; name.textContent = uiStrings.previewPresetManage;
+      footer.replaceChildren(createIconElement(Plus, { width: 15, height: 15, 'aria-hidden': 'true' }), name);
     }
   };
   refreshPresetOptions();
@@ -1073,11 +1086,13 @@ export function createPreviewController({
   let presetDiagnostics: readonly PreviewPresetDiagnostic[] = [];
   const presetRenderErrors = new Map<PreviewPresetId, string>();
   const updatePresetInfo = () => {
-    const preset = getPreviewPreset(presetPreference);
-    const errors = presetDiagnostics.filter(diagnostic => !diagnostic.preset || diagnostic.preset === preset.id || !previewPresets.some(item => item.id === diagnostic.preset)).map(diagnostic => diagnostic.message);
-    const renderError = presetRenderErrors.get(preset.id);
-    if (renderError) errors.push(renderError);
-    presetInfo.present(preset, uiLanguage, errors, { appearance, appearancePreference, showComments, sourceColoring });
+    for (const [id, info] of [[presetPreference, presetInfo], ...presetOptionInfos] as const) {
+      const preset = getPreviewPreset(id);
+      const errors = presetDiagnostics.filter(diagnostic => !diagnostic.preset || diagnostic.preset === preset.id || !previewPresets.some(item => item.id === diagnostic.preset)).map(diagnostic => diagnostic.message);
+      const renderError = presetRenderErrors.get(preset.id);
+      if (renderError) errors.push(renderError);
+      info.present(preset, uiLanguage, errors);
+    }
   };
   const isSourceColoringEnabled = () => {
     const policy = getPreviewPreset(presetPreference).controls.codeColoring;
@@ -1085,10 +1100,9 @@ export function createPreviewController({
   };
   const applyPreviewCodeTheme = (nextAppearance: 'light' | 'dark') => {
     const preset = getPreviewPreset(presetPreference);
-    const theme = preset.custom?.codeThemes[nextAppearance];
+    const theme = getPreviewPresetCodeTheme(preset, nextAppearance);
     if (theme) setShikiTheme(({ 'light-plus': lightPlusTheme, 'dark-plus': darkPlusTheme, 'github-light-default': githubLightTheme, 'github-dark-default': githubDarkTheme }[theme]) as RawVscodeTheme, 'preview');
-    else if (preset.renderer === 'meo' && preset.custom?.base !== 'github-readme') applyCodeTheme(nextAppearance);
-    else setShikiTheme((nextAppearance === 'light' ? githubLightTheme : githubDarkTheme) as RawVscodeTheme, 'preview');
+    else applyCodeTheme(nextAppearance);
   };
   const updateBooleanPresetControls = () => {
     const preset = getPreviewPreset(presetPreference);
@@ -1631,7 +1645,7 @@ export function createPreviewController({
       if (!previewPresets.some(preset => preset.id === (payload.preset ?? 'default'))) return;
       const preset = getPreviewPreset(payload.preset);
       frameDocument.documentElement.dataset.meoPreviewRenderer = preset.renderer;
-      frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(preset.renderer === 'meo' && preset.custom?.base !== 'github-readme' && !preset.custom?.codeThemes[appearance]);
+      frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(preset.id === 'default');
       previewTableLayout = preset.renderer === 'meo' ? createPreviewTableLayoutController(frameDocument) : null;
       const presentationGeneration = mermaidPresentationGeneration + 1;
       mermaidPresentationGeneration = presentationGeneration;
@@ -1884,7 +1898,7 @@ export function createPreviewController({
     // This is a presentation-only update of the same frame and document. A
     // cross-surface semantic projection would race this exact reading offset.
     styleElement.textContent = payload.styles[appearance];
-    frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(getPreviewPreset(presetPreference).renderer === 'meo' && getPreviewPreset(presetPreference).custom?.base !== 'github-readme' && !getPreviewPreset(presetPreference).custom?.codeThemes[appearance]);
+    frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(presetPreference === 'default');
     previewTableLayout?.refresh();
     syncPreviewCodeHighlight(frameDocument);
     keepPosition();
@@ -3079,6 +3093,8 @@ export function createPreviewController({
       hasPendingRequest = false;
       previewRenderTransport.cancelAll('Preview closed');
       presetInfo.dispose();
+      for (const info of presetOptionInfos.values()) info.dispose();
+      presetOptionInfos.clear();
       appearanceSelect.removeEventListener('change', handleAppearanceControlChange);
       sourceColoringSelect.removeEventListener('change', handleSourceColoringChange);
       appearanceSegments.element.removeEventListener('click', handleAppearanceSegmentClick);

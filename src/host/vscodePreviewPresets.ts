@@ -65,11 +65,9 @@ export async function createVscodePreviewPresets(context: vscode.ExtensionContex
       return { changed: true };
     }
     if (request.action === 'remove') {
-      const remove = zh ? '移除' : 'Remove';
-      if (await vscode.window.showWarningMessage(zh ? `移除预设“${preset.name['zh-CN']}”？原始文件会保留。` : `Remove preset “${preset.name.en}”? Original files will be kept.`, { modal: true }, remove) !== remove) return { changed: false };
+      // The Webview confirms removal before sending this action.
       await library.remove(preset.id);
       if (disabled.includes(preset.id)) await saveDisabled(disabled.filter(id => id !== preset.id));
-      void vscode.window.showInformationMessage(zh ? '预设已移除；使用它的预览将切回默认预设。' : 'Preset removed; affected previews will return to Default.');
       return { changed: true };
     }
     const target = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: zh ? '选择预设导出目录' : 'Select preset export folder' });

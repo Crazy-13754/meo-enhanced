@@ -60,6 +60,15 @@ export function getPreviewPreset(id: PreviewPresetId = 'default'): PreviewPreset
   return preset;
 }
 
+/** Only Default follows the editor; other presets own a fixed palette for each resolved appearance. */
+export function getPreviewPresetCodeTheme(preset: PreviewPresetDefinition, appearance: 'light' | 'dark'): PreviewPresetCodeTheme | undefined {
+  if (preset.id === 'default') return undefined;
+  return preset.custom?.codeThemes[appearance]
+    ?? (preset.renderer === 'github-readme' || preset.custom?.base === 'github-readme'
+      ? appearance === 'light' ? 'github-light-default' : 'github-dark-default'
+      : appearance === 'light' ? 'light-plus' : 'dark-plus');
+}
+
 export function normalizePresetAppearance(preset: PreviewPresetDefinition, preference: 'auto' | 'light' | 'dark'): 'auto' | 'light' | 'dark' {
   return preset.controls.appearance.options?.includes(preference) ? preference : preset.defaults.appearance;
 }

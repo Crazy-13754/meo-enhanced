@@ -90,9 +90,11 @@ export function createToolbarDropdown(
     const bounds = trigger.getBoundingClientRect();
     const availableBelow = window.innerHeight - bounds.bottom - 6;
     const availableAbove = bounds.top - 6;
-    const openAbove = availableBelow < Math.min(panel.scrollHeight, 220) && availableAbove > availableBelow;
     panel.style.minWidth = `${bounds.width}px`;
-    panel.style.maxHeight = `${Math.max(96, Math.min(240, openAbove ? availableAbove : availableBelow))}px`;
+    // Measure at the larger available space so option gaps, borders and a footer all count.
+    panel.style.maxHeight = `${Math.max(0, availableAbove, availableBelow)}px`;
+    const openAbove = panel.offsetHeight > availableBelow && availableAbove > availableBelow;
+    panel.style.maxHeight = `${Math.max(0, openAbove ? availableAbove : availableBelow)}px`;
     panel.style.left = `${Math.max(4, Math.min(bounds.left, window.innerWidth - panel.offsetWidth - 4))}px`;
     panel.style.top = openAbove
       ? `${Math.max(4, bounds.top - panel.offsetHeight - 4)}px`
@@ -205,7 +207,7 @@ export function createToolbarDropdown(
     refreshOptions,
     setFooterAction(label, action) {
       if (!footer) {
-        footer = document.createElement('button'); footer.type = 'button'; footer.className = 'preview-dropdown-footer';
+        footer = document.createElement('button'); footer.type = 'button'; footer.className = 'preview-dropdown-option preview-dropdown-footer';
         footer.addEventListener('click', () => { close(); footerAction?.(); });
       }
       footer.textContent = label; footerAction = action; refreshOptions();
