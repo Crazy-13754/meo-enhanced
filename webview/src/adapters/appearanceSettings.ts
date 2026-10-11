@@ -1,4 +1,4 @@
-import { createElement, Moon, RotateCcw, Sun } from 'lucide';
+import { createElement, Moon, RotateCcw, Sun, TriangleAlert } from 'lucide';
 import { normalizeUiColor, uiColorKeys, type UiColorKey, type UiColors } from '../../../src/foundation/uiColors';
 import type { EditorAppearance } from '../../../src/protocol/editorCommands';
 import type { UiColorsResult } from '../../../src/protocol/uiColors';
@@ -133,13 +133,18 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
       const row = node('div', 'settings-item appearance-item'); row.dataset.setting = item.id;
       const text = node('div', 'settings-item-text'); text.append(node('div', 'settings-item-title', t(item.title[0], item.title[1])), node('p', 'settings-description', t(item.description[0], item.description[1]))); row.append(text);
       if (item.id === 'documentBackground') {
-        const warning = node('p', 'settings-description appearance-background-warning');
+        const warning = node('p', 'appearance-background-warning');
+        const icon = createElement(TriangleAlert, { width: 16, height: 16 });
+        icon.setAttribute('aria-hidden', 'true');
+        const message = node('span', 'appearance-background-warning-text');
+        warning.setAttribute('role', 'note');
+        warning.append(icon, message);
         text.append(warning);
         presenters.push(() => {
           const low = document.documentElement.dataset.meoDocumentContrast === 'low';
           const paired = document.documentElement.dataset.meoDocumentCodeSurface === 'paired';
           warning.hidden = !low && !paired;
-          warning.textContent = low
+          message.textContent = low
             ? t('此背景与当前文字或明暗模式对比不足。建议调整背景、切换模式或恢复默认。', 'This background does not suit the current text or mode. Adjust it, change mode, or reset to default.')
             : t('为保留代码文字对比，块区域暂用代码主题底色。可调整文档背景。', 'Blocks retain their code theme background for legibility. You can adjust the document background.');
         });

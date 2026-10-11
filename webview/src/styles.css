@@ -7810,6 +7810,24 @@ html[data-meo-ui-contrast='high'] .appearance-color-field:not(:focus-within):not
 .appearance-color-reset:hover:not(:disabled) { color: var(--meo-ui-text); }
 .appearance-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
 .appearance-status { margin: 0 0 12px; color: var(--meo-ui-danger); font-size: 12px; }
+.appearance-background-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--meo-ui-surface-field);
+  color: var(--meo-ui-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.appearance-background-warning[hidden] { display: none; }
+.appearance-background-warning > svg {
+  flex: 0 0 16px;
+  margin-top: 1px;
+  color: var(--meo-ui-warning);
+}
 .settings-description { color: var(--meo-ui-text-muted); margin: 4px 0 0; font-size: 12px; line-height: 1.5; max-width: 480px; }
 .settings-paste-contexts { flex-basis: 100%; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 12px; line-height: 1.65; }
 .settings-paste-contexts dt { color: var(--meo-ui-text); }
