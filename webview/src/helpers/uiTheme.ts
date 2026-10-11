@@ -83,13 +83,14 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
     const warning = read('editorWarning.foreground', fallback['--meo-notice-warning'], surface);
     const danger = read('errorForeground', fallback['--meo-notice-error'], surface);
     const contentSurface = sample(`var(--meo-background, ${rgb(documentSurface)})`, documentSurface);
-    const contentSurfaces = [contentSurface,
-      sample(`var(--meo-inline-code-background, ${rgb(contentSurface)})`, contentSurface),
-      sample(`var(--meo-semantic-footnoteBackground, ${rgb(contentSurface)})`, contentSurface)];
-    // Text emphasis is independent of button fills; one input serves content
-    // and matches, with readable projections for each actual carrier surface.
+    // Text emphasis is independent of button fills. Matches reuse the final
+    // heading ink exactly, including selected rows, without another correction.
     const textEmphasis = read('textLink.foreground',
       `var(--meo-semantic-headingForeground, ${appearance === 'light' ? '#0550ae' : '#79b8ff'})`, contentSurface);
+    const footnoteBackground = `color-mix(in srgb, ${rgb(textEmphasis)} 12%, transparent)`;
+    const contentSurfaces = [contentSurface,
+      sample(`var(--meo-inline-code-background, ${rgb(contentSurface)})`, contentSurface),
+      sample(footnoteBackground, contentSurface)];
     const tint = endpoint([surface]);
     // All ordinary surfaces must admit one shared neutral foreground. Near
     // middle luminance, a fixed hover mix can otherwise cross that boundary.
@@ -120,6 +121,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
       const onAccent = fit(endpoint([accent, accentHover]), [accent, accentHover], 4.55);
       const accentText = fit(accent, surfaces, 4.55);
       const selectedText = fit(neutral(nativeSelectionText ?? text), [selected], 4.55);
+      const contentEmphasis = fit(textEmphasis, contentSurfaces, 4.55);
       const roles: Record<string, string> = Object.fromEntries(Object.entries({
         surface, 'surface-raised': raised, 'surface-field': field, 'surface-hover': hover,
         'surface-pressed': pressed, 'surface-selected': selected, 'segmented-track': track,
@@ -128,12 +130,13 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
         focus: nativeFocus ?? fit(accent, [surface, raised, field], 3.05),
         'selection-border': nativeActiveBorder ?? selected,
         accent, 'accent-hover': accentHover, 'on-accent': onAccent, 'accent-text': accentText,
-        'text-emphasis': fit(textEmphasis, surfaces, 4.55),
-        'text-emphasis-content': fit(textEmphasis, contentSurfaces, 4.55),
-        'text-emphasis-selected': fit(textEmphasis, [selected], 4.55),
+        'text-emphasis': contentEmphasis,
+        'text-emphasis-content': contentEmphasis,
+        'text-emphasis-selected': contentEmphasis,
         success: fit(success, surfaces, 4.55), warning: fit(warning, surfaces, 4.55), danger: fit(danger, surfaces, 4.55),
         'switch-off': switchOff, 'on-switch-off': fit(mix(text, neutral(raised), 0.20), [switchOff], 3.05)
       }).map(([role, value]) => [role, rgb(value)]));
+      roles['text-emphasis-background'] = footnoteBackground;
       roles.shadow = appearance === 'light' ? '0 4px 12px rgb(0 0 0 / 14%)' : '0 4px 14px rgb(0 0 0 / 38%)';
       roles.scrim = appearance === 'light' ? 'rgb(0 0 0 / 28%)' : 'rgb(0 0 0 / 45%)';
       roles.scrollbar = `color-mix(in srgb, ${rgb(text)} 32%, transparent)`;

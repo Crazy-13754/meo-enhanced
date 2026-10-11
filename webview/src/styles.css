@@ -2912,8 +2912,8 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-strike-marker-active,
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-code-marker,
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-code-marker-active {
-  color: var(--meo-ui-text-emphasis-content) !important;
-  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content) !important;
+  color: var(--meo-semantic-markdownSyntax) !important;
+  -webkit-text-fill-color: var(--meo-semantic-markdownSyntax) !important;
 }
 
 .cm-editor .meo-md-details-source-toggle {
@@ -3043,6 +3043,10 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 
 .cm-editor.meo-mode-live :is(.meo-md-footnote-ref, .meo-md-footnote-backref, .meo-md-footnote-separator) {
   color: var(--meo-ui-text-emphasis-content);
+}
+
+.cm-editor.meo-mode-live :is(.meo-md-footnote-ref, .meo-md-footnote-backref) {
+  background: var(--meo-ui-text-emphasis-background);
 }
 
 .cm-editor .meo-md-footnote-ref {

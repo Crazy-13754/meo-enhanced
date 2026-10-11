@@ -329,11 +329,22 @@ try {
           const selectors = ['.meo-md-heading-content', '.meo-md-h1 .meo-md-strong', '.meo-md-h1 .meo-md-inline-code',
             '.meo-md-list-marker-ordered', '.meo-md-link', '.meo-md-strong:is(.meo-md-link), .meo-md-link .meo-md-strong, .meo-md-strong .meo-md-link',
             '.meo-md-footnote-ref', '.meo-md-footnote-backref', '.meo-md-html-table-cell-preview .meo-md-link'];
+          const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+          const context = canvas.getContext('2d')!;
+          const footnoteBase = document.createElement('span'); footnoteBase.style.color = 'var(--meo-background)'; document.body.append(footnoteBase);
+          const documentBackground = getComputedStyle(footnoteBase).color; footnoteBase.remove();
           return { expected: resolve('text-emphasis-content'), colors: Object.fromEntries(selectors.map(selector => [selector,
             [...document.querySelectorAll(selector)].map(el => getComputedStyle(el).color)])),
             fills: [...document.querySelectorAll('.meo-md-list-marker-bullet-dot')].map(el => ({ fill: getComputedStyle(el).fill, stroke: getComputedStyle(el).stroke })),
             tableMarkers: [...document.querySelectorAll('.meo-md-html-table-cell-list > li')].map(el => getComputedStyle(el, '::marker').color),
             body: [...document.querySelectorAll('.cm-line')].filter(el => el.textContent?.includes('普通列表正文') || el.textContent?.includes('有序列表正文')).map(el => getComputedStyle(el).color),
+            footnotes: [...document.querySelectorAll('.meo-md-footnote-ref, .meo-md-footnote-backref')].map(el => {
+              const background = getComputedStyle(el).backgroundColor;
+              context.clearRect(0, 0, 1, 1); context.fillStyle = documentBackground; context.fillRect(0, 0, 1, 1);
+              context.fillStyle = background; context.fillRect(0, 0, 1, 1);
+              return { background, expected: resolve('text-emphasis-background'),
+                carrier: `rgb(${[...context.getImageData(0, 0, 1, 1).data].slice(0, 3).join(', ')})` };
+            }),
             backgrounds: ['--meo-background', '--meo-inline-code-background'].map(name => {
               const probe = document.createElement('span'); probe.style.color = `var(${name})`; document.body.append(probe);
               const color = getComputedStyle(probe).color; probe.remove(); return color;
@@ -347,6 +358,8 @@ try {
         assert.ok(contentEmphasis.tableMarkers.length && contentEmphasis.tableMarkers.every(value => value === contentEmphasis.expected), `${profile.id}: table list markers`);
         assert.ok(contentEmphasis.body.every(color => color !== contentEmphasis.expected), `${profile.id}: list body keeps ordinary document color`);
         assert.ok(contentEmphasis.backgrounds.every(background => contrastRatio(contentEmphasis.expected, background) >= 4.5), `${profile.id}: content emphasis is readable on document and inline code`);
+        assert.ok(contentEmphasis.footnotes.length && contentEmphasis.footnotes.every(note => note.background === note.expected && note.carrier !== contentEmphasis.backgrounds[0]), `${profile.id}: reference and definition numbers use a visible derived emphasis tint`);
+        assert.ok(contentEmphasis.footnotes.every(note => contrastRatio(contentEmphasis.expected, note.carrier) >= 4.5), `${profile.id}: footnotes remain readable on their composited emphasis tint`);
         await page.waitForSelector('.meo-md-color-swatch-interactive');
         await page.click('.meo-md-color-swatch-interactive');
         await page.waitForSelector('.meo-hex-color-adjustment');
@@ -370,20 +383,31 @@ try {
             const value = getComputedStyle(probe).color; probe.remove(); return value;
           };
           return { normal: resolve('text-emphasis'), selected: resolve('text-emphasis-selected'),
+            heading: getComputedStyle(document.querySelector('.meo-md-heading-content')!).color,
+            prefixes: [...document.querySelectorAll('.meo-suggestion-trigger, .meo-suggestion-slash')].map(el => getComputedStyle(el).color),
             rows: [...document.querySelectorAll('.meo-suggestion-match')].map(el => {
-              const row = el.closest('.meo-input-suggestion')!, background = getComputedStyle(row).backgroundColor;
-              const selected = row.getAttribute('aria-selected') === 'true', popup = getComputedStyle(el.closest('.meo-input-suggestions')!);
-              // Selection is painted by the popup gradient behind transparent rows.
-              const carrier = selected ? popup.backgroundImage.match(/rgb\([^)]+\)/)?.[0] : popup.backgroundColor;
               return { color: getComputedStyle(el).color, weight: getComputedStyle(el).fontWeight,
-                background: background === 'rgba(0, 0, 0, 0)' ? carrier! : background, selected };
+                selected: el.closest('.meo-input-suggestion')!.getAttribute('aria-selected') === 'true' };
             }) };
         });
         assert.ok(matches.rows.some(row => row.selected) && matches.rows.some(row => !row.selected), `${profile.id}: selected and ordinary matched suggestions`);
-        assert.ok(matches.rows.every(row => row.color === (row.selected ? matches.selected : matches.normal) && row.weight === '600'), `${profile.id}: suggestion matches use carrier-specific text emphasis and weight`);
-        assert.ok(matches.rows.every(row => contrastRatio(row.color, row.background) >= 4.5), `${profile.id}: normal and selected suggestion matches remain readable (${JSON.stringify(matches.rows)})`);
+        assert.equal(matches.normal, matches.heading, `${profile.id}: ordinary match role equals final heading ink`);
+        assert.equal(matches.selected, matches.heading, `${profile.id}: selected match role equals final heading ink`);
+        assert.ok(matches.rows.every(row => row.color === matches.heading && row.weight === '600'), `${profile.id}: all suggestion matches exactly share heading color and keep their identifying weight`);
+        assert.ok(matches.prefixes.length && matches.prefixes.every(color => color === matches.heading), `${profile.id}: suggestion prefixes share exact heading ink`);
         await screenshot(profile.id + '-slash.png');
         await page.keyboard.press('Escape');
+        await page.evaluate(() => (window as any).ThemeAcceptance.replaceText('# **标题** `代码`\n\n普通正文'));
+        await page.waitForSelector('.meo-md-h1 .meo-md-marker-active');
+        const headingMarkers = await page.evaluate(() => {
+          const probe = document.createElement('span'); probe.style.color = 'var(--meo-semantic-markdownSyntax)'; document.body.append(probe);
+          const syntax = getComputedStyle(probe).color; probe.remove();
+          return { syntax, markers: [...document.querySelectorAll('.meo-md-h1 :is(.meo-md-marker, .meo-md-marker-active, .meo-md-code-marker, .meo-md-code-marker-active)')]
+            .map(el => ({ text: el.textContent, color: getComputedStyle(el).color, fill: getComputedStyle(el).webkitTextFillColor })) };
+        });
+        assert.ok(headingMarkers.markers.some(marker => marker.text?.includes('#')), `${profile.id}: active heading hash is rendered`);
+        assert.ok(headingMarkers.markers.every(marker => marker.color === headingMarkers.syntax && marker.fill === headingMarkers.syntax), `${profile.id}: heading syntax stays neutral, including text fill`);
+        await screenshot(profile.id + '-heading-markers.png');
       }
       await page.click('button[data-mode="live"]');
       await page.waitForSelector('.cm-editor.meo-mode-live');
