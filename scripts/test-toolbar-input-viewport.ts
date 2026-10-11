@@ -930,6 +930,22 @@ async function runWorkbenchMenuFocus(browser: Browser, mode: 'live' | 'source'):
     await page.close();
   }
 }
+async function runIsolatedPaintedActivationClicks(): Promise<void> {
+  // After cross-frame focus fixtures, paused screenshots can wait indefinitely
+  // for a compositor update. Give the pixel witness its own browser state.
+  const browser = await launchTestBrowser();
+  let primaryError: unknown;
+  try {
+    await runPaintedActivationClick(browser, 'live');
+    await runPaintedActivationClick(browser, 'source');
+  } catch (error) {
+    primaryError = error;
+  } finally {
+    if (primaryError === undefined) await closeTestBrowser(browser);
+    else await closeTestBrowser(browser, primaryError);
+  }
+}
+
 async function main(): Promise<void> {
   const build = await Bun.build({
     entrypoints: [path.join(repoRoot, 'scripts', 'test-basic-capability-index-entry.ts')],
@@ -947,8 +963,7 @@ async function main(): Promise<void> {
     await runWorkbenchMenuFocus(browser, 'source');
     await runAltFocusPolicy(browser, 'live');
     await runAltFocusPolicy(browser, 'source');
-    await runPaintedActivationClick(browser, 'live');
-    await runPaintedActivationClick(browser, 'source');
+    await runIsolatedPaintedActivationClicks();
     await runSeparatedActivationClick(browser, 'live');
     await runSeparatedActivationClick(browser, 'source');
     await runComponentFocusReturn(browser);
