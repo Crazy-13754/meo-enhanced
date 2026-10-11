@@ -1257,10 +1257,10 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   align-items: center;
   height: 26px;
   white-space: nowrap;
-  background-color: var(--meo-ui-vscode-sideBar-background);
+  background-color: var(--meo-ui-surface);
 }
 
-.toolbar-overflow-indicator {
+.format-button.toolbar-overflow-indicator {
   position: absolute;
   z-index: 2;
   top: 8px;
@@ -1270,7 +1270,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   width: 24px;
   height: 24px;
   color: var(--meo-toolbar-overflow-foreground, #fff);
-  background-color: var(--meo-ui-vscode-sideBar-background);
+  background-color: var(--meo-ui-surface);
 }
 
 .toolbar-overflow-indicator.is-active {
@@ -8061,7 +8061,13 @@ html[data-editor-appearance='dark'] .meo-input-suggestions {
 .more-tools-option-info { color: var(--meo-ui-muted); }
 .more-tools-feedback-link { color: var(--meo-ui-vscode-textLink-foreground); }
 .find-panel { background: var(--meo-ui-surface); border-color: var(--meo-ui-border); color: var(--meo-ui-foreground); }
-.find-input { border: 1px solid var(--meo-ui-input-border); }
+.find-input, .line-jump-input {
+  color: var(--meo-ui-field-foreground);
+  background: var(--meo-ui-field-background);
+  border: 1px solid var(--meo-ui-field-border);
+}
+.find-input::placeholder, .line-jump-input::placeholder,
+.find-input-wrap .find-clear-button { color: var(--meo-ui-muted); }
 .segmented-control { background: var(--meo-ui-segmented-background); }
 .segmented-control-button, html[data-editor-appearance='light'] .segmented-control-button:not(.is-active) { color: var(--meo-ui-segmented-foreground); }
 .segmented-control-button.is-active { color: var(--meo-ui-foreground); }
@@ -8077,7 +8083,7 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 .preview-preset-dropdown, html[data-editor-appearance='dark'] .preview-preset-dropdown { --preview-preset-accent: var(--meo-ui-vscode-icon-foreground); border-color: var(--meo-ui-dropdown-border); }
 .preview-preset-control .preview-preset-dropdown:is(:hover, [aria-expanded='true'], :focus-visible) { border-color: var(--meo-ui-focus); background: var(--meo-ui-dropdown-background); outline-color: var(--meo-ui-focus); }
 .preview-dropdown-panel, html[data-editor-appearance='dark'] .preview-preset-dropdown-panel { color: var(--meo-ui-dropdown-foreground); background: var(--meo-ui-dropdown-list); border-color: var(--meo-ui-dropdown-border); box-shadow: var(--meo-ui-shadow); }
-.preview-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible, .is-selected) { color: var(--meo-ui-menu-hover-foreground); background: var(--meo-ui-menu-hover); outline: 1px solid var(--meo-ui-menu-selection-border); outline-offset: -1px; }
+.preview-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible, .is-selected) { color: var(--meo-ui-dropdown-foreground); background: var(--meo-ui-dropdown-selected); outline: 1px solid var(--meo-ui-menu-selection-border); outline-offset: -1px; }
 .preview-preset-dropdown-panel .preview-dropdown-option.is-selected .preview-preset-option-name { color: inherit; }
 button:focus-visible > .menu-switch { outline-color: var(--meo-ui-focus); }
 .settings-window { background: var(--meo-ui-surface); color: var(--meo-ui-foreground); border-color: var(--meo-ui-border); }
@@ -8143,9 +8149,8 @@ html[data-editor-appearance='light'] :is(.selection-inline-menu, .cm-editor .meo
 .table-grid-cell { border-color: var(--meo-ui-dropdown-border); }
 .table-grid-cell.is-highlighted { background: var(--meo-ui-selected-background); border-color: var(--meo-ui-selected-border); }
 .menu-switch, html[data-editor-appearance='dark'] .menu-switch { background: var(--meo-ui-switch-background); box-shadow: inset 0 0 0 1px var(--meo-ui-switch-border); }
-.menu-switch::after { background: var(--meo-ui-switch-knob); }
+.menu-switch::after { background: #fff; }
 [aria-checked='true'] > .menu-switch, html[data-editor-appearance='dark'] [aria-checked='true'] > .menu-switch { background: var(--meo-ui-switch-active-background); box-shadow: inset 0 0 0 1px var(--meo-ui-switch-active-border); }
-[aria-checked='true'] > .menu-switch::after { background: var(--meo-ui-switch-active-foreground); }
 .settings-section-title { color: var(--meo-ui-settings-header); }
 .settings-window :is(.settings-search-input, .settings-recorder, .image-location-input, .image-location-path) { color: var(--meo-ui-settings-input-foreground); background: var(--meo-ui-settings-input-background); border-color: var(--meo-ui-settings-input-border); }
 .settings-window :is(.settings-search-input, .settings-recorder, .image-location-input):focus, .settings-window .image-location-path:focus-within { border-color: var(--meo-ui-focus); }

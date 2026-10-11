@@ -33,10 +33,18 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
   set('menu-hover-foreground', color('menu.selectionForeground', fg));
   set('menu-selection-border', color('menu.selectionBorder', color('contrastActiveBorder', 'transparent')));
   set('menu-separator', color('menu.separatorBackground', border));
-  set('dropdown-background', color('dropdown.background', fallback['--vscode-input-background']!));
-  set('dropdown-list', color('dropdown.listBackground', color('menu.background', surface)));
-  set('dropdown-foreground', color('dropdown.foreground', fg));
-  set('dropdown-border', color('dropdown.border', border));
+  // Compact toolbar fields belong to the widget surface. Native input/dropdown
+  // fills can have a strong, unrelated tint in otherwise subdued themes.
+  const field = `color-mix(in srgb, ${surface} 96%, ${fg} 4%)`;
+  const fieldBorder = color('contrastBorder', `color-mix(in srgb, ${surface} 78%, ${fg} 22%)`);
+  set('field-background', field);
+  set('field-foreground', fg);
+  set('field-border', fieldBorder);
+  set('dropdown-background', field);
+  set('dropdown-list', surface);
+  set('dropdown-foreground', fg);
+  set('dropdown-border', fieldBorder);
+  set('dropdown-selected', `color-mix(in srgb, ${surface} 88%, ${fg} 12%)`);
   set('input-border', color('input.border', fallback['--meo-input-border']!));
   set('muted', color('descriptionForeground', fallback['--vscode-descriptionForeground']!));
   set('disabled', color('disabledForeground', fallback['--vscode-disabledForeground']!));
@@ -90,12 +98,10 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
   set('settings-input-background', color('settings.textInputBackground', fallback['--vscode-input-background']!));
   set('settings-input-foreground', color('settings.textInputForeground', fallback['--vscode-input-foreground']!));
   set('settings-input-border', color('settings.textInputBorder', fallback['--meo-input-border']!));
-  set('switch-background', color('checkbox.background', `color-mix(in srgb, ${fallback['--vscode-editor-foreground']} ${appearance === 'light' ? 18 : 27}%, ${fallback['--vscode-editor-background']})`));
-  set('switch-border', color('checkbox.border', 'transparent'));
-  set('switch-knob', color('checkbox.foreground', '#ffffff'));
-  set('switch-active-background', color('inputOption.activeBackground', appearance === 'light' ? '#3483ff' : '#247bf4'));
-  set('switch-active-foreground', color('inputOption.activeForeground', '#ffffff'));
-  set('switch-active-border', color('inputOption.activeBorder', 'transparent'));
+  set('switch-background', `color-mix(in srgb, ${fg} ${appearance === 'light' ? 18 : 27}%, ${surface})`);
+  set('switch-border', color('contrastBorder', 'transparent'));
+  set('switch-active-background', color('button.background', appearance === 'light' ? '#3483ff' : '#247bf4'));
+  set('switch-active-border', color('contrastActiveBorder', 'transparent'));
   set('notice-border', color('notifications.border', border));
   for (const [property, id, legacy] of [
     ['--meo-notice-surface', 'notifications.background', fallback['--meo-notice-surface']],

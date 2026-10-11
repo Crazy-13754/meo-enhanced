@@ -238,6 +238,15 @@ try {
     await page.waitForFunction(() => document.querySelector<HTMLElement>('.preview-host')?.hidden === true && !document.querySelector('[data-preview-cover]'));
     await screenshot(profile.id + '-source.png');
     await page.click('.more-tools-wrapper > .format-button');
+    if (!baseline) {
+      const toolbar = await page.$eval('.mode-toolbar', el => getComputedStyle(el).backgroundColor);
+      for (const selector of ['.toolbar-right', '.toolbar-overflow-indicator']) {
+        assert.equal(await page.$eval(selector, el => getComputedStyle(el).backgroundColor), toolbar, `${profile.id}: ${selector} shares the toolbar surface`);
+      }
+      const knobs = await page.$$eval('.more-tools-panel .menu-switch', switches => switches.map(el => getComputedStyle(el, '::after').backgroundColor));
+      assert.ok(knobs.length > 0);
+      assert.ok(knobs.every(color => color === 'rgb(255, 255, 255)'), `${profile.id}: switches retain the original white knob in both states`);
+    }
     await screenshot(profile.id + '-menu.png');
     if (!baseline) {
       await page.click('.more-tools-settings-button');
