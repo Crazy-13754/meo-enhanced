@@ -139,6 +139,7 @@ function targetedCommands(
         script('scripts/test-source-theme-customizations.ts'),
         script('scripts/test-preview-preset-host.ts'),
         script('scripts/test-preview-presets-browser.ts'),
+        script('scripts/test-preview-preset-position.ts'),
         script('scripts/test-preview-outline-viewport-browser.ts'),
         script('scripts/test-github-preset-export-browser.ts'),
         script('scripts/test-preview-comment-toggle-browser.ts'),
@@ -170,6 +171,7 @@ function targetedCommands(
       return [
         script('scripts/test-source-syntax-stability.ts'),
         script('scripts/test-preview-navigation-continuity.ts'),
+        script('scripts/test-preview-preset-position.ts'),
         script('scripts/test-native-scroll-progress-production.ts'),
         script('scripts/test-long-document-scroll.ts'),
         packageScript('test:reading-position'),
@@ -276,6 +278,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-source-syntax-stability.ts'),
           script('scripts/test-source-syntax-first-paint.ts'),
           script('scripts/test-preview-presets.ts'),
+          script('scripts/test-preview-preset-position.ts'),
           script('scripts/test-editor-shortcuts.ts'),
           script('scripts/test-editing-preferences.ts'),
           script('scripts/test-editor-services.ts'),

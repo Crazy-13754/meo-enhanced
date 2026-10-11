@@ -17,6 +17,7 @@ assert.ok(quickCommands.some((command) => command.args.join(' ') === 'run typech
 assert.ok(quickCommands.some(command => command.args.includes('scripts/test-source-theme-customizations.ts')));
 for (const tier of [quick, createTestWorkflowPlan(parseTestWorkflowRequest(['targeted', 'appearance'])), createTestWorkflowPlan(parseTestWorkflowRequest(['targeted', 'viewport']))]) {
   assert.ok(flattenTestWorkflowCommands(tier).some(command => command.args.includes('scripts/test-source-syntax-stability.ts')));
+  assert.ok(flattenTestWorkflowCommands(tier).some(command => command.args.includes('scripts/test-preview-preset-position.ts')));
 }
 assert.ok(flattenTestWorkflowCommands(
   createTestWorkflowPlan(parseTestWorkflowRequest(['targeted', 'appearance']))

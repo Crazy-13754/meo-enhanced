@@ -94,6 +94,13 @@ to top must retain the new location when returning to either Live or Source,
 without a body click. It also checks unchanged roundtrips and samples multiple
 frames after the return. It belongs to the quick and targeted viewport gates.
 
+`scripts/test-preview-preset-position.ts` samples the same content-relative reading
+point on every frame while switching built-in and custom presets with different
+fonts, widths and spacing. It covers light/dark, full Preview, linked and independent
+Source side Preview, rapid switching, late responses after trusted scrolling and
+the document start. It belongs to quick, targeted appearance/viewport and the
+preview-preset acceptance pack; pixel scroll offsets alone cannot pass this check.
+
 `scripts/test-preview-shortcuts-production.ts` checks trusted keyboard input in
 full and side Preview, including live binding changes, Save's emitted revision,
 Find/Replace and mode switching from text and margins. Native selection, copy,

@@ -1776,7 +1776,9 @@ export function createPreviewController({
         const wasAtDocumentTop = (reusableDocument.scrollingElement?.scrollTop ?? 0) <= 0.5;
         withViewportTransaction(
           (slot) => commit(slot),
-          previousRenderedText === null
+          // Unchanged text is a layout update: preserve its semantic reading point,
+          // rather than the pixel scroll offset used for edits inside the viewport.
+          previousRenderedText === null || previousRenderedText === renderedText
             ? undefined
             : { previousText: previousRenderedText, nextText: renderedText }
         );
