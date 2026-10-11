@@ -1,5 +1,6 @@
 import { darkCssVariableOverrides } from '../themes/editorDarkTheme';
 import { lightCssVariableOverrides } from '../themes/editorLightTheme';
+import { defaultUiColors } from '../themes/defaultUiColors';
 import type { UiColorOverrides } from '../../../src/foundation/uiColors';
 
 export const contentVariable = (name: string): string => name.replace('--vscode-', '--meo-content-');
@@ -32,10 +33,12 @@ let paletteCache: { key: string; roles: Record<string, string> } | undefined;
 export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean, overrides: UiColorOverrides = {}): void {
   const style = document.documentElement.style;
   const fallback = appearance === 'light' ? lightCssVariableOverrides : darkCssVariableOverrides;
+  const defaults = defaultUiColors[appearance];
   const color = (id: string, legacy: string): string => matchesHost ? `var(--vscode-${id.replace(/\./g, '-')}, ${legacy})` : legacy;
   const highContrast = matchesHost && (document.body.classList.contains('vscode-high-contrast')
     || document.body.classList.contains('vscode-high-contrast-light'));
   document.documentElement.dataset.meoUiContrast = highContrast ? 'high' : 'normal';
+  document.documentElement.dataset.meoUiColorSource = matchesHost ? 'vscode' : 'default';
   const custom = highContrast ? {} : overrides;
   const probe = document.createElement('span');
   probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
@@ -75,20 +78,19 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
 
   try {
     const documentSurface = read('editor.background', fallback['--vscode-editor-background']);
-    const nativeSurface = custom.surface ? sample(custom.surface) : read('editorWidget.background', fallback['--vscode-editorWidget-background'], documentSurface);
+    const nativeSurface = custom.surface ? sample(custom.surface) : read('editorWidget.background', defaults.surface, documentSurface);
     // Large UI areas share the toolbar's low-chroma family. Native menu fills
     // can have an unrelated, strong tint and are not another default input.
     const surface = highContrast || custom.surface ? nativeSurface : mix(nativeSurface, neutral(nativeSurface), 0.30);
-    const foreground = custom.text ? sample(custom.text) : neutral(read('foreground', fallback['--vscode-editor-foreground'], surface));
-    const accent = custom.accent ? sample(custom.accent) : read('button.background', fallback['--meo-notice-action-surface'], surface);
-    const success = custom.success ? sample(custom.success) : read('testing.iconPassed', appearance === 'light' ? '#1a7f37' : '#73c991', surface);
-    const warning = custom.warning ? sample(custom.warning) : read('editorWarning.foreground', fallback['--meo-notice-warning'], surface);
-    const danger = custom.danger ? sample(custom.danger) : read('errorForeground', fallback['--meo-notice-error'], surface);
+    const foreground = custom.text ? sample(custom.text) : neutral(read('foreground', defaults.text, surface));
+    const accent = custom.accent ? sample(custom.accent) : read('button.background', defaults.accent, surface);
+    const success = custom.success ? sample(custom.success) : read('testing.iconPassed', defaults.success, surface);
+    const warning = custom.warning ? sample(custom.warning) : read('editorWarning.foreground', defaults.warning, surface);
+    const danger = custom.danger ? sample(custom.danger) : read('errorForeground', defaults.danger, surface);
     const contentSurface = sample(`var(--meo-background, ${rgb(documentSurface)})`, documentSurface);
     // Matches start from the final heading ink. Keep it unchanged when readable,
     // otherwise apply only the existing contrast correction for the menu carrier.
-    const textEmphasis = custom.textEmphasis ? sample(custom.textEmphasis) : read('textLink.foreground',
-      `var(--meo-semantic-headingForeground, ${appearance === 'light' ? '#0550ae' : '#79b8ff'})`, contentSurface);
+    const textEmphasis = custom.textEmphasis ? sample(custom.textEmphasis) : read('textLink.foreground', defaults.textEmphasis, contentSurface);
     const footnoteBackground = `color-mix(in srgb, ${rgb(textEmphasis)} 12%, transparent)`;
     const contentSurfaces = [contentSurface,
       sample(`var(--meo-inline-code-background, ${rgb(contentSurface)})`, contentSurface),

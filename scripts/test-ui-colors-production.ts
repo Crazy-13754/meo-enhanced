@@ -138,6 +138,54 @@ try {
   if (screenshots) await page.screenshot({path: path.join(screenshots, '059-appearance-narrow.png')});
   await page.setViewport({width: 1100, height: 820});
   await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="zh-CN"]'); await page.click('[data-tab="appearance"]');
+  // A manual appearance must not inherit UI colors from the opposite host.
+  const hostInputs = ['editorWidget-background', 'foreground', 'button-background', 'textLink-foreground', 'testing-iconPassed', 'editorWarning-foreground', 'errorForeground'];
+  const originalHostInputs = await page.evaluate(ids => ids.map(id => {
+    const key = '--vscode-' + id; const style = document.documentElement.style;
+    return [key, style.getPropertyValue(key), style.getPropertyPriority(key)];
+  }), hostInputs);
+  const changeHost = async (appearance: 'light' | 'dark', color?: string) => page.evaluate(({appearance, ids, color}) => {
+    document.body.className = 'vscode-' + appearance;
+    if (color) for (const id of ids) document.documentElement.style.setProperty('--vscode-' + id, color);
+    window.dispatchEvent(new MessageEvent('message', {data: {type: 'vscodeCodeThemeChanged', appearance, vscodeTheme: {name: 'fixture', type: appearance, colors: {}, tokenColors: []}}}));
+  }, {appearance, ids: hostInputs, color});
+  const uiRoles = () => page.evaluate(() => [...document.documentElement.style]
+    .filter(key => key.startsWith('--meo-ui-'))
+    .map(key => [key, document.documentElement.style.getPropertyValue(key)]));
+  await page.click('[data-appearance-mode="light"]');
+  assert.equal(await role('accent'), 'rgb(0, 105, 204)', 'VS Code dark/MEO light uses the Light 2026 accent');
+  assert.equal(await page.$eval(input('surface'), e => (e as HTMLInputElement).placeholder), '默认浅色配色');
+  assert.match(await page.$eval('.appearance-color-reset', e => e.getAttribute('aria-label')!), /默认浅色配色/);
+  if (screenshots) await page.screenshot({path: path.join(screenshots, '064-default-light.png')});
+  const defaultLightRoles = await uiRoles(); const lightSource = await source();
+  await changeHost('dark', '#EE2266');
+  assert.deepEqual(await uiRoles(), defaultLightRoles, 'all default light UI roles ignore opposite host inputs');
+  assert.deepEqual(await source(), lightSource, 'opposite host UI input changes do not alter Source content');
+  await edit('accent', '#8844AA');
+  assert.equal(await role('accent'), 'rgb(136, 68, 170)', 'custom input overrides the bundled default');
+  await page.click(cancel);
+  assert.deepEqual(await uiRoles(), defaultLightRoles, 'cancel restores the default palette');
+  await changeHost('light', '#33BB88'); await page.click('[data-appearance-mode="dark"]');
+  assert.equal(await role('accent'), 'rgb(41, 122, 160)', 'VS Code light/MEO dark uses the Dark 2026 accent');
+  assert.equal(await page.$eval(input('surface'), e => (e as HTMLInputElement).placeholder), '默认深色配色');
+  if (screenshots) await page.screenshot({path: path.join(screenshots, '065-default-dark.png')});
+  const defaultDarkRoles = await uiRoles(); const darkSource = await source();
+  await changeHost('light', '#DD3355');
+  assert.deepEqual(await uiRoles(), defaultDarkRoles, 'all default dark UI roles ignore opposite host inputs');
+  assert.deepEqual(await source(), darkSource);
+  await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="en"]'); await page.click('[data-tab="appearance"]');
+  assert.equal(await page.$eval(input('surface'), e => (e as HTMLInputElement).placeholder), 'Default dark palette');
+  assert.match(await page.$eval('.appearance-note', e => e.textContent!), /dark default palette/);
+  assert.match(await page.$eval('.appearance-color-reset', e => e.getAttribute('aria-label')!), /Default dark palette/);
+  await page.click('.settings-search'); await page.keyboard.type('Default dark palette');
+  assert.equal(await page.$$eval('.appearance-item', elements => elements.length), 7, 'default palette searches expose all color inputs');
+  await page.click('.settings-search-clear');
+  await page.evaluate(inputs => { for (const [key, value, priority] of inputs) document.documentElement.style.setProperty(key!, value!, priority!); }, originalHostInputs);
+  await changeHost('dark'); await page.click('[data-appearance-mode="auto"]');
+  assert.equal(await role('accent'), 'rgb(36, 114, 200)', 'Auto resumes the active VS Code colors');
+  assert.equal(await page.$eval(input('surface'), e => (e as HTMLInputElement).placeholder), 'Follow VS Code theme');
+  await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="zh-CN"]'); await page.click('[data-tab="appearance"]');
+  assert.deepEqual(owner.getUiColors(), {light: {}, dark: {}}, 'bundled defaults and previews are never persisted as overrides');
   const originalSurface = await role('surface'); const sourceBefore = await source();
   const drag = await page.evaluate(async () => {
     const swatch = document.querySelector<HTMLInputElement>('[data-setting="surface"] .appearance-color-swatch')!;
@@ -255,5 +303,5 @@ try {
   await page.click('.appearance-footer > button'); await page.click(apply); await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('.appearance-footer .settings-primary')!.disabled);
   assert.deepEqual(owner.getUiColors(), {light: {}, dark: {}}, 'reset clears both profiles after Apply');
   assert.deepEqual(errors, []);
-  console.log('Production appearance: drag preview coalescing, immediate Apply/discard, preview/cancel, all close paths, validation, save failure/retry, reload, light/dark isolation, external updates, delayed responses, high contrast and narrow layout passed');
+  console.log('Production appearance: bundled defaults for opposite appearances, actual source hints/search, drag preview coalescing, immediate Apply/discard, preview/cancel, all close paths, validation, save failure/retry, reload, light/dark isolation, external updates, delayed responses, high contrast and narrow layout passed');
 } finally { await closeTestBrowser(browser); }

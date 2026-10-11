@@ -1,4 +1,4 @@
-/** Only base inputs are persisted. Missing inputs follow the host theme. */
+/** Only overrides are persisted. Missing inputs use the host theme or bundled defaults. */
 export const uiColorKeys = ['surface', 'text', 'accent', 'textEmphasis', 'success', 'warning', 'danger'] as const;
 export type UiColorKey = typeof uiColorKeys[number];
 export type UiColorOverrides = Partial<Record<UiColorKey, string>>;

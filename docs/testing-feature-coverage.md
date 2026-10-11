@@ -58,7 +58,7 @@
 | `meoEnhanced.editing.preferences` | 输入偏好与快捷键跨面板合并、重载保持、保存失败不伪报成功、旧版本消息不覆盖新值；[偏好合同](../scripts/test-editing-preferences.ts)、[正式窗口](../scripts/test-settings-window-production.ts) |
 | `meoEnhanced.language` | 中英文与自动跟随改变实际标签，[语言切换](../scripts/test-live-ui-language-switch.ts) |
 | `meoEnhanced.appearance.editor`、`meoEnhanced.appearance.preview` | 独立亮暗外观和主题更新有效，[主题过渡](../scripts/test-vscode-theme-transition.ts) |
-| `meoEnhanced.appearance.colors` | 七项基础色严格校验、预览撤销与保存失败、深浅色隔离、重载保持、高对比度跟随宿主；四个设置标签的两栏布局、章节导航与搜索过滤、外观章节跳转、中英文窄屏控件；[配置合同](../scripts/test-ui-colors.ts)、[正式外观页](../scripts/test-ui-colors-production.ts) |
+| `meoEnhanced.appearance.colors` | 七项基础色严格校验、预览撤销与保存失败、深浅色隔离、重载保持、高对比度跟随宿主；同明暗跟随宿主、不同明暗使用内置默认基础色且用户覆盖优先，提示与恢复标签准确；四个设置标签的两栏布局、章节导航与搜索过滤、外观章节跳转、中英文窄屏控件；[配置合同](../scripts/test-ui-colors.ts)、[正式外观页](../scripts/test-ui-colors-production.ts) |
 | `meoEnhanced.preview.fontFamily`、`meoEnhanced.preview.sourceColoring`、`meoEnhanced.preview.showComments` | 字体生效、代码着色切换、注释显隐；[菜单](../scripts/test-toolbar-menus-browser.ts)、[预览着色](../scripts/test-preview-code-highlight-layout.ts)、[注释开关](../scripts/test-preview-comment-toggle-browser.ts) |
 | `meoEnhanced.appearance.strongColoring`、`meoEnhanced.appearance.boldHeadings` | 实际样式跟随设置，[外观设置](../scripts/test-appearance-settings.ts)、[标题粗细](../scripts/test-basic-capability-production-matrix.ts) |
 | `meoEnhanced.appearance.fontSizeMode`、`meoEnhanced.appearance.fontSize` | 自动/自定义字号作用于正文和块内编辑且保留位置，[字号视口](../scripts/test-font-size-viewport.ts)、[嵌套字号](../scripts/test-embedded-source-font-size.ts) |

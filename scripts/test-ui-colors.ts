@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { decodeUiColors, normalizeUiColor } from '../src/foundation/uiColors';
+import { decodeUiColors, normalizeUiColor, uiColorKeys } from '../src/foundation/uiColors';
+import { defaultUiColors } from '../webview/src/themes/defaultUiColors';
 import { createAppearanceSettingsOwner, UI_COLORS_SETTING_KEY, type AppearanceSettingsStore } from '../src/host/appearanceSettings';
 import { decodeHostToWebviewMessage, decodeWebviewToHostMessage } from '../src/protocol/messages';
 import { createUiColorsTransport } from '../webview/src/adapters/uiColorsTransport';
@@ -7,6 +8,11 @@ import { UI_COLORS_TIMEOUT_MS, type UpdateUiColorsRequest } from '../src/protoco
 
 assert.equal(normalizeUiColor(' #aBc '), '#AABBCC');
 assert.equal(normalizeUiColor('#12ab34'), '#12AB34');
+for (const profile of Object.values(defaultUiColors)) {
+  assert.deepEqual(Object.keys(profile).sort(), [...uiColorKeys].sort(), 'bundled defaults contain exactly the configurable base inputs');
+  for (const color of Object.values(profile)) assert.equal(normalizeUiColor(color), color, 'bundled defaults are normalized HEX colors');
+}
+assert.deepEqual(decodeUiColors(defaultUiColors), defaultUiColors);
 for (const invalid of ['red', '#1234', '#12345678', 'var(--color)', '#12345G']) assert.equal(normalizeUiColor(invalid), null);
 assert.deepEqual(decodeUiColors({ dark: { text: '#Abc' } }), { light: {}, dark: { text: '#AABBCC' } });
 for (const invalid of [null, [], { surface: '#123' }, { dark: [] }, { light: { unknown: '#123' } }, { dark: { text: 'red' } }]) {

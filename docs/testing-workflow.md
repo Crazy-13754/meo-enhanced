@@ -67,7 +67,11 @@ exact commands without running them.
 strict Protocol decoding and correlated saves. `scripts/test-ui-colors-production.ts`
 uses the production Settings window and the same configuration owner to verify
 preview/cancel, save failure/retry, reload, separate light/dark profiles, external
-updates, delayed replies, high contrast and narrow layout. Continuous swatch input
+updates, delayed replies, high contrast and narrow layout. Opposite host/UI
+appearances must use the bundled VS Code default base colors, remain independent
+of the opposite host's UI colors, honor custom overrides, and show the actual
+default source in Chinese/English hints, reset labels and search. Returning to
+Auto must follow the active host again. Continuous swatch input
 must coalesce derivation into one frame, retain the latest value and avoid feedback
 writes to the native input. Apply and discard are also checked before that frame.
 Both are quick and targeted appearance checks; Source content must remain

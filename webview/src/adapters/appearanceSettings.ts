@@ -35,6 +35,10 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
   let scheme = options.getScheme();
   let previewFrame: number | undefined;
   const t = (zh: string, en: string) => settingsText(language, zh, en);
+  const usesDefaultColors = () => document.documentElement.dataset.meoUiColorSource === 'default';
+  const colorSourceLabel = () => usesDefaultColors()
+    ? t(scheme === 'light' ? '默认浅色配色' : '默认深色配色', scheme === 'light' ? 'Default light palette' : 'Default dark palette')
+    : t('跟随 VS Code 主题', 'Follow VS Code theme');
   const footer = node('div', 'appearance-footer');
   const reset = button(''); const cancel = button(''); const apply = button('', 'settings-button settings-primary');
   const actions = node('div', 'settings-actions'); actions.append(cancel, apply); footer.append(reset, actions);
@@ -100,7 +104,7 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
   });
 
   const sectionFor = (item: typeof appearanceCatalog[number]) => item.id === 'mode' ? 'appearanceMode' : item.advanced ? 'appearanceAdvanced' : 'appearanceColors';
-  const items = (query: string) => appearanceCatalog.filter(item => settingsSearchMatches(query, '外观 Appearance', ...sectionTitles[sectionFor(item)], ...item.title, ...item.description, ...item.keywords, '跟随 VS Code 主题 Follow VS Code theme', item.id));
+  const items = (query: string) => appearanceCatalog.filter(item => settingsSearchMatches(query, '外观 Appearance', ...sectionTitles[sectionFor(item)], ...item.title, ...item.description, ...item.keywords, '跟随 VS Code 主题 Follow VS Code theme', item.id === 'mode' ? '' : '默认配色 默认浅色配色 默认深色配色 内置预设 Default light palette Default dark palette built-in preset', item.id));
   function render(nextLanguage: UiLanguage, query: string) {
     for (const unregister of inputRegistrations) unregister(); inputRegistrations = [];
     language = nextLanguage; scheme = options.getScheme(); presenters = []; invalid.clear();
@@ -119,6 +123,7 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
       const high = document.documentElement.dataset.meoUiContrast === 'high';
       schemeLabel.textContent = t(scheme === 'light' ? '浅色配色' : '深色配色', `${scheme === 'light' ? 'Light' : 'Dark'} colors`);
       note.textContent = high ? t('高对比度模式使用 VS Code 配色。自定义颜色会保留，切回普通主题后生效。', 'High contrast uses VS Code colors. Custom colors are retained for other themes.')
+        : usesDefaultColors() ? t(`留空使用${colorSourceLabel()}。颜色实时预览，应用后保存。`, `Leave empty to use the ${scheme} default palette. Preview live; Apply to save.`)
         : t('留空跟随 VS Code 主题。颜色实时预览，应用后保存。', 'Leave empty to follow the VS Code theme. Preview live; Apply to save.');
     });
     const common = sections.get('appearanceColors');
@@ -150,6 +155,9 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
         let shownScheme = scheme;
         presenters.push(() => {
           const color = (draft ?? options.getColors())[scheme][key];
+          input.placeholder = colorSourceLabel();
+          input.title = t(`输入 #RGB 或 #RRGGBB；留空${usesDefaultColors() ? '使用' : ''}${colorSourceLabel()}。`, `Enter #RGB or #RRGGBB; leave empty ${usesDefaultColors() ? `to use the ${scheme} default palette` : 'to follow the VS Code theme'}.`);
+          restore.setAttribute('aria-label', t(item.title[0], item.title[1]) + ' · ' + colorSourceLabel());
           if ((!invalid.has(key) && document.activeElement !== input) || shownScheme !== scheme) { input.value = color ?? ''; input.removeAttribute('aria-invalid'); shownScheme = scheme; }
           restore.disabled = saving || !color && !invalid.has(key); swatchInput.disabled = saving; input.disabled = saving;
           const role = key === 'textEmphasis' ? 'text-emphasis-content' : key;
