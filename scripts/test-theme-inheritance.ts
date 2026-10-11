@@ -14,6 +14,13 @@ const nativeGrammar = process.env.MEO_VSCODE_MARKDOWN_GRAMMAR;
 const output = path.resolve(process.env.MEO_THEME_OUTPUT ?? 'tmp/theme-acceptance');
 fs.mkdirSync(output, { recursive: true });
 const baselinePath = path.resolve('tmp/theme-content-before.json');
+const contrastRatio = (foreground: string, background: string): number => {
+  const luminance = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(channel => {
+    const c = channel / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
+  const a = luminance(foreground), b = luminance(background);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+};
 const markdown = [
   '---', 'title: Theme acceptance', 'count: 42', 'enabled: true', 'tags: [one, two]', '---', '',
   '# 编辑器配色验收 · Heading', '',
@@ -153,6 +160,16 @@ try {
         const s = getComputedStyle(el); return [el.textContent, s.color, s.backgroundColor, s.borderColor, s.fontSize, s.fontWeight, s.fontStyle];
       })]));
     });
+    if (!baseline) {
+      const emphasis = await page.evaluate(() => {
+        const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-text-emphasis-content)'; document.body.append(probe);
+        const color = getComputedStyle(probe).color; probe.remove(); return color;
+      });
+      for (const row of (content[profile.id + ':live'] as Record<string, string[][]>)['.meo-md-h1']!) {
+        assert.equal(row[1], emphasis, `${profile.id}: Live heading uses text emphasis`);
+        assert.equal(row[3], emphasis, `${profile.id}: Live heading currentColor follows text emphasis`);
+      }
+    }
     await screenshot(profile.id + '-live.png');
     await page.click('button[data-mode="preview"]');
     await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'preview');
@@ -198,15 +215,23 @@ try {
           const root = document.documentElement, style = root.style;
           const read = () => Object.fromEntries([...style].filter(name => name.startsWith('--meo-ui-')).map(name => [name, style.getPropertyValue(name)]));
           const before = read(), oldMenu = style.getPropertyValue('--vscode-menu-background'), oldWidget = style.getPropertyValue('--vscode-editorWidget-background');
+          const oldEmphasis = style.getPropertyValue('--vscode-textLink-foreground');
           const refresh = () => (window as any).ThemeAcceptance.refreshUiTheme();
           refresh(); const reused = read();
           style.setProperty('--vscode-menu-background', '#ff00ff'); refresh(); const independent = read();
+          style.setProperty('--vscode-textLink-foreground', '#e886ff'); refresh(); const emphasisChanged = read();
+          if (oldEmphasis) style.setProperty('--vscode-textLink-foreground', oldEmphasis);
+          else style.removeProperty('--vscode-textLink-foreground');
           style.setProperty('--vscode-editorWidget-background', '#122b38'); refresh(); const changed = read();
           style.setProperty('--vscode-menu-background', oldMenu); style.setProperty('--vscode-editorWidget-background', oldWidget); refresh();
-          return { before, reused, independent, changed, restored: read() };
+          return { before, reused, independent, emphasisChanged, changed, restored: read() };
         });
         assert.deepEqual(palette.reused, palette.before, 'Reapplying identical inputs preserves all UI roles');
         assert.deepEqual(palette.independent, palette.before, 'Floating UI derives from the toolbar base independently of native menu fills');
+        for (const [name, value] of Object.entries(palette.before)) {
+          if (name.startsWith('--meo-ui-text-emphasis')) assert.notEqual(palette.emphasisChanged[name], value, `Text emphasis invalidates ${name}`);
+          else assert.equal(palette.emphasisChanged[name], value, `Text emphasis must not recolor ${name}`);
+        }
         assert.notEqual(palette.changed['--meo-ui-surface'], palette.before['--meo-ui-surface'], 'Changing the shared base invalidates the resolved palette');
         assert.notEqual(palette.changed['--meo-ui-surface-raised'], palette.before['--meo-ui-surface-raised'], 'Floating UI follows the changed shared base');
         assert.deepEqual(palette.restored, palette.before, 'Restoring shared inputs restores the entire palette');
@@ -288,13 +313,40 @@ try {
       await page.mouse.move(300, 95);
       await page.waitForFunction(() => getComputedStyle(document.querySelector('.table-dropdown-wrapper')!).opacity === '1');
       await screenshot(profile.id + '-table-insert.png');
-      if (profile.id === 'dark' || profile.id === 'light') {
+      {
         await page.mouse.move(700, 450);
         await page.waitForFunction(() => getComputedStyle(document.querySelector('.table-dropdown-wrapper')!).opacity === '0');
         await page.evaluate(() => {
-          const text = '# 主题控件验收\n\n调色面板 #60A5FA 与 #60A5FA80\n\n| Name | Value |\n| --- | --- |\n| Alpha | 42 |\n\n';
+          const text = '# 主题控件 **粗体** `代码`\n\n调色面板 #60A5FA 与 #60A5FA80\n\n- 普通列表正文\n  - 嵌套列表正文\n1. 有序列表正文\n\n[链接 **粗体**](https://example.com) 和脚注 [^note]\n\n| Name | Value |\n| --- | --- |\n| Alpha | [表格链接](https://example.com) |\n| List | - 表格列表<br>1. 表格编号 |\n\n[^note]: 脚注正文\n\n';
           (window as any).ThemeAcceptance.replaceText(text, 'end');
         });
+        await page.waitForSelector('.meo-md-html-table-cell-preview .meo-md-link');
+        const contentEmphasis = await page.evaluate(() => {
+          const resolve = (name: string) => {
+            const probe = document.createElement('span'); probe.style.color = `var(--meo-ui-${name})`; document.body.append(probe);
+            const color = getComputedStyle(probe).color; probe.remove(); return color;
+          };
+          const selectors = ['.meo-md-heading-content', '.meo-md-h1 .meo-md-strong', '.meo-md-h1 .meo-md-inline-code',
+            '.meo-md-list-marker-ordered', '.meo-md-link', '.meo-md-strong:is(.meo-md-link), .meo-md-link .meo-md-strong, .meo-md-strong .meo-md-link',
+            '.meo-md-footnote-ref', '.meo-md-footnote-backref', '.meo-md-html-table-cell-preview .meo-md-link'];
+          return { expected: resolve('text-emphasis-content'), colors: Object.fromEntries(selectors.map(selector => [selector,
+            [...document.querySelectorAll(selector)].map(el => getComputedStyle(el).color)])),
+            fills: [...document.querySelectorAll('.meo-md-list-marker-bullet-dot')].map(el => ({ fill: getComputedStyle(el).fill, stroke: getComputedStyle(el).stroke })),
+            tableMarkers: [...document.querySelectorAll('.meo-md-html-table-cell-list > li')].map(el => getComputedStyle(el, '::marker').color),
+            body: [...document.querySelectorAll('.cm-line')].filter(el => el.textContent?.includes('普通列表正文') || el.textContent?.includes('有序列表正文')).map(el => getComputedStyle(el).color),
+            backgrounds: ['--meo-background', '--meo-inline-code-background'].map(name => {
+              const probe = document.createElement('span'); probe.style.color = `var(${name})`; document.body.append(probe);
+              const color = getComputedStyle(probe).color; probe.remove(); return color;
+            }) };
+        });
+        for (const [selector, colors] of Object.entries(contentEmphasis.colors)) {
+          assert.ok(colors.length, `${profile.id}: ${selector} is rendered`);
+          assert.ok(colors.every(color => color === contentEmphasis.expected), `${profile.id}: ${selector} shares content text emphasis (${colors.join(', ')}; expected ${contentEmphasis.expected})`);
+        }
+        assert.ok(contentEmphasis.fills.length && contentEmphasis.fills.every(value => value.fill === contentEmphasis.expected || value.stroke === contentEmphasis.expected), `${profile.id}: list bullet fills/strokes`);
+        assert.ok(contentEmphasis.tableMarkers.length && contentEmphasis.tableMarkers.every(value => value === contentEmphasis.expected), `${profile.id}: table list markers`);
+        assert.ok(contentEmphasis.body.every(color => color !== contentEmphasis.expected), `${profile.id}: list body keeps ordinary document color`);
+        assert.ok(contentEmphasis.backgrounds.every(background => contrastRatio(contentEmphasis.expected, background) >= 4.5), `${profile.id}: content emphasis is readable on document and inline code`);
         await page.waitForSelector('.meo-md-color-swatch-interactive');
         await page.click('.meo-md-color-swatch-interactive');
         await page.waitForSelector('.meo-hex-color-adjustment');
@@ -310,8 +362,26 @@ try {
         await page.evaluate(() => {
           (window as any).ThemeAcceptance.focusEnd();
         });
-        await page.keyboard.type('/');
+        await page.keyboard.type('/co');
         await page.waitForSelector('.meo-input-suggestions:not([hidden])');
+        const matches = await page.evaluate(() => {
+          const resolve = (name: string) => {
+            const probe = document.createElement('span'); probe.style.color = `var(--meo-ui-${name})`; document.body.append(probe);
+            const value = getComputedStyle(probe).color; probe.remove(); return value;
+          };
+          return { normal: resolve('text-emphasis'), selected: resolve('text-emphasis-selected'),
+            rows: [...document.querySelectorAll('.meo-suggestion-match')].map(el => {
+              const row = el.closest('.meo-input-suggestion')!, background = getComputedStyle(row).backgroundColor;
+              const selected = row.getAttribute('aria-selected') === 'true', popup = getComputedStyle(el.closest('.meo-input-suggestions')!);
+              // Selection is painted by the popup gradient behind transparent rows.
+              const carrier = selected ? popup.backgroundImage.match(/rgb\([^)]+\)/)?.[0] : popup.backgroundColor;
+              return { color: getComputedStyle(el).color, weight: getComputedStyle(el).fontWeight,
+                background: background === 'rgba(0, 0, 0, 0)' ? carrier! : background, selected };
+            }) };
+        });
+        assert.ok(matches.rows.some(row => row.selected) && matches.rows.some(row => !row.selected), `${profile.id}: selected and ordinary matched suggestions`);
+        assert.ok(matches.rows.every(row => row.color === (row.selected ? matches.selected : matches.normal) && row.weight === '600'), `${profile.id}: suggestion matches use carrier-specific text emphasis and weight`);
+        assert.ok(matches.rows.every(row => contrastRatio(row.color, row.background) >= 4.5), `${profile.id}: normal and selected suggestion matches remain readable (${JSON.stringify(matches.rows)})`);
         await screenshot(profile.id + '-slash.png');
         await page.keyboard.press('Escape');
       }
@@ -337,7 +407,10 @@ try {
           wrapper.dataset.outlineMode = 'floating';
           const floating = read('.outline-sidebar');
           wrapper.dataset.outlineMode = mode;
-          return { fixed, floating, content: read('.editor-host'), toolbar: read('.mode-toolbar'),
+          const emphasis = document.createElement('span'); emphasis.style.color = 'var(--meo-ui-text-emphasis-content)'; document.body.append(emphasis);
+          const emphasisColor = getComputedStyle(emphasis).color; emphasis.remove();
+          return { fixed, floating, content: read('.editor-host'), toolbar: read('.mode-toolbar'), emphasisColor,
+            activeChapterColor: getComputedStyle(document.querySelector('.outline-item.is-visible-first')!).color,
             track: read('.mode-group.segmented-control'), indicator: read('.mode-group .is-active .segmented-control-button-indicator'),
             activeChapter: read('.outline-item.is-visible-first'),
             selectedText: read('.mode-group .is-active', 'color'),
@@ -346,6 +419,7 @@ try {
         assert.deepEqual(surfaces.fixed, surfaces.content, `${profile.id}: outline and content backgrounds`);
         assert.deepEqual(surfaces.floating, surfaces.content, `${profile.id}: floating outline and content backgrounds`);
         assert.equal(surfaces.activeChapter[3], 0, `${profile.id}: current chapter uses the original transparent item background`);
+        assert.equal(surfaces.activeChapterColor, surfaces.emphasisColor, `${profile.id}: current outline chapter shares content text emphasis`);
         const luminance = (color: number[]) => color.slice(0, 3).map(value => { const c = value / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0);
         const contrast = (left: number[], right: number[]) => { const a = luminance(left), b = luminance(right); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
         if (profile.kind.includes('contrast')) {
@@ -370,6 +444,16 @@ try {
       }
       await screenshot(profile.id + '-outline-hover.png');
       await page.mouse.move(700, 900);
+      await page.$eval('.outline-item.outline-level-3', el => (el as HTMLElement).focus());
+      await page.keyboard.press('Tab');
+      await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
+      const outlineFocus = await page.evaluate(() => {
+        const item = document.querySelector('.outline-item:focus-visible')!;
+        const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-text-emphasis-content)'; document.body.append(probe);
+        const expected = getComputedStyle(probe).color; probe.remove();
+        return { focused: !!item, color: item && getComputedStyle(item).color, expected };
+      });
+      assert.ok(outlineFocus.focused && outlineFocus.color === outlineFocus.expected, `${profile.id}: keyboard outline focus shares text emphasis`);
       await page.click('button[data-mode="source"]');
       await page.waitForFunction(() => document.querySelector('.cm-editor.meo-mode-source .meo-source-token')?.textContent?.includes('产品说明') === true || [...document.querySelectorAll('.cm-editor.meo-mode-source .meo-source-token')].some(el => el.textContent?.includes('产品说明')));
       assert.equal(await page.$eval('.outline-sidebar', el => getComputedStyle(el).backgroundColor), await page.$eval('.editor-host', el => getComputedStyle(el).backgroundColor));
@@ -404,7 +488,17 @@ try {
     const expectedContent = JSON.parse(fs.readFileSync('scripts/fixtures/theme-content-baseline.json', 'utf8'));
     assert.deepEqual(Object.keys(content), Object.keys(expectedContent.hashes));
     for (const [profile, styles] of Object.entries(content)) {
-      const fingerprint = createHash('sha256').update(JSON.stringify(styles)).digest('hex');
+      // Only the approved Live heading foreground (and its currentColor border)
+      // may change. Preserve the fixed oracle for every other content attribute.
+      const retainedStyles = structuredClone(styles);
+      if (profile.endsWith(':live')) {
+        const original = expectedContent.liveHeadingForegrounds[profile];
+        assert.ok(original, `${profile}: missing original Live heading foreground`);
+        for (const row of (retainedStyles as Record<string, string[][]>)['.meo-md-h1']!) {
+          row[1] = row[3] = original;
+        }
+      }
+      const fingerprint = createHash('sha256').update(JSON.stringify(retainedStyles)).digest('hex');
       assert.equal(fingerprint, expectedContent.hashes[profile], `${profile}: Live/Preview content styles differ from ${expectedContent.baseCommit}`);
     }
     await page.click('button[data-mode="source"]');

@@ -2703,19 +2703,20 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) {
   --meo-heading-token-weight: var(--meo-editor-heading-weight);
   font-weight: var(--meo-heading-token-weight);
-  color: var(--meo-semantic-headingForeground, #79b8ff);
-  -webkit-text-fill-color: var(--meo-semantic-headingForeground, #79b8ff);
+  color: var(--meo-ui-text-emphasis-content, #79b8ff);
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content, #79b8ff);
   --meo-markdown-marker-font-weight: var(--meo-heading-token-weight);
 }
 
+.cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) :is(.meo-md-em, .meo-md-strong, .meo-md-strike, .meo-md-highlight, .meo-md-inline-code),
 .cm-editor.meo-mode-live .meo-md-heading-content,
 .cm-editor.meo-mode-live .meo-md-heading-content .meo-md-em,
 .cm-editor.meo-mode-live .meo-md-heading-content .meo-md-strong,
 .cm-editor.meo-mode-live .meo-md-heading-content .meo-md-strike,
 .cm-editor.meo-mode-live .meo-md-heading-content .meo-md-highlight,
 .cm-editor.meo-mode-live .meo-md-heading-content .meo-md-inline-code {
-  color: var(--meo-semantic-headingForeground, #79b8ff) !important;
-  -webkit-text-fill-color: var(--meo-semantic-headingForeground, #79b8ff) !important;
+  color: var(--meo-ui-text-emphasis-content, #79b8ff) !important;
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content, #79b8ff) !important;
 }
 
 .cm-editor.meo-mode-live .meo-md-heading-content .meo-md-marker,
@@ -2870,14 +2871,14 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 }
 
 .meo-live-strong-coloring .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-strong {
-  color: var(--meo-semantic-headingForeground, #79b8ff) !important;
-  -webkit-text-fill-color: var(--meo-semantic-headingForeground, #79b8ff) !important;
+  color: var(--meo-ui-text-emphasis-content, #79b8ff) !important;
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content, #79b8ff) !important;
 }
 
 .meo-live-strong-coloring .cm-editor.meo-mode-live :is(.meo-md-link, .meo-md-wiki-link) .meo-md-strong,
 .meo-live-strong-coloring .cm-editor.meo-mode-live .meo-md-strong:is(.meo-md-link, .meo-md-wiki-link) {
-  color: var(--meo-semantic-linkForeground) !important;
-  -webkit-text-fill-color: var(--meo-semantic-linkForeground) !important;
+  color: var(--meo-ui-text-emphasis-content) !important;
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content) !important;
 }
 
 .cm-editor.meo-mode-live :is(.meo-md-marker, .meo-md-marker-active, .meo-md-code-marker, .meo-md-code-marker-active),
@@ -2894,15 +2895,15 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 }
 
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-strike {
-  color: var(--meo-semantic-headingForeground, #79b8ff) !important;
-  -webkit-text-fill-color: var(--meo-semantic-headingForeground, #79b8ff) !important;
+  color: var(--meo-ui-text-emphasis-content, #79b8ff) !important;
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content, #79b8ff) !important;
 }
 
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-strike::selection,
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-strike .meo-md-heading-content::selection,
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-strike .meo-md-heading-content *::selection {
-  color: var(--meo-semantic-headingForeground, #79b8ff) !important;
-  -webkit-text-fill-color: var(--meo-semantic-headingForeground, #79b8ff) !important;
+  color: var(--meo-ui-text-emphasis-content, #79b8ff) !important;
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content, #79b8ff) !important;
 }
 
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-marker,
@@ -2911,8 +2912,8 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-strike-marker-active,
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-code-marker,
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) .meo-md-code-marker-active {
-  color: var(--meo-semantic-markdownSyntax) !important;
-  -webkit-text-fill-color: var(--meo-semantic-markdownSyntax) !important;
+  color: var(--meo-ui-text-emphasis-content) !important;
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content) !important;
 }
 
 .cm-editor .meo-md-details-source-toggle {
@@ -2965,10 +2966,10 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 }
 
 .cm-editor.meo-mode-live .meo-md-link {
-  color: var(--meo-semantic-headingForeground, #79b8ff);
-  -webkit-text-fill-color: var(--meo-semantic-headingForeground, #79b8ff);
+  color: var(--meo-ui-text-emphasis-content, #79b8ff);
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content, #79b8ff);
   text-decoration: underline;
-  text-decoration-color: var(--meo-semantic-headingForeground, #79b8ff);
+  text-decoration-color: var(--meo-ui-text-emphasis-content, #79b8ff);
   text-underline-offset: 4px;
 }
 
@@ -3040,6 +3041,10 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   cursor: pointer;
 }
 
+.cm-editor.meo-mode-live :is(.meo-md-footnote-ref, .meo-md-footnote-backref, .meo-md-footnote-separator) {
+  color: var(--meo-ui-text-emphasis-content);
+}
+
 .cm-editor .meo-md-footnote-ref {
   vertical-align: super;
   font-size: 0.78em;
@@ -3061,8 +3066,8 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 
 .cm-editor.meo-mode-live .meo-md-footnote-literal,
 .cm-editor.meo-mode-live .meo-md-footnote-literal * {
-  color: var(--meo-semantic-footnoteForeground, var(--meo-token-link-color, var(--meo-color-base05))) !important;
-  -webkit-text-fill-color: var(--meo-semantic-footnoteForeground, var(--meo-token-link-color, var(--meo-color-base05))) !important;
+  color: var(--meo-ui-text-emphasis-content) !important;
+  -webkit-text-fill-color: var(--meo-ui-text-emphasis-content) !important;
   text-decoration: none !important;
   vertical-align: baseline !important;
   font-size: inherit !important;
@@ -4669,7 +4674,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .cm-editor.meo-mode-live .meo-md-list-prefix {
-  color: var(--meo-semantic-listPrefix) !important;
+  color: var(--meo-ui-text-emphasis-content) !important;
 }
 
 .cm-editor.meo-mode-source .meo-md-list-prefix,
@@ -4688,25 +4693,25 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   vertical-align: baseline;
 }
 
-.cm-editor .meo-md-list-marker-bullet-dot {
+.cm-editor.meo-mode-live .meo-md-list-marker-bullet-dot {
   position: absolute;
   left: 50%;
   top: 62%;
   width: 0.45em;
   height: 0.45em;
-  fill: var(--meo-semantic-unorderedListMarker, var(--meo-semantic-headingForeground, #79b8ff));
+  fill: var(--meo-ui-text-emphasis-content);
   transform: translate(-50%, -50%);
   overflow: visible;
 }
 
-.cm-editor .meo-md-list-marker-bullet-hollow .meo-md-list-marker-bullet-dot {
+.cm-editor.meo-mode-live .meo-md-list-marker-bullet-hollow .meo-md-list-marker-bullet-dot {
   fill: none;
-  stroke: var(--meo-semantic-unorderedListMarker, var(--meo-semantic-headingForeground, #79b8ff));
+  stroke: var(--meo-ui-text-emphasis-content);
   stroke-width: 2.5;
 }
 
-.cm-editor .meo-md-list-marker-ordered {
-  color: var(--meo-semantic-orderedListMarker) !important;
+.cm-editor.meo-mode-live .meo-md-list-marker-ordered {
+  color: var(--meo-ui-text-emphasis-content) !important;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -5589,16 +5594,16 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 }
 
 .outline-item:hover {
-  color: var(--meo-semantic-headingForeground, #79b8ff);
+  color: var(--meo-ui-text-emphasis-content, #79b8ff);
   background-color: var(--meo-outline-hover-background);
 }
 
 .outline-item.is-visible-first {
-  color: var(--meo-semantic-headingForeground, #79b8ff);
+  color: var(--meo-ui-text-emphasis-content, #79b8ff);
 }
 
 .outline-item.is-visible:hover {
-  color: var(--meo-semantic-headingForeground, #79b8ff);
+  color: var(--meo-ui-text-emphasis-content, #79b8ff);
 }
 
 .outline-item strong {
@@ -6908,16 +6913,16 @@ html[data-editor-appearance='dark'] body.vscode-dark
   padding: 0;
 }
 
-.cm-editor .meo-md-html-table-cell-list:is(ul) > li::marker {
-  color: var(--meo-semantic-unorderedListMarker, var(--meo-semantic-headingForeground, #79b8ff));
+.cm-editor.meo-mode-live .meo-md-html-table-cell-list:is(ul) > li::marker {
+  color: var(--meo-ui-text-emphasis-content);
 }
 
-.cm-editor .meo-md-html-table-cell-list:is(ol) > li::marker {
-  color: var(--meo-semantic-orderedListMarker, var(--meo-semantic-headingForeground, #79b8ff));
+.cm-editor.meo-mode-live .meo-md-html-table-cell-list:is(ol) > li::marker {
+  color: var(--meo-ui-text-emphasis-content);
 }
 
-.cm-editor .meo-md-html-table-cell-preview .meo-md-link {
-  color: var(--meo-semantic-headingForeground, #79b8ff);
+.cm-editor.meo-mode-live .meo-md-html-table-cell-preview .meo-md-link {
+  color: var(--meo-ui-text-emphasis-content, #79b8ff);
   overflow-wrap: anywhere;
   word-break: normal;
 }
@@ -7848,7 +7853,7 @@ html[data-editor-appearance='dark'] :is(.settings-warning, .settings-shortcut-co
 .meo-narrow-suggestions { width: min(240px, calc(100vw - 16px)); }
 .meo-input-suggestions[hidden] { display: none; }
 html[data-editor-appearance='dark'] .meo-input-suggestions {
-  --meo-suggestion-match-color: var(--meo-ui-accent-text);
+  --meo-suggestion-match-color: var(--meo-ui-text-emphasis);
   --meo-suggestion-shadow-color: rgb(0 0 0 / 36%);
 }
 .meo-suggestion-list {
@@ -8047,7 +8052,7 @@ html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table-context-btn.is-a
 .cm-tooltip.meo-hex-color-adjustment { box-shadow: var(--meo-ui-shadow); }
 .meo-input-suggestions, html[data-editor-appearance='dark'] .meo-input-suggestions {
   --meo-suggestion-selected-background: var(--meo-ui-surface-selected);
-  --meo-suggestion-match-color: var(--meo-ui-accent-text);
+  --meo-suggestion-match-color: var(--meo-ui-text-emphasis);
   background-color: var(--meo-ui-surface-raised);
   border-color: var(--meo-ui-border-float, var(--vscode-panel-border));
   color: var(--meo-ui-text);
@@ -8055,14 +8060,15 @@ html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table-context-btn.is-a
 }
 .meo-input-suggestion, .meo-suggestion-marker { color: var(--meo-ui-text); }
 .meo-input-suggestion[aria-selected='true'], .meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-text-selected); }
-.meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-trigger, .meo-suggestion-slash, .meo-suggestion-match) { color: var(--meo-ui-text-selected); }
+.meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-trigger, .meo-suggestion-slash, .meo-suggestion-match) { color: var(--meo-ui-text-emphasis-selected); }
+.meo-suggestion-match { font-weight: 600; }
 .meo-input-suggestion:hover:not([aria-selected='true']) { background: var(--meo-ui-surface-hover); color: var(--meo-ui-text); }
 :is(.settings-content, .preview-dropdown-panel, .meo-suggestion-list) { scrollbar-color: var(--meo-ui-scrollbar) transparent; }
 .meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb { background-color: var(--meo-ui-scrollbar); }
 .meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb:hover { background-color: var(--meo-ui-scrollbar-hover); }
 .outline-sidebar, .outline-header-label, .outline-item { color: var(--meo-outline-foreground); }
-.outline-item:is(:hover, .is-visible-first) { color: var(--meo-semantic-headingForeground, #79b8ff); }
-/* Source owns native editor chrome and TextMate styling; Live is unchanged. */
+.outline-item:is(:hover, :focus-visible, .is-visible-first) { color: var(--meo-ui-text-emphasis-content, #79b8ff); }
+/* Source owns native editor chrome and TextMate styling independently of Live. */
 .cm-editor.meo-mode-source {
   --meo-foreground: var(--meo-source-foreground);
   --meo-caret-color: var(--meo-source-caret);

@@ -27,7 +27,7 @@ export const markdownInlineStyleTheme = EditorView.baseTheme({
   '& .meo-md-strong': markdownInlineStyles.strong,
   ["html[data-editor-appearance='dark'] &.meo-mode-live " +
     ':is(.meo-md-strong:not(.meo-live-strong-coloring *), .meo-md-html-inline strong, .meo-md-html-inline b, .meo-md-html-content strong, .meo-md-html-content b)' +
-    ':not(:is(.meo-md-strong, strong, b, .meo-md-heading-content, .meo-md-link, .meo-md-wiki-link, .meo-task-complete, .meo-task-dropped, h1, h2, h3, h4, h5, h6, a) *, ' +
+    ':not(:is(.meo-md-strong, strong, b, .meo-md-heading-content, .meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6, .meo-md-link, .meo-md-wiki-link, .meo-task-complete, .meo-task-dropped, h1, h2, h3, h4, h5, h6, a) *, ' +
     '.meo-md-link, .meo-md-wiki-link, .meo-task-complete, .meo-task-dropped)']: {
     color: `${darkDefaultLiveStrongForeground} !important`,
     WebkitTextFillColor: 'currentColor !important'

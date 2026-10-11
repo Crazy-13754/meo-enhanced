@@ -82,6 +82,14 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
     const success = read('testing.iconPassed', appearance === 'light' ? '#1a7f37' : '#73c991', surface);
     const warning = read('editorWarning.foreground', fallback['--meo-notice-warning'], surface);
     const danger = read('errorForeground', fallback['--meo-notice-error'], surface);
+    const contentSurface = sample(`var(--meo-background, ${rgb(documentSurface)})`, documentSurface);
+    const contentSurfaces = [contentSurface,
+      sample(`var(--meo-inline-code-background, ${rgb(contentSurface)})`, contentSurface),
+      sample(`var(--meo-semantic-footnoteBackground, ${rgb(contentSurface)})`, contentSurface)];
+    // Text emphasis is independent of button fills; one input serves content
+    // and matches, with readable projections for each actual carrier surface.
+    const textEmphasis = read('textLink.foreground',
+      `var(--meo-semantic-headingForeground, ${appearance === 'light' ? '#0550ae' : '#79b8ff'})`, contentSurface);
     const tint = endpoint([surface]);
     // All ordinary surfaces must admit one shared neutral foreground. Near
     // middle luminance, a fixed hover mix can otherwise cross that boundary.
@@ -92,7 +100,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
     const nativeActiveBorder = highContrast ? read('contrastActiveBorder', color('focusBorder', rgb(accent)), raised) : undefined;
     const nativeSelection = highContrast ? read('list.activeSelectionBackground', rgb(raised), raised) : undefined;
     const nativeSelectionText = highContrast ? read('list.activeSelectionForeground', rgb(foreground), nativeSelection) : undefined;
-    const key = JSON.stringify([appearance, highContrast, surface, raised, foreground, accent, success, warning, danger,
+    const key = JSON.stringify([appearance, highContrast, surface, raised, foreground, accent, success, warning, danger, textEmphasis, contentSurfaces,
       nativeFocus, nativeBorder, nativeActiveBorder, nativeSelection, nativeSelectionText]);
 
     if (paletteCache?.key !== key) {
@@ -120,6 +128,9 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean)
         focus: nativeFocus ?? fit(accent, [surface, raised, field], 3.05),
         'selection-border': nativeActiveBorder ?? selected,
         accent, 'accent-hover': accentHover, 'on-accent': onAccent, 'accent-text': accentText,
+        'text-emphasis': fit(textEmphasis, surfaces, 4.55),
+        'text-emphasis-content': fit(textEmphasis, contentSurfaces, 4.55),
+        'text-emphasis-selected': fit(textEmphasis, [selected], 4.55),
         success: fit(success, surfaces, 4.55), warning: fit(warning, surfaces, 4.55), danger: fit(danger, surfaces, 4.55),
         'switch-off': switchOff, 'on-switch-off': fit(mix(text, neutral(raised), 0.20), [switchOff], 3.05)
       }).map(([role, value]) => [role, rgb(value)]));

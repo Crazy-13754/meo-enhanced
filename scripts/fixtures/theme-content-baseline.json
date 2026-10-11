@@ -18,5 +18,15 @@
     "light-on-dark:preview": "056f4d5d13c7050d4368c7d4bb4cbda5d3ebca358416abca0b673f0c8548e242",
     "custom-dark:live": "74b066cb0bd5d428c26c0983b66d8b13358f452201f81203f2d13aebbe54aaa9",
     "custom-dark:preview": "b951cc6c30336fda07fa660e48adfb449fa82e9c784b0f6a8a4ca75e853583cc"
+  },
+  "liveHeadingForegrounds": {
+    "dark:live": "rgb(121, 184, 255)",
+    "light:live": "rgb(5, 80, 174)",
+    "github-dark:live": "rgb(121, 184, 255)",
+    "contrast-dark:live": "rgb(121, 184, 255)",
+    "contrast-light:live": "rgb(5, 80, 174)",
+    "dark-on-light:live": "rgb(121, 184, 255)",
+    "light-on-dark:live": "rgb(5, 80, 174)",
+    "custom-dark:live": "rgb(121, 184, 255)"
   }
 }
