@@ -66,6 +66,7 @@ try {
   assert.equal(await value('surface'), '');
   assert.equal(await page.$eval('[data-appearance-mode="auto"]', e => e.textContent), '自动');
   const checkControlLayout = async () => {
+    await page.waitForFunction(() => document.querySelector('.appearance-mode-control')!.getAnimations({subtree: true}).every(animation => animation.playState !== 'running'));
     assert.deepEqual(await page.evaluate(() => {
       const mode = document.querySelector<HTMLElement>('.appearance-mode-control')!;
       const rect = mode.getBoundingClientRect();
@@ -74,13 +75,27 @@ try {
       return {
         aligned: colors.every(e => { const color = e.getBoundingClientRect(); return Math.abs(color.left - rect.left) < 1 && Math.abs(color.right - rect.right) < 1; }),
         rightOfTitle: title.right < rect.left && title.top < rect.bottom && title.bottom > rect.top,
-        compact: rect.height === 26,
+        compact: rect.width === 240 && rect.height === 32,
         icons: mode.querySelectorAll('svg[width="12"][height="12"]').length,
         labelsFit: [...mode.querySelectorAll<HTMLElement>('.segmented-control-button-content')].every(e => e.scrollWidth <= e.clientWidth + 1 && getComputedStyle(e.querySelector('span')!).whiteSpace === 'nowrap')
       };
     }), {aligned: true, rightOfTitle: true, compact: true, icons: 2, labelsFit: true}, 'mode reuses the menu control and aligns with the color column');
   };
+  const checkColorFocus = async () => {
+    await page.focus('[data-setting="surface"] .appearance-color-swatch');
+    assert.deepEqual(await page.$eval('[data-setting="surface"] .appearance-color-field', field => {
+      const chip = field.querySelector<HTMLElement>('.appearance-color-chip')!;
+      const bounds = field.getBoundingClientRect(); const dot = chip.getBoundingClientRect();
+      const style = getComputedStyle(field);
+      return {
+        contained: dot.left >= bounds.left && dot.right <= bounds.right && dot.top >= bounds.top && dot.bottom <= bounds.bottom,
+        noOuterRing: getComputedStyle(chip).outlineStyle === 'none',
+        insetFocus: style.boxShadow.includes('inset') && style.borderWidth === '0px'
+      };
+    }), {contained: true, noOuterRing: true, insetFocus: true}, 'color focus stays inside the borderless field');
+  };
   await checkControlLayout();
+  await checkColorFocus();
   assert.deepEqual(await page.$$eval('.settings-jump', elements => elements.map(e => e.textContent)), ['界面模式', '基础颜色', '高级颜色']);
   const screenshots = process.env.MEO_UI_COLORS_SCREENSHOT_DIR;
   if (screenshots) await fs.mkdir(screenshots, { recursive: true });
@@ -111,10 +126,12 @@ try {
   await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="en"]'); await page.click('[data-tab="appearance"]');
   assert.equal(await page.$eval('[data-appearance-mode="auto"]', e => e.textContent), 'Auto');
   await checkControlLayout();
+  await checkColorFocus();
   if (screenshots) await page.screenshot({ path: path.join(screenshots, '058-appearance-english.png') });
   await page.setViewport({width: 360, height: 740});
   assert.equal(await page.$eval('.settings-content', e => e.scrollWidth <= e.clientWidth), true, 'English color controls fit a narrow window');
   assert.equal(await page.$$eval('.appearance-color-reset svg', elements => elements.every(e => e.getBoundingClientRect().width === 14)), true, 'reset icons remain legible inside compact buttons');
+  await checkColorFocus();
   if (screenshots) await page.screenshot({path: path.join(screenshots, '059-appearance-narrow.png')});
   await page.setViewport({width: 1100, height: 820});
   await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="zh-CN"]'); await page.click('[data-tab="appearance"]');
@@ -146,6 +163,7 @@ try {
   await openSettings();
   await page.click('[data-appearance-mode="light"]'); assert.equal(await value('surface'), '', 'light profile is independent');
   await checkControlLayout();
+  await checkColorFocus();
   if (screenshots) await page.screenshot({ path: path.join(screenshots, '060-appearance-light.png') });
   await edit('surface', '#F8F4EF'); await page.click(apply); await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('.appearance-footer .settings-primary')!.disabled);
   assert.equal(owner.getUiColors().light.surface, '#F8F4EF'); assert.equal(owner.getUiColors().dark.surface, '#102537');

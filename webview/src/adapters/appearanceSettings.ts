@@ -110,7 +110,7 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
       const text = node('div', 'settings-item-text'); text.append(node('div', 'settings-item-title', t(item.title[0], item.title[1])), node('p', 'settings-description', t(item.description[0], item.description[1]))); row.append(text);
       if (item.id === 'mode') {
         row.classList.add('appearance-mode');
-        const modeControl = createSegmentedControl<EditorAppearance>({ ariaLabel: t(...item.title), className: 'editor-appearance-control appearance-mode-control', buttonClassName: 'editor-appearance-button', datasetKey: 'appearanceMode', role: 'group', width: '272px', buttonTitles: false, options: [
+        const modeControl = createSegmentedControl<EditorAppearance>({ ariaLabel: t(...item.title), className: 'editor-appearance-control appearance-mode-control', buttonClassName: 'editor-appearance-button', datasetKey: 'appearanceMode', role: 'group', width: '240px', buttonTitles: false, options: [
           { value: 'auto', label: t('自动', 'Auto') },
           { value: 'light', label: t('浅色', 'Light'), renderLeading: () => createElement(Sun, { width: 12, height: 12, 'aria-hidden': 'true' }) },
           { value: 'dark', label: t('深色', 'Dark'), renderLeading: () => createElement(Moon, { width: 12, height: 12, 'aria-hidden': 'true' }) }

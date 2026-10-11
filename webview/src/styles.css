@@ -7762,20 +7762,23 @@ html .cm-editor .meo-md-html-table-context-menu {
 .appearance-note { margin-bottom: 14px; }
 .appearance-item .settings-item-text { flex: 1 1 220px; }
 .appearance-item { padding-block: 12px; }
-.appearance-mode-control { flex: 0 1 272px; margin-left: auto; }
-.appearance-color-controls { display: flex; align-items: center; gap: 8px; flex: 0 1 272px; width: 272px; max-width: 100%; min-width: 0; margin-left: auto; }
-.appearance-color-field { box-sizing: border-box; display: flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--meo-ui-border-float); border-radius: 5px; background: var(--meo-ui-surface-field); }
-.appearance-color-field:hover { border-color: var(--meo-ui-border-control); }
-.appearance-color-field:focus-within { border-color: var(--meo-ui-focus); }
-.appearance-color-field:has([aria-invalid='true']) { border-color: var(--meo-ui-danger); }
+.appearance-mode-control { flex: 0 1 240px; height: 32px; margin-left: auto; }
+.appearance-mode-control .segmented-control-button { height: 100%; font-size: 12px; }
+.appearance-color-controls { display: flex; align-items: center; gap: 8px; flex: 0 1 240px; width: 240px; max-width: 100%; min-width: 0; margin-left: auto; }
+.appearance-color-field { box-sizing: border-box; display: flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; height: 32px; padding: 0 8px; border: 0; border-radius: 8px; background: var(--meo-ui-surface-field); }
+/* Inset feedback keeps the focused swatch within the field. */
+.appearance-color-field:hover { box-shadow: inset 0 0 0 1px var(--meo-ui-border-float); }
+.appearance-color-field:focus-within { box-shadow: inset 0 0 0 1px var(--meo-ui-focus); }
+.appearance-color-field:has([aria-invalid='true']) { box-shadow: inset 0 0 0 1px var(--meo-ui-danger); }
+html[data-meo-ui-contrast='high'] .appearance-color-field:not(:focus-within):not(:has([aria-invalid='true'])) { box-shadow: inset 0 0 0 1px var(--meo-ui-border-control); }
 .appearance-color-chip { display: block; position: relative; box-sizing: border-box; width: 24px; height: 24px; padding: 3px; background-clip: content-box; flex: 0 0 auto; border-radius: 50%; cursor: pointer; }
 .appearance-color-chip::after { content: ''; position: absolute; inset: 3px; border: 1px solid var(--meo-ui-border-float); border-radius: 50%; pointer-events: none; }
-.appearance-color-chip:focus-within { outline: 1px solid var(--meo-ui-focus); outline-offset: 3px; }
+.appearance-color-chip:has(:focus-visible)::after { border-color: var(--meo-ui-focus); }
 .appearance-color-swatch { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; padding: 0; border: 0; }
 .appearance-color-hex { box-sizing: border-box; width: 100%; min-width: 0; flex: 1 1 0; height: 100%; padding: 0; border: 0; color: var(--meo-ui-text); background: transparent; font: inherit; font-size: 12px; }
 .appearance-color-hex::placeholder { color: var(--meo-ui-text-muted); }
 .appearance-color-hex:focus { outline: none; }
-.settings-button.appearance-color-reset { flex: 0 0 30px; width: 30px; padding: 0; color: var(--meo-ui-text-muted); }
+.settings-button.appearance-color-reset { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 8px; padding: 0; color: var(--meo-ui-text-muted); }
 .appearance-color-reset > svg { display: block; flex: none; }
 .appearance-color-reset:hover:not(:disabled) { color: var(--meo-ui-text); }
 .appearance-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
