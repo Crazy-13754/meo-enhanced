@@ -38,6 +38,7 @@ import type { UiLanguage } from '../../../src/foundation/uiLanguage';
 
 const shellLanguage = StreamLanguage.define({
   name: 'shell',
+  languageData: { commentTokens: { line: '#' } },
   startState: () => ({}),
   token: (stream: any) => {
     if (stream.match(/^#.*/)) return 'comment';
@@ -99,6 +100,7 @@ function consumePowerQueryBlockComment(stream: any, state: PowerQueryState): voi
 
 const powerQueryLanguage = StreamLanguage.define({
   name: 'powerquery',
+  languageData: { commentTokens: { line: '//', block: { open: '/*', close: '*/' } } },
   startState: () => ({ inBlockComment: false }),
   token: (stream: any, state: PowerQueryState) => {
     if (stream.eatSpace()) {
@@ -212,6 +214,7 @@ type CSharpState = {
 
 const csharpLanguage = StreamLanguage.define({
   name: "csharp",
+  languageData: { commentTokens: { line: '//', block: { open: '/*', close: '*/' } } },
 
   startState: (): CSharpState => ({
     inBlockComment: false,

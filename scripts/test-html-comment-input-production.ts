@@ -47,7 +47,7 @@ try {
   };
   const caret = (at: number) => page.evaluate(at => (window as any).editor.view.dispatch({ selection: { anchor: at } }), at);
   for (const mode of ['source', 'live']) {
-    await prepare(mode); await page.keyboard.down('Control'); await page.keyboard.press('/'); await page.keyboard.up('Control');
+    await prepare(mode); await page.keyboard.down('Control'); await page.keyboard.press('Slash'); await page.keyboard.up('Control');
     assert.equal(await text(), '<!---->', mode + ': Ctrl+/ uses the project command');
     assert.deepEqual(await selection(), { anchor: 4, head: 4 });
     await page.keyboard.type('note'); await waitText('<!--note-->');
@@ -139,6 +139,13 @@ try {
     for (const overrides of [{ lineComment: [] }, { lineComment: ['Ctrl + J'] }]) {
       await prepare(mode, 'text', 2); await page.evaluate(overrides => { (window as any).shortcutOverrides = overrides; }, overrides);
       await page.keyboard.down('Control'); await page.keyboard.press('/'); await page.keyboard.up('Control'); assert.equal(await text(), 'text', 'cleared or remapped default never leaks to CodeMirror');
+      for (const stroke of [
+        { key: '／', code: 'Slash', keyCode: 191, ctrlKey: true },
+        { key: '/', code: 'Digit7', keyCode: 55, ctrlKey: true, shiftKey: true }
+      ]) {
+        await page.evaluate(stroke => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { ...stroke, bubbles: true, cancelable: true })), stroke);
+        assert.equal(await text(), 'text', 'alternate slash gestures cannot bypass cleared or remapped shortcuts through CodeMirror');
+      }
       if (overrides.lineComment.length) {
         await page.keyboard.down('Control'); await page.keyboard.press('j'); await page.keyboard.up('Control'); await waitText('<!--text-->');
       }
@@ -151,6 +158,24 @@ try {
     await prepare(mode, '<div>note</div>', 7); await command('selectionComment'); await page.keyboard.type('x'); await waitText('<div>no<!--x-->te</div>');
     await prepare(mode, '```js\nconst a = 1;\n```', 12); await command('lineComment'); await waitText('```js\n// const a = 1;\n```');
     await command('lineComment'); await waitText('```js\nconst a = 1;\n```');
+    for (const [languages, marker] of [
+      [['bash', 'shell', 'sh', 'zsh'], '#'], [['csharp', 'cs', 'c#', 'm', 'powerquery', 'pq'], '//']
+    ] as const) for (const language of languages) {
+      const document = '```' + language + '\nabc\n```', position = document.indexOf('abc');
+      const commented = document.replace('\nabc\n', '\n' + marker + ' abc\n');
+      await prepare(mode, document, position + 1);
+      await page.evaluate(() => { (window as any).shortcutOverrides = {}; });
+      await page.keyboard.down('Control'); await page.keyboard.press('Slash'); await page.keyboard.up('Control');
+      assert.equal(await text(), commented, `${mode}/${language}: Ctrl+/ uses the language comment rule`);
+      await page.evaluate(() => (window as any).editor.undo()); await waitText(document);
+      await page.evaluate(() => (window as any).editor.redo()); await waitText(commented);
+      await command('lineComment'); await waitText(document);
+      if (marker === '//') {
+        await prepare(mode, document, position, position + 3); await command('selectionComment');
+        await waitText(document.replace('\nabc\n', '\n/* abc */\n'));
+        await command('selectionComment'); await waitText(document);
+      }
+    }
     await prepare(mode, '```html\n\n```', 8); await page.keyboard.type('<!--');
     assert.ok(!(await text()).includes('<!---->'), 'code keeps literal HTML comment input');
   }
@@ -161,6 +186,27 @@ try {
     await page.evaluate(() => { const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!; input.setSelectionRange(0, 0); });
   };
   const cell = () => page.evaluate(() => { const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!; return { value: input.value, from: input.selectionStart, to: input.selectionEnd, focused: document.activeElement === input }; });
+  for (const stroke of [
+    { key: '/', code: 'Slash', keyCode: 191, ctrlKey: true },
+    { key: '／', code: 'Slash', keyCode: 191, ctrlKey: true },
+    { key: '/', code: 'Digit7', keyCode: 55, ctrlKey: true, shiftKey: true }
+  ]) for (const overrides of [{}, { lineComment: [] }, { lineComment: ['Ctrl + J'] }, { lineComment: ['Ctrl + Shift + /'] }]) {
+    await prepareCell('abc');
+    await page.evaluate(overrides => { (window as any).shortcutOverrides = overrides; }, overrides);
+    const press = () => page.evaluate(stroke => {
+      const event = new KeyboardEvent('keydown', { ...stroke, bubbles: true, cancelable: true });
+      document.activeElement!.dispatchEvent(event); return event.defaultPrevented;
+    }, stroke);
+    assert.equal(await press(), true, 'equivalent slash gestures are consumed, including cleared/reassigned defaults');
+    const expected = !('lineComment' in overrides) || overrides.lineComment?.includes('Ctrl + Shift + /') && stroke.shiftKey ? '<!--abc-->' : 'abc';
+    assert.equal((await cell()).value, expected, `table ${stroke.code}/${stroke.key}: honors configured shortcuts`);
+    assert.equal((await cell()).focused, true);
+    if (expected !== 'abc') { await press(); assert.equal((await cell()).value, 'abc', 'the same gesture also uncomments'); }
+    else if (overrides.lineComment?.includes('Ctrl + J')) {
+      await page.keyboard.down('Control'); await page.keyboard.press('j'); await page.keyboard.up('Control');
+      assert.equal((await cell()).value, '<!--abc-->', 'the reassigned gesture works in the same cell');
+    }
+  }
   await prepareCell(); await command('selectionComment');
   assert.deepEqual(await cell(), { value: '<!---->', from: 4, to: 4, focused: true });
   await page.keyboard.type('cell'); await page.keyboard.press('Tab');

@@ -76,11 +76,15 @@ export function normalizeShortcut(value: string): string | null {
 export function shortcutFromStroke(stroke: ShortcutStroke): string | null {
   if (stroke.composing || stroke.altGraph || ['Control', 'Meta', 'Alt', 'Shift', 'Process', 'Dead', 'Unidentified'].includes(stroke.key)) return null;
   let key = stroke.key === ' ' ? 'Space' : stroke.key === '+' ? 'Plus' : stroke.key;
+  if (key === '／') key = '/';
   // Physical letters retain shortcuts while an IME or alternate layout is active.
   if (stroke.code && /^Key[A-Z]$/.test(stroke.code)) key = stroke.code.slice(3);
+  // Layouts such as German use Shift+7 for '/'. That Shift produces the key;
+  // an explicit Shift on the dedicated slash key remains a separate modifier.
+  const shift = stroke.shift && !(key === '/' && stroke.code && stroke.code !== 'Slash' && stroke.code !== 'NumpadDivide');
   return normalizeShortcut([
     ...(stroke.ctrl ? ['Ctrl'] : []), ...(stroke.meta ? ['Cmd'] : []),
-    ...(stroke.alt ? ['Alt'] : []), ...(stroke.shift ? ['Shift'] : []), key
+    ...(stroke.alt ? ['Alt'] : []), ...(shift ? ['Shift'] : []), key
   ].join(' + '));
 }
 
@@ -142,7 +146,15 @@ export function resolveShortcut(stroke: ShortcutStroke, overrides: ShortcutOverr
   const key = shortcutFromStroke(stroke);
   if (!key) return null;
   const bindings = effectiveShortcuts(overrides, platform);
-  return editorCommandIds.find(command => canBindCommand(command) && bindings[command].includes(key)
-    && (commandContext(command) === 'global' || context === 'editor' && commandContext(command) === 'editor'
-      || context === 'table' && ['editor', 'table'].includes(commandContext(command)))) ?? null;
+  // Older shortcut recordings kept the Shift needed to type '/'. Honor those
+  // explicit bindings before falling back to the layout-independent gesture.
+  const candidates = stroke.shift && key.endsWith(' + /') && !key.includes(' + Shift + ')
+    ? [key.slice(0, -4) + ' + Shift + /', key] : [key];
+  for (const candidate of candidates) {
+    const command = editorCommandIds.find(command => canBindCommand(command) && bindings[command].includes(candidate)
+      && (commandContext(command) === 'global' || context === 'editor' && commandContext(command) === 'editor'
+        || context === 'table' && ['editor', 'table'].includes(commandContext(command))));
+    if (command) return command;
+  }
+  return null;
 }

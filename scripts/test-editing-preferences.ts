@@ -76,6 +76,32 @@ const stroke = { key: '中', code: 'KeyB', ctrl: true, meta: false, alt: false, 
 assert.equal(shortcutFromStroke(stroke), 'Ctrl + B');
 assert.equal(shortcutFromStroke({ ...stroke, composing: true }), null);
 assert.equal(shortcutFromStroke({ ...stroke, altGraph: true }), null);
+for (const platform of ['mac', 'other'] as const) {
+  const primary = { ctrl: platform === 'other', meta: platform === 'mac', alt: false, shift: false };
+  const modifier = platform === 'mac' ? 'Cmd' : 'Ctrl';
+  for (const slash of [
+    { key: '/', code: 'Slash' }, { key: '/', code: 'NumpadDivide' },
+    { key: '／', code: 'Slash' }, { key: '/', code: 'Digit7', shift: true }
+  ]) {
+    const event = { ...primary, ...slash };
+    assert.equal(shortcutFromStroke(event), `${modifier} + /`, `${platform}: ${slash.code}/${slash.key}`);
+    for (const context of ['editor', 'table'] as const) {
+      assert.equal(resolveShortcut(event, {}, platform, context), 'lineComment');
+      assert.equal(resolveShortcut(event, { lineComment: [] }, platform, context), null);
+      assert.equal(resolveShortcut(event, { lineComment: [`${modifier} + J`] }, platform, context), null);
+      assert.equal(resolveShortcut(event, { lineComment: [], bold: [`${modifier} + /`] }, platform, context), 'bold');
+    }
+    assert.equal(shortcutFromStroke({ ...event, composing: true }), null);
+    assert.equal(shortcutFromStroke({ ...event, altGraph: true }), null);
+  }
+  assert.equal(shortcutFromStroke({ ...primary, key: '/', code: 'Slash', shift: true }), `${modifier} + Shift + /`, 'an explicit Shift binding on the slash key is preserved');
+  assert.equal(shortcutFromStroke({ ...primary, key: '?', code: 'Slash', shift: true }), `${modifier} + Shift + ?`, 'other punctuation bindings are preserved');
+  const shiftedSlash = { ...primary, key: '/', code: 'Digit7', shift: true };
+  for (const context of ['editor', 'table'] as const) {
+    assert.equal(resolveShortcut(shiftedSlash, { lineComment: [`${modifier} + Shift + /`] }, platform, context), 'lineComment', 'previously recorded layout bindings still work');
+    assert.equal(resolveShortcut(shiftedSlash, { bold: [`${modifier} + Shift + /`] }, platform, context), 'bold', 'an existing explicit binding takes priority over the default slash gesture');
+  }
+}
 for (const key of ['input', 'bind', 'resetShortcuts']) assert.equal(isEditingPreferencesChange({ type: key }), key === 'resetShortcuts');
 assert.equal(isEditingPreferencesChange({ type: 'input', key: 'pairMode', value: true }), false);
 assert.equal(isEditingPreferencesChange({ type: 'input', key: '__proto__', value: true }), false);

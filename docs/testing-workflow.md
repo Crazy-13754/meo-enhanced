@@ -263,8 +263,11 @@ gates alongside the compositor timing and production control checks.
 `scripts/test-html-comment-input-production.ts` runs in the quick, targeted history
 and browser release gates. It uses the production editor to check comment commands,
 slash completion, selection/caret continuity, configurable pairing, template exit,
-undo/redo and native table cells. IME preedit is never rewritten; operating-system
-IME candidate handling still needs native verification.
+undo/redo and native table cells. It also checks shell, C# and Power Query comment
+rules, plus full-width and shifted-layout slash gestures in table cells with
+default, cleared, reassigned and previously recorded Shift bindings; editor fallback
+bindings must not bypass those preferences. IME preedit is never rewritten;
+operating-system IME candidate handling still needs native verification.
 
 ## Window return focus and caret
 
