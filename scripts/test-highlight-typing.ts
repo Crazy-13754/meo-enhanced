@@ -14,19 +14,24 @@ try {
     { mode: 'live', delay: 250, composing: false },
     { mode: 'source', delay: 70, composing: false },
     { mode: 'source', delay: 250, composing: false },
+    { mode: 'source', delay: 70, composing: false, identifier: true },
+    { mode: 'source', delay: 250, composing: false, identifier: true },
+    { mode: 'source', delay: 70, composing: false, lineStart: true },
+    { mode: 'source', delay: 250, composing: false, lineStart: true },
     { mode: 'live', delay: 70, composing: true },
     { mode: 'standalone', delay: 70, composing: false },
     { mode: 'standalone', delay: 250, composing: false }
   ]) {
-    await page.evaluate(({ mode }) => {
+    await page.evaluate(({ mode, identifier, lineStart }) => {
       const harness = (window as any).HighlightHarness;
       harness.setShikiTheme({ name: 'typing', type: 'dark', colors: { 'editor.foreground': '#eeeeee' },
         tokenColors: [
         { scope: ['keyword', 'storage'], settings: { foreground: '#ff0000' } },
         { scope: 'string', settings: { foreground: '#0000ff' } },
-          { scope: 'comment', settings: { foreground: '#00ff00' } }
+          { scope: 'comment', settings: { foreground: '#00ff00' } },
+          { scope: 'variable', settings: { foreground: '#00ff00' } }
         ] }, mode === 'source' ? 'source' : 'editor');
-      const code = ['const stable = "value";',
+      const code = [lineStart ? 'stable = "value";' : 'const stable = "value";',
         ...Array.from({ length: 3000 }, (_, i) => `const value${i} = "payload";`)].join('\n');
       const text = mode === 'standalone' ? code : `\`\`\`typescript\n${code}\n\`\`\``;
       const parent = document.getElementById('app')!;
@@ -42,10 +47,11 @@ try {
         return 'missing';
       };
       (window as any).inputColor = () => {
-        const { node } = editor.view.domAtPos(editor.view.state.selection.main.head - 1);
+        const head = editor.view.state.selection.main.head;
+        const { node } = editor.view.domAtPos(head - (lineStart && head === text.indexOf('stable') ? 0 : 1));
         return getComputedStyle(node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement!).color;
       };
-      editor.view.dispatch({ selection: { anchor: text.indexOf('value') + 5 } });
+      editor.view.dispatch({ selection: { anchor: lineStart ? text.indexOf('stable') : identifier ? text.indexOf('stable') + 6 : text.indexOf('value') + 5 } });
       editor.focus();
     }, scenario);
     await page.waitForFunction(() => (window as any).keywordColor() === 'rgb(255, 0, 0)');
@@ -65,17 +71,17 @@ try {
     if (scenario.composing) await page.evaluate(() => {
       (window as any).typingEditor.view.contentDOM.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'abcdef' }));
     });
-    assert.ok(await page.evaluate(() => (window as any).typingEditor.getText().includes('valueabcdef')),
+    assert.ok(await page.evaluate(({identifier, lineStart}) => (window as any).typingEditor.getText().includes(lineStart ? 'abcdefstable' : identifier ? 'stableabcdef' : 'valueabcdef'), scenario),
       'Keyboard input must reach the code block');
     await new Promise(resolve => setTimeout(resolve, 250));
     const colors = await page.evaluate(() => { (window as any).typingSamples.done = true; return (window as any).typingSamples.colors as string[]; });
     assert.ok(colors.length >= 2, 'Capture more than a single painted frame');
     assert.deepEqual([...new Set(colors)], ['rgb(255, 0, 0)'], `Unchanged syntax must stay colored on every frame: ${JSON.stringify(scenario)}`);
     const inputColors = await page.evaluate(() => (window as any).typingSamples.inputColors as string[]);
-    assert.deepEqual([...new Set(inputColors)], ['rgb(0, 0, 255)'], `Inserted string characters must retain their token color: ${JSON.stringify(scenario)}`);
+    assert.deepEqual([...new Set(inputColors)], [scenario.identifier || scenario.lineStart ? 'rgb(0, 255, 0)' : 'rgb(0, 0, 255)'], `Inserted characters must retain their token color, including token boundaries: ${JSON.stringify(scenario)}`);
     await page.evaluate(() => {
       const editor = (window as any).typingEditor;
-      editor.view.dispatch({ changes: { from: editor.getText().indexOf('const stable'), insert: '// ' }, userEvent: 'input.type' });
+      editor.view.dispatch({ changes: { from: editor.getText().indexOf('const '), insert: '// ' }, userEvent: 'input.type' });
     });
     await page.waitForFunction(() => (window as any).keywordColor() === 'rgb(0, 255, 0)', { timeout: 10000 });
     if (scenario.mode !== 'standalone') {

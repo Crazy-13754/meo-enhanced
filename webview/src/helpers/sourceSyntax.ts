@@ -162,10 +162,15 @@ export const sourceSyntax = Prec.highest(ViewPlugin.fromClass(class {
       this.tokenChanges = undefined;
     }
     if (!this.tokens || !this.tokenDocument) return;
-    // While the latest whole-document tokens are pending, project unchanged
-    // ranges from the last completed document into any newly visible viewport.
-    // Changed tokens are excluded so stale formatting cannot cover edited text.
+    // Retain token paint for insertions while whole-document tokens are pending.
+    // Deleted/replaced source invalidates its old formatting immediately.
     const changes = this.tokenChanges;
+    const replacedRanges: Array<{ from: number; to: number }> = [];
+    const insertions = new Set<number>();
+    changes?.iterChangedRanges((from, to, fromNew, toNew) => {
+      if (from < to) replacedRanges.push({ from, to });
+      else if (fromNew < toNew) insertions.add(from);
+    });
     const builder = new RangeSetBuilder<Decoration>();
     // Tokenization retains the full multiline scope stack; only DOM projection
     // is limited to the viewport. Never tokenize a scrolled fragment in isolation.
@@ -190,9 +195,12 @@ export const sourceSyntax = Prec.highest(ViewPlugin.fromClass(class {
     }
     for (const lineIndex of [...visibleLines].sort((a, b) => a - b)) for (const token of this.tokens[lineIndex] ?? []) {
       const end = token.offset + token.content.length;
-      if (changes?.touchesRange(token.offset, end)) continue;
-      const from = changes?.mapPos(token.offset, 1) ?? token.offset;
-      const to = changes?.mapPos(end, -1) ?? end;
+      if (replacedRanges.some(range => range.from < end && range.to > token.offset)) continue;
+      // Only pure insertions inherit a boundary token. The preceding token owns
+      // them except at a line start, where no preceding character is available.
+      const ownsStart = insertions.has(token.offset) && token.offset === this.tokenDocument.line(lineIndex + 1).from;
+      const from = changes?.mapPos(token.offset, ownsStart ? -1 : 1) ?? token.offset;
+      const to = changes?.mapPos(end, insertions.has(end) ? 1 : -1) ?? end;
       if (from >= to || !view.visibleRanges.some(range => from < range.to && to > range.from)) continue;
       const font = token.fontStyle ?? 0;
       const style = `color:${token.color ?? 'var(--meo-source-foreground)'} !important;-webkit-text-fill-color:currentColor !important;font-style:${font & 1 ? 'italic' : 'normal'} !important;font-weight:${font & 2 ? '700' : 'var(--meo-font-source-weight)'} !important;text-decoration:${[font & 4 ? 'underline' : '', font & 8 ? 'line-through' : ''].filter(Boolean).join(' ') || 'none'} !important`;

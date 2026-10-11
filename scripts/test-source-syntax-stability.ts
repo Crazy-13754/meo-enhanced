@@ -86,6 +86,17 @@ try {
   assert.deepEqual(pending.styles, expected.styles, 'Successive edits must map the last completed colors to the new viewport');
   await page.evaluate(() => {
     const editor = (window as any).__sourceSyntaxEditor;
+    const from = editor.getText().indexOf('## Heading 34') + 3;
+    editor.view.dispatch({ changes: { from, to: from + 7, insert: 'Updated' } });
+  });
+  await frames();
+  assert.equal(await page.evaluate(() => {
+    const walker = document.createTreeWalker(document.querySelector('.cm-content')!, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) if (walker.currentNode.textContent?.includes('Updated 34')) return !!walker.currentNode.parentElement?.closest('.meo-source-token');
+    throw new Error('Missing internally replaced heading text');
+  }), false, 'An internal nonempty replacement must invalidate its old token while the latest batch is pending');
+  await page.evaluate(() => {
+    const editor = (window as any).__sourceSyntaxEditor;
     const documentText = editor.getText();
     const from = documentText.indexOf('## Heading 35');
     editor.view.dispatch({ changes: { from, to: from + '## Heading 35'.length, insert: 'Plain replacement' } });
@@ -129,6 +140,30 @@ try {
   assert.equal(recovered.uncolored, 0);
   assert.ok(new Set(recovered.styles['**Recovered bold** and `inline code`']).size > 1,
     'Source must restore emphasis and inline-code styles after a raw HTML block');
+  await page.evaluate(() => {
+    const editor = (window as any).__sourceSyntaxEditor;
+    editor.setText(`\`\`\`typescript\nconst stable = "VALUE";\n${'const payload = "other";\n'.repeat(192)}\`\`\``);
+    editor.scrollToLine(1, 'top');
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll('.meo-source-token')].some(span => span.textContent === '"VALUE"'));
+  await page.evaluate(() => {
+    (window as any).__holdSourceBatches = true;
+    const editor = (window as any).__sourceSyntaxEditor;
+    const from = editor.getText().indexOf('"VALUE"');
+    editor.view.dispatch({ changes: { from, to: from + 7, insert: 'replacement' } });
+  });
+  await page.waitForFunction(() => (window as any).__pendingSourceBatches.length > 0);
+  await frames();
+  assert.equal(await page.evaluate(() => {
+    const walker = document.createTreeWalker(document.querySelector('.cm-content')!, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) if (walker.currentNode.textContent?.includes('replacement')) return !!walker.currentNode.parentElement?.closest('.meo-source-token');
+    throw new Error('Missing boundary replacement text');
+  }), false, 'Replacing a complete adjacent token must not inherit the preceding token color');
+  await page.evaluate(() => {
+    (window as any).__holdSourceBatches = false;
+    for (const deliver of (window as any).__pendingSourceBatches.splice(0)) deliver();
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll('.meo-source-token')].some(span => span.textContent?.includes('replacement')));
   await page.evaluate(() => (window as any).__sourceSyntaxEditor.destroy());
   assert.deepEqual(errors, []);
   console.log('Source syntax stability: pending edits, viewport recoloring, successive position mappings, latest-token publication and HTML recovery passed.');
