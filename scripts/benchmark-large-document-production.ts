@@ -261,8 +261,10 @@ function assertLiveResourceBound(
   assert.ok(resources.intersectionObservers <= 2, `${kind} duplicated viewport observers`);
   assert.ok(resources.pendingFrames <= 1, `${kind} retained unbounded frame work: ${JSON.stringify({ sample, resources })}`);
   assert.ok(resources.pendingIdleCallbacks <= 1, `${kind} retained unbounded idle work`);
+  // CodeMirror's parser/viewport, derived work and deferred large-document
+  // work own four timers; Source palette preparation adds one coalesced timer.
   assert.ok(
-    resources.pendingTimeouts <= 4,
+    resources.pendingTimeouts <= 5,
     `${kind} retained unbounded timeout work: ${resources.pendingTimeouts}`
   );
 }
@@ -273,7 +275,9 @@ function assertSourceResourceBound(kind: LargeDocumentFixture['kind'], resources
   assert.ok(resources.mutationObservers <= 1, `${kind} Source duplicated MutationObservers`);
   assert.ok(resources.intersectionObservers <= 2, `${kind} Source duplicated viewport observers`);
   assert.ok(resources.pendingFrames <= 1, `${kind} Source retained unbounded frame work`);
-  assert.ok(resources.pendingIdleCallbacks <= 1, `${kind} Source retained unbounded idle work`);
+  // CodeMirror's Markdown parser and Source palette preparation each own one
+  // idle callback. Preparation clears its callback before requesting tokens.
+  assert.ok(resources.pendingIdleCallbacks <= 2, `${kind} Source retained unbounded idle work`);
   assert.ok(resources.pendingTimeouts <= 4, `${kind} Source retained unbounded timeout work`);
 }
 

@@ -209,7 +209,7 @@ async function startMonitor(
   excludedFrom: number,
   excludedTo: number,
   trackFocusedControl = false,
-  renderedBlock: { kind: 'mermaid' | 'math'; openingLine: number } | null = null
+  renderedBlock: { kind: 'mermaid'; openingLine: number } | null = null
 ): Promise<void> {
   await page.evaluate(({ targetLine, excludeFrom, excludeTo, focusedControl, rendered }) => {
     const editor = (window as any).__fullUatEditor;
@@ -245,7 +245,7 @@ async function startMonitor(
         return lastTarget;
       }
       if (rendered) {
-        const blockName = rendered.kind === 'mermaid' ? 'Mermaid' : 'Formula';
+        const blockName = 'Mermaid';
         const preview = document.querySelector<HTMLElement>(
           `.meo-rendered-block-preview[data-meo-rendered-block-kind="${rendered.kind}"]`
           + `[data-meo-rendered-block-start-line="${rendered.openingLine}"]`
@@ -632,22 +632,27 @@ async function editTable(page: import('puppeteer-core').Page, operation: Operati
 
 async function ensureRenderedSplit(
   page: import('puppeteer-core').Page,
-  kind: 'mermaid' | 'math',
   openingLine: number
 ): Promise<string> {
-  const blockName = kind === 'mermaid' ? 'Mermaid' : 'Formula';
+  const blockName = 'Mermaid';
   const controlsLabel = `${blockName} block controls at line ${openingLine}`;
-  const splitAction = kind === 'mermaid' ? 'Switch to source' : 'Switch to source';
+  const regionLabel = `${blockName} editor at line ${openingLine}`;
   await page.waitForFunction((label) => Boolean(document.querySelector(`[role="group"][aria-label="${label}"]`)), {}, controlsLabel);
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const state = await page.evaluate(({ label, splitLabel }) => {
+    const state = await page.evaluate(({ label, regionLabel }) => {
       const group = document.querySelector<HTMLElement>(`[role="group"][aria-label="${label}"]`);
-      const button = group?.querySelector<HTMLButtonElement>('.meo-mermaid-mode-btn, .meo-latex-math-mode-btn');
+      const button = group?.querySelector<HTMLButtonElement>('.meo-mermaid-mode-btn');
       if (!button) throw new Error(`Missing rendered mode button: ${label}`);
-      if (button.getAttribute('aria-label') === splitLabel) return 'split';
+      const mode = group?.dataset.meoMermaidMode;
+      if (mode === 'split') {
+        const region = document.querySelector<HTMLElement>(`[role="region"][aria-label="${regionLabel}"]`);
+        const content = region?.querySelector<HTMLElement>('.cm-content');
+        return region?.dataset.meoRenderedBlockMode === 'split' && content
+          && content.getBoundingClientRect().height > 0 ? 'split' : 'pending';
+      }
       button.click();
       return 'changed';
-    }, { label: controlsLabel, splitLabel: splitAction });
+    }, { label: controlsLabel, regionLabel });
     if (state === 'split') return controlsLabel;
     await waitForFrames(page, 12);
   }
@@ -659,9 +664,8 @@ async function editRendered(
   operation: Operation,
   openingLine: number
 ): Promise<void> {
-  const kind = operation.kind as 'mermaid' | 'math';
-  const controlsLabel = await ensureRenderedSplit(page, kind, openingLine);
-  const blockName = kind === 'mermaid' ? 'Mermaid' : 'Formula';
+  const controlsLabel = await ensureRenderedSplit(page, openingLine);
+  const blockName = 'Mermaid';
   const regionLabel = `${blockName} editor at line ${openingLine}`;
   await page.waitForFunction((label) => Boolean(document.querySelector(`[role="region"][aria-label="${label}"] .cm-content`)), {}, regionLabel);
   await page.evaluate((label) => {
@@ -675,16 +679,9 @@ async function editRendered(
     selection?.addRange(range);
     content.focus({ preventScroll: true });
   }, regionLabel);
-  if (kind === 'math') {
-    // Formula source retains Markdown indentation; inserting an unindented
-    // comment line would change the surrounding nested list's structure.
-    await page.keyboard.press('End');
-    await page.keyboard.type(` % ${operation.marker}`);
-  } else {
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('ArrowUp');
-    await page.keyboard.type(`%% ${operation.marker}`);
-  }
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.type(`%% ${operation.marker}`);
   try {
     await page.waitForFunction(
       (marker) => (window as any).__fullUatEditor.getText().includes(marker),
@@ -730,10 +727,35 @@ async function editRendered(
   }
 }
 
+async function editDisplayMath(page: import('puppeteer-core').Page, operation: Operation, lineNumber: number, openingLine: number): Promise<void> {
+  // Formula source belongs to the document editor. Append a literal TeX
+  // comment without changing its Markdown container or rendered result.
+  await page.keyboard.type(` % ${operation.marker}`);
+  await page.waitForFunction(({ needle, marker }) => (
+    (window as any).__fullUatEditor.getText().includes(`${needle} % ${marker}`)
+  ), { timeout: 3_000 }, { needle: operation.needle, marker: operation.marker });
+  const state = await page.evaluate(({ expectedLine, openingLine }) => {
+    const editor = (window as any).__fullUatEditor;
+    const head = editor.view.state.selection.main.head;
+    const target = (window as any).__fullUatMathTarget(expectedLine, openingLine);
+    return {
+      focused: editor.view.hasFocus,
+      line: editor.view.state.doc.lineAt(head).number,
+      expectedLine,
+      source: Boolean(target.source),
+      result: Boolean(target.result),
+      paired: target.paired
+    };
+  }, { expectedLine: lineNumber, openingLine });
+  if (!state.focused || state.line !== lineNumber || !state.paired) {
+    throw new Error(`Formula document edit focus/presentation drift: ${JSON.stringify({ operation, state })}`);
+  }
+}
+
 async function applyOperation(page: import('puppeteer-core').Page, operation: Operation): Promise<OperationRecord> {
   const beforeText = await getText(page);
   const location = await locateOperation(page, operation);
-  await centerLine(page, operation.kind === 'mermaid' || operation.kind === 'math' ? location.openingLine : location.lineNumber);
+  await centerLine(page, operation.kind === 'mermaid' ? location.openingLine : location.lineNumber);
   if (operation.kind === 'html') {
     await prepareHtmlSource(page, operation);
     await centerLine(page, location.lineNumber);
@@ -743,7 +765,7 @@ async function applyOperation(page: import('puppeteer-core').Page, operation: Op
   }
   // Explicit caret navigation belongs to preparation, before the input
   // monitor starts. HTML edits use the same boundary as ordinary source text.
-  if (operation.kind === 'outer' || operation.kind === 'html') {
+  if (operation.kind === 'outer' || operation.kind === 'html' || operation.kind === 'math') {
     await prepareOuterSelection(page, operation);
   }
   const excludeFrom = operation.kind === 'mermaid' || operation.kind === 'math'
@@ -756,10 +778,10 @@ async function applyOperation(page: import('puppeteer-core').Page, operation: Op
     : operation.kind === 'html'
       ? location.lineNumber + 10
     : location.lineNumber;
-  const monitoredLine = operation.kind === 'mermaid' || operation.kind === 'math'
+  const monitoredLine = operation.kind === 'mermaid'
     ? location.openingLine
     : location.lineNumber;
-  const renderedBlock = operation.kind === 'mermaid' || operation.kind === 'math'
+  const renderedBlock = operation.kind === 'mermaid'
     ? { kind: operation.kind, openingLine: location.openingLine }
     : null;
   await startMonitor(
@@ -773,6 +795,7 @@ async function applyOperation(page: import('puppeteer-core').Page, operation: Op
   if (operation.kind === 'outer') await editOuter(page, operation, location.lineNumber);
   else if (operation.kind === 'html') await editHtml(page, operation, location.lineNumber);
   else if (operation.kind === 'table') await editTable(page, operation, location.lineNumber);
+  else if (operation.kind === 'math') await editDisplayMath(page, operation, location.lineNumber, location.openingLine);
   else await editRendered(page, operation, location.openingLine);
   await waitForFrames(page, 8);
   await page.evaluate(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
@@ -810,10 +833,12 @@ async function targetState(page: import('puppeteer-core').Page, operation: Opera
   return page.evaluate(({ operationKind, lineNumber, openingLine, marker, tableCell }) => {
     const editor = (window as any).__fullUatEditor;
     const viewport = editor.view.scrollDOM.getBoundingClientRect();
-    const blockName = operationKind === 'mermaid' ? 'Mermaid' : operationKind === 'math' ? 'Formula' : null;
+    const blockName = operationKind === 'mermaid' ? 'Mermaid' : null;
     const region = blockName
       ? document.querySelector<HTMLElement>(`[role="region"][aria-label="${blockName} editor at line ${openingLine}"]`)
       : null;
+    const mathTarget = operationKind === 'math'
+      ? (window as any).__fullUatMathTarget(lineNumber, openingLine) : null;
     let tableInput: HTMLTextAreaElement | null = null;
     if (operationKind === 'table') {
       const row = Array.from(document.querySelectorAll<HTMLElement>(
@@ -839,12 +864,15 @@ async function targetState(page: import('puppeteer-core').Page, operation: Opera
     const editedLine = region && regionRect && regionRect.height > viewport.height
       ? region.querySelector<HTMLElement>('.meo-rendered-block-source-pane .cm-line')
       : null;
-    const rect = editedLine?.getBoundingClientRect() ?? regionRect ?? sourceRect;
+    const rect = mathTarget?.source?.getBoundingClientRect() ?? editedLine?.getBoundingClientRect() ?? regionRect ?? sourceRect;
     const active = document.activeElement;
     const activeLineRect = region?.querySelector<HTMLElement>('.cm-activeLine')?.getBoundingClientRect() ?? null;
     const cursorRect = region?.querySelector<HTMLElement>('.cm-cursor-primary')?.getBoundingClientRect() ?? null;
     const focused = operationKind === 'table'
       ? Boolean(tableInput && active === tableInput)
+      : operationKind === 'math'
+        ? mathTarget.paired && editor.view.hasFocus
+          && editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number === lineNumber
       : blockName
         ? Boolean(region?.contains(active))
         : editor.view.hasFocus && editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number === lineNumber;
@@ -867,7 +895,10 @@ async function targetState(page: import('puppeteer-core').Page, operation: Opera
       visibleToLine: editor.view.state.doc.lineAt(editor.view.viewport.to).number,
       activeClass: active instanceof HTMLElement ? active.className : null,
       activeAriaLabel: active instanceof HTMLElement ? active.getAttribute('aria-label') : null,
-      regionClass: region?.className ?? null
+      regionClass: region?.className ?? null,
+      mathSource: mathTarget ? Boolean(mathTarget.source) : null,
+      mathResult: mathTarget ? Boolean(mathTarget.result) : null,
+      mathPaired: mathTarget?.paired ?? null
     };
   }, {
     operationKind: operation.kind,
@@ -891,7 +922,7 @@ async function prepareHistoryViewport(
   );
   const location = await locateOperation(page, operation);
   if (shouldBeVisible) {
-    await centerLine(page, operation.kind === 'mermaid' || operation.kind === 'math' ? location.openingLine : location.lineNumber);
+    await centerLine(page, operation.kind === 'mermaid' ? location.openingLine : location.lineNumber);
   } else {
     const totalLines = await page.evaluate(() => (window as any).__fullUatEditor.view.state.doc.lines as number);
     const opposite = location.lineNumber < totalLines / 2 ? totalLines : 1;
@@ -1030,7 +1061,7 @@ async function runFastHistoryCycle(
               activeClass: active?.className ?? null,
               history: editor.getHistoryDepth(),
               renderedEditors: Array.from(document.querySelectorAll<HTMLElement>(
-                '.meo-mermaid-editing-block, .meo-latex-math-editing-block'
+                '.meo-mermaid-editing-block, .meo-math-source-line, .meo-math-live-result'
               )).map((root) => ({
                 ariaLabel: root.getAttribute('aria-label'),
                 className: root.className,
@@ -1216,6 +1247,26 @@ async function main(): Promise<void> {
         initialMode: 'live',
         onApplyChanges() {}
       });
+      (window as any).__fullUatMathTarget = (lineNumber: number, openingLine: number) => {
+        const view = (window as any).__fullUatEditor.view;
+        const sources = Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.meo-math-source-line'))
+          .map(element => ({ element, line: view.state.doc.lineAt(view.posAtDOM(element, 0)).number }));
+        const opening = sources.find(item => item.line === openingLine && item.element.classList.contains('meo-math-source-start'));
+        const source = sources.find(item => item.line === lineNumber)?.element ?? null;
+        let closingLine = openingLine;
+        if (opening) while (sources.some(item => item.line === closingLine + 1 && !item.element.classList.contains('meo-math-source-start'))) closingLine += 1;
+        const resultPosition = closingLine < view.state.doc.lines
+          ? view.state.doc.line(closingLine + 1).from : view.state.doc.line(closingLine).to;
+        const result = opening && source ? Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.meo-math-live-result'))
+          .find(element => view.posAtDOM(element, 0) === resultPosition) ?? null : null;
+        const closing = sources.find(item => item.line === closingLine)?.element;
+        const sourceRect = source?.getBoundingClientRect();
+        const resultRect = result?.getBoundingClientRect();
+        return { source, result, paired: Boolean(opening && source && closing && result
+          && lineNumber > openingLine && lineNumber < closingLine
+          && sourceRect!.height > 0 && resultRect!.height > 0
+          && resultRect!.top >= closing.getBoundingClientRect().bottom - 1) };
+      };
     }, baselineText);
     await page.waitForFunction(() => Boolean((window as any).__fullUatEditor?.getText()));
     await page.evaluate(async () => { await document.fonts.ready; });
