@@ -43,7 +43,7 @@ export function createInputSuggestions(options: {
         if (this.keydown(event as KeyboardEvent)) event.stopImmediatePropagation();
         return;
       }
-      if (event.type === 'compositionstart') { this.composing = true; if (this.context?.type !== 'slash') this.clear(); return; }
+      if (event.type === 'compositionstart') { this.composing = true; return; }
       if (event.type === 'compositionend') this.composing = false;
       if (event.type === 'focusout') {
         queueMicrotask(() => { if (input !== this.view.dom.ownerDocument.activeElement) { this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); } }); return;
@@ -73,7 +73,7 @@ export function createInputSuggestions(options: {
     };
     fields: { from: number; to: number }[] = []; fieldIndex = 0; templateEnd = 0;
     composing = false;
-    get reverseSlashOrder() { return this.context?.type === 'slash' && this.view.state.facet(inputAssistanceFacet).slashPreferAbove; }
+    get reverseOrder() { return this.view.state.facet(inputAssistanceFacet).slashPreferAbove; }
     items: readonly Suggestion[] = []; context: SuggestionContext | null = null; head = 0;
     constructor(readonly view: EditorView) {
       this.popup.className = 'meo-input-suggestions'; this.popup.hidden = true; this.popup.setAttribute('role', 'listbox');
@@ -136,14 +136,14 @@ export function createInputSuggestions(options: {
           return { type: 'slash', query, target: '', length: value.length, wiki: false } as SuggestionContext;
         this.slashFrom = null;
       }
-      if (this.composing || this.view.compositionStarted || isCodeInput(this.view)) return null;
-      const context = detectSuggestionContext(this.view.state.sliceDoc(line.from, range.head), preferences);
+      if (isCodeInput(this.view)) return null;
+      const context = detectSuggestionContext(this.view.state.sliceDoc(line.from, this.composing ? range.to : range.head), preferences, this.composing || this.view.compositionStarted);
       return context?.type === 'slash' ? null : context;
     }
     schedule() {
       if (this.items[this.index]?.slash) this.selectedCommand = this.items[this.index].slash!.id;
       const context = this.getContext();
-      if (context?.type === 'slash' && this.context?.type === 'slash' && !this.popup.hidden) {
+      if (context && context.type === this.context?.type && !this.popup.hidden) {
         if (this.timer !== null) clearTimeout(this.timer); this.timer = null;
         const generation = ++this.generation;
         // Keep the surface visible while filtering; layout reads wait until the editor update ends.
@@ -175,13 +175,13 @@ export function createInputSuggestions(options: {
       }
       if (this.disposed || generation !== this.generation || JSON.stringify(context) !== JSON.stringify(this.getContext())) return;
       if (!items.length) { this.clear(); return; }
-      const unchanged = context.type === 'slash' && !this.popup.hidden && this.ariaInput === (this.cellInput ?? this.view.contentDOM) &&
+      const unchanged = !this.popup.hidden && this.ariaInput === (this.cellInput ?? this.view.contentDOM) &&
         JSON.stringify(context) === JSON.stringify(this.context) && JSON.stringify(items) === JSON.stringify(this.items);
       if (this.context?.type !== context.type) this.above = null;
       this.context = context; this.items = items; const exact = context.type === 'slash' ? items.findIndex(item => [item.slash!.id.toLowerCase(), ...item.slash!.aliases].includes(context.query.toLowerCase())) : -1;
-      this.index = context.query !== this.resolvedQuery && exact >= 0 ? exact : Math.max(0, items.findIndex(item => item.slash?.id === this.selectedCommand));
+      if (!unchanged) this.index = context.query !== this.resolvedQuery && exact >= 0 ? exact : Math.max(0, items.findIndex(item => item.slash?.id === this.selectedCommand));
       this.resolvedQuery = context.query;
-      this.head = this.cellInput && this.cellFrom !== null ? this.cellInput.selectionStart : this.view.state.selection.main.head;
+      this.head = this.cellInput && this.cellFrom !== null ? this.cellInput.selectionStart : this.composing ? this.view.state.selection.main.to : this.view.state.selection.main.head;
       if (unchanged) {
         // Automatic cell commits must not replace a candidate pressed by the pointer.
         this.popup.querySelectorAll<HTMLElement>('[role="option"]').forEach(row => row.setAttribute('aria-disabled', String(!!this.items[Number(row.dataset.suggestionIndex)]?.slash?.disabled || this.composing || this.view.compositionStarted)));
@@ -247,7 +247,7 @@ export function createInputSuggestions(options: {
           if (this.index === index) return;
           this.select(index, false);
         });
-        if (this.reverseSlashOrder) list.prepend(row); else list.append(row);
+        if (this.reverseOrder) list.prepend(row); else list.append(row);
       });
       this.popup.hidden = false; this.ariaInput = this.cellInput ?? this.view.contentDOM;
       this.ariaInput.setAttribute('aria-controls', this.popup.id); this.ariaInput.setAttribute('aria-activedescendant', this.popup.id + '-' + this.index);
@@ -323,22 +323,16 @@ export function createInputSuggestions(options: {
       const first = list.firstElementChild!.getBoundingClientRect(), last = list.lastElementChild!.getBoundingClientRect();
       const chrome = this.popup.getBoundingClientRect().height - previous.height;
       // Measure content without enlarging the list: a temporary resize clamps its scroll position.
-      const minimumRows = slash ? Math.min(6, this.items.length) : 0;
+      const minimumRows = Math.min(6, this.items.length);
       const preferredHeight = parseFloat(getComputedStyle(this.popup).getPropertyValue('--meo-suggestion-preferred-height'));
-      const preferred = Math.min(slash ? Math.max(preferredHeight, minimumRows * first.height + chrome) : preferredHeight, last.bottom - first.top + chrome);
+      const preferred = Math.min(Math.max(preferredHeight, minimumRows * first.height + chrome), last.bottom - first.top + chrome);
       const below = Math.max(0, bottom - coords.bottom - 4), above = Math.max(0, coords.top - top - 4);
-      if (slash) {
-        const aboveRows = Math.max(0, Math.floor((above - chrome + 0.001) / first.height));
-        const belowRows = Math.max(0, Math.floor((below - chrome + 0.001) / first.height));
-        if (this.above === null) this.above = this.reverseSlashOrder;
-        // Stay on this side while it meets the target; equal row capacities must not cause a flip.
-        const currentRows = this.above ? aboveRows : belowRows, otherRows = this.above ? belowRows : aboveRows;
-        if (currentRows < minimumRows && otherRows > currentRows) this.above = !this.above;
-      } else {
-        if (this.above === null) this.above = below < preferred && above > below;
-        else if ((this.above ? above : below) < preferred && (this.above ? below : above) >= preferred) this.above = !this.above;
-        else if (above < preferred && below < preferred) this.above = above > below;
-      }
+      const aboveRows = Math.max(0, Math.floor((above - chrome + 0.001) / first.height));
+      const belowRows = Math.max(0, Math.floor((below - chrome + 0.001) / first.height));
+      if (this.above === null) this.above = this.reverseOrder;
+      // Stay on this side while it meets the target; equal row capacities must not cause a flip.
+      const currentRows = this.above ? aboveRows : belowRows, otherRows = this.above ? belowRows : aboveRows;
+      if (currentRows < minimumRows && otherRows > currentRows) this.above = !this.above;
       const available = this.above ? above : below;
       const rows = Math.floor((Math.min(preferred, available) - chrome + 0.001) / first.height);
       if (rows < 1) { close(); return; }
@@ -427,7 +421,7 @@ export function createInputSuggestions(options: {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
         const direction = event.key === 'ArrowDown' ? 1 : -1;
-        this.select((this.index + (this.reverseSlashOrder ? -direction : direction) + this.items.length) % this.items.length, true);
+        this.select((this.index + (this.reverseOrder ? -direction : direction) + this.items.length) % this.items.length, true);
         return true;
       }
       if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
@@ -445,7 +439,7 @@ export function createInputSuggestions(options: {
   }, { eventHandlers: {
     keydown(event) { return this.keydown(event); },
     blur() { this.slashFrom = null; this.fields = []; this.clear(); return false; },
-    compositionstart() { this.composing = true; if (this.context?.type !== 'slash') this.clear(); return false; },
+    compositionstart() { this.composing = true; return false; },
     compositionend() { this.composing = false; this.schedule(); return false; }
   } });
   return plugin;

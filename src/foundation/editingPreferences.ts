@@ -24,6 +24,7 @@ export type InputAssistance = {
   readonly pasteHtml: boolean;
   readonly documentSuggestions: boolean;
   readonly slash: boolean;
+  /** Shared candidate placement; retain the storage key for existing preferences. */
   readonly slashPreferAbove: boolean;
   readonly emoji: boolean;
 };

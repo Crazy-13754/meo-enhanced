@@ -10,7 +10,7 @@ import {
 
 export type MermaidDiagramRenderPoolOptions = {
   readonly initialize: (themeKey: string, configKey: string) => Promise<void> | void;
-  readonly render: (renderId: string, normalizedSource: string) => Promise<string>;
+  readonly render: (renderId: string, normalizedSource: string, signal?: AbortSignal, interactive?: boolean) => Promise<string>;
   readonly cacheLimit?: number;
   readonly heightCacheLimit?: number;
   readonly maxQueuedOperations?: number;
@@ -41,6 +41,8 @@ type OperationWaiter = {
 };
 
 type OperationJob = {
+  readonly abortController?: AbortController;
+  interactive?: boolean;
   readonly operation: () => Promise<unknown>;
   readonly waiters: Set<OperationWaiter>;
   readonly external: boolean;
@@ -140,7 +142,10 @@ export function createMermaidDiagramRenderPool(
       return;
     }
     if (job.state === 'queued') removeQueuedJob(job);
-    else retireFromReuse(job);
+    else {
+      job.abortController?.abort();
+      retireFromReuse(job);
+    }
   };
 
   const retainForGroup = (job: OperationJob, group: RenderGroupRecord): void => {
@@ -267,6 +272,7 @@ export function createMermaidDiagramRenderPool(
     }
     const pending = renderJobs.get(key);
     if (pending && pending.resourceGeneration === resourceGeneration) {
+      if (request.interactive) pending.interactive = true;
       if (request.priority === 'high') promoteQueuedJob(pending);
       return attach<MermaidDiagramRenderResult>(pending, consumer).catch((error) => unavailable(
         error instanceof Error ? error.message : String(error)
@@ -274,7 +280,10 @@ export function createMermaidDiagramRenderPool(
     }
 
     const generation = resourceGeneration;
+    const abortController = new AbortController();
     const job: OperationJob = {
+      abortController,
+      interactive: request.interactive,
       operation: async (): Promise<MermaidDiagramRenderResult> => {
         try {
           const identity = JSON.stringify([request.themeKey, request.configKey]);
@@ -282,7 +291,8 @@ export function createMermaidDiagramRenderPool(
             await options.initialize(request.themeKey, request.configKey);
             if (!disposed && generation === resourceGeneration) initializedIdentity = identity;
           }
-          const svg = await options.render(`mermaid-${++renderSequence}`, request.normalizedSource);
+          abortController.signal.throwIfAborted();
+          const svg = await options.render(`mermaid-${++renderSequence}`, request.normalizedSource, abortController.signal, job.interactive);
           return { ok: true, svg };
         } catch (error) {
           return {

@@ -1,10 +1,11 @@
 import type { InputAssistance } from '../../../src/foundation/editingPreferences';
 export type SuggestionContext = { readonly type: 'slash' | 'emoji' | 'documents' | 'paths' | 'headings'; readonly query: string; readonly target: string; readonly length: number; readonly wiki: boolean };
-/** Reads a bounded line prefix; code and selection exclusions belong to the editor adapter. */
-export function detectSuggestionContext(before: string, preferences: InputAssistance): SuggestionContext | null {
+/** Pinyin separators affect preedit filtering only; lengths and document targets remain literal. */
+export function detectSuggestionContext(before: string, preferences: InputAssistance, composing = false): SuggestionContext | null {
   if (before.length > 1000) return null;
-  const emoji = preferences.emoji ? /(?:^|\s):([a-z0-9_+-][a-z0-9_+-]*)$/i.exec(before) : null;
-  if (emoji) return { type: 'emoji', query: emoji[1], target: '', length: emoji[1].length + 1, wiki: false };
+  const query = (value: string) => composing ? value.replace(/'/g, '') : value;
+  const emoji = preferences.emoji ? /(?:^|\s):([a-z0-9_+-][a-z0-9_+'-]*)$/i.exec(before) : null;
+  if (emoji && (composing || !emoji[1].includes("'"))) return { type: 'emoji', query: query(emoji[1]), target: '', length: emoji[1].length + 1, wiki: false };
   if (!preferences.documentSuggestions) return null;
   const wiki = /\[\[([^\]\n|]{0,500})$/.exec(before);
   const path = wiki ? null : /\[[^\]\n]*\]\(([^)\n]{0,500})$/.exec(before);
@@ -13,8 +14,8 @@ export function detectSuggestionContext(before: string, preferences: InputAssist
   const value = wiki?.[1] ?? path?.[1];
   if (value === undefined || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(value)) return null;
   const hash = value.indexOf('#');
-  return hash < 0 ? { type: wiki ? 'documents' : 'paths', query: value, target: '', length: value.length, wiki: !!wiki }
-    : { type: 'headings', query: value.slice(hash + 1), target: value.slice(0, hash), length: value.length - hash - 1, wiki: !!wiki };
+  return hash < 0 ? { type: wiki ? 'documents' : 'paths', query: query(value), target: '', length: value.length, wiki: !!wiki }
+    : { type: 'headings', query: query(value.slice(hash + 1)), target: value.slice(0, hash), length: value.length - hash - 1, wiki: !!wiki };
 }
 export const emojiSuggestions: readonly { name: string; value: string }[] = [
   { name: 'smile', value: '😄' }, { name: 'grin', value: '😁' }, { name: 'joy', value: '😂' }, { name: 'heart', value: '❤️' }, { name: 'thumbsup', value: '👍' },

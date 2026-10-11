@@ -63,7 +63,8 @@ export async function preloadMermaidDocumentBatch(
     & Partial<Pick<MermaidDiagramPresentationConsumer, 'getCached'>>,
   requests: readonly MermaidDiagramRenderRequest[],
   isActive: () => boolean,
-  onBatchAvailable: () => void
+  onBatchAvailable: () => void,
+  signal?: AbortSignal
 ): Promise<void> {
   let completed = false;
   for (const request of requests) {
@@ -72,7 +73,7 @@ export async function preloadMermaidDocumentBatch(
     await new Promise<void>(resolve => setTimeout(resolve, 0));
     if (!isActive()) return;
     if (consumer.getCached?.(request)) continue;
-    await consumer.preload(request);
+    await consumer.preload(request, signal);
     if (!isActive()) return;
     completed = true;
   }
@@ -91,11 +92,13 @@ export function createMermaidDocumentPreloader(
   let timer: number | null = null;
   let generation = 0;
   let disposed = false;
+  let pendingBatch: AbortController | null = null;
 
   const run = (): void => {
     timer = null;
     if (disposed || !latestState) return;
     const runGeneration = generation;
+    pendingBatch = new AbortController();
     const identity = getMermaidEditorPresentationIdentity();
     const requests = orderMermaidPreloads(collectDocumentMermaidSources(latestState)).map(({ source }) => ({
       rawSource: source,
@@ -108,16 +111,23 @@ export function createMermaidDocumentPreloader(
       consumer,
       requests,
       () => !disposed && generation === runGeneration,
-      onBatchAvailable
+      onBatchAvailable,
+      pendingBatch.signal
     );
   };
 
   const schedule = (state: EditorState): void => {
     if (disposed) return;
+    pendingBatch?.abort();
+    pendingBatch = null;
+    const documentChanged = latestState !== null && latestState.doc !== state.doc;
     latestState = state;
     generation += 1;
     if (timer !== null) window.clearTimeout(timer);
-    timer = window.setTimeout(run, 40);
+    // Split edits submit visible work after 80ms. Warming an unrelated diagram
+    // sooner can monopolize the serial renderer before that request exists.
+    // Keep opening warm-up fast, but wait for an input pause after edits.
+    timer = window.setTimeout(run, documentChanged ? 200 : 40);
   };
 
   const unsubscribeThemeRefresh = consumer.subscribeThemeRefresh(() => {
@@ -129,6 +139,8 @@ export function createMermaidDocumentPreloader(
     dispose() {
       if (disposed) return;
       disposed = true;
+      pendingBatch?.abort();
+      pendingBatch = null;
       generation += 1;
       if (timer !== null) window.clearTimeout(timer);
       timer = null;

@@ -40,6 +40,7 @@ export function createMermaidDiagramPresentationEffectAdapter(
           normalizedSource: normalizeSource(effect.source),
           themeKey: effect.themeKey,
           configKey: effect.configKey,
+          interactive: view.hasDiagram?.() ?? false,
           priority: 'high' as const
         };
         const cached = resources.getCached(request);

@@ -162,11 +162,14 @@ try {
   assert.equal(await page.$$eval('.settings-item', elements => elements.length), 14);
   const slashSwitch = '[data-setting="slash"] [role="switch"]';
   const slashAboveSwitch = '[data-setting="slashPreferAbove"] [role="switch"]';
-  assert.equal(await page.$eval('[data-setting="slashPreferAbove"] .settings-description', e => e.textContent), '优先在输入行上方显示，推荐输入法用户开启。');
+  assert.equal(await page.$eval(slashAboveSwitch, e => e.getAttribute('aria-label')), '候选菜单优先在上方显示');
+  assert.equal(await page.$eval('[data-setting="slashPreferAbove"] .settings-description', e => e.textContent), '斜杠、路径和表情菜单优先显示在输入行上方，推荐输入法用户开启。');
+  assert.deepEqual(await page.$$eval('.settings-item[data-setting]', items => items.map(item => (item as HTMLElement).dataset.setting).filter(key => ['documentSuggestions', 'slash', 'emoji', 'slashPreferAbove'].includes(key!))), ['documentSuggestions', 'slash', 'emoji', 'slashPreferAbove'], 'shared placement follows the three menu enable switches');
   await page.click(slashAboveSwitch);
   await page.waitForFunction(() => (window as any).__preferences.input.slashPreferAbove === true);
   await page.click(slashSwitch);
-  await page.waitForFunction(() => (document.querySelector('[data-setting="slashPreferAbove"] [role="switch"]') as HTMLButtonElement)?.disabled);
+  await page.waitForFunction(() => (window as any).__preferences.input.slash === false);
+  assert.equal(await page.$eval(slashAboveSwitch, e => (e as HTMLButtonElement).disabled), false, 'shared placement remains editable when slash commands are disabled');
   assert.equal(await page.$eval(slashAboveSwitch, e => e.getAttribute('aria-checked')), 'true', 'disabling slash commands retains the above-menu preference');
   await page.click(slashSwitch);
   await page.waitForFunction(() => !(document.querySelector('[data-setting="slashPreferAbove"] [role="switch"]') as HTMLButtonElement)?.disabled);

@@ -149,7 +149,7 @@ export function createSettingsWindow(options: {
     const value = options.getPreferences().input[item.key];
     const set = (next: boolean | 'smart' | 'always' | 'off') => { void save({ type: 'input', key: item.key, value: next }, item.key); };
     if (typeof value === 'boolean') row.append(makeSwitch(() => options.getPreferences().input[item.key] as boolean, t(...item.title), set,
-      () => pending.has(item.key) || item.key === 'slashPreferAbove' && (!options.getPreferences().input.slash || pending.has('slash'))));
+      () => pending.has(item.key)));
     else {
       const choices = element('div', 'settings-radio-group'); choices.setAttribute('role', 'radiogroup'); choices.setAttribute('aria-label', t(...item.title));
       for (const option of modeOptions(item.key as 'pairMode' | 'skipMode' | 'deleteMode', language)) {

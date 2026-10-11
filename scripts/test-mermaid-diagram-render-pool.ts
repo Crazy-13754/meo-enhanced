@@ -620,6 +620,76 @@ await assert.rejects(queuedExclusive, /disposed/);
 disposalLeaf.release();
 disposalConsumer.end();
 
+const warmGate = deferred<string>();
+const warmStarted = deferred<AbortSignal | undefined>();
+let cancelledWarmRendered = false;
+const cancellableWarmPool = createMermaidDiagramRenderPool({
+  initialize() {},
+  async render(_id, _source, signal) {
+    warmStarted.resolve(signal);
+    const svg = await warmGate.promise;
+    signal?.throwIfAborted();
+    cancelledWarmRendered = true;
+    return svg;
+  }
+});
+const warmFactory = createMermaidDiagramPresentationFactory({
+  resources: cancellableWarmPool,
+  createHandle() { throw new Error('Warm-up must not create a Widget presentation'); }
+});
+const warmConsumer = warmFactory.createConsumer();
+const releaseWarmConsumer = warmConsumer.acquire();
+const warmAbort = new AbortController();
+const warmRequest = request('CANCELLED_BACKGROUND_WAIT');
+const warmPending = warmConsumer.preload(warmRequest, warmAbort.signal);
+const warmSignal = await warmStarted.promise;
+warmAbort.abort();
+await warmPending;
+assert.equal(warmSignal?.aborted, true, 'Superseded warm-up must cancel its renderer wait');
+warmGate.resolve('<svg data-stale-warm/>');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(cancelledWarmRendered, false, 'Cancelled warm-up must not enter expensive layout');
+assert.equal(cancellableWarmPool.getCached(warmRequest), null);
+releaseWarmConsumer();
+warmFactory.dispose();
+cancellableWarmPool.dispose();
+
+const sharedWarmGate = deferred<string>();
+const sharedWarmStarted = deferred<AbortSignal | undefined>();
+const sharedWarmPool = createMermaidDiagramRenderPool({
+  initialize() {},
+  async render(_id, _source, signal) {
+    sharedWarmStarted.resolve(signal);
+    const svg = await sharedWarmGate.promise;
+    signal?.throwIfAborted();
+    return svg;
+  }
+});
+const sharedWarmFactory = createMermaidDiagramPresentationFactory({
+  resources: sharedWarmPool,
+  createHandle() { throw new Error('Warm-up must not create a Widget presentation'); }
+});
+const sharedWarmConsumer = sharedWarmFactory.createConsumer();
+const releaseSharedWarm = sharedWarmConsumer.acquire();
+const sharedWarmAbort = new AbortController();
+const sharedWarmRequest = request('WARM_WITH_VISIBLE_SIBLING');
+const sharedWarmPending = sharedWarmConsumer.preload(sharedWarmRequest, sharedWarmAbort.signal);
+const sharedWarmSignal = await sharedWarmStarted.promise;
+const visibleWarmGroup = sharedWarmPool.acquireGroup();
+const visibleWarmLeaf = visibleWarmGroup.createLeaf();
+const visibleWarmPending = visibleWarmLeaf.render({ ...sharedWarmRequest, priority: 'high', interactive: true });
+sharedWarmAbort.abort();
+await sharedWarmPending;
+assert.equal(sharedWarmSignal?.aborted, false, 'Cancelling background work must preserve a visible sibling for the same SVG');
+sharedWarmGate.resolve('<svg data-shared-warm/>');
+assert.deepEqual(await visibleWarmPending, { ok: true, svg: '<svg data-shared-warm/>' });
+assert.notEqual(sharedWarmPool.getCached(sharedWarmRequest), null);
+visibleWarmLeaf.release();
+visibleWarmGroup.end();
+releaseSharedWarm();
+sharedWarmFactory.dispose();
+sharedWarmPool.dispose();
+
 pool.dispose();
 pool.dispose();
 assert.throws(() => pool.acquireGroup(), /disposed/);

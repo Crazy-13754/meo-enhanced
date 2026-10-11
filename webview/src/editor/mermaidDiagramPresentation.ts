@@ -8,6 +8,7 @@ import type {
 } from '../application/mermaidDiagramRenderResources';
 
 export type MermaidDiagramPresentationView = {
+  hasDiagram?(): boolean;
   showPending(): void;
   showDiagram(svg: string): void;
   showError(source: string, error: string): void;
@@ -28,7 +29,7 @@ export type MermaidDiagramPresentationConsumer = {
   acquire(): () => void;
   create(view: MermaidDiagramPresentationView): MermaidDiagramPresentationHandle;
   /** Warms one content-addressed SVG result without mounting diagram DOM. */
-  preload(request: MermaidDiagramRenderRequest): Promise<void>;
+  preload(request: MermaidDiagramRenderRequest, signal?: AbortSignal): Promise<void>;
   getCached(request: MermaidDiagramRenderRequest): MermaidDiagramRenderResult | null;
   getStale(request: MermaidDiagramRenderRequest): Extract<MermaidDiagramRenderResult, { ok: true }> | null;
   getHeight(key: string): number | null;
@@ -63,6 +64,7 @@ export function createMermaidDiagramPresentationFactory(
     createConsumer() {
       if (disposed) throw new Error('Mermaid diagram presentation factory is disposed');
       const handles = new Set<MermaidDiagramPresentationHandle>();
+      const preloadGroups = new Set<MermaidDiagramRenderGroupLease>();
       const releaseResourceLeases = new Set<() => void>();
       let activeGroup: MermaidDiagramRenderGroupLease | null = null;
       let consumerDisposed = false;
@@ -78,6 +80,8 @@ export function createMermaidDiagramPresentationFactory(
             released = true;
             releaseResourceLeases.delete(release);
             if (activeGroup === group) activeGroup = null;
+            for (const warmGroup of preloadGroups) warmGroup.end();
+            preloadGroups.clear();
             group.end();
           };
           releaseResourceLeases.add(release);
@@ -111,14 +115,24 @@ export function createMermaidDiagramPresentationFactory(
           handles.add(handle);
           return handle;
         },
-        preload(request) {
-          if (consumerDisposed || !activeGroup || options.resources.getCached(request)) {
+        preload(request, signal) {
+          if (consumerDisposed || !activeGroup || signal?.aborted || options.resources.getCached(request)) {
             return Promise.resolve();
           }
-          const resources = activeGroup.createLeaf();
+          // Warm-up has a cancellable lease of its own. Ending it must not
+          // retire a visible Widget's waiter for the same shared render job.
+          const group = options.resources.acquireGroup();
+          preloadGroups.add(group);
+          const resources = group.createLeaf();
+          const cancel = () => { group.end(); };
+          signal?.addEventListener('abort', cancel, { once: true });
           return resources.render({ ...request, priority: 'normal' })
             .then(() => undefined)
-            .finally(() => resources.release());
+            .finally(() => {
+              signal?.removeEventListener('abort', cancel);
+              group.end();
+              preloadGroups.delete(group);
+            });
         },
         getCached: (request) => options.resources.getCached(request),
         getStale: (request) => options.resources.getStale(request),
@@ -126,12 +140,16 @@ export function createMermaidDiagramPresentationFactory(
         rememberHeight: (key, height) => options.resources.rememberHeight(key, height),
         subscribeThemeRefresh: (listener) => options.resources.subscribeThemeRefresh(listener),
         externalDocumentPresented() {
+          for (const group of preloadGroups) group.end();
+          preloadGroups.clear();
           activeGroup?.replaceForExternalDocument();
           for (const handle of [...handles]) handle.externalDocumentPresented();
         },
         dispose() {
           if (consumerDisposed) return;
           consumerDisposed = true;
+          for (const group of preloadGroups) group.end();
+          preloadGroups.clear();
           for (const handle of [...handles]) handle.dispose();
           handles.clear();
           for (const release of [...releaseResourceLeases]) release();
