@@ -33,6 +33,7 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
   let presenters: (() => void)[] = [];
   let inputRegistrations: (() => void)[] = [];
   let scheme = options.getScheme();
+  let previewFrame: number | undefined;
   const t = (zh: string, en: string) => settingsText(language, zh, en);
   const footer = node('div', 'appearance-footer');
   const reset = button(''); const cancel = button(''); const apply = button('', 'settings-button settings-primary');
@@ -40,6 +41,14 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
   const status = node('p', 'appearance-status'); status.setAttribute('role', 'status'); status.hidden = true;
   const same = (first: UiColors, second: UiColors) => (['light', 'dark'] as const).every(mode => uiColorKeys.every(key => first[mode][key] === second[mode][key]));
   const changed = () => draft !== null && !same(draft, baseline);
+  const cancelPreview = () => {
+    if (previewFrame !== undefined) cancelAnimationFrame(previewFrame);
+    previewFrame = undefined;
+  };
+  const presentActions = () => {
+    reset.textContent = t('恢复默认颜色', 'Reset colors'); cancel.textContent = t('取消', 'Cancel'); apply.textContent = saving ? t('保存中…', 'Saving…') : t('应用', 'Apply');
+    reset.disabled = saving; cancel.disabled = saving || !changed() && !invalid.size; apply.disabled = saving || !changed() || invalid.size > 0;
+  };
   const present = () => {
     const saved = options.getColors();
     if (!same(saved, baseline)) {
@@ -50,24 +59,34 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
           if (draft[mode][key] === undefined) delete next[mode][key]; else next[mode][key] = draft[mode][key];
         }
       }
-      baseline = copy(saved); if (draft) { draft = next; options.preview(changed() ? draft : null); }
+      baseline = copy(saved); if (draft) { cancelPreview(); draft = next; options.preview(changed() ? draft : null); }
     }
     const nextScheme = options.getScheme();
     if (nextScheme !== scheme) { scheme = nextScheme; invalid.clear(); }
     for (const show of presenters) show();
-    reset.textContent = t('恢复默认颜色', 'Reset colors'); cancel.textContent = t('取消', 'Cancel'); apply.textContent = saving ? t('保存中…', 'Saving…') : t('应用', 'Apply');
-    reset.disabled = saving; cancel.disabled = saving || !changed() && !invalid.size; apply.disabled = saving || !changed() || invalid.size > 0;
+    presentActions();
   };
-  const discard = () => { baseline = copy(options.getColors()); draft = copy(baseline); invalid.clear(); status.hidden = true; options.preview(null); present(); };
+  const flushPreview = () => {
+    if (previewFrame === undefined) return;
+    cancelPreview();
+    options.preview(draft); present();
+  };
+  const discard = () => { cancelPreview(); baseline = copy(options.getColors()); draft = copy(baseline); invalid.clear(); status.hidden = true; options.preview(null); present(); };
   const change = (key: UiColorKey, value: string | undefined) => {
     draft ??= copy(options.getColors());
+    const previous = draft[scheme][key];
     if (value === undefined) delete draft[scheme][key]; else draft[scheme][key] = value;
-    invalid.delete(key); status.hidden = true; options.preview(draft); present();
+    invalid.delete(key); status.hidden = true; presentActions();
+    if (previous === value) { present(); return; }
+    // Native dragging can emit several values per frame. Keep the draft current,
+    // but leave expensive palette derivation outside the input callback.
+    if (previewFrame === undefined) previewFrame = requestAnimationFrame(flushPreview);
   };
-  reset.addEventListener('click', () => { draft = { light: {}, dark: {} }; invalid.clear(); status.hidden = true; options.preview(draft); present(); });
+  reset.addEventListener('click', () => { cancelPreview(); draft = { light: {}, dark: {} }; invalid.clear(); status.hidden = true; options.preview(draft); present(); });
   cancel.addEventListener('click', discard);
   apply.addEventListener('click', async () => {
     if (!draft || apply.disabled) return;
+    flushPreview();
     const savingSession = session;
     saving = true; status.hidden = true; present();
     let result: UiColorsResult['result'];
@@ -116,7 +135,7 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
           { value: 'dark', label: t('深色', 'Dark'), renderLeading: () => createElement(Moon, { width: 12, height: 12, 'aria-hidden': 'true' }) }
         ] });
         presenters.push(() => modeControl.setActive(options.getMode()));
-        for (const value of ['auto', 'light', 'dark'] as const) modeControl.getButton(value).addEventListener('click', () => { options.setMode(value); present(); });
+        for (const value of ['auto', 'light', 'dark'] as const) modeControl.getButton(value).addEventListener('click', () => { flushPreview(); options.setMode(value); present(); });
         row.append(modeControl.element);
       } else {
         const key = item.id; const controls = node('div', 'appearance-color-controls');
@@ -136,10 +155,11 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
           const role = key === 'textEmphasis' ? 'text-emphasis-content' : key;
           const value = color ?? getComputedStyle(document.documentElement).getPropertyValue('--meo-ui-' + role).trim();
           chip.style.backgroundColor = value;
-          if (color) swatchInput.value = color;
-          else { const rgb = value.match(/^rgb\((\d+)[, ]+(\d+)[, ]+(\d+)/); if (rgb) swatchInput.value = '#' + rgb.slice(1, 4).map(channel => Number(channel).toString(16).padStart(2, '0')).join(''); }
+          const rgb = value.match(/^rgb\((\d+)[, ]+(\d+)[, ]+(\d+)/);
+          const next = color ?? (rgb ? '#' + rgb.slice(1, 4).map(channel => Number(channel).toString(16).padStart(2, '0')).join('') : undefined);
+          if (next && swatchInput.value.toUpperCase() !== next.toUpperCase()) swatchInput.value = next;
         });
-        swatchInput.addEventListener('input', () => { input.value = swatchInput.value.toUpperCase(); input.removeAttribute('aria-invalid'); change(key, input.value); });
+        swatchInput.addEventListener('input', () => { input.value = swatchInput.value.toUpperCase(); chip.style.backgroundColor = swatchInput.value; input.removeAttribute('aria-invalid'); change(key, input.value); });
         input.addEventListener('input', () => {
           const color = normalizeUiColor(input.value);
           if (!input.value.trim()) { input.removeAttribute('aria-invalid'); change(key, undefined); }
@@ -155,8 +175,8 @@ export function createAppearanceSettings(options: AppearanceSettingsOptions) {
     present(); return container;
   }
   return { footer, render, present, count: (query: string) => items(query).length,
-    open() { session++; closed = false; baseline = copy(options.getColors()); draft = copy(baseline); invalid.clear(); status.hidden = true; },
-    close() { session++; closed = true; draft = null; invalid.clear(); options.preview(null); },
-    dispose() { session++; closed = true; draft = null; options.preview(null); for (const unregister of inputRegistrations) unregister(); inputRegistrations = []; presenters = []; },
+    open() { cancelPreview(); session++; closed = false; baseline = copy(options.getColors()); draft = copy(baseline); invalid.clear(); status.hidden = true; },
+    close() { cancelPreview(); session++; closed = true; draft = null; invalid.clear(); options.preview(null); },
+    dispose() { cancelPreview(); session++; closed = true; draft = null; options.preview(null); for (const unregister of inputRegistrations) unregister(); inputRegistrations = []; presenters = []; },
   };
 }

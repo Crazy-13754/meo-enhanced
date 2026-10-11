@@ -51,7 +51,10 @@ try {
   };
   const openSettings = async () => { await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button'); await page.click('[data-tab="appearance"]'); };
   const input = (key: string) => `[data-setting="${key}"] .appearance-color-hex`;
-  const edit = async (key: string, color: string) => { await page.click(input(key), {clickCount: 3}); await page.keyboard.type(color); };
+  const edit = async (key: string, color: string) => {
+    await page.click(input(key), {clickCount: 3}); await page.keyboard.type(color);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+  };
   const value = (key: string) => page.$eval(input(key), element => (element as HTMLInputElement).value);
   const role = (key: string) => page.evaluate(key => { const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-' + key + ')'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }, key);
   const apply = '.appearance-footer .settings-primary';
@@ -136,6 +139,55 @@ try {
   await page.setViewport({width: 1100, height: 820});
   await page.click('[data-tab="general"]'); await page.click('[data-setting="language"] [data-value="zh-CN"]'); await page.click('[data-tab="appearance"]');
   const originalSurface = await role('surface'); const sourceBefore = await source();
+  const drag = await page.evaluate(async () => {
+    const swatch = document.querySelector<HTMLInputElement>('[data-setting="surface"] .appearance-color-swatch')!;
+    const readback = CanvasRenderingContext2D.prototype.getImageData;
+    const value = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!;
+    let samples = 0, feedbackWrites = 0, userWriting = false;
+    CanvasRenderingContext2D.prototype.getImageData = function(...args: Parameters<typeof readback>) { samples++; return readback.apply(this, args); };
+    Object.defineProperty(HTMLInputElement.prototype, 'value', {...value, set(input) {
+      if (this === swatch && !userWriting) feedbackWrites++;
+      value.set!.call(this, input);
+    }});
+    try {
+      for (let index = 0; index < 12; index++) {
+        userWriting = true; swatch.value = '#2848' + (43 + index).toString(16); userWriting = false;
+        swatch.dispatchEvent(new Event('input', {bubbles: true}));
+      }
+      const synchronousSamples = samples;
+      const latestHex = document.querySelector<HTMLInputElement>('[data-setting="surface"] .appearance-color-hex')!.value;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const appliedSamples = samples;
+      swatch.dispatchEvent(new Event('input', {bubbles: true}));
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return {synchronousSamples, appliedSamples, duplicateSamples: samples - appliedSamples, feedbackWrites, latestHex};
+    } finally {
+      CanvasRenderingContext2D.prototype.getImageData = readback;
+      Object.defineProperty(HTMLInputElement.prototype, 'value', value);
+    }
+  });
+  assert.equal(drag.synchronousSamples, 0, 'drag callbacks defer expensive color sampling to the next frame');
+  assert.ok(drag.appliedSamples > 0 && drag.appliedSamples < 400, 'one frame derives only the latest selection, rather than every intermediate color');
+  assert.equal(drag.duplicateSamples, 0, 'an unchanged selection does not refresh the palette');
+  assert.equal(drag.feedbackWrites, 0, 'presenting a draft does not write back into an active color input');
+  assert.equal(drag.latestHex, '#284836', 'HEX feedback follows the latest drag event immediately');
+  assert.equal(await role('surface'), 'rgb(40, 72, 54)');
+  assert.deepEqual(owner.getUiColors(), {light: {}, dark: {}}, 'drag preview does not persist');
+  assert.deepEqual(await source(), sourceBefore, 'continuous UI preview retains the Source palette');
+  await page.click(cancel);
+  for (const action of ['cancel', 'close', 'reset'] as const) {
+    await page.evaluate(action => {
+      const swatch = document.querySelector<HTMLInputElement>('[data-setting="surface"] .appearance-color-swatch')!;
+      swatch.value = '#284836'; swatch.dispatchEvent(new Event('input', {bubbles: true}));
+      // Act in the same event turn, before the queued preview gets a frame.
+      const selector = action === 'cancel' ? '.appearance-footer .settings-actions button:first-child'
+        : action === 'close' ? '.settings-close' : '.appearance-footer > button';
+      document.querySelector<HTMLButtonElement>(selector)!.click();
+    }, action);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await role('surface'), originalSurface, action + ' prevents a late drag preview from restoring the discarded color');
+    if (action === 'close') await openSettings();
+  }
   await edit('surface', '#102537'); assert.equal(await role('surface'), 'rgb(16, 37, 55)', 'manual background retains its chroma');
   await edit('text', '#FFD6E5'); assert.equal(await role('text'), 'rgb(255, 214, 229)', 'readable manual text is not neutralized');
   assert.deepEqual(await source(), sourceBefore, 'UI overrides do not recolor Source content');
@@ -191,8 +243,17 @@ try {
   assert.ok(await page.$eval('.appearance-note', e => e.textContent?.includes('高对比度')));
   await page.evaluate(() => { document.body.className = 'vscode-dark'; window.dispatchEvent(new MessageEvent('message', {data: {type: 'vscodeCodeThemeChanged', appearance: 'dark', vscodeTheme: {name: 'dark', type: 'dark', colors: {}, tokenColors: []}}})); });
   assert.equal(await role('surface'), 'rgb(17, 38, 56)');
+  await page.evaluate(() => {
+    const swatch = document.querySelector<HTMLInputElement>('[data-setting="accent"] .appearance-color-swatch')!;
+    for (const color of ['#4488AA', '#5599BB']) { swatch.value = color; swatch.dispatchEvent(new Event('input', {bubbles: true})); }
+    document.querySelector<HTMLButtonElement>('.appearance-footer .settings-primary')!.click();
+  });
+  await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('.appearance-footer .settings-primary')!.disabled);
+  await page.waitForFunction(() => !document.querySelector<HTMLInputElement>('[data-setting="accent"] .appearance-color-swatch')!.disabled);
+  assert.equal(owner.getUiColors().dark.accent, '#5599BB', 'Apply before a preview frame saves the latest drag value');
+  assert.equal(await role('accent'), 'rgb(85, 153, 187)');
   await page.click('.appearance-footer > button'); await page.click(apply); await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('.appearance-footer .settings-primary')!.disabled);
   assert.deepEqual(owner.getUiColors(), {light: {}, dark: {}}, 'reset clears both profiles after Apply');
   assert.deepEqual(errors, []);
-  console.log('Production appearance: preview/cancel, all close paths, validation, save failure/retry, reload, light/dark isolation, external updates, delayed responses, high contrast and narrow layout passed');
+  console.log('Production appearance: drag preview coalescing, immediate Apply/discard, preview/cancel, all close paths, validation, save failure/retry, reload, light/dark isolation, external updates, delayed responses, high contrast and narrow layout passed');
 } finally { await closeTestBrowser(browser); }

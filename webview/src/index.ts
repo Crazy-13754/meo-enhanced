@@ -16,7 +16,7 @@ import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses, initializeWikiLinkHandling, collectWikiLinkTargets, requestWikiLinkStatuses, scheduleWikiLinkStatusRefresh, setWikiLinkRefreshContext, cancelPendingWikiStatusRefresh, handleResolvedWikiLinks } from './helpers/wikiLinks';
 import { initializeLocalLinkHandling, requestLocalLinkStatuses, scheduleLocalLinkStatusRefresh, setLocalLinkRefreshContext, cancelPendingLocalLinkStatusRefresh, handleResolvedLocalLinks } from './helpers/localLinks';
 import { setGitDiffLineHighlightsEnabled } from './helpers/gitDiffLineHighlights';
-import { applyBuiltInVisualBaseline } from './helpers/theme';
+import { applyBuiltInVisualBaseline, applyUiVisualBaseline } from './helpers/theme';
 import { setShikiTheme } from './helpers/shikiHighlighter';
 import { createFailureNoticeManager, getErrorMessage, isTransientMermaidRuntimeError, shouldAutoFallbackToSourceForLiveError, logWebviewRenderError, type EditorNoticeAction, type FailureNoticeManager } from './helpers/errors';
 import { isPrimaryModifier, isShortcutKey, handleEditorShortcut, type ShortcutHandlerContext } from './helpers/shortcuts';
@@ -3250,7 +3250,7 @@ const copyTableToHost = async (format: 'markdown' | 'csv') => {
 };
 const imageStorageTransport = createImageStorageTransport(request => vscode.postMessage(request));
 const uiColorsTransport = createUiColorsTransport(request => vscode.postMessage(request));
-const refreshUiColors = () => applyBuiltInVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
+const refreshUiColors = () => applyUiVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
 settingsWindow = createSettingsWindow({
   appearance: {

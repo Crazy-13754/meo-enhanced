@@ -67,8 +67,11 @@ exact commands without running them.
 strict Protocol decoding and correlated saves. `scripts/test-ui-colors-production.ts`
 uses the production Settings window and the same configuration owner to verify
 preview/cancel, save failure/retry, reload, separate light/dark profiles, external
-updates, delayed replies, high contrast and narrow layout. Both are quick and
-targeted appearance checks; Source content must remain unchanged during UI edits.
+updates, delayed replies, high contrast and narrow layout. Continuous swatch input
+must coalesce derivation into one frame, retain the latest value and avoid feedback
+writes to the native input. Apply and discard are also checked before that frame.
+Both are quick and targeted appearance checks; Source content must remain
+unchanged during UI edits.
 
 `scripts/test-source-syntax-first-paint.ts` checks idle Source preparation through
 the production editor. An unchanged Live/Source roundtrip and reapplying the same

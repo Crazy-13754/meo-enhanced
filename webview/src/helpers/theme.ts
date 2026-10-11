@@ -111,6 +111,18 @@ const applyHostAppearance = (appearance: EditorAppearance): void => {
   }
 };
 
+const matchesHostAppearance = (appearance: Exclude<EditorAppearance, 'auto'>): boolean => {
+  const hostIsLight = document.body.classList.contains('vscode-light')
+    || document.body.classList.contains('vscode-high-contrast-light');
+  return appearance === 'light' ? hostIsLight : !hostIsLight && (document.body.classList.contains('vscode-dark')
+    || document.body.classList.contains('vscode-high-contrast'));
+};
+
+/** UI previews reuse the semantic palette without rewriting document colors or typography. */
+export const applyUiVisualBaseline = (appearance: Exclude<EditorAppearance, 'auto'>, colors?: UiColors): void => {
+  applyUiTheme(appearance, matchesHostAppearance(appearance), colors?.[appearance]);
+};
+
 export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance, 'auto'> = 'dark', colors?: UiColors): void => {
   const editorFontWeight = resolveEditorFontWeight();
   applyHostAppearance(appearance);
@@ -123,13 +135,8 @@ export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance,
 
   const rootStyle = document.documentElement.style;
   const insetBackground = getInsetBackground(resolvedTheme.backgroundColor, resolvedTheme.colors.base03);
-  const hostIsLight = document.body.classList.contains('vscode-light')
-    || document.body.classList.contains('vscode-high-contrast-light');
-  const hostIsDark = !hostIsLight && (document.body.classList.contains('vscode-dark')
-    || document.body.classList.contains('vscode-high-contrast'));
   const fallbackBackground = (appearance === 'light' ? lightCssVariableOverrides : darkCssVariableOverrides)['--vscode-editor-background'];
-  const matchesHostAppearance = appearance === 'light' ? hostIsLight : hostIsDark;
-  rootStyle.setProperty('--meo-background', matchesHostAppearance
+  rootStyle.setProperty('--meo-background', matchesHostAppearance(appearance)
     ? `var(--vscode-editor-background, ${fallbackBackground})`
     : fallbackBackground);
   rootStyle.setProperty('--meo-inset-background', resolvedTheme.semanticColors.insetBackground || insetBackground);
@@ -186,5 +193,5 @@ export const applyBuiltInVisualBaseline = (appearance: Exclude<EditorAppearance,
   rootStyle.setProperty('--meo-heading-token-weight', defaultHeadingFontWeight);
   rootStyle.setProperty('--meo-line-height-live', `${liveLineHeight}`);
   rootStyle.setProperty('--meo-line-height-source', `${sourceLineHeight}`);
-  applyUiTheme(appearance, matchesHostAppearance, colors?.[appearance]);
+  applyUiVisualBaseline(appearance, colors);
 };
