@@ -7,7 +7,7 @@ import { wireNativeSymbolInput, nativeSymbolInput } from '../editor/nativeTyping
 import { automaticSymbolPairs, symbolOriginEpoch, replaceAutomaticSymbolPairArea, inputAssistanceFacet, type AutomaticSymbolPair } from '../editor/typingAssistance';
 import { emptyMarkdownTable, markdownTableFromCells, serializeDelimitedTable, parseMarkdownTable, externalTableCellToMarkdown } from '../application/delimitedTable';
 import { defaultInputAssistance, type EditorCommandId } from '../../../src/foundation/editingPreferences';
-import { countColumn, EditorState, RangeSet, RangeValue, StateEffect, StateField, type Annotation, type Range, type SelectionRange as CodeMirrorSelectionRange, type Transaction } from '@codemirror/state';
+import { countColumn, EditorState, RangeSet, RangeValue, StateEffect, StateField, type Annotation, type ChangeDesc, type Range, type SelectionRange as CodeMirrorSelectionRange, type Transaction } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
@@ -2387,6 +2387,12 @@ export function refreshMountedTablePositions(
   for (const widget of widgets) widget.refreshCurrentPosition(view, diagnostics, diffLineFlags);
 }
 
+/** Maps unaffected mounted tables before consumers read their visible positions.
+ * Deferred input keeps the DOM and native cell/composition state intact. */
+export function projectMountedTablePositions(view: EditorView, changes: ChangeDesc): void {
+  for (const widget of mountedTableWidgets.get(view) ?? []) widget.projectPosition(view.state, changes);
+}
+
 export function refreshMountedTableUiLanguage(view: EditorView, language: UiLanguage): void {
   const widgets = mountedTableWidgets.get(view);
   if (!widgets) return;
@@ -2526,6 +2532,25 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       mounted?.adoptEquivalentTableData(projected);
     }
     return equivalent;
+  }
+
+  projectPosition(state: EditorState, changes: ChangeDesc): void {
+    const previous = this.tableData;
+    let touched = false;
+    changes.iterChangedRanges((from, to) => {
+      if (from === to ? from > previous.from && from < previous.to : from < previous.to && to > previous.from) touched = true;
+    });
+    if (touched) return;
+    const from = changes.mapPos(previous.from, 1);
+    const to = changes.mapPos(previous.to, -1);
+    if (from === previous.from && to === previous.to) return;
+    const startLine = state.doc.lineAt(from).number;
+    const delta = startLine - previous.startLine;
+    this.adoptEquivalentTableData({
+      ...previous, from, to, startLine, endLine: state.doc.lineAt(Math.max(from, to - 1)).number,
+      sourceRanges: previous.sourceRanges?.map(row => row.map(range => ({ ...range, from: changes.mapPos(range.from, 1), to: changes.mapPos(range.to, -1) }))),
+      diffFlagsByLine: previous.diffFlagsByLine && Object.fromEntries(Object.entries(previous.diffFlagsByLine).map(([line, flags]) => [Number(line) + delta, flags]))
+    });
   }
 
   adoptEquivalentTableData(tableData: WidgetTableData): void {

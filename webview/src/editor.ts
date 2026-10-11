@@ -11,7 +11,7 @@ import { nativeSymbolInput, planNativeHtmlCommentToggle } from './editor/nativeT
 import { formatMultipleSelections, toggleHtmlComment, runEditorCommand, secondarySelections } from './editor/commands';
 import type { EditorCommandId } from '../../src/foundation/editingPreferences';
 import { pasteAssistance, insertPlainClipboardText } from './editor/pasteAssistance';
-import { EditorState, Compartment, Prec, Transaction, StateEffect, StateField, RangeSetBuilder, type Annotation, type ChangeSpec, type TransactionSpec, EditorSelection, type Extension, type SelectionRange, type Text } from '@codemirror/state';
+import { EditorState, Compartment, Prec, Transaction, StateEffect, StateField, RangeSetBuilder, type Annotation, type ChangeDesc, type ChangeSpec, type TransactionSpec, EditorSelection, type Extension, type SelectionRange, type Text } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
@@ -99,6 +99,7 @@ import {
   focusHistoryChange,
   focusTableHistoryChange,
   refreshMountedTablePositions,
+  projectMountedTablePositions,
   refreshMountedTableUiLanguage,
   flushMountedTableLayouts,
   tableUsableViewportBounds
@@ -2569,6 +2570,14 @@ export function createEditor({
         return suppressHistoryAutoScrollAt(range.head);
       }),
       EditorView.updateListener.of((update) => {
+        // Rebuilt widgets already contain current positions. Only the deferred
+        // suffix still carries mapped DOM whose datasets must move before paint.
+        let mappedTableChanges: ChangeDesc | undefined;
+        for (const transaction of update.transactions) {
+          if (!shouldDeferLiveInputDerivedWork(transaction)) mappedTableChanges = undefined;
+          else if (transaction.docChanged) mappedTableChanges = mappedTableChanges?.composeDesc(transaction.changes) ?? transaction.changes.desc;
+        }
+        if (mappedTableChanges) projectMountedTablePositions(update.view, mappedTableChanges);
         const liveDerivedRefresh = update.transactions.some(isLiveInputDerivedWorkRefresh);
         const searchQueryChanged = update.transactions.some((transaction) => (
           transaction.effects.some((effect) => effect.is(setSearchQueryEffect))
