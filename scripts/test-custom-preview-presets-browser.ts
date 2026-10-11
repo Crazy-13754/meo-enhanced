@@ -24,6 +24,7 @@ const fixedOn = await library.import(JSON.stringify({ schemaVersion: 1, id: 'fix
   controls: { htmlComments: { mode: 'fixed', value: true }, codeColoring: { mode: 'fixed', value: false } }, themes: { light: { css: 'light.css', codeTheme: 'light-plus' } } }), async () => ':root { --meo-mermaid-node-background: #445566; }');
 const fixedOff = await library.import(JSON.stringify({ schemaVersion: 1, id: 'fixed-off', name: 'Fixed coloring', description: 'Policy checks', base: 'default',
   controls: { htmlComments: { mode: 'fixed', value: false }, codeColoring: { mode: 'fixed', value: true } }, themes: { dark: { css: 'dark.css' } } }), async () => ':root { --meo-bg: #24282c; }');
+const copyOverride = await library.import(JSON.stringify({ schemaVersion: 1, id: 'copy-controls', name: 'Copy controls', description: 'Copy palette overrides', themes: { light: { css: 'light.css' } } }), async () => ':root { --meo-preview-code-copy-fg:#112233; --meo-preview-code-copy-bg:#ddeeff; --meo-preview-code-copy-hover-fg:#223344; --meo-preview-code-copy-hover-bg:#ccddee; }');
 const text = ['# 自定义预设测试', '', '中文正文与 **粗体**，以及 [示例链接](https://example.com)。', '', '<!-- custom preset comment -->', '', '## 标题与代码', '', '> [!NOTE]', '> 检查基础渲染行为。', '', '```typescript', 'const value = { answer: 42 };', `const longLine = "${'wide content '.repeat(35)}";`, '```', '', '| 名称 | 说明 |', '| --- | --- |', '| Example | 表格内容 |', '', '$$\nx^2 + y^2 = z^2\n$$', '', '```mermaid', 'flowchart LR', '  A[Markdown] --> B[Preview]', '```', '', ...Array.from({ length: 45 }, (_, index) => `## Section ${index}\n\n正文段落 ${index}，用于验证多页导出与阅读位置。\n`)].join('\n');
 const init = { type: 'init', documentId: 'file:///custom-presets.md', text, version: 1, savedRevision: { version: 1, text }, diagnostics: [], mode: 'preview', uiLanguage: 'zh-CN', sourceLineNumbers: 'on', previewAppearance: 'auto', previewFontFamily: 'Georgia', previewSourceColoring: true, previewShowComments: false, editorAppearance: 'dark', gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260, vscodeTheme: null, customPreviewPresets: library.list() };
 const build = await Bun.build({ entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'], target: 'browser', format: 'iife' });
@@ -56,6 +57,65 @@ try {
     await page.waitForFunction(title => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('h1')?.textContent === title, {}, markdownText.split('\n')[0]!.slice(2));
     return page;
   };
+  const copyPalettePage = await open();
+  await copyPalettePage.evaluate(() => {
+    const style = document.documentElement.style;
+    // Deliberately conflicting host colors expose leakage into independent palettes.
+    for (const name of ['--meo-document-action-text', '--meo-document-action-hover-text', '--meo-code-action-foreground', '--meo-code-action-hover-foreground']) style.setProperty(name, '#ff00ff');
+    for (const name of ['--meo-document-block-hover', '--meo-semantic-codeCopyBackground', '--meo-semantic-codeCopyHoverBackground']) style.setProperty(name, '#00ff00');
+  });
+  for (const [preset, appearance] of [['default', 'light'], ['default', 'dark'], ['github-readme', 'light'], ['github-readme', 'dark'], [dual.id, 'light'], [dual.id, 'dark'], [copyOverride.id, 'light'], ['default', 'dark']] as const) {
+    await copyPalettePage.select('.preview-preset-control select', preset);
+    await copyPalettePage.click(`[data-preview-appearance-choice="${appearance}"]`);
+    await copyPalettePage.waitForFunction(({preset, appearance}) => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+      return doc?.documentElement.dataset.meoPreviewPreset === preset && document.querySelector(`[data-preview-appearance-choice="${appearance}"]`)?.getAttribute('aria-pressed') === 'true' && !!doc.querySelector('.meo-preview-code-actions > .meo-copy-code-btn');
+    }, {}, {preset, appearance});
+    const frame = copyPalettePage.frames().find(frame => frame.parentFrame() === copyPalettePage.mainFrame())!;
+    const selector = '.meo-preview-code-actions > .meo-copy-code-btn';
+    const assertReadableCopy = async () => {
+      const ratio = await frame.$eval(selector, button => {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d')!;
+        const paint = (color: string) => { context.fillStyle = color; context.fillRect(0, 0, 1, 1); };
+        const luminance = () => [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map(value => {
+          const c = value / 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+        }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index]!, 0);
+        const probe = button.ownerDocument.createElement('span'); probe.style.color = 'var(--meo-code-bg, var(--meo-bg))'; button.ownerDocument.body.append(probe);
+        paint(getComputedStyle(probe).color); probe.remove();
+        paint(getComputedStyle(button).backgroundColor); const background = luminance();
+        paint(getComputedStyle(button).color); const foreground = luminance();
+        return (Math.max(foreground, background) + .05) / (Math.min(foreground, background) + .05);
+      });
+      assert.ok(ratio >= 4.5, `${preset}/${appearance}: independent copy foreground is readable (${ratio})`);
+    };
+    await copyPalettePage.mouse.move(0, 0);
+    const resting = await frame.$eval(selector, button => ({color: getComputedStyle(button).color, bg: getComputedStyle(button).backgroundColor}));
+    const independent = preset !== 'default' || appearance !== 'dark';
+    if (independent) {
+      assert.notEqual(resting.color, 'rgb(255, 0, 255)', `${preset}/${appearance}: rest foreground belongs to the preview`);
+      assert.notEqual(resting.bg, 'rgb(0, 255, 0)', `${preset}/${appearance}: rest background belongs to the preview`);
+      await assertReadableCopy();
+    } else assert.equal(resting.color, 'rgb(255, 0, 255)', 'Matching default preview follows the host document action role');
+    if (preset === copyOverride.id) assert.deepEqual(resting, { color: 'rgb(17, 34, 51)', bg: 'rgb(221, 238, 255)' }, 'Custom CSS retains its own copy control overrides');
+    await frame.hover('.meo-export-code-block-wrap');
+    await frame.hover(selector);
+    const hover = await frame.$eval(selector, button => ({color: getComputedStyle(button).color, bg: getComputedStyle(button).backgroundColor}));
+    assert.notEqual(hover.bg, 'rgba(0, 0, 0, 0)', `${preset}/${appearance}: hover has a visible carrier`);
+    if (independent) {
+      assert.notEqual(hover.color, 'rgb(255, 0, 255)');
+      assert.notEqual(hover.bg, 'rgb(0, 255, 0)');
+      await assertReadableCopy();
+    }
+    if (preset === copyOverride.id) assert.deepEqual(hover, { color: 'rgb(34, 51, 68)', bg: 'rgb(204, 221, 238)' });
+    await copyPalettePage.keyboard.press('Tab');
+    await frame.$eval(selector, button => (button as HTMLElement).focus({preventScroll: true}));
+    const focus = await frame.$eval(selector, button => ({visible: button.matches(':focus-visible'), width: getComputedStyle(button).outlineWidth, style: getComputedStyle(button).outlineStyle, color: getComputedStyle(button).outlineColor}));
+    assert.equal(focus.visible, true);
+    assert.equal(focus.width, '1px'); assert.equal(focus.style, 'solid');
+    if (independent) assert.notEqual(focus.color, 'rgb(255, 0, 255)');
+  }
+  await copyPalettePage.close();
   const narrowTablePage = await open(undefined, 'en', '# Narrow table\n\n| Alpha | Beta | Gamma | Delta | Epsilon |\n| --- | --- | --- | --- | --- |\n| 一段较长的中文内容 | long-unbroken-english-content | Value | 7 | Tail |');
   for (const preset of ['default', dual.id, single.id]) {
     await narrowTablePage.setViewport({ width: 1400, height: 850 });

@@ -170,6 +170,16 @@ try {
         label: node.getAttribute('aria-label'), tooltip: node.getAttribute('data-tooltip'),
         native: node.getAttribute('title'), cursor: getComputedStyle(node).cursor,
         color: getComputedStyle(node).color, bg: getComputedStyle(node).backgroundColor,
+        expectedColor: (() => {
+          const probe = node.ownerDocument.createElement('span');
+          probe.style.color = 'var(--meo-preview-code-copy-hover-fg, var(--meo-fg))'; node.ownerDocument.body.append(probe);
+          const color = getComputedStyle(probe).color; probe.remove(); return color;
+        })(),
+        expectedBackground: (() => {
+          const probe = node.ownerDocument.createElement('span');
+          probe.style.backgroundColor = 'var(--meo-preview-code-copy-hover-bg, color-mix(in srgb, var(--meo-fg) 12%, var(--meo-bg)))'; node.ownerDocument.body.append(probe);
+          const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color;
+        })(),
         gapCursor: getComputedStyle(node.parentElement!).cursor, hintOpacity: getComputedStyle(document.querySelector('.meo-tooltip')!).opacity
       }));
       assert.equal(hint.label, language === 'en' ? 'Copy' : '复制');
@@ -177,8 +187,9 @@ try {
       assert.equal(hint.native, null);
       assert.equal(hint.cursor, 'pointer');
       assert.equal(hint.gapCursor, 'default');
-      assert.equal(hint.bg, 'rgba(127, 127, 127, 0.2)');
-      assert.equal(hint.color, appearance === 'light' ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)');
+      assert.equal(hint.bg, hint.expectedBackground);
+      assert.notEqual(hint.bg, 'rgba(0, 0, 0, 0)', 'Independent preview controls retain a visible hover carrier');
+      assert.equal(hint.color, hint.expectedColor);
       const buttonBounds = await frame.$eval(buttonSelector, node => {
         const button = node.getBoundingClientRect();
         const code = node.closest('.meo-export-code-block-wrap')!.querySelector('.meo-export-code-line-source')!.getBoundingClientRect();
@@ -190,6 +201,42 @@ try {
       console.log('Visual ' + appearance + '/' + language + ': ' + JSON.stringify(hint));
     }
   }
+  const refreshFrameDocument = await page.evaluate(() => {
+    (window as any).__copyRefreshDocument = document.querySelector<HTMLIFrameElement>('iframe')!.contentDocument;
+    return true;
+  });
+  assert.equal(refreshFrameDocument, true);
+  for (const palette of [
+    { foreground: '#ff00ff', background: '#223344', hoverForeground: '#ffff00', hoverBackground: '#334455' },
+    { foreground: '#aabb22', background: '#334400', hoverForeground: '#bbeeff', hoverBackground: '#113344' }
+  ]) {
+    await page.evaluate(palette => {
+      const controller = (window as any).__previewController;
+      controller.setAppearance('dark');
+      const style = document.documentElement.style;
+      style.setProperty('--meo-code-action-foreground', palette.foreground);
+      style.setProperty('--meo-semantic-codeCopyBackground', palette.background);
+      style.setProperty('--meo-code-action-hover-foreground', palette.hoverForeground);
+      style.setProperty('--meo-semantic-codeCopyHoverBackground', palette.hoverBackground);
+      controller.refreshDocumentBackground();
+    }, palette);
+    await page.mouse.move(0, 0);
+    await frame.$eval(buttonSelector, button => (button as HTMLElement).blur());
+    const readControl = () => frame.$eval(buttonSelector, button => {
+      const style = getComputedStyle(button);
+      const context = document.createElement('canvas').getContext('2d')!;
+      const hex = (color: string) => { context.fillStyle = color; context.fillRect(0, 0, 1, 1); return '#' + [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map(value => value.toString(16).padStart(2, '0')).join(''); };
+      return { foreground: hex(style.color), background: hex(style.backgroundColor) };
+    });
+    assert.deepEqual(await readControl(), {foreground: palette.foreground, background: palette.background}, 'Public document-color refresh updates both resting copy roles');
+    const point = await copyPoint(); await page.mouse.move(point.x - 28, point.y); await page.mouse.move(point.x, point.y);
+    assert.deepEqual(await readControl(), {foreground: palette.hoverForeground, background: palette.hoverBackground}, 'Public document-color refresh updates both hover roles');
+    await page.keyboard.press('Tab');
+    await frame.$eval(buttonSelector, button => (button as HTMLElement).focus({preventScroll: true}));
+    assert.equal(await frame.$eval(buttonSelector, button => getComputedStyle(button).outlineColor), await frame.$eval(buttonSelector, button => getComputedStyle(button).color));
+    assert.equal(await page.evaluate(() => document.querySelector<HTMLIFrameElement>('iframe')!.contentDocument === (window as any).__copyRefreshDocument), true, 'Live color refresh keeps the document and controls mounted');
+  }
+  await frame.$eval(buttonSelector, button => (button as HTMLElement).blur());
   await frame.evaluate(() => {
     const range = document.createRange();
     range.selectNodeContents(document.querySelector('.meo-export-code-line-source')!);

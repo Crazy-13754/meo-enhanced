@@ -303,13 +303,14 @@ const previewCodeCopyStyles = `
 .meo-preview-code-actions > .meo-copy-code-btn {
   display: inline-flex; align-items: center; justify-content: center;
   box-sizing: border-box; width: 22px; height: 20px; padding: 0; border: 0; border-radius: 6px;
-  cursor: pointer; color: var(--meo-preview-code-copy-fg); background: var(--meo-preview-code-copy-bg);
+  cursor: pointer; color: var(--meo-preview-code-copy-fg, var(--meo-fg)); background: var(--meo-preview-code-copy-bg, transparent);
 }
 .meo-preview-code-actions > .meo-copy-code-btn:is(:hover, :focus-visible) {
-  color: var(--meo-preview-code-copy-hover-fg); background: var(--meo-preview-code-copy-hover-bg);
+  color: var(--meo-preview-code-copy-hover-fg, var(--meo-fg));
+  background: var(--meo-preview-code-copy-hover-bg, color-mix(in srgb, var(--meo-fg) 12%, var(--meo-bg)));
 }
 .meo-preview-code-actions > .meo-copy-code-btn:focus-visible {
-  outline: 1px solid var(--meo-preview-code-copy-hover-fg); outline-offset: 1px;
+  outline: 1px solid var(--meo-preview-code-copy-hover-fg, var(--meo-fg)); outline-offset: 1px;
 }
 .meo-preview-code-actions svg { display: block; }
 @media print { .meo-preview-code-actions { display: none; } }
@@ -1490,6 +1491,7 @@ export function createPreviewController({
         frameDocument.documentElement.style.setProperty(property, rootStyles.getPropertyValue('--meo-document-' + role).trim());
       }
     }
+    syncPreviewCopyPalette(frameDocument);
   };
 
   const syncPreviewCodeHighlight = (frameDocument: Document): void => {
@@ -1498,7 +1500,7 @@ export function createPreviewController({
     if (isSourceColoringEnabled()) applyPreviewCodeHighlight(frameDocument, true, currentCodeHighlight(frameDocument));
   };
 
-  const syncSourceActiveLineBackground = (frameDocument: Document): void => {
+  const syncPreviewCopyPalette = (frameDocument: Document): void => {
     const probe = document.createElement('span');
     probe.style.position = 'fixed';
     probe.style.visibility = 'hidden';
@@ -1509,11 +1511,23 @@ export function createPreviewController({
       ['--meo-preview-code-copy-bg', '--meo-semantic-codeCopyBackground', 'backgroundColor'],
       ['--meo-preview-code-copy-hover-bg', '--meo-semantic-codeCopyHoverBackground', 'backgroundColor']
     ] as const) {
+      // Independent preview palettes resolve their controls inside the iframe.
+      if (presetPreference !== 'default' || appearance !== getEditorAppearance()) {
+        frameDocument.documentElement.style.removeProperty(property);
+        continue;
+      }
       probe.style[cssProperty] = `var(${variable})`;
       document.body.appendChild(probe);
       frameDocument.documentElement.style.setProperty(property, window.getComputedStyle(probe)[cssProperty]);
       probe.remove();
     }
+  };
+
+  const syncSourceActiveLineBackground = (frameDocument: Document): void => {
+    const probe = document.createElement('span');
+    probe.style.position = 'fixed';
+    probe.style.visibility = 'hidden';
+    probe.style.pointerEvents = 'none';
     probe.style.backgroundColor = 'var(--meo-source-line, var(--meo-active-line-bg))';
     document.body.appendChild(probe);
     const background = window.getComputedStyle(probe).backgroundColor;
