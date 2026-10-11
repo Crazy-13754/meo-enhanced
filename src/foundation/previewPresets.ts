@@ -37,10 +37,16 @@ const builtInPresets: readonly PreviewPresetDefinition[] = [
   githubDefinition as PreviewPresetDefinition
 ];
 export const previewPresets: PreviewPresetDefinition[] = [...builtInPresets];
+let disabledPresets: readonly PreviewPresetId[] = [];
+
+export function isPreviewPresetEnabled(id: PreviewPresetId): boolean {
+  return !id.startsWith('user:') || !disabledPresets.includes(id);
+}
 
 /** Only Host-validated presets enter the catalog; built-ins cannot be replaced. */
-export function replaceCustomPreviewPresets(presets: readonly PreviewPresetDefinition[]): void {
+export function replaceCustomPreviewPresets(presets: readonly PreviewPresetDefinition[], disabled: readonly PreviewPresetId[] = []): void {
   previewPresets.splice(0, previewPresets.length, ...builtInPresets, ...presets);
+  disabledPresets = disabled.filter(id => id.startsWith('user:'));
 }
 
 export function isPreviewPresetId(value: unknown): value is PreviewPresetId {
@@ -52,6 +58,15 @@ export function getPreviewPreset(id: PreviewPresetId = 'default'): PreviewPreset
   const preset = previewPresets.find(preset => preset.id === id);
   if (!preset) throw new Error(`Preview preset is unavailable: ${id}`);
   return preset;
+}
+
+/** Only Default follows the editor; other presets own a fixed palette for each resolved appearance. */
+export function getPreviewPresetCodeTheme(preset: PreviewPresetDefinition, appearance: 'light' | 'dark'): PreviewPresetCodeTheme | undefined {
+  if (preset.id === 'default') return undefined;
+  return preset.custom?.codeThemes[appearance]
+    ?? (preset.renderer === 'github-readme' || preset.custom?.base === 'github-readme'
+      ? appearance === 'light' ? 'github-light-default' : 'github-dark-default'
+      : appearance === 'light' ? 'light-plus' : 'dark-plus');
 }
 
 export function normalizePresetAppearance(preset: PreviewPresetDefinition, preference: 'auto' | 'light' | 'dark'): 'auto' | 'light' | 'dark' {

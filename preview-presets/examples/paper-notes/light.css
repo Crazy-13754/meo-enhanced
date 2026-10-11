@@ -1,0 +1,20 @@
+:root {
+  --meo-bg: #fafaf8;
+  --meo-fg: #333333;
+  --meo-code-bg: #eeefec;
+  --meo-code-fg: var(--meo-fg);
+  --paper-accent: #28645b;
+  --meo-heading: var(--meo-fg);
+  --meo-link: var(--paper-accent);
+  --meo-muted: color-mix(in srgb, var(--meo-fg) 68%, var(--meo-bg));
+  --meo-border: color-mix(in srgb, var(--meo-fg) 22%, var(--meo-bg));
+  --meo-panel-border: var(--meo-border);
+  --meo-inline-code-bg: var(--meo-code-bg);
+  --meo-quote: var(--meo-muted);
+  --meo-sidebar-bg: color-mix(in srgb, var(--meo-bg) 94%, var(--meo-fg));
+  --meo-table-border: var(--meo-border);
+  --meo-table-header-bg: var(--meo-sidebar-bg);
+  --meo-frontmatter-key: var(--paper-accent);
+  --meo-frontmatter-value: var(--meo-fg);
+  --meo-frontmatter-pill-bg: var(--meo-code-bg);
+}

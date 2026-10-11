@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../schemas/custom-preview-preset.schema.json",
+  "$schema": "../../preset.schema.json",
   "schemaVersion": 1,
   "id": "github-paper",
   "name": "GitHub 纸页",
@@ -10,6 +10,6 @@
     "codeColoring": { "mode": "fixed", "value": true }
   },
   "themes": {
-    "light": { "css": "light.css" }
+    "light": { "css": "light.css", "codeTheme": "github-light-default" }
   }
 }

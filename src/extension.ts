@@ -92,7 +92,7 @@ import { EDITING_PREFERENCES_SETTING } from './host/editingPreferences';
 import type { EditingPreferencesChangedEvent } from './protocol/editingPreferences';
 import { createVscodePreviewPresets } from './host/vscodePreviewPresets';
 import { getPreviewPreset, type PreviewPresetDefinition, type PreviewPresetId } from './foundation/previewPresets';
-import type { PreviewPresetsChanged } from './protocol/previewPresets';
+import type { PreviewPresetsChanged, PreviewPresetRequest, PreviewPresetResponse } from './protocol/previewPresets';
 
 const VIEW_TYPE = 'meoEnhanced.editor';
 const ACTIVE_EDITOR_CONTEXT_KEY = 'meoEnhanced.activeEditor';
@@ -392,16 +392,22 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   ) {}
 
   async managePreviewPresets(panel = this.getActiveSession()?.panel): Promise<void> {
-    let selected: PreviewPresetId | undefined;
+    if (panel) await panel.webview.postMessage({ type: 'openPreviewPresetSettings' });
+    else void vscode.window.showInformationMessage(this.getUiLanguage() === 'zh-CN' ? '请先打开一个 MEO 文档，再管理预览预设。' : 'Open a document in MEO to manage preview presets.');
+  }
+
+  async performPreviewPresetAction(request: PreviewPresetRequest): Promise<PreviewPresetResponse> {
+    let response: PreviewPresetResponse;
     try {
-      const result = await this.customPreviewPresets.manage(this.getUiLanguage());
-      if (!result.changed) return;
-      selected = result.selected;
+      const value = await this.customPreviewPresets.perform(request);
+      if (!value.changed) return { type: 'previewPresetResult', requestId: request.requestId, result: { ok: true, value } };
+      response = { type: 'previewPresetResult', requestId: request.requestId, result: { ok: true, value } };
     } catch (error) {
-      void vscode.window.showErrorMessage(`${this.getUiLanguage() === 'zh-CN' ? '自定义预设操作失败' : 'Custom preset operation failed'}: ${error instanceof Error ? error.message : String(error)}`);
+      response = { type: 'previewPresetResult', requestId: request.requestId, result: { ok: false, error: { code: 'operation-failed', message: error instanceof Error ? error.message : String(error) } } };
     }
-    const event: PreviewPresetsChanged = { type: 'previewPresetsChanged', presets: this.customPreviewPresets.list(), diagnostics: this.customPreviewPresets.diagnostics() };
-    for (const session of this.panelSessions.values()) void session.panel.webview.postMessage({ ...event, ...(session.panel === panel && selected ? { selected } : {}) });
+    const event: PreviewPresetsChanged = { type: 'previewPresetsChanged', presets: this.customPreviewPresets.list(), diagnostics: this.customPreviewPresets.diagnostics(), disabled: this.customPreviewPresets.disabled() };
+    await Promise.allSettled([...this.panelSessions.values()].map(session => session.panel.webview.postMessage(event)));
+    return response;
   }
 
   async initializeGitWatcher(): Promise<void> {
@@ -607,6 +613,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       getCustomPreviewPresets: () => this.customPreviewPresets.list(),
       getPreviewPresetDiagnostics: () => this.customPreviewPresets.diagnostics(),
       managePreviewPresets: () => this.managePreviewPresets(panel),
+      getDisabledPreviewPresets: () => this.customPreviewPresets.disabled(),
+      performPreviewPresetAction: request => this.performPreviewPresetAction(request),
       diagnostics: createVscodeDiagnosticsAdapter(document),
       agentReviewHandoff: this.agentReviewHandoff,
       pendingDraftRecovery: createVscodePendingDraftRecoveryAdapter({

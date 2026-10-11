@@ -5,6 +5,8 @@ import { createImageStorageTransport } from './adapters/imageStorageTransport';
 import { createSettingsWindow, type GeneralSetting } from './adapters/settingsWindow';
 import { createUiColorsTransport } from './adapters/uiColorsTransport';
 import type { UiColors } from '../../src/foundation/uiColors';
+import { createPreviewPresetSettings } from './adapters/previewPresetSettings';
+import { createPreviewPresetTransport } from './adapters/previewPresetTransport';
 import { bindTooltips, createTooltip } from './adapters/tooltip';
 import { createEditingPreferencesTransport } from './adapters/editingPreferencesTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
@@ -1678,6 +1680,7 @@ const previewController = createPreviewController({
   isCurrentText: (text) => normalizeDocumentText(getCurrentEditorText()) === text,
   getCodePalette: (appearance) => resolveCodePaletteForPreview(appearance),
   applyCodeTheme: (appearance) => applyCodeThemeForPreview(appearance),
+  onManagePresets: () => { setMoreToolsVisible(false); settingsWindow?.open('presets'); },
   onPresetPreferencesChanged: () => {
     persistUiState();
     syncToolbarOverflow();
@@ -3266,6 +3269,12 @@ const refreshUiColors = () => {
   previewController.refreshDocumentBackground(refreshMermaid);
 };
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
+const previewPresetTransport = createPreviewPresetTransport(request => vscode.postMessage(request));
+const previewPresetSettings = createPreviewPresetSettings({
+  request: action => previewPresetTransport.request(action),
+  getDiagnostics: () => previewController.getPresetDiagnostics(),
+  changed: () => settingsWindow?.present()
+});
 settingsWindow = createSettingsWindow({
   appearance: {
     getColors: () => uiColors, getMode: () => themeAdapter.getPreference(), getScheme: () => themeAdapter.getAppearance(),
@@ -3273,6 +3282,7 @@ settingsWindow = createSettingsWindow({
     preview: colors => { uiColorsPreview = colors; refreshUiColors(); },
     update: colors => uiColorsTransport.update(colors)
   },
+  previewPresets: previewPresetSettings,
   registerInput: input => editorFocusController.registerInput(input),
   imageLocation: imageLocationSettings,
   initialLanguage: activeUiLanguage, platform: /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other',
@@ -3322,6 +3332,8 @@ window.addEventListener('message', (event) => {
   queueMicrotask(() => { if (settingsWindow?.isOpen()) settingsWindow.present(); });
   if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
   if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
+  if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }
+  if (message.type === 'previewPresetResult') { previewPresetTransport.accept(message); return; }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
   if (message.type === 'imageStorageChanged') { if (settingsWindow?.isOpen()) void imageLocationSettings.refresh(); return; }
   if (message.type === 'updatedEditingPreferences') { editingPreferencesTransport.accept(message); return; }
@@ -3359,6 +3371,7 @@ window.addEventListener('message', (event) => {
         text: message.text,
         customPreviewPresets: message.customPreviewPresets,
         previewPresetDiagnostics: message.previewPresetDiagnostics,
+        disabledPreviewPresets: message.disabledPreviewPresets,
         appearance: message.previewAppearance,
         fontFamily: message.previewFontFamily,
         sourceColoring: message.previewSourceColoring,
@@ -3656,6 +3669,8 @@ window.addEventListener('beforeunload', () => {
   tooltipBinding.dispose();
   imageLocationSettings.dispose();
   imageStorageTransport.dispose();
+  previewPresetSettings.dispose();
+  previewPresetTransport.dispose();
   editingPreferencesTransport.dispose();
   uiColorsTransport.dispose();
   editorServicesTransport.dispose();

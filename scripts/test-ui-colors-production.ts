@@ -61,7 +61,7 @@ try {
   const cancel = '.appearance-footer .settings-actions button:first-child';
   const source = () => page.$$eval('.cm-content, .cm-line, .cm-line span, .cm-gutters', elements => elements.map(element => [element.textContent, getComputedStyle(element).color, getComputedStyle(element).backgroundColor]));
   await openFixture(); await openSettings();
-  assert.deepEqual(await page.$$eval('.settings-tab-label', elements => elements.map(e => e.textContent)), ['常规', '外观', '输入', '快捷键']);
+  assert.deepEqual(await page.$$eval('.settings-tab-label', elements => elements.map(e => e.textContent)), ['常规', '外观', '输入', '预览预设', '快捷键']);
   await page.click('[data-tab="general"]'); await page.keyboard.press('ArrowLeft');
   assert.equal(await page.$eval('.settings-tab[aria-selected="true"]', e => (e as HTMLElement).dataset.tab), 'shortcuts');
   await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight');
@@ -102,7 +102,7 @@ try {
   assert.deepEqual(await page.$$eval('.settings-jump', elements => elements.map(e => e.textContent)), ['界面模式', '基础颜色', '高级颜色']);
   const screenshots = process.env.MEO_UI_COLORS_SCREENSHOT_DIR;
   if (screenshots) await fs.mkdir(screenshots, { recursive: true });
-  for (const [index, tab] of ['general', 'appearance', 'typing', 'shortcuts'].entries()) {
+  for (const [index, tab] of ['general', 'appearance', 'typing', 'presets', 'shortcuts'].entries()) {
     await page.click(`[data-tab="${tab}"]`);
     assert.deepEqual(await page.evaluate(() => {
       const navigation = document.querySelector('.settings-navigation')!;

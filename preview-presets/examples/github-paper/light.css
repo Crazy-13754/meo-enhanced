@@ -1,0 +1,23 @@
+:root {
+  --meo-bg: #ffffff;
+  --meo-fg: #242424;
+  --meo-heading: var(--meo-fg);
+  --meo-link: #0969da;
+  --meo-code-bg: #f6f8fa;
+  --meo-code-fg: var(--meo-fg);
+  --meo-inline-code-bg: var(--meo-code-bg);
+  --meo-muted: color-mix(in srgb, var(--meo-fg) 68%, var(--meo-bg));
+  --meo-border: color-mix(in srgb, var(--meo-fg) 22%, var(--meo-bg));
+}
+.meo-export-doc { max-width: 1000px; font-size: 17px; line-height: 1.7; }
+.meo-export-doc h1 { font-size: 32px; color: var(--meo-heading); border-color: var(--meo-border); }
+.meo-export-doc h2 { font-size: 26px; color: var(--meo-heading); border-color: var(--meo-border); }
+.meo-export-doc a, .meo-export-doc a[data-meo-preview-href], .meo-export-doc .meo-export-toc-link { color: var(--meo-link); }
+.meo-export-doc code { background: var(--meo-inline-code-bg); }
+.meo-export-doc pre { font-size: 13px; padding: 12px 16px; background: var(--meo-code-bg); }
+.meo-export-doc pre code { background: transparent; }
+.meo-export-doc blockquote { color: var(--meo-muted); border-color: var(--meo-border); }
+.meo-export-doc hr, .meo-export-doc th, .meo-export-doc td { border-color: var(--meo-border); }
+.meo-export-doc hr { background: var(--meo-border); }
+.meo-export-doc table tr { background: var(--meo-bg); border-color: var(--meo-border); }
+.meo-export-doc table tr:nth-child(2n) { background: var(--meo-code-bg); }

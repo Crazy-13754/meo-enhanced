@@ -1,6 +1,6 @@
 import type { EditorCommandId, InputAssistance } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-export type SettingsTab = 'general' | 'appearance' | 'typing' | 'shortcuts';
+export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts';
 
 export const appearanceCatalog = [
   { id: 'mode', title: ['模式', 'Mode'], description: ['自动跟随 VS Code 主题，切换后立即保存。', 'Auto follows the VS Code theme. Mode changes save immediately.'], keywords: ['主题 深色 暗色 夜间 浅色 亮色 自动 跟随 外观', 'theme dark night light auto appearance'], advanced: false },
@@ -13,12 +13,18 @@ export const appearanceCatalog = [
   { id: 'warning', title: ['警告', 'Warning'], description: ['警告状态的文字与图标。', 'Text and icons indicating a warning.'], keywords: ['警告 状态 高级', 'warning status advanced'], advanced: true },
   { id: 'danger', title: ['危险', 'Danger'], description: ['错误与危险操作的文字与图标。', 'Text and icons for errors and destructive actions.'], keywords: ['危险 错误 状态 高级', 'danger error status advanced'], advanced: true }
 ] as const;
+export const previewPresetSearchKeywords = {
+  list: ['预览 预设 自定义 内置 启用 显示 隐藏 Preview presets custom built-in enable show hide'],
+  import: ['预览 预设 导入 更新 文件夹 Preview presets import update folder'],
+  guide: ['预览 预设 制作 指南 帮助 示例 GitHub Preview presets creation guide help authoring examples']
+} as const;
 export const settingsText = (language: UiLanguage, chinese: string, english: string) => language === 'zh-CN' ? chinese : english;
 export const typingSections = ['symbols', 'structure', 'paste', 'candidates'] as const;
 export type TypingSection = typeof typingSections[number];
 export const sectionTitles = {
   appearanceMode: ['界面模式', 'Interface mode'], appearanceColors: ['基础颜色', 'Basic colors'], appearanceAdvanced: ['高级颜色', 'Advanced colors'],
   display: ['文档显示', 'Document display'], opening: ['打开文档时', 'Opening documents'], interface: ['界面设置', 'Interface'],
+  presetList: ['预设列表', 'Preset list'], presetFiles: ['导入与制作', 'Import and authoring'],
   symbols: ['符号与选区', 'Symbols and selections'], structure: ['列表与结构', 'Lists and structure'], paste: ['粘贴', 'Pasting'], candidates: ['输入候选', 'Suggestions'],
   document: ['文档与编辑', 'Document and editing'], format: ['文字格式', 'Text formatting'], blocks: ['段落与块', 'Paragraphs and blocks'],
   table: ['表格', 'Tables'], selection: ['选择与光标', 'Selections and cursors'], lines: ['行操作', 'Line operations'], navigation: ['模式与导航', 'Modes and navigation']

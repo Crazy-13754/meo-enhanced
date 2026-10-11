@@ -12,7 +12,21 @@ export function buildPresetPreviewStyles(
   if (definition.custom) {
     const custom = definition.custom;
     const effective = custom.css[appearance] === undefined ? definition.defaults.appearance as 'light' | 'dark' : appearance;
-    return `${buildPresetPreviewStyles(custom.base, environment, effective, _contentWidth)}
+    // Inherit the base's fixed document colors, never the editor's captured palette.
+    const baseEnvironment: ExportStyleEnvironment = {
+      previewFontFamily: environment.previewFontFamily,
+      editorFontFamily: environment.editorFontFamily,
+      editorFontSizePx: environment.editorFontSizePx,
+      editorFontWeight: environment.editorFontWeight,
+      liveFontWeight: environment.liveFontWeight,
+      sourceFontWeight: environment.sourceFontWeight,
+      liveLineHeight: environment.liveLineHeight,
+      sourceLineHeight: environment.sourceLineHeight,
+      previewSourceColoring: environment.previewSourceColoring,
+      previewShowComments: environment.previewShowComments,
+      previewThemeIsolation: true
+    };
+    return `${buildPresetPreviewStyles(custom.base, baseEnvironment, effective, _contentWidth)}
 body, .meo-export-page, .meo-export-doc { background: var(--meo-bg); }
 .meo-export-doc { color: var(--meo-fg); }
 html { scrollbar-color: color-mix(in srgb, var(--meo-fg) 38%, transparent) var(--meo-bg); }

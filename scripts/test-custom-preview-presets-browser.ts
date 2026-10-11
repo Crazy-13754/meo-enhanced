@@ -13,7 +13,7 @@ const katexHref = pathToFileURL(path.resolve('webview/dist/katex/katex.min.css')
 const store = new Map<string, StoredPreviewPreset>();
 const library = createPreviewPresetLibrary({ list: async () => [...store.keys()], read: async id => store.get(id)!, write: async (id, value) => { store.set(id, value); }, remove: async id => { store.delete(id); } });
 const importExample = async (name: string) => {
-  const directory = path.resolve('docs/examples/preview-presets', name);
+  const directory = path.resolve('preview-presets/examples', name);
   return library.import(readFileSync(path.join(directory, 'preset.jsonc'), 'utf8'), async file => readFileSync(path.join(directory, file), 'utf8'));
 };
 const dual = await importExample('paper-notes');
@@ -68,7 +68,8 @@ try {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
       const table = doc?.querySelector('table'), wrap = table?.parentElement;
       return doc?.documentElement.dataset.meoPreviewPreset === preset && table?.querySelector('colgroup[data-meo-preview-columns]') && wrap
-        && table.getBoundingClientRect().right <= wrap.getBoundingClientRect().left + wrap.clientLeft + wrap.clientWidth + .1;
+        && table.getBoundingClientRect().right <= wrap.getBoundingClientRect().left + wrap.clientLeft + wrap.clientWidth + .1
+        && table.classList.contains('meo-preview-table-compressed');
     }, { timeout: 5000 }, preset);
     const layout = await narrowTablePage.$eval('.preview-frame', element => {
       const doc = (element as HTMLIFrameElement).contentDocument!, table = doc.querySelector<HTMLTableElement>('table')!, wrap = table.parentElement!;
@@ -151,8 +152,12 @@ try {
   assert.ok(await hoverTheme(themeBounds.left + themeBounds.width - 6) > tooltipLeft + 50, 'Disabled theme tooltips follow the pointer across the whole segmented control');
   await page.mouse.move(1300, 500);
   assert.equal((await visual()).background, 'rgb(255, 255, 255)');
-  await page.click('.preview-preset-manage');
-  assert.ok(await page.evaluate(() => (window as any).__presetMessages.some((message: any) => message.type === 'managePreviewPresets')));
+  await page.click('.preview-preset-dropdown');
+  await page.click('.preview-dropdown-footer');
+  assert.equal(await page.$eval('.settings-tab[data-tab="presets"]', el => el.getAttribute('aria-selected')), 'true');
+  assert.equal(await page.$eval('.preview-preset-dropdown-panel', el => (el as HTMLElement).hidden), true);
+  assert.equal((await visual()).preset, single.id, 'The management action does not become the selected preset');
+  await page.click('.settings-close');
   assert.equal(await page.$eval('.preview-export-note', el => el.textContent), 'HTML、PDF 沿用当前预览样式。\nWord 使用固定导出样式。');
   const controlState = (selector: string) => page.$eval(selector, el => ({ hidden: (el as HTMLElement).hidden, reason: (el as HTMLElement).dataset.tooltip,
     buttons: [...el.querySelectorAll<HTMLButtonElement>('button')].map(button => ({ disabled: button.disabled, selected: button.getAttribute('aria-pressed') })) }));
@@ -241,7 +246,11 @@ try {
   await assert.rejects(library.import(JSON.stringify(library.files(single.id)!.manifest), async () => '.toolbar { color: red; }'), /Prefix each document selector/);
   await page.evaluate(event => window.dispatchEvent(new MessageEvent('message', { data: event })), { type: 'previewPresetsChanged', presets: library.list(), diagnostics: library.diagnostics() });
   await page.waitForSelector('.preview-preset-info.has-error');
-  assert.equal(await page.$eval('.preview-preset-info', el => getComputedStyle(el).color), 'rgb(255, 107, 107)');
+  const errorColor = await page.evaluate(() => {
+    const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-danger)'; document.body.append(probe);
+    const color = getComputedStyle(probe).color; probe.remove(); return color;
+  });
+  assert.equal(await page.$eval('.preview-preset-info', el => getComputedStyle(el).color), errorColor, 'Preset errors use the shared UI error color');
   const errorInfo = await showInfo();
   assert.ok(await page.$('.meo-tooltip-error strong .meo-tooltip-error-icon'));
   assert.ok(errorInfo.includes(single.description['zh-CN']) && errorInfo.includes('预设错误') && errorInfo.includes('light.css') && errorInfo.includes('Prefix each document selector'));

@@ -50,6 +50,17 @@ export async function readVscodePreviewPresetPackage(manifestUri: vscode.Uri): P
   }
 }
 
+/** A folder is one preset package. Ambiguous manifests must not silently overwrite a different preset. */
+export async function readVscodePreviewPresetFolder(directory: vscode.Uri): Promise<StoredPreviewPreset> {
+  const manifests: vscode.Uri[] = [];
+  for (const filename of ['preset.jsonc', 'preset.json']) {
+    const uri = vscode.Uri.joinPath(directory, filename);
+    if (await statIfPresent(uri)) manifests.push(uri);
+  }
+  if (manifests.length !== 1) throw new Error('Select a preset folder containing exactly one preset.jsonc or preset.json.');
+  return readVscodePreviewPresetPackage(manifests[0]);
+}
+
 /** Writes into a new package directory; callers decide when the complete package becomes visible. */
 export async function writeVscodePreviewPresetPackage(directory: vscode.Uri, preset: StoredPreviewPreset): Promise<void> {
   const { stored } = resolveStoredPreviewPreset(preset);
