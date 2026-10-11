@@ -133,6 +133,7 @@ function targetedCommands(
     case 'appearance':
       return [
         packageScript('test:theme-inheritance'),
+        script('scripts/test-source-syntax-stability.ts'),
         script('scripts/test-source-theme-customizations.ts'),
         script('scripts/test-preview-preset-host.ts'),
         script('scripts/test-preview-presets-browser.ts'),
@@ -164,6 +165,7 @@ function targetedCommands(
       ];
     case 'viewport':
       return [
+        script('scripts/test-source-syntax-stability.ts'),
         script('scripts/test-preview-navigation-continuity.ts'),
         script('scripts/test-native-scroll-progress-production.ts'),
         script('scripts/test-long-document-scroll.ts'),
@@ -267,6 +269,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
         stages: [serialStage('Quick regression contracts', [
           packageScript('typecheck'),
           script('scripts/test-source-theme-customizations.ts'),
+          script('scripts/test-source-syntax-stability.ts'),
           script('scripts/test-preview-presets.ts'),
           script('scripts/test-editor-shortcuts.ts'),
           script('scripts/test-editing-preferences.ts'),

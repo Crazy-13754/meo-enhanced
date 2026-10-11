@@ -341,6 +341,13 @@ hidden editor measured after resizing, then external introduction of supported c
 both into plain text and after an already cached block. Reduced background work
 must not conceal a new mode-switch delay.
 
+`scripts/test-source-syntax-stability.ts` holds the real token runtime at its
+asynchronous batch boundary. After successive edits, newly visible unchanged
+Source text must retain its last completed colors and font styles. Edited text
+must discard obsolete formatting, and the latest tokens must replace the retained
+projection when ready. The bounded check belongs to the quick, appearance and
+viewport packs and the release browser gate.
+
 `scripts/test-shiki-highlighter-lifecycle.ts` also checks completed token reuse
 between editor and Preview when language, exact source and all Shiki theme inputs
 match and each highlighter has requested only that one language bundle. Mixed
