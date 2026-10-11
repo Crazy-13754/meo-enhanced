@@ -135,7 +135,7 @@ try {
   await page.click('.more-tools-wrapper > .format-button');
   assert.equal(await page.$eval('.more-tools-panel', element => element.getBoundingClientRect().width), 288);
   assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 6);
-  assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '偏好设置']);
+  assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置']);
   await page.click('.more-tools-settings-button');
   assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true);
   assert.equal(await page.$$eval('.settings-item', elements => elements.length), 10);
@@ -497,8 +497,8 @@ try {
     await page.click('.settings-tab[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`);
     assert.equal(await page.evaluate(() => document.documentElement.lang), language);
     assert.equal(await page.evaluate(() => document.documentElement.dataset.editorAppearance), appearance);
-    assert.equal(await page.$eval('.more-tools-settings-button', element => element.textContent), language === 'en' ? 'More settings' : '更多设置');
-    assert.equal(await page.$('.more-tools-settings-button svg'), null, 'More settings uses a text-only button');
+    assert.equal(await page.$eval('.more-tools-settings-button', element => element.textContent), language === 'en' ? 'Open settings' : '打开设置');
+    assert.equal(await page.$('.more-tools-settings-button svg'), null, 'Open settings uses a text-only button');
     await page.click('.settings-tab[data-tab="typing"]');
     assert.equal(await page.$eval('[data-setting="selectionToolbar"] .settings-item-title', e => e.textContent), language === 'en' ? 'Selection toolbar' : '选区工具栏');
     const wrappingDescription = await page.$eval(wrap + ' .settings-description', element => element.textContent ?? '');
