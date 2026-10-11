@@ -5,6 +5,7 @@ export type ToolbarDropdown = {
   readonly trigger: HTMLButtonElement;
   readonly panel: HTMLDivElement;
   refreshOptions(): void;
+  setFooterAction(label: string, action: () => void): void;
   syncFromSelect(): void;
   setAppearance(appearance: 'light' | 'dark'): void;
   setLabel(label: string): void;
@@ -61,6 +62,8 @@ export function createToolbarDropdown(
   document.body.append(panel);
 
   let disposed = false;
+  let footer: HTMLButtonElement | null = null;
+  let footerAction: (() => void) | null = null;
 
   const setLabel = (nextLabel: string): void => {
     label.textContent = nextLabel;
@@ -132,6 +135,10 @@ export function createToolbarDropdown(
       option.addEventListener('click', () => choose(nativeOption.value));
       return option;
     }));
+    if (footer) {
+      const list = document.createElement('div'); list.setAttribute('role', 'listbox');
+      list.append(...panel.childNodes); panel.setAttribute('role', 'group'); panel.append(list, footer);
+    }
     syncFromSelect();
   };
 
@@ -147,6 +154,19 @@ export function createToolbarDropdown(
     if (event.key === 'Escape') {
       close(true);
       event.preventDefault();
+      return;
+    }
+    if (footer && !panel.hidden && event.key === 'Tab' && event.target === trigger && !event.shiftKey) {
+      event.preventDefault(); (panel.querySelector<HTMLButtonElement>('[aria-selected="true"]') ?? footer).focus(); return;
+    }
+    if (footer && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      event.preventDefault();
+      if (event.target === trigger) { open(); (panel.querySelector<HTMLButtonElement>('[aria-selected="true"]') ?? footer).focus(); }
+      else {
+        const controls = [...panel.querySelectorAll<HTMLButtonElement>('button')];
+        const index = controls.indexOf(event.target as HTMLButtonElement);
+        controls[(index + (event.key === 'ArrowDown' ? 1 : controls.length - 1)) % controls.length]?.focus();
+      }
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter' && event.key !== ' ') {
@@ -183,6 +203,13 @@ export function createToolbarDropdown(
     trigger,
     panel,
     refreshOptions,
+    setFooterAction(label, action) {
+      if (!footer) {
+        footer = document.createElement('button'); footer.type = 'button'; footer.className = 'preview-dropdown-footer';
+        footer.addEventListener('click', () => { close(); footerAction?.(); });
+      }
+      footer.textContent = label; footerAction = action; refreshOptions();
+    },
     syncFromSelect,
     setAppearance(appearance) {
       element.dataset.previewAppearance = appearance;

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { posix, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const repoRoot = resolve(import.meta.dir, '..');
@@ -19,14 +19,6 @@ const files = output
 const included = new Set(files);
 
 const requiredFiles = [
-  'docs/custom-preview-presets.md',
-  'docs/custom-preview-presets.en.md',
-  'docs/examples/preview-presets/paper-notes/preset.jsonc',
-  'docs/examples/preview-presets/paper-notes/common.css',
-  'docs/examples/preview-presets/paper-notes/light.css',
-  'docs/examples/preview-presets/paper-notes/dark.css',
-  'docs/examples/preview-presets/github-paper/preset.jsonc',
-  'docs/examples/preview-presets/github-paper/light.css',
   'schemas/custom-preview-preset.schema.json',
   'package.json',
   'README.md',
@@ -55,21 +47,6 @@ for (const [dependency, licensePath] of [['jsonc-parser 3.3.1', 'jsonc-parser/LI
   const licenseText = readFileSync(resolve(repoRoot, 'node_modules', licensePath), 'utf8').trim().replaceAll('\r\n', '\n');
   if (!notices.replaceAll('\r\n', '\n').includes(licenseText)) throw new Error(`Bundled preset dependency license differs from the upstream notice: ${dependency}`);
 }
-for (const [filename, alternate] of [
-  ['custom-preview-presets.md', 'custom-preview-presets.en.md'],
-  ['custom-preview-presets.en.md', 'custom-preview-presets.md']
-]) {
-  const guide = readFileSync(resolve(repoRoot, 'docs', filename), 'utf8');
-  if (!guide.includes(`](${alternate})`)) throw new Error(`Preset guide is missing its language switch: ${filename}`);
-  for (const [, href] of guide.matchAll(/\]\(([^)#]+)(?:#[^)]*)?\)/g)) {
-    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
-    const target = posix.normalize(posix.join('docs', href)).replace(/\/$/, '');
-    if (!included.has(target) && !files.some(file => file.startsWith(`${target}/`))) {
-      throw new Error(`Preset guide links to a file missing from the VSIX: ${filename} -> ${href}`);
-    }
-  }
-}
-
 const checkoutPathVariants = [repoRoot, repoRoot.replaceAll('\\', '/'), pathToFileURL(repoRoot).href]
   .flatMap((value) => [value, JSON.stringify(value).slice(1, -1)]);
 for (const path of ['dist/extension.js', 'dist/export-runtime.js', 'webview/dist/index.js']) {
@@ -99,6 +76,8 @@ const forbiddenPrefixes = [
   'scripts/',
   'src/',
   'tests/',
+  'docs/',
+  'preview-presets/',
   'webview/src/'
 ];
 const forbiddenFile = /(?:^|\/)(?:\.env(?:\..*)?|AGENTS\.md|CLAUDE\.md|credentials[^/]*\.json|secrets?\.[^/]+|id_(?:rsa|ed25519)[^/]*)$/i;

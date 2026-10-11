@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../schemas/custom-preview-preset.schema.json",
+  "$schema": "../../preset.schema.json",
   "schemaVersion": 1,
   "id": "paper-notes",
   "name": "纸页笔记",

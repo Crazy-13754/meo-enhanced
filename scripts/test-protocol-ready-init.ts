@@ -63,6 +63,7 @@ const completeInit = {
   outlineVisible: true,
   outlineWidth: 260,
   vscodeTheme: codeTheme,
+  disabledPreviewPresets: [],
   editingPreferences: { input: { ...defaultInputAssistance }, shortcuts: {} },
   editingPreferencesRevision: 0,
   customPreviewPresets: [],

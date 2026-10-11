@@ -39,7 +39,7 @@ All three modes use the same document content. The current reading position is p
 
 Preview's **Preset** menu offers **Default** and **GitHub README**. GitHub README uses bundled GitHub-style fonts, code colors and rendering rules, with Auto / Light / Dark appearance and a responsive maximum content width. Switching back restores Default settings. HTML and PDF exports follow the current preview preset and theme; Word keeps its fixed format. Formulas, diagrams and repository-specific features may differ from GitHub; preset notes describe these limits.
 
-Import custom presets written as JSONC configuration and CSS, with light, dark, or both themes. **Manage custom presets** beside the preset selector lets you import, update, export shareable files, or remove presets. Its **Configuration guide** opens the bundled guide in the current interface language. See the [configuration guide and examples](docs/custom-preview-presets.en.md).
+Import custom presets from folders containing JSONC configuration and CSS, with light, dark, or both themes. **Custom presets…** at the bottom of the preset menu opens **Settings → Preview presets**, where you show or hide custom entries, import or update folders, export files and remove presets. Default and GitHub README are always enabled. **Creation guide** opens the [GitHub guide and examples](https://github.com/huangko555/meo-enhanced/blob/main/preview-presets/README.md) in the current interface language. Guides and examples are excluded from the extension package.
 
 ![The same Markdown document displayed in Live, Source, and Preview modes](docs/readme/en/display-modes.png)
 

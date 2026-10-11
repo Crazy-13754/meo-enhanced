@@ -1,11 +1,17 @@
 import type { EditorCommandId, InputAssistance } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-export type SettingsTab = 'general' | 'typing' | 'shortcuts';
+export type SettingsTab = 'general' | 'typing' | 'presets' | 'shortcuts';
+export const previewPresetSearchKeywords = {
+  list: ['预览 预设 自定义 内置 启用 显示 隐藏 Preview presets custom built-in enable show hide'],
+  import: ['预览 预设 导入 更新 文件夹 Preview presets import update folder'],
+  guide: ['预览 预设 制作 指南 帮助 示例 GitHub Preview presets creation guide help authoring examples']
+} as const;
 export const settingsText = (language: UiLanguage, chinese: string, english: string) => language === 'zh-CN' ? chinese : english;
 export const typingSections = ['symbols', 'structure', 'paste', 'candidates'] as const;
 export type TypingSection = typeof typingSections[number];
 export const sectionTitles = {
   display: ['文档显示', 'Document display'], opening: ['打开文档时', 'Opening documents'], interface: ['界面设置', 'Interface'],
+  presetList: ['预设列表', 'Preset list'], presetFiles: ['导入与制作', 'Import and authoring'],
   symbols: ['符号与选区', 'Symbols and selections'], structure: ['列表与结构', 'Lists and structure'], paste: ['粘贴', 'Pasting'], candidates: ['输入候选', 'Suggestions'],
   document: ['文档与编辑', 'Document and editing'], format: ['文字格式', 'Text formatting'], blocks: ['段落与块', 'Paragraphs and blocks'],
   table: ['表格', 'Tables'], selection: ['选择与光标', 'Selections and cursors'], lines: ['行操作', 'Line operations'], navigation: ['模式与导航', 'Modes and navigation']

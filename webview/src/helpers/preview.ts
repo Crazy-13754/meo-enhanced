@@ -1,6 +1,6 @@
 import morphdom from 'morphdom';
 import { createPreviewSearchController, previewSearchStyles } from './previewSearch';
-import { createElement as createIconElement, PenLine, TextCursor, Info, Palette, FileText, Check, Settings2 } from 'lucide';
+import { createElement as createIconElement, PenLine, TextCursor, Palette, FileText, Check } from 'lucide';
 import { getExportStyleEnvironment } from './export';
 import { createPreviewMermaidRenderer } from './previewMermaid';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
@@ -15,7 +15,7 @@ import { attachLatexMathViewport, type LatexMathViewportController } from './lat
 import type { MermaidDiagramRenderResources } from '../application/mermaidDiagramRenderResources';
 import type { PreviewCodePalette } from '../application/finalCodePalette';
 import { normalizePreviewFontFamily } from '../../../src/shared/preview';
-import { decodePreviewPresetState, getPreviewPreset, isPreviewPresetId, previewPresets, replaceCustomPreviewPresets, normalizePresetAppearance, resolvePresetAppearance, type PreviewPresetDefinition, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetState } from '../../../src/foundation/previewPresets';
+import { decodePreviewPresetState, getPreviewPreset, isPreviewPresetId, isPreviewPresetEnabled, previewPresets, replaceCustomPreviewPresets, normalizePresetAppearance, resolvePresetAppearance, type PreviewPresetDefinition, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetState } from '../../../src/foundation/previewPresets';
 import githubLightTheme from '@shikijs/themes/github-light-default';
 import githubDarkTheme from '@shikijs/themes/github-dark-default';
 import lightPlusTheme from '@shikijs/themes/light-plus';
@@ -29,7 +29,7 @@ import {
 import { activateShikiCodeHighlighting, subscribeShikiRefresh, setShikiTheme, type RawVscodeTheme } from './shikiHighlighter';
 import { createToolbarDropdown } from './toolbarDropdown';
 import { createSegmentedControl } from '../adapters/segmentedControl';
-import { createTooltip } from '../adapters/tooltip';
+import { createPreviewPresetInfo } from '../adapters/previewPresetInfo';
 import type { PreviewPresetDiagnostic } from '../../../src/foundation/previewPresets';
 import { resolveEmbeddedImageSrc } from './images';
 import {
@@ -46,6 +46,7 @@ type PreviewControllerOptions = {
   getCodePalette: (appearance: 'light' | 'dark') => PreviewCodePalette;
   applyCodeTheme: (appearance: 'light' | 'dark') => void;
   onPresetPreferencesChanged?: () => void;
+  onManagePresets?: () => void;
   onRendered?: (options?: { readonly skipLinkedViewportProjection?: boolean }) => void;
   onPaintReady?: () => void;
   /** Return true for a handled global command; other command keys continue to VS Code. */
@@ -837,6 +838,7 @@ export function createPreviewController({
   getCodePalette,
   applyCodeTheme,
   onPresetPreferencesChanged,
+  onManagePresets,
   onRendered,
   onPaintReady,
   onShortcut,
@@ -955,20 +957,11 @@ export function createPreviewController({
   const widthSelectControl = createToolbarDropdown('preview-width-control', uiStrings.previewWidth);
   const widthControl = widthSelectControl.element;
   const widthSelect = widthSelectControl.select;
-  const presetInfoControl = document.createElement('button');
-  presetInfoControl.type = 'button';
-  presetInfoControl.className = 'preview-toolbar-action preview-preset-info';
-  presetInfoControl.append(createIconElement(Info, { width: 15, height: 15, 'aria-hidden': 'true' }));
-  presetInfoControl.dataset.tooltipKind = 'description';
-  const presetInfoTooltip = createTooltip(presetInfoControl, { content: { kind: 'description', text: '' }, liveUpdate: true });
+  const presetInfo = createPreviewPresetInfo();
+  const presetInfoControl = presetInfo.element;
   // Keep the explanation next to its selector, including in overflow and split views.
   presetControl.append(presetInfoControl);
-  const managePresetsControl = document.createElement('button');
-  managePresetsControl.type = 'button';
-  managePresetsControl.className = 'preview-toolbar-action preview-preset-manage';
-  managePresetsControl.append(createIconElement(Settings2, { width: 15, height: 15, 'aria-hidden': 'true' }));
-  managePresetsControl.addEventListener('click', () => vscode.postMessage({ type: 'managePreviewPresets' }));
-  presetControl.append(managePresetsControl);
+  presetSelectControl.setFooterAction(uiStrings.previewPresetManage, () => onManagePresets?.());
   for (const preset of previewPresets) {
     const option = document.createElement('option');
     option.value = preset.id;
@@ -983,7 +976,7 @@ export function createPreviewController({
   }
   const refreshPresetOptions = () => {
     const selected = presetSelect.value;
-    presetSelect.replaceChildren(...previewPresets.map(preset => {
+    presetSelect.replaceChildren(...previewPresets.filter(preset => isPreviewPresetEnabled(preset.id)).map(preset => {
       const option = document.createElement('option');
       option.value = preset.id;
       option.textContent = preset.name[uiLanguage];
@@ -1033,6 +1026,7 @@ export function createPreviewController({
     uiStrings = getUiStrings(language);
     frame.title = uiStrings.previewTitle;
     presetSelectControl.setLabel(uiStrings.previewPreset);
+    presetSelectControl.setFooterAction(uiStrings.previewPresetManage, () => onManagePresets?.());
     for (const option of presetSelect.options) option.textContent = getPreviewPreset(option.value as PreviewPresetId).name[language];
     refreshPresetOptions();
     widthSelectControl.setLabel(uiStrings.previewWidth);
@@ -1080,32 +1074,10 @@ export function createPreviewController({
   const presetRenderErrors = new Map<PreviewPresetId, string>();
   const updatePresetInfo = () => {
     const preset = getPreviewPreset(presetPreference);
-    const policyText = (key: 'codeColoring' | 'htmlComments', enabled: boolean) => {
-      const policy = preset.controls[key];
-      if (policy.mode === 'unsupported') return uiStrings.previewControlUnsupported;
-      const value = key === 'codeColoring' ? enabled ? uiStrings.previewCodeColorsOn : uiStrings.previewCodeColorsOff
-        : enabled ? uiStrings.previewCommentsShow : uiStrings.previewCommentsHide;
-      return `${policy.mode === 'editable' ? uiStrings.previewControlEditable : uiStrings.previewControlFixed} · ${value}`;
-    };
-    const editableValue = (key: 'codeColoring' | 'htmlComments', preference: boolean) => preset.controls[key].mode === 'editable' ? preference : preset.controls[key].value === true;
-    const themes = preset.controls.appearance.options ?? [];
     const errors = presetDiagnostics.filter(diagnostic => !diagnostic.preset || diagnostic.preset === preset.id || !previewPresets.some(item => item.id === diagnostic.preset)).map(diagnostic => diagnostic.message);
     const renderError = presetRenderErrors.get(preset.id);
     if (renderError) errors.push(renderError);
-    presetInfoControl.hidden = false;
-    presetInfoControl.classList.toggle('has-error', errors.length > 0);
-    presetInfoControl.setAttribute('aria-label', `${uiStrings.previewPresetInfo}: ${preset.name[uiLanguage]}${errors.length ? ` · ${uiStrings.previewPresetError}` : ''}`);
-    presetInfoTooltip.setContent({ kind: 'description',
-      text: [preset.description[uiLanguage], ...preset.notes.map(note => `• ${note[uiLanguage]}`)].join('\n\n'),
-      rows: [
-        { label: uiStrings.previewThemeSupport, value: ['light', 'dark'].filter(value => themes.includes(value)).map(value => value === 'light' ? uiStrings.light : uiStrings.dark).join(' / ') },
-        { label: uiStrings.previewCurrentTheme, value: `${appearance === 'light' ? uiStrings.light : uiStrings.dark}${appearancePreference === 'auto' ? ` · ${uiStrings.auto}` : ''}` },
-        { label: uiStrings.showComments, value: policyText('htmlComments', editableValue('htmlComments', showComments)) },
-        { label: uiStrings.previewCodeColors, value: policyText('codeColoring', editableValue('codeColoring', sourceColoring)) },
-        { label: uiStrings.previewFontFamily, value: preset.controls.fontFamily.mode === 'editable' ? uiStrings.previewControlEditable : uiStrings.previewControlStyles },
-        { label: uiStrings.previewWidth, value: preset.controls.contentWidth.mode === 'editable' ? uiStrings.previewControlEditable : preset.controls.contentWidth.mode === 'fixed' ? uiStrings.previewControlStyles : uiStrings.previewControlUnsupported }
-      ], ...(errors.length ? { error: { title: uiStrings.previewPresetError, text: errors.join('\n\n') } } : {})
-    });
+    presetInfo.present(preset, uiLanguage, errors, { appearance, appearancePreference, showComments, sourceColoring });
   };
   const isSourceColoringEnabled = () => {
     const policy = getPreviewPreset(presetPreference).controls.codeColoring;
@@ -1147,8 +1119,6 @@ export function createPreviewController({
       ['contentWidth', widthControl]
     ] as const) control.hidden = key === 'appearance' ? false : preset.controls[key].mode !== 'editable';
     updateBooleanPresetControls();
-    managePresetsControl.dataset.tooltip = uiStrings.previewPresetManage;
-    managePresetsControl.setAttribute('aria-label', uiStrings.previewPresetManage);
     presetSelect.value = presetPreference;
     presetSelectControl.syncFromSelect();
     presetSelectControl.trigger.setAttribute('aria-label', `${uiStrings.previewPreset}: ${preset.name[uiLanguage]}`);
@@ -2241,7 +2211,7 @@ export function createPreviewController({
     preferences: { ...presetPreferences, [presetPreference]: { appearance: appearancePreference, contentWidth: contentWidthPreference } }
   });
   const setPreset = (preset: PreviewPresetId, { persist = true, force = false, render = true } = {}) => {
-    if (disposed || !previewPresets.some(item => item.id === preset) || preset === presetPreference && !force) return;
+    if (disposed || !previewPresets.some(item => item.id === preset) || !isPreviewPresetEnabled(preset) || preset === presetPreference && !force) return;
     presetPreferences[presetPreference] = { appearance: appearancePreference, contentWidth: contentWidthPreference };
     capturePresentationScroll();
     presetPreference = preset;
@@ -2265,12 +2235,12 @@ export function createPreviewController({
   const handlePresetChange = () => {
     if (isPreviewPresetId(presetSelect.value)) setPreset(presetSelect.value);
   };
-  const updateCustomPresets = (presets: readonly PreviewPresetDefinition[], selected?: PreviewPresetId, initial = false, diagnostics: readonly PreviewPresetDiagnostic[] = [], { render = true } = {}) => {
+  const updateCustomPresets = (presets: readonly PreviewPresetDefinition[], selected?: PreviewPresetId, initial = false, diagnostics: readonly PreviewPresetDiagnostic[] = [], { render = true, disabled = [] as readonly PreviewPresetId[] } = {}) => {
     presetDiagnostics = diagnostics;
-    replaceCustomPreviewPresets(presets);
+    replaceCustomPreviewPresets(presets, disabled);
     refreshPresetOptions();
     if (initial) { updatePresetControls(); return; }
-    const next = selected ?? (previewPresets.some(preset => preset.id === presetPreference) ? presetPreference : 'default');
+    const next = selected ?? (previewPresets.some(preset => preset.id === presetPreference) && isPreviewPresetEnabled(presetPreference) ? presetPreference : 'default');
     setPreset(next, { force: true, render });
   };
   const handleWidthChange = () => {
@@ -2957,6 +2927,7 @@ export function createPreviewController({
     setPreset,
     restorePresetState,
     updateCustomPresets,
+    getPresetDiagnostics: () => presetDiagnostics,
     invalidateRender: () => { requestGeneration += 1; cancelPaintReady(); },
     getPresetRevision: () => getPreviewPreset(presetPreference).custom?.revision,
     appearanceControl,
@@ -3107,7 +3078,7 @@ export function createPreviewController({
       frame.style.removeProperty('visibility');
       hasPendingRequest = false;
       previewRenderTransport.cancelAll('Preview closed');
-      presetInfoTooltip.dispose();
+      presetInfo.dispose();
       appearanceSelect.removeEventListener('change', handleAppearanceControlChange);
       sourceColoringSelect.removeEventListener('change', handleSourceColoringChange);
       appearanceSegments.element.removeEventListener('click', handleAppearanceSegmentClick);

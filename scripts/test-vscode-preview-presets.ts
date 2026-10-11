@@ -5,6 +5,7 @@ import { mock } from 'bun:test';
 class TestUri {
   readonly scheme = 'file';
   constructor(readonly fsPath: string) {}
+  static parse(value: string) { return { toString: () => value }; }
   static file(value: string) { return new TestUri(path.resolve(value)); }
   static joinPath(uri: TestUri, ...segments: string[]) { return TestUri.file(path.join(uri.fsPath, ...segments)); }
   get path() { return this.fsPath.replace(/\\/g, '/'); }
@@ -28,7 +29,10 @@ const snapshot = (uri: TestUri) => descendants(uri).map(([file, value]) => [path
 const cloneDirectory = (from: TestUri, to: TestUri) => {
   for (const [file, value] of descendants(from)) put(TestUri.joinPath(to, path.relative(from.fsPath, file)), new TextDecoder().decode(value.bytes), value.type);
 };
-const picks: (string | undefined)[] = [];
+const confirmations: (string | undefined)[] = [];
+const external: string[] = [];
+const dialogOptions: any[] = [];
+const state = new Map<string, unknown>();
 const dialogs: (TestUri[] | undefined)[] = [];
 const commands: { command: string; uri: TestUri }[] = [];
 let failRename: ((from: TestUri, to: TestUri) => boolean) | undefined;
@@ -76,21 +80,18 @@ const filesystem = {
 };
 mock.module('vscode', () => ({
   Uri: TestUri, FileType, workspace: { fs: filesystem },
+  env: { openExternal: async (uri: {toString(): string}) => { external.push(uri.toString()); return true; } },
   commands: { executeCommand: async (command: string, uri: TestUri) => { commands.push({ command, uri }); } },
   window: {
-    showQuickPick: async (items: any[]) => {
-      const selected = picks.shift();
-      return items.find(item => item.action === selected || item.preset?.id === selected);
-    },
-    showOpenDialog: async () => dialogs.shift(),
+    showOpenDialog: async (options: any) => { dialogOptions.push(options); return dialogs.shift(); },
     showInformationMessage: async () => undefined,
-    showWarningMessage: async () => undefined
+    showWarningMessage: async (_message: string, _options: unknown, ...items: string[]) => confirmations.length ? confirmations.shift() : items[0]
   }
 }));
 const { createVscodePreviewPresets } = await import('../src/host/vscodePreviewPresets');
 const globalStorageUri = TestUri.file('tmp/preset-storage');
 const extensionUri = TestUri.file('tmp/preset-extension');
-const context = { globalStorageUri, extensionUri } as never;
+const context = { globalStorageUri, extensionUri, globalState: { get: (key: string, fallback: unknown) => state.get(key) ?? fallback, update: async (key: string, value: unknown) => { state.set(key, value); } } } as never;
 const root = TestUri.joinPath(globalStorageUri, 'preview-presets');
 const source = TestUri.file('tmp/preset-source');
 const manifestUri = TestUri.joinPath(source, 'preset.jsonc');
@@ -105,10 +106,11 @@ put(manifestUri, '// Configuration comments are supported\n' + JSON.stringify(ma
 put(cssUri, css);
 let owner = await createVscodePreviewPresets(context);
 const importPreset = () => {
-  picks.push('import'); dialogs.push([manifestUri]);
-  return owner.manage('zh-CN');
+  dialogs.push([source]);
+  return owner.perform({ action: 'import', language: 'zh-CN' });
 };
-assert.deepEqual(await importPreset(), { changed: true, selected: 'user:native-test' });
+assert.deepEqual(await importPreset(), { changed: true });
+assert.deepEqual(dialogOptions.at(-1), { canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: '选择预设文件夹' });
 const original = owner.get('user:native-test')!;
 assert.deepEqual(original.controls.htmlComments, { mode: 'fixed', value: true });
 assert.deepEqual(original.controls.codeColoring, { mode: 'fixed', value: false });
@@ -198,40 +200,61 @@ owner = await createVscodePreviewPresets(context);
 assert.equal(owner.get(original.id)?.custom?.revision, original.custom!.revision, 'Recovery replaces an incomplete current package with the complete previous package');
 assert.ok([...entries.keys()].some(file => path.basename(file).startsWith('.native-test.invalid-')), 'Invalid contents are retained separately');
 const beforeCancel = writes;
-picks.push(undefined);
-assert.deepEqual(await owner.manage('en'), { changed: false });
-picks.push('import'); dialogs.push(undefined);
-assert.deepEqual(await owner.manage('en'), { changed: false });
-picks.push('export', original.id); dialogs.push(undefined);
-assert.deepEqual(await owner.manage('en'), { changed: false });
-for (const [language, filename] of [['zh-CN', 'custom-preview-presets.md'], ['en', 'custom-preview-presets.en.md']] as const) {
-  picks.push('guide');
-  assert.deepEqual(await owner.manage(language), { changed: false });
-  assert.equal(commands.at(-1)!.command, 'markdown.showPreview');
-  assert.equal(commands.at(-1)!.uri.fsPath, path.join(extensionUri.fsPath, 'docs', filename));
+dialogs.push(undefined);
+assert.deepEqual(await owner.perform({ action: 'import', language: 'en' }), { changed: false });
+dialogs.push(undefined);
+assert.deepEqual(await owner.perform({ action: 'export', preset: original.id, language: 'en' }), { changed: false });
+for (const [language, filename] of [['zh-CN', 'README.zh-CN.md'], ['en', 'README.md']] as const) {
+  assert.deepEqual(await owner.perform({ action: 'guide', language }), { changed: false });
+  assert.equal(external.at(-1), `https://github.com/huangko555/meo-enhanced/blob/main/preview-presets/${filename}`);
 }
-assert.equal(writes, beforeCancel, 'Canceled dialogs and localized guides do not write presets');
+assert.equal(writes, beforeCancel, 'Canceled dialogs and localized external guides do not write presets');
+
+await assert.rejects(owner.perform({ action: 'setEnabled', preset: 'default', enabled: false, language: 'en' }), /always enabled/);
+await assert.rejects(owner.perform({ action: 'remove', preset: 'github-readme', language: 'en' }), /always enabled/);
+await owner.perform({ action: 'setEnabled', preset: original.id, enabled: false, language: 'en' });
+owner = await createVscodePreviewPresets(context);
+assert.deepEqual(owner.disabled(), [original.id], 'Hidden presets remain installed and survive restart');
+const beforeUpdate = snapshot(savedDirectory);
+put(cssUri, css);
+confirmations.push(undefined);
+assert.deepEqual(await importPreset(), { changed: false });
+assert.deepEqual(snapshot(savedDirectory), beforeUpdate, 'Canceling a duplicate-ID update preserves files');
+assert.deepEqual(await importPreset(), { changed: true });
+assert.deepEqual(owner.disabled(), [original.id], 'Updating keeps visibility instead of enabling hidden presets');
+await owner.perform({ action: 'setEnabled', preset: original.id, enabled: true, language: 'en' });
+assert.deepEqual(owner.disabled(), []);
 
 const exportRoot = TestUri.file('tmp/preset-share');
-picks.push('export', original.id); dialogs.push([exportRoot]);
-assert.deepEqual(await owner.manage('zh-CN'), { changed: false });
+dialogs.push([exportRoot]);
+assert.deepEqual(await owner.perform({ action: 'export', preset: original.id, language: 'zh-CN' }), { changed: false });
 const exportedManifest = [...entries.keys()].find(file => file.startsWith(exportRoot.fsPath + path.sep) && path.basename(file) === 'preset.jsonc')!;
 assert.equal(text(TestUri.file(path.join(path.dirname(exportedManifest), 'styles/light.css'))), css);
 assert.equal(JSON.parse(text(TestUri.file(exportedManifest))).themes.light.css, 'styles/light.css');
-dialogs.push([TestUri.file(exportedManifest)]); picks.push('import');
-assert.deepEqual(await owner.manage('en'), { changed: true, selected: original.id }, 'Exported folders can be imported directly');
+dialogs.push([TestUri.file(path.dirname(exportedManifest))]);
+assert.deepEqual(await owner.perform({ action: 'import', language: 'en' }), { changed: true }, 'Exported folders can be imported directly without changing selection');
+put(TestUri.joinPath(source, 'preset.json'), JSON.stringify(manifest));
+await assert.rejects(importPreset(), /exactly one/);
+entries.delete(TestUri.joinPath(source, 'preset.json').fsPath);
+entries.delete(manifestUri.fsPath);
+put(TestUri.joinPath(source, 'preset.json'), JSON.stringify(manifest));
+assert.deepEqual(await importPreset(), { changed: true }, 'Plain preset.json folders are accepted');
+entries.delete(TestUri.joinPath(source, 'preset.json').fsPath);
+put(manifestUri, JSON.stringify(manifest));
 
 const unrelated = TestUri.joinPath(root, 'notes.txt');
 put(unrelated, 'Keep this file');
 put(TestUri.joinPath(savedDirectory, 'unreferenced.css'), 'unused');
-dialogs.push([TestUri.file(exportedManifest)]); picks.push('import');
-await owner.manage('en');
+dialogs.push([TestUri.file(path.dirname(exportedManifest))]);
+await owner.perform({ action: 'import', language: 'en' });
 assert.equal(entries.has(TestUri.joinPath(savedDirectory, 'unreferenced.css').fsPath), false, 'Updating replaces the whole package');
 cloneDirectory(savedDirectory, previous);
 failDelete = uri => uri.fsPath === previous.fsPath;
 put(TestUri.joinPath(root, 'native-test.json'), JSON.stringify(legacyRecord('native-test')));
-picks.push('remove', original.id);
-assert.deepEqual(await owner.manage('zh-CN'), { changed: true });
+confirmations.push(undefined);
+assert.deepEqual(await owner.perform({ action: 'remove', preset: original.id, language: 'zh-CN' }), { changed: false });
+assert.ok(owner.get(original.id), 'Canceling removal keeps the preset');
+assert.deepEqual(await owner.perform({ action: 'remove', preset: original.id, language: 'zh-CN' }), { changed: true });
 failDelete = undefined;
 assert.equal(owner.get(original.id), undefined);
 assert.equal(entries.has(savedDirectory.fsPath) || entries.has(previous.fsPath), false);

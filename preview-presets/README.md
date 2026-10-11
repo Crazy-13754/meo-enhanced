@@ -1,18 +1,25 @@
 # Custom Preview Preset Configuration Guide
 
-English · [简体中文](custom-preview-presets.md)
+English · [简体中文](README.zh-CN.md)
 
 Each preset consists of one UTF-8 JSON/JSONC configuration file and one to three CSS files. JSONC supports comments and trailing commas. Presets apply to standalone Preview, split Preview, and HTML/PDF exports. Word keeps its existing fixed export format. Live and Source continue to use the editor appearance.
 
 ## Quick start
 
-1. Copy the [Paper Notes example](examples/preview-presets/paper-notes/) (light and dark) or the [GitHub Paper example](examples/preview-presets/github-paper/) (light only). Keep the CSS files referenced by the configuration.
+1. Copy the [Paper Notes example](examples/paper-notes/) (light and dark) or the [GitHub Paper example](examples/github-paper/) (light only). Keep the CSS files referenced by the configuration.
 2. Edit `id`, `name`, `description`, and the CSS. Keeping the same `id` updates an existing preset; changing it creates another preset. Names and descriptions are displayed as written, so you can replace the example's Chinese text with your own text.
-3. Click **Manage custom presets** beside the preset selector in Preview, choose **Import / update preset…**, and select the configuration file. You can also use **MEO Enhanced: Manage custom preview presets** in the Command Palette.
-4. After a successful import, the current Preview switches to the new preset. Presets with both themes support Auto / Light / Dark. For a single theme, the theme controls remain visible but disabled, with a tooltip explaining the supported theme.
-5. Check the Preview before exporting HTML/PDF. After editing the original CSS, import the configuration again; the editor does not watch the source files automatically.
+3. Choose **Custom presets…** at the bottom of Preview's **Preset** menu to open **Settings → Preview presets**. Click **Import preset…** and select a folder containing exactly one `preset.jsonc` or `preset.json` at its root. The command palette's **MEO Enhanced: Manage custom preview presets** opens the same page.
+4. New imports are enabled without switching the current Preview. Select the new preset in Preview's toolbar. Dual-theme presets support Auto / Light / Dark; single-theme controls remain visible but disabled, with an explanation.
+5. Check the Preview before exporting HTML/PDF. After editing CSS, import the folder again. The same ID prompts for an update; a failed update retains the previous version.
 
-**Configuration guide** in the management menu opens the bundled local guide in the current MEO interface language. Use the links at the top of the guide to switch languages manually. Examples and the Schema are also bundled, so no internet connection is needed.
+## Manage presets
+
+- Default and GitHub README are built in, always enabled, and cannot be removed.
+- Check a custom preset to show it in Preview's menu. Unchecking hides the entry but keeps its files. Open previews using that preset return to Default; enabling it again does not switch the preview.
+- Each information icon shares the Preview toolbar component and shows the author's notes, supported themes and setting policies. Management does not mark the currently selected preset.
+- **More** on each custom row offers export and removal. Removal asks for confirmation and deletes only the managed copy, keeping the original files.
+- Import copies validated configuration and referenced CSS without moving the originals. Updates preserve visibility; new imports are enabled.
+- **Creation guide** opens the Chinese or English GitHub guide in your browser, following the current MEO interface language. Guides and examples live in this repository and are excluded from the extension package. Imported presets work offline; the small configuration Schema remains bundled for offline completion and validation.
 
 ## Configuration file
 
@@ -47,11 +54,11 @@ Each preset consists of one UTF-8 JSON/JSONC configuration file and one to three
 | `themes.light` / `themes.dark` | Provide at least one. Each theme requires `css`. The entries determine which themes are supported. |
 | `codeTheme` | Optional: `light-plus`, `dark-plus`, `github-light-default`, or `github-dark-default`. Omit it to inherit the base preset's palette. Applies only when coloring is enabled; it does not enable or lock coloring. |
 | `author` / `version` / `source` / `license` | Optional sharing metadata, up to 500 characters each. They do not affect rendering. |
-| `$schema` | Optional link to the [JSON Schema](../schemas/custom-preview-preset.schema.json) for completion and validation. After copying an example, update its relative path or remove this field. |
+| `$schema` | Optional link to the [JSON Schema](preset.schema.json) for completion and validation. After copying an example, update its relative path or remove this field. |
 
 `base` determines appearance without inheriting control policies. All custom presets use MEO Markdown rendering, including line breaks, Alerts, task lists, and HTML comment handling. A preset based on `github-readme` uses GitHub styles and can still show comments. CSS loads in this order: base styles → common → current theme. Built-in Default and GitHub retain their existing behavior; built-in GitHub still hides comments and enables code coloring. Imports cannot replace built-ins, and custom presets cannot inherit from other custom presets.
 
-You can name the configuration `paper-notes.meo-preset.jsonc` to have the installed extension associate its Schema automatically. For other filenames, specify the Schema with `$schema`.
+Name the root configuration `preset.jsonc` or `preset.json`. Use `$schema` for completion and validation.
 
 CSS controls custom fonts and document width, so the corresponding menu controls are hidden. `themes` determines theme support. Preset selection and theme preferences are restored for the current document.
 
@@ -80,7 +87,7 @@ For example, allow comments to be toggled and keep code coloring enabled:
 }
 ```
 
-[Paper Notes](examples/preview-presets/paper-notes/) demonstrates two editable controls and independent light/dark code palettes. [GitHub Paper](examples/preview-presets/github-paper/) demonstrates editable comments and fixed code coloring. Edit either example's `controls` and reimport to apply the change.
+[Paper Notes](examples/paper-notes/) demonstrates two editable controls and independent light/dark code palettes. [GitHub Paper](examples/github-paper/) demonstrates editable comments and fixed code coloring. Edit either example's `controls` and reimport to apply the change.
 
 ## Writing and scoping CSS
 
@@ -155,11 +162,11 @@ Folder names use the stable `id`; `name` controls the display label. CSS names a
 
 Earlier development versions stored each preset in `<id>.json`. Loading migrates those files automatically and moves the original into `.legacy/` as a backup after success. A failed migration leaves the legacy preset usable. If an active folder already exists for an ID, it takes precedence and appears only once. Invalid legacy records are not overwritten.
 
-Use **Open preset storage folder** to inspect, edit, or back up whole presets. After editing, import the folder's `preset.jsonc` again to apply changes immediately, or reload the VS Code window to read them again; files are not watched automatically. Use **Export preset files…** to share a complete folder that another computer can import directly. Backups must include the configuration and all referenced CSS.
+The managed storage path is described above. After editing a saved copy, import its whole folder again or reload the VS Code window; files are not watched automatically. Use **More → Export** on a custom preset row to share a complete folder that another computer can import directly. Backups must include the configuration and all referenced CSS.
 
 These files are not written into the current project. Moving or deleting the original import files does not affect saved presets. Presets reload after restart and normal extension upgrades, and workspaces in the same extension environment share the library. The first version does not automatically synchronize across computers, VS Code profiles, or remote extension environments. Other VS Code windows that are already open need to reload to read new styles.
 
-Importing the same ID updates that preset. If import fails, its previous styles remain available. Removal only deletes the saved copy; open previews using it return to Default. Missing presets also fall back to Default when a document opens. Damaged saved records are reported and skipped.
+Importing the same ID asks for confirmation, updates that preset and preserves its visibility. If import fails, its previous styles remain available. Removal only deletes the saved copy; open previews using it return to Default. Missing presets also fall back to Default when a document opens. Damaged saved records are reported and skipped.
 
 Configuration files and individual CSS files are limited to 512 KiB each, a package to 2 MiB, and the library to 100 presets. CSS references must be relative paths inside the configuration directory. Path segments use English letters, digits, underscores, hyphens, and dots in filenames. Absolute paths, parent-directory traversal, symbolic links, and remote references are not supported. Import errors identify the field or CSS file and explain the reason.
 

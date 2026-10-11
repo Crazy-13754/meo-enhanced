@@ -17,11 +17,12 @@ import { decodePreviewRenderRequest, decodePreviewRenderResponse, type PreviewRe
 import { decodeInitMessage, decodeReadyMessage, type InitMessage, type ReadyMessage } from './readyInit';
 import { decodeResolveWikiLinksRequest, decodeResolvedWikiLinksResponse, type ResolveWikiLinksRequest, type ResolvedWikiLinksResponse } from './wikiLinkResolution';
 import { decodeReadingPositionChangedMessage, type ReadingPositionChangedMessage } from './readingPosition';
-import { decodePreviewPresetsChanged, type PreviewPresetsChanged } from './previewPresets';
+import { decodePreviewPresetsChanged, decodePreviewPresetRequest, decodePreviewPresetResponse, type PreviewPresetRequest, type PreviewPresetResponse, type OpenPreviewPresetSettings, type PreviewPresetsChanged } from './previewPresets';
 
 import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageStorageChangedEvent, type ImageLocationRequest, type ImageLocationResponse, type ImageStorageChangedEvent } from './imageStorage';
 
 export type WebviewToHostMessage =
+  | PreviewPresetRequest
   | ImageLocationRequest
   | EditorServiceRequest
   | ReadyMessage
@@ -41,6 +42,8 @@ export type WebviewToHostMessage =
   | ExportSnapshotResponse;
 
 export type HostToWebviewMessage =
+  | PreviewPresetResponse
+  | OpenPreviewPresetSettings
   | PreviewPresetsChanged
   | ImageLocationResponse
   | ImageStorageChangedEvent
@@ -65,7 +68,8 @@ export type HostToWebviewMessage =
   | GitBaselineChangedEvent;
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
-  return decodeImageLocationRequest(value)
+  return decodePreviewPresetRequest(value)
+    ?? decodeImageLocationRequest(value)
     ?? decodeEditorServiceRequest(value)
     ?? decodeReadyMessage(value)
     ?? decodeDocumentSyncCommand(value)
@@ -85,7 +89,9 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
 }
 
 export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage | null {
+  if (value && typeof value === 'object' && 'type' in value && value.type === 'openPreviewPresetSettings') return { type: 'openPreviewPresetSettings' };
   return decodePreviewPresetsChanged(value)
+    ?? decodePreviewPresetResponse(value)
     ?? decodeImageLocationResponse(value)
     ?? decodeImageStorageChangedEvent(value)
     ?? decodeEditorServiceResponse(value)

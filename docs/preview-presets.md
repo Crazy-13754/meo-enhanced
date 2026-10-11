@@ -31,7 +31,7 @@ Preview 的“预设”入口提供 **默认** 和 **GitHub README**。独立预
 
 示例可直接参照 `github-readme/preset.json`。字体固定表示由样式文件决定，不通过菜单设置字体值。
 
-新增内置预设时，先新增定义及需要的 CSS，再在 `src/foundation/previewPresets.ts` 注册 ID 与定义。复用现有 renderer 不需要复制工具栏逻辑；只有出现新的解析行为时才增加渲染实现。用户预设通过 Host 校验配置与本地 CSS 后加入同一目录，ID 使用 `user:` 前缀；写法与导入、保存规则见 [自定义预设指南](custom-preview-presets.md)。脚本与远程 CSS 不支持。
+新增内置预设时，先新增定义及需要的 CSS，再在 `src/foundation/previewPresets.ts` 注册 ID 与定义。复用现有 renderer 不需要复制工具栏逻辑；只有出现新的解析行为时才增加渲染实现。用户预设通过 Host 校验配置与本地 CSS 后加入同一目录，ID 使用 `user:` 前缀；写法与导入、保存规则见 [自定义预设指南](../preview-presets/README.zh-CN.md)。脚本与远程 CSS 不支持。
 
 自定义预设的 `base` 只继承外观和默认代码配色，统一使用 `meo` 渲染。`controls` 独立配置 HTML 注释和代码着色；省略时可切换，固定项隐藏。`codeTheme` 只选择配色，不锁定着色开关。单主题的主题控件保留并禁用；字体和正文宽度交由 CSS 控制，隐藏对应控件。默认、GitHub 和自定义预设统一显示说明入口：作者文案下方通过分隔线展示主题支持、当前主题和各项配置能力，错误时入口变红并显示详情。内置预设的规则由扩展提供，不能被用户配置文件替换。
 
@@ -66,3 +66,11 @@ CSS 通过 `github-readme/styles.js` 的 Bun 文本导入打包进 `dist/export-
 5. 展开折叠块，检查后续正文可见；检查表格和长代码的局部横向滚动、图片、Alerts、公式、标题间距和目录导航。对照 HTML / PDF 导出的相同内容，并确认默认预览原有样式与交互保持有效。
 
 验收报告应分开记录自动化、原生视觉和拖动操作的结果；存在尚未核实或未修复的基础问题时，不能继续使用此前的通过结论。
+
+## 预设管理入口
+
+预览下拉菜单底部固定“自定义预设…”导航动作，直接打开完整设置的“预览预设”页；命令面板入口打开同一页。默认与 GitHub 始终启用，自定义预设的显示状态保存在当前扩展环境的 globalState 中，独立于逐文档的预设选择。隐藏或移除正在使用的预设时，所有已打开的 MEO 文档回到默认。导入、更新与启用不自动选择预设，更新保留显示状态。管理行的信息图标和 Preview 工具栏复用 `previewPresetInfo.ts`，列表不标记当前选择。
+
+指南与示例集中在仓库根目录 `preview-presets/`，排除在 VSIX 之外。制作指南使用面板的实际语言打开 GitHub；配置 Schema 保留在包内，已有预设可离线使用。
+
+`preview-presets/preset.schema.json` 为独立 GitHub 目录中的制作辅助文件，与包内 `schemas/custom-preview-preset.schema.json` 保持一致；配置测试校验两者内容，修改字段时同步更新。

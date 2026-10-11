@@ -39,7 +39,7 @@ MEO Enhanced 适用于需要在 VS Code 中编写和审阅复杂 Markdown 文档
 
 Preview 的 **预设** 菜单提供 **默认** 和 **GitHub README**。GitHub README 使用内置的 GitHub 风格字体、代码配色和渲染规则，可选择自动 / 浅色 / 深色主题，正文有固定最大宽度，窄面板自动收缩。切回默认会恢复原来的设置。HTML、PDF 导出沿用当前预览预设和主题；Word 保持固定格式。公式、图表和仓库专属功能的差异可查看预设说明。
 
-也可以导入 JSONC 配置和 CSS 编写的自定义预设，支持浅色、深色或双主题。通过预设旁的“管理自定义预设”导入、更新、导出分享文件或移除，其中的“配置指南”会按当前界面语言打开内置指南。配置格式与示例见 [自定义预设指南](docs/custom-preview-presets.md)。
+也可以导入包含 JSONC 配置和 CSS 的自定义预设文件夹，支持浅色、深色或双主题。预设下拉菜单底部的“自定义预设…”打开“设置 → 预览预设”，可勾选显示、导入更新、导出分享或移除。默认和 GitHub README 始终启用。“制作指南”按当前界面语言打开 [GitHub 上的指南与示例](https://github.com/huangko555/meo-enhanced/blob/main/preview-presets/README.zh-CN.md)，指南和示例不随扩展打包。
 
 ![同一份 Markdown 文档在 Live、Source 和 Preview 模式中的显示效果](docs/readme/zh-cn/display-modes.png)
 

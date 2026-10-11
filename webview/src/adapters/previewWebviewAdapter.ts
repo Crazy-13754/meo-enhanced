@@ -13,7 +13,7 @@ export type PreviewSurface = {
   setShowComments(enabled: boolean): void;
   setFontFamily(fontFamily: string): void;
   restorePresetState?(state: unknown): void;
-  updateCustomPresets?(presets: readonly PreviewPresetDefinition[], selected?: PreviewPresetId, initial?: boolean, diagnostics?: readonly PreviewPresetDiagnostic[], options?: { render?: boolean }): void;
+  updateCustomPresets?(presets: readonly PreviewPresetDefinition[], selected?: PreviewPresetId, initial?: boolean, diagnostics?: readonly PreviewPresetDiagnostic[], options?: { render?: boolean; disabled?: readonly PreviewPresetId[] }): void;
   invalidateRender?(): void;
   getAppearance(): ResolvedPreviewAppearance;
   setVisible(visible: boolean): void;
@@ -29,7 +29,7 @@ export type PreviewSurface = {
 };
 
 export type PreviewWebviewAdapter = {
-  start(input: { text: string; appearance: PreviewAppearance; fontFamily: string; sourceColoring: boolean; showComments: boolean; active: boolean; presetState?: unknown; customPreviewPresets?: readonly PreviewPresetDefinition[]; previewPresetDiagnostics?: readonly PreviewPresetDiagnostic[] }): void;
+  start(input: { text: string; appearance: PreviewAppearance; fontFamily: string; sourceColoring: boolean; showComments: boolean; active: boolean; presetState?: unknown; customPreviewPresets?: readonly PreviewPresetDefinition[]; previewPresetDiagnostics?: readonly PreviewPresetDiagnostic[]; disabledPreviewPresets?: readonly PreviewPresetId[] }): void;
   setActive(input: {
     active: boolean;
     text: string;
@@ -128,7 +128,7 @@ export function createPreviewWebviewAdapter(
       if (disposed) return;
       active = input.active;
       currentText = input.text;
-      surface.updateCustomPresets?.(input.customPreviewPresets ?? [], undefined, true, input.previewPresetDiagnostics ?? [], { render: false });
+      surface.updateCustomPresets?.(input.customPreviewPresets ?? [], undefined, true, input.previewPresetDiagnostics ?? [], { render: false, disabled: input.disabledPreviewPresets });
       surface.setAppearance(input.appearance);
       surface.setSourceColoring(input.sourceColoring);
       surface.setShowComments(input.showComments);
@@ -172,7 +172,7 @@ export function createPreviewWebviewAdapter(
     accept(message) {
       if (message.type === 'previewPresetsChanged') {
         if (!disposed) {
-          surface.updateCustomPresets?.(message.presets, message.selected, false, message.diagnostics, { render: false });
+          surface.updateCustomPresets?.(message.presets, message.selected, false, message.diagnostics, { render: false, disabled: message.disabled });
           invalidateResources();
         }
         return true;

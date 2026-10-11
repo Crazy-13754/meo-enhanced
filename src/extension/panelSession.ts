@@ -140,6 +140,8 @@ type PanelSessionControllerParams = {
   getCustomPreviewPresets?: () => readonly import('../foundation/previewPresets').PreviewPresetDefinition[];
   getPreviewPresetDiagnostics?: () => readonly import('../foundation/previewPresets').PreviewPresetDiagnostic[];
   managePreviewPresets?: () => Promise<void>;
+  getDisabledPreviewPresets?: () => readonly import('../foundation/previewPresets').PreviewPresetId[];
+  performPreviewPresetAction?: (request: import('../protocol/previewPresets').PreviewPresetRequest) => Promise<import('../protocol/previewPresets').PreviewPresetResponse>;
   renderPreview: (options: {
     markdownText: string;
     sourceDocumentPath: string;
@@ -442,6 +444,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       type: 'init',
       customPreviewPresets: params.getCustomPreviewPresets?.() ?? [],
       previewPresetDiagnostics: params.getPreviewPresetDiagnostics?.() ?? [],
+      disabledPreviewPresets: params.getDisabledPreviewPresets?.() ?? [],
       documentId: documentKey,
       text: initialText,
       version: document.version,
@@ -631,6 +634,12 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     switch (raw.type) {
+      case 'previewPresetRequest':
+        await postToWebview(params.performPreviewPresetAction ? await params.performPreviewPresetAction(raw) : {
+          type: 'previewPresetResult', requestId: raw.requestId,
+          result: { ok: false, error: { code: 'operation-failed', message: 'Preview preset owner is unavailable' } }
+        });
+        return;
       case 'managePreviewPresets':
         await params.managePreviewPresets?.();
         return;

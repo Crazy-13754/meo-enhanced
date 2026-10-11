@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createPreviewPresetLibrary, validatePresetCss, type StoredPreviewPreset } from '../src/host/customPreviewPresets';
 import { createCustomPreviewPreset, decodeCustomPreviewPresets, parseCustomPreviewPresetManifest } from '../src/foundation/customPreviewPreset';
 import { decodePreviewPresetState, getPreviewPreset, replaceCustomPreviewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
-import { decodePreviewPresetsChanged } from '../src/protocol/previewPresets';
+import { decodePreviewPresetsChanged, decodePreviewPresetRequest, decodePreviewPresetResponse } from '../src/protocol/previewPresets';
 import { decodePreviewRenderRequest } from '../src/protocol/previewRender';
 import exportRuntime from '../src/export/runtime';
 
@@ -14,12 +14,12 @@ let writes = 0;
 const storage = { list: async () => [...saved.keys()], read: async (id: string) => saved.get(id)!, write: async (id: string, value: StoredPreviewPreset) => { if (failWrite) throw new Error('Disk unavailable'); writes++; saved.set(id, structuredClone(value)); }, remove: async (id: string) => { saved.delete(id); } };
 const library = createPreviewPresetLibrary(storage);
 const importExample = async (name: string) => {
-  const directory = path.resolve('docs/examples/preview-presets', name);
+  const directory = path.resolve('preview-presets/examples', name);
   return library.import(await readFile(path.join(directory, 'preset.jsonc'), 'utf8'), file => readFile(path.join(directory, file), 'utf8'));
 };
 const dual = await importExample('paper-notes');
 const single = await importExample('github-paper');
-assert.equal((saved.get('paper-notes') as StoredPreviewPreset).files['common.css'], await readFile(path.resolve('docs/examples/preview-presets/paper-notes/common.css'), 'utf8'), 'Stored CSS preserves its actual line breaks');
+assert.equal((saved.get('paper-notes') as StoredPreviewPreset).files['common.css'], await readFile(path.resolve('preview-presets/examples/paper-notes/common.css'), 'utf8'), 'Stored CSS preserves its actual line breaks');
 assert.equal(library.list().length, 2);
 assert.equal(dual.renderer, 'meo');
 assert.equal(single.renderer, 'meo');
@@ -33,6 +33,27 @@ assert.equal(dual.controls.fontFamily.mode, 'fixed');
 assert.deepEqual(decodeCustomPreviewPresets(library.list()), library.list());
 assert.ok(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), selected: dual.id }));
 assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), selected: 'user:missing' }), null);
+assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), disabled: ['default'] }), null, 'Built-ins cannot be hidden over the protocol');
+assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), disabled: [dual.id], selected: dual.id }), null, 'A disabled preset cannot become selected');
+for (const action of ['setEnabled', 'remove', 'export']) {
+  assert.equal(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action, preset: 'github-readme', enabled: false, language: 'en' }), null);
+}
+assert.ok(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action: 'setEnabled', preset: dual.id, enabled: false, language: 'zh-CN' }));
+assert.equal(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action: 'guide', language: 'auto' }), null, 'Guide routing requires the resolved panel language');
+assert.equal(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: '', action: 'import', language: 'en' }), null);
+assert.equal(decodePreviewPresetResponse({ type: 'previewPresetResult', requestId: 'test', result: { ok: true, value: { changed: 'true' } } }), null);
+assert.ok(decodePreviewPresetResponse({ type: 'previewPresetResult', requestId: 'test', result: { ok: false, error: { code: 'operation-failed', message: 'Failed' } } }));
+assert.equal(await readFile('preview-presets/preset.schema.json', 'utf8'), await readFile('schemas/custom-preview-preset.schema.json', 'utf8'), 'The online authoring schema stays synchronized with the offline runtime schema');
+for (const [filename, alternate] of [['README.md', 'README.zh-CN.md'], ['README.zh-CN.md', 'README.md']]) {
+  const guide = await readFile(path.resolve('preview-presets', filename), 'utf8');
+  assert.ok(guide.includes(`](${alternate})`), 'Both guides provide a language switch');
+  for (const [, href] of guide.matchAll(/\]\(([^)#]+)(?:#[^)]*)?\)/g)) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
+    const target = path.resolve('preview-presets', href);
+    const file = href.endsWith('/') ? path.join(target, 'preset.jsonc') : target;
+    assert.ok(await readFile(file), `${filename}: ${href} resolves inside the standalone catalog`);
+  }
+}
 replaceCustomPreviewPresets(library.list());
 assert.equal(getPreviewPreset('default').custom, undefined);
 const preference = { preset: single.id, preferences: { [single.id]: { appearance: 'dark', contentWidth: 'reference' } } };
