@@ -25,7 +25,7 @@ The toolbar and its settings panel provide the following options:
 - **Interface language**: Simplified Chinese, English, or the current VS Code display language.
 - **Editor appearance**: Light, Dark, or the current VS Code theme.
 - **Content font size**: Follow the VS Code editor font size or use a custom size from `10` to `32`.
-- **Preview settings**: Configure the Preview appearance, document font, and code colors independently.
+- **Preview settings**: Choose a preset and adjust its supported appearance, font, and code-coloring options.
 
 ![MEO Enhanced settings panel with interface language, editor appearance, and font size options](docs/readme/en/settings-panel.png)
 
@@ -33,15 +33,27 @@ The toolbar and its settings panel provide the following options:
 
 - **Live**: Displays rendered headings, lists, tables, images, diagrams, formulas, and other content in place while retaining direct editing.
 - **Source**: Displays the complete Markdown source with syntax highlighting for precise markup changes, bulk editing, and inspection of the original content.
-- **Preview**: Displays the fully rendered document in a read-only view, with controls for font, code colors, appearance, and export.
+- **Preview**: Displays the fully rendered document in a read-only view, with preset and export controls.
 
 All three modes use the same document content. The current reading position is preserved when switching modes, without creating or maintaining a separate preview document.
 
-Preview's **Preset** menu offers **Default** and **GitHub README**. GitHub README uses bundled GitHub-style fonts, code colors and rendering rules, with Auto / Light / Dark appearance and a responsive maximum content width. Switching back restores Default settings. HTML and PDF exports follow the current preview preset and theme; Word keeps its fixed format. Formulas, diagrams and repository-specific features may differ from GitHub; preset notes describe these limits.
-
-Import custom presets from folders containing JSONC configuration and CSS, with light, dark, or both themes. **Custom presets…** at the bottom of the preset menu opens **Settings → Preview presets**, where you show or hide custom entries, import or update folders, export files and remove presets. Default and GitHub README are always enabled. **Creation guide** opens the [GitHub guide and examples](https://github.com/huangko555/meo-enhanced/blob/main/preview-presets/README.md) in the current interface language. Guides and examples are excluded from the extension package.
-
 ![The same Markdown document displayed in Live, Source, and Preview modes](docs/readme/en/display-modes.png)
+
+## Preview presets and export
+
+Preview includes **Default**, which follows editor colors, and **GitHub README**, which provides a local GitHub-style preview. GitHub and custom presets use their own light/dark palettes.
+
+Choose **Custom presets…** at the bottom of the preset menu to import and manage your presets. The [creation guide and examples](https://github.com/huangko555/meo-enhanced/blob/main/preview-presets/README.md) are provided separately on GitHub.
+
+**Export as…** offers these formats, each with an optional table of contents:
+
+| Format | Purpose and style |
+| --- | --- |
+| HTML | Browser reading, using the current preview preset and colors |
+| PDF | Sharing and printing, using the preset with paginated layout |
+| Word (.docx) | Further editing, using a fixed document format |
+
+Exporting from preset settings shares the preset files.
 
 ## Document change review
 
