@@ -151,7 +151,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
     const nativeActiveBorder = highContrast ? read('contrastActiveBorder', color('focusBorder', rgb(accent)), raised) : undefined;
     const nativeSelection = highContrast ? read('list.activeSelectionBackground', rgb(raised), raised) : undefined;
     const nativeSelectionText = highContrast ? read('list.activeSelectionForeground', rgb(foreground), nativeSelection) : undefined;
-    const key = JSON.stringify([appearance, highContrast, surface, raised, foreground, accent, success, warning, danger, textEmphasis, contentSurfaces, documentInk, blockSurface,
+    const key = JSON.stringify([appearance, highContrast, surface, raised, foreground, accent, success, warning, danger, !!custom.success, !!custom.warning, !!custom.danger, textEmphasis, contentSurfaces, documentInk, blockSurface,
       nativeFocus, nativeBorder, nativeActiveBorder, nativeSelection, nativeSelectionText]);
 
     if (paletteCache?.key !== key) {
@@ -175,12 +175,27 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
       const accentText = fit(accent, surfaces, 4.55);
       const selectedText = fit(custom.text ? text : neutral(nativeSelectionText ?? text), [selected], 4.55);
       const contentEmphasis = fit(textEmphasis, contentSurfaces, 4.55);
-      // These glyphs/counts use ordinary and hover carriers. Fitting them to
-      // unrelated selected fields washes out their chroma unnecessarily.
+      // Preserve semantic hue/chroma when raising contrast. Mixing toward white
+      // makes status colors pastel, especially on dark selected surfaces.
       const vividSemantics = !highContrast && CSS.supports('color', 'oklch(from red l calc(c * 1.4) h)');
-      const semanticEmphasis = (value: Rgb, overridden?: string): Rgb => vividSemantics && !overridden
-        ? fit(sample(`oklch(from ${rgb(value)} l calc(c * 1.4) h)`), [surface, raised, hover], 4.55)
-        : fit(value, surfaces, 4.55);
+      // Status labels use ordinary fields and hover carriers, not segmented
+      // tracks. The selected comparison warning is an icon (3:1 contrast).
+      const semanticSurfaces = [surface, raised, field, hover];
+      const semanticColor = (value: Rgb, overridden?: string, carriers: readonly Rgb[] = semanticSurfaces): Rgb => {
+        if (!vividSemantics || overridden) return fit(value, surfaces, 4.55);
+        const vivid = sample(`oklch(from ${rgb(value)} l calc(c * 1.4) h)`);
+        if (minimumContrast(vivid, carriers) >= 4.55) return vivid;
+        const end = endpoint(carriers);
+        if (minimumContrast(end, carriers) < 4.55) return end;
+        const shift = (amount: number) => sample(`oklch(from ${rgb(value)} calc(l + ${end === white ? amount : -amount}) calc(c * 1.4) h)`);
+        let lower = 0, upper = 1;
+        for (let step = 0; step < 12; step += 1) {
+          const middle = (lower + upper) / 2;
+          if (minimumContrast(shift(middle), carriers) >= 4.55) upper = middle;
+          else lower = middle;
+        }
+        return shift(upper);
+      };
       const roles: Record<string, string> = Object.fromEntries(Object.entries({
         surface, 'document-background': documentSurface, 'surface-raised': raised, 'surface-field': field, 'surface-hover': hover,
         'surface-pressed': pressed, 'surface-selected': selected, 'segmented-track': track,
@@ -192,9 +207,9 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
         'text-emphasis': fit(contentEmphasis, highContrast ? [raised, hover] : [raised, hover, selected], 4.55),
         'text-emphasis-content': contentEmphasis,
         'text-emphasis-selected': fit(contentEmphasis, [selected], 4.55),
-        success: fit(success, surfaces, 4.55), warning: fit(warning, surfaces, 4.55), danger: fit(danger, surfaces, 4.55),
-        'success-emphasis': semanticEmphasis(success, custom.success),
-        'danger-emphasis': semanticEmphasis(danger, custom.danger),
+        success: semanticColor(success, custom.success), warning: semanticColor(warning, custom.warning), danger: semanticColor(danger, custom.danger),
+        'success-emphasis': semanticColor(success, custom.success, [surface, raised, hover]),
+        'danger-emphasis': semanticColor(danger, custom.danger, [surface, raised, hover]),
         'switch-off': switchOff, 'on-switch-off': fit(mix(text, neutral(raised), 0.20), [switchOff], 3.05)
       }).map(([role, value]) => [role, rgb(value)]));
       roles['text-emphasis-background'] = footnoteBackground;

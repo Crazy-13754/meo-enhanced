@@ -306,7 +306,7 @@ async function main(): Promise<void> {
       };
       for (const row of idle.rows) {
         assert.equal(row.color, row.expected, `${appearance}: counts use the stronger semantic color`);
-        assert.ok(saturation(row.color) > saturation(row.original), `${appearance}: counts are less washed out (${JSON.stringify(row)})`);
+        assert.ok(saturation(row.color) >= saturation(row.original), `${appearance}: counts retain the vivid semantic saturation (${JSON.stringify(row)})`);
         for (const background of idle.backgrounds) {
           const a = luminance(row.color), b = luminance(background);
           assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5, `${appearance}: counts remain readable on ${background}`);

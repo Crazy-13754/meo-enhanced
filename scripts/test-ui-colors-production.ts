@@ -57,10 +57,33 @@ try {
   };
   const value = (key: string) => page.$eval(input(key), element => (element as HTMLInputElement).value);
   const role = (key: string) => page.evaluate(key => { const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-' + key + ')'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }, key);
+  const channels = (color: string) => color.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+  const saturation = (color: string) => { const rgb = channels(color); return (Math.max(...rgb) - Math.min(...rgb)) / Math.max(...rgb); };
+  const luminance = (color: string) => channels(color).map(value => {
+    const channel = value / 255; return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  }).reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index]!, 0);
+  const checkSemanticColors = async (label: string) => {
+    const surfaces = await Promise.all(['surface', 'surface-raised', 'surface-field', 'surface-hover'].map(role));
+    for (const [name, floor] of [['success', 0.60], ['warning', 0.85], ['danger', 0.55]] as const) {
+      const color = await role(name); const [red, green, blue] = channels(color);
+      assert.ok(saturation(color) >= floor, `${label}: ${name} retains a recognizable saturated color (${color})`);
+      assert.ok(name === 'success' ? green! > red! && green! > blue! : name === 'warning' ? red! >= green! && green! > blue! : red! > green! && red! > blue!, `${label}: ${name} preserves its semantic hue`);
+      for (const surface of surfaces) {
+        const values = [luminance(color), luminance(surface)];
+        assert.ok((Math.max(...values) + 0.05) / (Math.min(...values) + 0.05) >= 4.5, `${label}: ${name} remains readable on ${surface}`);
+      }
+      assert.equal(await page.$eval(`[data-setting="${name}"] .appearance-color-chip`, element => getComputedStyle(element).backgroundColor), color, `${label}: appearance swatches show the actual semantic role`);
+      assert.equal(await value(name), '', `${label}: derived colors are not saved as user overrides`);
+    }
+    const warning = await role('warning'); const selected = await role('surface-selected');
+    const values = [luminance(warning), luminance(selected)];
+    assert.ok((Math.max(...values) + 0.05) / (Math.min(...values) + 0.05) >= 3, `${label}: a selected comparison warning icon remains distinguishable`);
+  };
   const apply = '.appearance-footer .settings-primary';
   const cancel = '.appearance-footer .settings-actions button:first-child';
   const source = () => page.$$eval('.cm-content, .cm-line, .cm-line span, .cm-gutters', elements => elements.map(element => [element.textContent, getComputedStyle(element).color, getComputedStyle(element).backgroundColor]));
   await openFixture(); await openSettings();
+  await checkSemanticColors('native dark');
   assert.deepEqual(await page.$$eval('.settings-tab-label', elements => elements.map(e => e.textContent)), ['常规', '外观', '输入', '预览预设', '快捷键']);
   await page.click('[data-tab="general"]'); await page.keyboard.press('ArrowLeft');
   assert.equal(await page.$eval('.settings-tab[aria-selected="true"]', e => (e as HTMLElement).dataset.tab), 'shortcuts');
@@ -158,6 +181,12 @@ try {
   assert.match(await page.$eval('.appearance-color-reset', e => e.getAttribute('aria-label')!), /默认浅色配色/);
   if (screenshots) await page.screenshot({path: path.join(screenshots, '064-default-light.png')});
   const defaultLightRoles = await uiRoles(); const lightSource = await source();
+  await checkSemanticColors('default light');
+  if (screenshots) {
+    await page.click('[data-section="appearanceAdvanced"]');
+    await page.screenshot({path: path.join(screenshots, '066-semantic-light.png')});
+    await page.click('[data-section="appearanceMode"]');
+  }
   await changeHost('dark', '#EE2266');
   assert.deepEqual(await uiRoles(), defaultLightRoles, 'all default light UI roles ignore opposite host inputs');
   assert.deepEqual(await source(), lightSource, 'opposite host UI input changes do not alter Source content');
@@ -170,6 +199,18 @@ try {
   assert.equal(await page.$eval(input('surface'), e => (e as HTMLInputElement).placeholder), '默认深色配色');
   if (screenshots) await page.screenshot({path: path.join(screenshots, '065-default-dark.png')});
   const defaultDarkRoles = await uiRoles(); const darkSource = await source();
+  await checkSemanticColors('default dark');
+  if (screenshots) {
+    await page.click('[data-section="appearanceAdvanced"]');
+    await page.screenshot({path: path.join(screenshots, '067-semantic-dark.png')});
+    await page.click('[data-section="appearanceMode"]');
+  }
+  await edit('danger', '#F48771');
+  assert.notEqual(await role('danger'), defaultDarkRoles.find(([key]) => key === '--meo-ui-danger')![1], 'an explicit color matching the native input bypasses chroma enhancement and invalidates the palette cache');
+  assert.equal(await page.$eval('[data-setting="danger"] .appearance-color-swatch', element => (element as HTMLInputElement).value), '#f48771', 'the color picker preserves the explicit user color');
+  await page.click(cancel);
+  assert.deepEqual(await uiRoles(), defaultDarkRoles, 'cancel restores the vivid defaults after a semantic override');
+  await page.click('[data-section="appearanceMode"]');
   await changeHost('light', '#DD3355');
   assert.deepEqual(await uiRoles(), defaultDarkRoles, 'all default dark UI roles ignore opposite host inputs');
   assert.deepEqual(await source(), darkSource);
