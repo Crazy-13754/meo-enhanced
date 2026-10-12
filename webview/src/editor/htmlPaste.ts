@@ -14,7 +14,7 @@ function allowedDestination(value: string): boolean {
 }
 
 /** Converts inert clipboard HTML to the subset supported by the editor. Never inserts HTML DOM. */
-export function clipboardHtmlToMarkdown(html: string): string | null {
+export function clipboardHtmlToMarkdown(html: string, tableToMarkdown?: (table: Element) => string | null): string | null {
   if (!html || html.length > 5_000_000) return null;
   const document = new DOMParser().parseFromString(html, 'text/html');
   const children = (node: Node): string => Array.from(node.childNodes, convert).join('');
@@ -36,6 +36,13 @@ export function clipboardHtmlToMarkdown(html: string): string | null {
     }
     if (tag === 'BR') return '<br>\n';
     if (tag === 'HR') return '\n\n---\n\n';
+    if (tag === 'TABLE' && tableToMarkdown) {
+      const table = tableToMarkdown(node);
+      if (table !== null) {
+        const caption = Array.from(node.children).find(child => child.tagName === 'CAPTION');
+        return '\n\n' + (caption ? children(caption).trim() + '\n\n' : '') + table + '\n\n';
+      }
+    }
     const content = children(node);
     const styled = (marker: string) => content.trim() ? content.replace(/^(\s*)([\s\S]*?)(\s*)$/, (_match, before: string, text: string, after: string) => before + marker + text + marker + after) : content;
     if (['B', 'STRONG'].includes(tag)) return styled('**');

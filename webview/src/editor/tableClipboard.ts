@@ -59,11 +59,19 @@ export function parseTsvTableClipboard(value: string): TableClipboardMatrix | nu
   return cells ? { cells, source: 'external' } : null;
 }
 
-export function parseHtmlTableClipboard(value: string, preserveFormatting = false): TableClipboardMatrix | null {
+export function parseHtmlTableClipboard(value: string, preserveFormatting = false, requireSingleTable = false): TableClipboardMatrix | null {
   if (!value || value.length > maxClipboardCharacters || typeof DOMParser === 'undefined') return null;
   const document = new DOMParser().parseFromString(value, 'text/html');
   const table = document.querySelector('table');
   if (!table) return null;
+  if (requireSingleTable) {
+    table.remove();
+    if (document.querySelector('table') || clipboardHtmlToMarkdown(document.body.innerHTML)) return null;
+  }
+  return parseHtmlTableElement(table, preserveFormatting);
+}
+
+export function parseHtmlTableElement(table: Element, preserveFormatting = false): TableClipboardMatrix | null {
   const sourceRows = Array.from(table.querySelectorAll('tr')).filter(row => row.closest('table') === table);
   if (sourceRows.length > maxClipboardCells) return null;
   const rows: string[][] = [];

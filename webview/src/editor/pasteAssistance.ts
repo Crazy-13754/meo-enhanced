@@ -4,7 +4,7 @@ import { EditorView } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import { inputAssistanceFacet } from './typingAssistance';
 import { markdownTableFromCells, parseMarkdownTable } from '../application/delimitedTable';
-import { parseMeoTableClipboard, parseHtmlTableClipboard, parseTsvTableClipboard, meoTableClipboardMime } from './tableClipboard';
+import { parseMeoTableClipboard, parseHtmlTableClipboard, parseHtmlTableElement, parseTsvTableClipboard, meoTableClipboardMime } from './tableClipboard';
 import { clipboardHtmlToMarkdown, safeClipboardUrl } from './htmlPaste';
 
 export function isCodeInput(view: EditorView, position = view.state.selection.main.head): boolean {
@@ -38,24 +38,33 @@ export const pasteAssistance = EditorView.domEventHandlers({
     const selection = view.state.selection.main;
     if (isCodeInput(view, selection.from) || isCodeInput(view, selection.to)) return false;
     const text = clipboard.getData('text/plain');
-    const matrix = parseMeoTableClipboard(clipboard.getData(meoTableClipboardMime))
-      ?? parseHtmlTableClipboard(clipboard.getData('text/html'), preferences.pasteHtml) ?? parseTsvTableClipboard(text);
-    const markdown = sourceTableAt(view.state) ? parseMarkdownTable(text) : null;
+    const html = clipboard.getData('text/html');
+    const tableTarget = sourceTableAt(view.state);
+    const meoMatrix = parseMeoTableClipboard(clipboard.getData(meoTableClipboardMime));
+    // A prose paste owns the entire fragment; cell paste deliberately extracts a matrix.
+    const matrix = meoMatrix ?? parseHtmlTableClipboard(html, preferences.pasteHtml, !tableTarget)
+      ?? (!html || tableTarget ? parseTsvTableClipboard(text) : null);
+    const markdown = tableTarget ? parseMarkdownTable(text) : null;
     const cellMatrix = matrix ?? (markdown ? { cells: markdown.cells, source: 'meo' as const } : null);
-    if (cellMatrix && sourceTableAt(view.state)) {
+    if (cellMatrix && tableTarget) {
       const transaction = sourceTablePaste(view.state, cellMatrix);
       if (transaction) { event.preventDefault(); view.dispatch(transaction); return true; }
       event.preventDefault(); return true;
     }
-    if (matrix && !preferences.convertTables) return false;
+    if (!preferences.convertTables && (matrix || parseHtmlTableClipboard(html))) return false;
     let insert: string | null = null;
     if (preferences.pasteUrl && !selection.empty && safeClipboardUrl(text)) {
       const label = view.state.sliceDoc(selection.from, selection.to).replace(/[\\\[\]]/g, '\\$&');
       insert = '[' + label + '](' + text.trim().replaceAll('(', '%28').replaceAll(')', '%29') + ')';
     } else if (preferences.convertTables) {
-      if (matrix) insert = markdownTableFromCells(matrix.cells, matrix.source === 'meo');
+      if (!meoMatrix && html && preferences.pasteHtml) {
+        insert = clipboardHtmlToMarkdown(html, table => {
+          const cells = parseHtmlTableElement(table, true);
+          return cells ? markdownTableFromCells(cells.cells, true) : null;
+        });
+      } else if (matrix) insert = markdownTableFromCells(matrix.cells, matrix.source === 'meo');
     }
-    if (insert === null && preferences.pasteHtml) insert = clipboardHtmlToMarkdown(clipboard.getData('text/html'));
+    if (insert === null && preferences.pasteHtml) insert = clipboardHtmlToMarkdown(html);
     if (insert === null) return false;
     // A table is a block even when pasted halfway through a paragraph.
     if (insert.startsWith('| ')) {
