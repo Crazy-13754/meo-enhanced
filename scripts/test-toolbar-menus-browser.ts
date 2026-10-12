@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
 import { launchTestBrowser } from './browser-test-helpers';
+import exportRuntime from '../src/export/runtime';
 
 const build = await Bun.build({
   entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'],
@@ -13,7 +15,11 @@ try {
   await page.setViewport({ width: 1400, height: 700 });
   await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
   await page.addStyleTag({ path: 'webview/src/styles.css' });
-  await page.addScriptTag({ content: `window.__hostMessages=[];window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.__hostMessages.push(message);}});` });
+  await page.exposeFunction('__renderPreview', (message: any) => exportRuntime.renderPreviewDocument({
+    markdownText: message.text, sourceDocumentPath: 'C:/tmp/preview-toolbar.md', uiLanguage: message.uiLanguage,
+    styleEnvironment: message.environment, preset: message.preset, contentWidth: message.contentWidth
+  }));
+  await page.addScriptTag({ content: `window.__hostMessages=[];window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.__hostMessages.push(message);if(message.type==='requestPreviewRender')window.__renderPreview(message).then(value=>window.dispatchEvent(new MessageEvent('message',{data:{type:'previewRenderResult',requestId:message.requestId,result:{ok:true,value}}})));}});` });
   await page.addScriptTag({ content: await build.outputs[0]!.text() });
   const text = '# Export menu';
   await page.evaluate(text => window.dispatchEvent(new MessageEvent('message', { data: {
@@ -27,11 +33,70 @@ try {
     outlinePosition: 'right', outlineVisible: false, outlineWidth: 260, vscodeTheme: null
   } })), text);
   await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'preview');
+  await page.waitForFunction(() => !document.querySelector('.meo-preload-toolbar'));
 
   const options = [
     ['html', false], ['html', true], ['pdf', false], ['pdf', true], ['docx', false], ['docx', true]
   ] as const;
-  assert.equal(await page.$eval('.preview-export-trigger', element => element.textContent?.trim()), '导出为...');
+  assert.deepEqual(await page.$$eval('.preview-format-group > div', elements => elements.map(element => element.className)), [
+    'preview-select-control preview-preset-control',
+    'preview-select-control preview-setting-control preview-appearance-control',
+    'preview-options-control', 'preview-export-control'
+  ]);
+  await page.hover('.preview-preset-dropdown');
+  assert.equal(await page.$eval('.preview-preset-dropdown-panel', element => (element as HTMLElement).hidden), true, 'Preset selection still requires a click');
+  assert.equal(await page.$eval('.preview-preset-dropdown', element => element.hasAttribute('data-tooltip') || element.hasAttribute('title')), false);
+  await page.click('.preview-preset-dropdown');
+  await page.hover('.preview-preset-dropdown-panel [data-value="github-readme"]');
+  await page.waitForFunction(() => document.querySelector<HTMLElement>('.meo-tooltip--details.is-visible')?.dataset.side === 'right');
+  assert.equal(await page.$eval('.preview-preset-dropdown-panel', element => (element as HTMLElement).hidden), false, 'Preset explanations keep the selection menu open');
+  mkdirSync('tmp/preview-toolbar', { recursive: true });
+  await page.screenshot({ path: 'tmp/preview-toolbar/preset-hover-dark-zh.png' });
+  await page.click('.preview-preset-dropdown-panel [data-value="default"]');
+  await page.hover('.preview-options-trigger');
+  await page.waitForFunction(() => document.querySelector('.preview-options-trigger')?.getAttribute('aria-expanded') === 'true');
+  assert.equal(await page.$eval('.preview-options-trigger svg', element => element.getAttribute('data-icon')), 'sliders-horizontal');
+  const hoverGap = await page.$eval('.preview-options-trigger', element => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.left + bounds.width / 2, y: bounds.bottom + 2 };
+  });
+  await page.mouse.move(hoverGap.x, hoverGap.y);
+  await page.hover('.preview-font-family-dropdown');
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 160)));
+  assert.equal(await page.$eval('.preview-options-panel', element => (element as HTMLElement).hidden), false, 'Moving across the gap into Preview Options keeps it open');
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => document.querySelector<HTMLElement>('.preview-options-panel')?.hidden);
+  await page.click('.preview-options-trigger');
+  assert.equal(await page.$eval('.preview-options-panel', element => (element as HTMLElement).hidden), false, 'Clicking the already hovered Preview Options keeps it open');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.preview-options-panel', element => (element as HTMLElement).hidden), true, 'Escape stays closed after restoring Preview Options trigger focus');
+  await page.mouse.move(0, 0);
+  await page.hover('.preview-options-trigger');
+  assert.deepEqual(await page.$$eval('.preview-options-panel > .preview-select-control', elements => elements.map(element => ({
+    visible: (element as HTMLElement).getBoundingClientRect().height > 0, label: element.querySelector('.preview-select-label')?.textContent
+  }))), ['预览字体', '正文宽度', '代码着色', 'HTML 注释'].map(label => ({ visible: true, label })));
+  assert.equal(await page.$eval('.preview-width-dropdown', button => (button as HTMLButtonElement).disabled), true);
+  await page.hover('.preview-width-dropdown');
+  await page.waitForFunction(() => document.querySelector('.meo-tooltip.is-visible .meo-tooltip-label')?.textContent === '此预设不支持此选项');
+  await page.click('.preview-width-dropdown');
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false, 'Clicking a disabled option keeps Preview Options open');
+  assert.equal(await page.$eval('.meo-tooltip.is-visible .meo-tooltip-label', label => label.textContent), '此预设不支持此选项', 'A disabled option retains its explanation after a click');
+  await page.click('.preview-width-control .preview-select-label');
+  assert.equal(await page.$eval('.meo-tooltip.is-visible .meo-tooltip-label', label => label.textContent), '此预设不支持此选项', 'Clicking the disabled setting label also retains its explanation');
+  mkdirSync('tmp/preview-toolbar', { recursive: true });
+  await page.screenshot({ path: 'tmp/preview-toolbar/options-dark-zh.png' });
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true);
+  await page.focus('.preview-options-trigger');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('preview-font-family-dropdown')), true);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.preview-font-family-dropdown-panel', panel => (panel as HTMLElement).hidden), true);
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false, 'Escape closes a nested dropdown before the options panel');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true);
+  assert.equal(await page.$eval('.preview-export-trigger', element => element.textContent?.trim()), '导出');
   assert.equal(await page.$eval('.preview-export-trigger svg path', path => path.getAttribute('d')?.startsWith('M14 17a1 1 0 1 0 0 2z') && path.getAttribute('fill') === 'currentColor'), true);
   assert.equal(await page.$$eval('.preview-export-menu-action', elements => elements.length), 6);
   const formatIconColors = await page.$$eval('.preview-export-menu-action', elements => elements.map(element => {
@@ -46,6 +111,16 @@ try {
     { html: '#e65100', pdf: '#ef5350', docx: '#01579b' }[format], 2,
     { html: 'translate(0 -1)', pdf: 'translate(0 -1)', docx: 'translate(0 -3)' }[format], true
   ]));
+  await page.click('.preview-options-trigger');
+  await page.click('.preview-font-family-dropdown');
+  await page.hover('.preview-export-trigger');
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true, 'Export dismisses the options menu');
+  assert.equal(await page.$eval('.preview-font-family-dropdown-panel', panel => (panel as HTMLElement).hidden), true, 'Dismissing options also closes its nested dropdown');
+  await page.hover('.preview-options-trigger');
+  await page.waitForFunction(() => document.querySelector('.preview-options-trigger')?.getAttribute('aria-expanded') === 'true');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true, 'Escape dismisses Preview Options while its trigger remains hovered');
+  await page.mouse.move(0, 0);
   for (const [format, includeTableOfContents] of options) {
     await page.hover('.preview-export-trigger');
     await page.waitForFunction(() => getComputedStyle(document.querySelector<HTMLElement>('.preview-export-menu')!).visibility === 'visible');
@@ -145,16 +220,6 @@ try {
     await page.click(selector);
     assert.equal(await page.$eval('.more-tools-panel', panel => (panel as HTMLElement).hidden), false, action);
   }
-  for (const selector of [
-    '.preview-show-comments [data-preview-comments="false"]'
-  ]) {
-    const segmentSpacing = await page.$eval(selector, button => {
-      const outer = button.getBoundingClientRect();
-      const content = button.querySelector<HTMLElement>('.segmented-control-button-content')!.getBoundingClientRect();
-      return { horizontal: (outer.width - content.width) / 2, vertical: (outer.height - content.height) / 2 };
-    });
-    assert.ok(Math.abs(segmentSpacing.horizontal - segmentSpacing.vertical) <= 3, `${selector}: ${JSON.stringify(segmentSpacing)}`);
-  }
   const settingsLayout = await page.evaluate(() => {
     const controls = [
       '.editor-appearance-control', '.ui-language-control', '.editor-font-size-mode-control'
@@ -186,6 +251,15 @@ try {
   assert.ok(Math.abs(settingsLayout.controls[1].right - settingsLayout.stepperRight) <= 0.5, JSON.stringify(settingsLayout));
   assert.ok(Math.abs(settingsLayout.stepperLeft - settingsLayout.controls[2].right - 4) <= 0.5, JSON.stringify(settingsLayout));
   assert.ok(settingsLayout.controls.every(control => Math.max(...control.optionWidths) - Math.min(...control.optionWidths) <= 0.5), JSON.stringify(settingsLayout));
+  await page.click('.editor-appearance-button[data-editor-appearance="light"]');
+  await page.click('.preview-options-trigger');
+  const segmentSpacing = await page.$eval('.preview-show-comments [data-preview-comments="false"]', button => {
+    const outer = button.getBoundingClientRect();
+    const content = button.querySelector<HTMLElement>('.segmented-control-button-content')!.getBoundingClientRect();
+    return { horizontal: (outer.width - content.width) / 2, vertical: (outer.height - content.height) / 2 };
+  });
+  assert.ok(Math.abs(segmentSpacing.horizontal - segmentSpacing.vertical) <= 3, JSON.stringify(segmentSpacing));
+  await page.screenshot({ path: 'tmp/preview-toolbar/options-light-zh.png' });
   const segmentGaps = await page.$eval('.preview-show-comments', control => {
     const outer = control.querySelector<HTMLElement>('.segmented-control')!.getBoundingClientRect();
     const indicators = Array.from(control.querySelectorAll<HTMLElement>('.segmented-control-button-indicator'))
@@ -213,6 +287,32 @@ try {
   assert.ok(segmentCenters.every(segment => Math.abs(segment.offset) <= 0.05), JSON.stringify(segmentCenters));
   await page.mouse.click(4, 10);
   assert.equal(await page.$eval('.more-tools-panel', panel => (panel as HTMLElement).hidden), true);
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true);
+  await page.click('.more-tools-wrapper > .format-button');
+  await page.click('.ui-language-button[data-ui-language="en"]');
+  await page.click('.editor-appearance-button[data-editor-appearance="dark"]');
+  await page.click('.preview-options-trigger');
+  assert.deepEqual(await page.$$eval('.preview-options-panel .preview-select-label', labels => labels.map(label => label.textContent)), ['Font', 'Width', 'Code color', 'HTML comments']);
+  await page.screenshot({ path: 'tmp/preview-toolbar/options-dark-en.png' });
+  await page.keyboard.press('Escape');
+  await page.setViewport({ width: 420, height: 700 });
+  await page.waitForFunction(() => document.querySelector('.toolbar-overflow-panel .preview-options-control'));
+  await page.click('.toolbar-overflow-indicator');
+  await page.click('.preview-options-trigger');
+  await page.click('.preview-font-family-dropdown');
+  assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), false, 'Nested option controls keep the overflow menu open');
+  await page.click('.preview-font-family-dropdown-panel [role="option"]:nth-child(2)');
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false);
+  const optionsBounds = await page.$eval('.preview-options-panel', panel => {
+    const bounds = panel.getBoundingClientRect();
+    return { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom };
+  });
+  assert.ok(optionsBounds.left >= 0 && optionsBounds.right <= 420 && optionsBounds.top >= 0 && optionsBounds.bottom <= 700, JSON.stringify(optionsBounds));
+  await page.screenshot({ path: 'tmp/preview-toolbar/options-narrow-en.png' });
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), false, 'First Escape dismisses options');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), true, 'Second Escape dismisses overflow');
   await page.close();
   console.log('Toolbar menus browser test passed.');
 } finally {

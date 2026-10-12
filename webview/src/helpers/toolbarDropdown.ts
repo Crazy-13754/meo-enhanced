@@ -9,6 +9,7 @@ export type ToolbarDropdown = {
   syncFromSelect(): void;
   setAppearance(appearance: 'light' | 'dark'): void;
   setLabel(label: string): void;
+  close(): void;
   dispose(): void;
 };
 
@@ -76,6 +77,8 @@ export function createToolbarDropdown(
   );
 
   const syncFromSelect = (): void => {
+    trigger.disabled = select.disabled;
+    if (select.disabled) close();
     const selected = selectedOption();
     value.textContent = selected?.textContent ?? '';
     for (const option of panel.querySelectorAll<HTMLButtonElement>('[role="option"]')) {
@@ -109,7 +112,7 @@ export function createToolbarDropdown(
   };
 
   const open = (): void => {
-    if (disposed || !panel.hidden) return;
+    if (disposed || select.disabled || !panel.hidden) return;
     panel.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
     positionPanel();
@@ -119,6 +122,7 @@ export function createToolbarDropdown(
   const toggle = (): void => panel.hidden ? open() : close();
 
   const choose = (nextValue: string): void => {
+    if (select.disabled) return;
     if (!Array.from(select.options).some((option) => option.value === nextValue)) return;
     select.value = nextValue;
     syncFromSelect();
@@ -153,7 +157,8 @@ export function createToolbarDropdown(
   };
   const handleWindowGeometry = () => positionPanel();
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
+    if (select.disabled) return;
+    if (event.key === 'Escape' && !panel.hidden) {
       close(true);
       event.preventDefault();
       return;
@@ -218,6 +223,7 @@ export function createToolbarDropdown(
       panel.dataset.previewAppearance = appearance;
     },
     setLabel,
+    close,
     dispose() {
       if (disposed) return;
       disposed = true;

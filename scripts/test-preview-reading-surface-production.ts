@@ -1185,6 +1185,7 @@ async function main(): Promise<void> {
       customDropdownCount: 1,
       datalistCount: 0
     }, 'Preview font control must expose one custom non-editable dropdown backed by one hidden select');
+    await page.click('.preview-options-trigger');
     await page.click('.preview-font-family-dropdown');
     const dropdownThemeContract = await page.evaluate(() => {
       const control = document.querySelector<HTMLElement>('.preview-font-family-control')!;
@@ -1342,6 +1343,7 @@ async function main(): Promise<void> {
       (button) => (button as HTMLButtonElement).click()
     );
     await page.waitForFunction(() => document.documentElement.dataset.editorAppearance === 'light');
+    if (await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden)) await page.click('.preview-options-trigger');
     await page.click('.preview-font-family-dropdown');
     const previewThemeIndependentDropdown = await page.evaluate(() => ({
       previewAppearance: document.querySelector<HTMLSelectElement>('.preview-appearance-select')!.value,

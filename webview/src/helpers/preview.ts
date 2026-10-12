@@ -1024,7 +1024,6 @@ export function createPreviewController({
     for (const option of presetSelect.options) option.textContent = getPreviewPreset(option.value as PreviewPresetId).name[language];
     refreshPresetOptions();
     widthSelectControl.setLabel(uiStrings.previewWidth);
-    updatePresetControls();
     appearanceLabel.textContent = uiStrings.previewAppearance;
     appearanceSegments.element.setAttribute('aria-label', uiStrings.previewAppearance);
     appearanceSelect.options[0].textContent = uiStrings.auto;
@@ -1042,6 +1041,7 @@ export function createPreviewController({
     fontFamilySelectControl.setLabel(uiStrings.previewFontFamily);
     defaultFontOption.textContent = uiStrings.previewFontPlaceholder;
     fontFamilySelectControl.refreshOptions();
+    updatePresetControls();
     if (sourceNavigation) {
       sourceNavigation.dataset.tooltip = uiStrings.editInSource;
       sourceNavigation.setAttribute('aria-label', uiStrings.editInSource);
@@ -1093,11 +1093,13 @@ export function createPreviewController({
     ] as const) {
       const policy = preset.controls[key];
       const fixed = policy.mode !== 'editable';
-      const enabled = policy.mode === 'editable' ? preference : policy.value === true;
+      const enabled = policy.mode === 'editable' ? preference : policy.mode === 'fixed' && policy.value === true;
       segments.setActive(String(enabled) as 'true' | 'false');
-      const reason = fixed ? enabled ? onReason : offReason : '';
+      const reason = policy.mode === 'unsupported' ? uiStrings.previewUnsupportedOption : fixed ? enabled ? onReason : offReason : '';
       control.dataset.tooltip = reason;
+      control.dataset.tooltipPositioning = 'pointer';
       control.setAttribute('aria-description', reason);
+      control.setAttribute('aria-disabled', String(fixed));
       for (const button of segments.element.querySelectorAll('button')) button.disabled = fixed;
       if (key === 'codeColoring') {
         sourceColoringSelect.value = String(enabled);
@@ -1106,23 +1108,36 @@ export function createPreviewController({
     }
     updatePresetInfo();
   };
+  const updateFontFamilyControl = () => {
+    const policy = getPreviewPreset(presetPreference).controls.fontFamily;
+    const fixed = policy.mode !== 'editable';
+    defaultFontOption.textContent = policy.mode === 'fixed' ? uiStrings.previewControlStyles
+      : policy.mode === 'unsupported' ? uiStrings.previewControlUnsupported : uiStrings.previewFontPlaceholder;
+    fontFamilySelect.disabled = fixed;
+    fontFamilySelect.value = fixed ? '' : fontFamilyPreference;
+    const reason = policy.mode === 'fixed' ? uiStrings.previewFixedFontFamily
+      : policy.mode === 'unsupported' ? uiStrings.previewUnsupportedOption : '';
+    fontFamilyControl.dataset.tooltip = reason;
+    fontFamilyControl.dataset.tooltipPositioning = 'pointer';
+    fontFamilyControl.setAttribute('aria-description', reason);
+    fontFamilyControl.setAttribute('aria-disabled', String(fixed));
+    fontFamilySelectControl.syncFromSelect();
+  };
   const updatePresetControls = () => {
     const preset = getPreviewPreset(presetPreference);
-    for (const [key, control] of [
-      ['fontFamily', fontFamilyControl], ['appearance', appearanceControl],
-      ['codeColoring', sourceColoringControl], ['htmlComments', showCommentsControl],
-      ['contentWidth', widthControl]
-    ] as const) control.hidden = key === 'appearance' ? false : preset.controls[key].mode !== 'editable';
+    updateFontFamilyControl();
     updateBooleanPresetControls();
     presetSelect.value = presetPreference;
     presetSelectControl.syncFromSelect();
     presetSelectControl.trigger.setAttribute('aria-label', `${uiStrings.previewPreset}: ${preset.name[uiLanguage]}`);
-    widthSelect.value = contentWidthPreference;
     const appearances = preset.controls.appearance.options ?? [];
     const fixedAppearance = preset.controls.appearance.mode !== 'editable';
-    const reason = fixedAppearance ? preset.defaults.appearance === 'light' ? uiStrings.previewOnlyLight : uiStrings.previewOnlyDark : '';
+    const reason = preset.controls.appearance.mode === 'unsupported' ? uiStrings.previewUnsupportedOption
+      : fixedAppearance ? preset.defaults.appearance === 'light' ? uiStrings.previewOnlyLight
+        : preset.defaults.appearance === 'dark' ? uiStrings.previewOnlyDark : uiStrings.previewFixedAppearance : '';
     appearanceSegments.element.dataset.tooltip = reason;
     appearanceSegments.element.dataset.tooltipPositioning = 'pointer';
+    appearanceSegments.element.setAttribute('aria-disabled', String(fixedAppearance));
     appearanceControl.setAttribute('aria-description', reason);
     appearanceSegments.element.setAttribute('aria-description', reason);
     appearanceSelect.disabled = fixedAppearance;
@@ -1130,14 +1145,24 @@ export function createPreviewController({
       button.hidden = fixedAppearance ? false : !appearances.includes(button.dataset.previewAppearanceChoice ?? '');
       button.disabled = fixedAppearance;
     }
-    const widths = preset.controls.contentWidth.options ?? [];
+    const widthPolicy = preset.controls.contentWidth;
+    const fixedWidth = widthPolicy.mode !== 'editable';
+    const widths = fixedWidth ? [preset.defaults.contentWidth] : widthPolicy.options ?? [];
     widthSelect.replaceChildren(...widths.map(width => {
       const option = document.createElement('option');
       option.value = width;
-      option.textContent = width === 'reference' ? uiStrings.previewWidthReference : uiStrings.previewWidthResponsive;
+      option.textContent = widthPolicy.mode === 'unsupported' ? uiStrings.previewControlUnsupported
+        : width === 'reference' ? uiStrings.previewWidthReference : uiStrings.previewWidthResponsive;
       return option;
     }));
-    widthSelect.value = contentWidthPreference;
+    widthSelect.disabled = fixedWidth;
+    widthSelect.value = fixedWidth ? preset.defaults.contentWidth : contentWidthPreference;
+    const widthReason = widthPolicy.mode === 'fixed' ? uiStrings.previewFixedWidth
+      : widthPolicy.mode === 'unsupported' ? uiStrings.previewUnsupportedOption : '';
+    widthControl.dataset.tooltip = widthReason;
+    widthControl.dataset.tooltipPositioning = 'pointer';
+    widthControl.setAttribute('aria-description', widthReason);
+    widthControl.setAttribute('aria-disabled', String(fixedWidth));
     widthSelectControl.refreshOptions();
     widthSelectControl.syncFromSelect();
     updatePresetInfo();
@@ -2144,8 +2169,7 @@ export function createPreviewController({
       fontFamilySelect.append(option);
       fontFamilySelectControl.refreshOptions();
     }
-    fontFamilySelect.value = nextFontFamily;
-    fontFamilySelectControl.syncFromSelect();
+    updateFontFamilyControl();
     if (changed && (latestPayload || hasPendingRequest)) {
       const text = hasPendingRequest ? pendingText : latestAcceptedText;
       if (text !== null) {
@@ -2962,6 +2986,11 @@ export function createPreviewController({
     fontFamilyControl,
     sourceColoringControl,
     showCommentsControl,
+    closeToolbarDropdowns: () => {
+      presetSelectControl.close();
+      fontFamilySelectControl.close();
+      widthSelectControl.close();
+    },
     requestRender,
     preload: (text: string) => requestRender(text, { background: true }),
     acceptRenderResponse,

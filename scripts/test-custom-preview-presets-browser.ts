@@ -177,7 +177,8 @@ try {
   assert.equal((await visual()).h1, '30px');
   assert.equal((await visual()).color, 'rgb(226, 229, 231)');
   assert.equal(await page.$eval('.mode-toolbar', el => getComputedStyle(el).backgroundColor), uiBefore, 'Document CSS does not recolor the toolbar');
-  assert.equal(await page.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), true);
+  assert.equal(await page.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), false);
+  assert.equal(await page.$eval('.preview-font-family-dropdown', el => (el as HTMLButtonElement).disabled), true);
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-mermaid.is-rendered'));
   await page.evaluate(async () => { await document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.fonts.ready; });
   assert.ok(await page.$eval('.preview-frame', frame => {
@@ -242,12 +243,14 @@ try {
   };
   assert.equal((await controlState('.preview-show-comments')).hidden, false);
   assert.ok((await controlState('.preview-show-comments')).buttons.every(button => !button.disabled));
-  assert.equal((await controlState('.preview-source-coloring')).hidden, true);
+  assert.equal((await controlState('.preview-source-coloring')).hidden, false);
   assert.ok((await showInfo()).includes('固定 · 开'));
   await page.mouse.move(1300, 500);
+  await page.click('.preview-options-trigger');
   await page.click('[data-preview-comments="true"]');
   await waitBehavior(true, true);
   await choose(dual.id);
+  await page.click('.preview-options-trigger');
   await page.click('[data-preview-source-coloring="false"]');
   await waitBehavior(true, false);
   assert.ok((await controlState('.preview-source-coloring')).buttons.every(button => !button.disabled), 'Named palettes remain editable');
@@ -256,7 +259,7 @@ try {
     await waitBehavior(comments, coloring);
     for (const [selector, enabled] of [['.preview-show-comments', comments], ['.preview-source-coloring', coloring]] as const) {
       const control = await controlState(selector);
-      assert.equal(control.hidden, true);
+      assert.equal(control.hidden, false);
       assert.ok(control.buttons.every(button => button.disabled));
       assert.deepEqual(control.buttons.map(button => button.selected), enabled ? ['true', 'false'] : ['false', 'true']);
       assert.ok(control.reason?.includes('固定'));
@@ -333,6 +336,7 @@ try {
   assert.ok(!(await showInfo()).includes('预设错误'), 'Correcting the package clears the error details');
   await page.mouse.move(1300, 500);
   await choose(dual.id);
+  await page.click('.preview-options-trigger');
   await page.click('[data-preview-source-coloring="true"]');
   await page.click('[data-preview-comments="false"]');
   await waitBehavior(false, true);

@@ -42,6 +42,7 @@ import { createPreviewController } from './helpers/preview';
 import type { ViewportAnchorToken } from './helpers/viewportController';
 import { createDocumentScrollToTopController } from './helpers/scrollToTop';
 import { createSegmentedControl } from './adapters/segmentedControl';
+import { createPreviewOptionsMenu } from './adapters/previewOptionsMenu';
 import { createExportButtonIcon, createExportFormatIcon } from './helpers/exportIcons';
 import { createMenuSwitch } from './adapters/menuSwitch';
 import { createCodePaletteWebviewAdapter } from './adapters/codePaletteWebviewAdapter';
@@ -960,6 +961,7 @@ const positionExportMenu = (): void => {
   }
 };
 exportControl.addEventListener('pointerenter', () => {
+  previewOptionsMenu.close();
   positionExportMenu();
   if (!exportControl.classList.contains('is-dismissed')) setExportMenuExpanded(true);
 });
@@ -971,6 +973,7 @@ exportControl.addEventListener('pointerleave', () => {
   setExportMenuExpanded(false);
 });
 exportControl.addEventListener('focusin', () => {
+  previewOptionsMenu.close();
   positionExportMenu();
   exportControl.classList.remove('is-dismissed');
   setExportMenuExpanded(true);
@@ -1004,6 +1007,22 @@ const previewWidthSlot = document.createElement('span');
 const previewFontFamilySlot = document.createElement('span');
 const previewSourceColoringSlot = document.createElement('span');
 const previewShowCommentsSlot = document.createElement('span');
+const previewOptionsControl = document.createElement('div');
+previewOptionsControl.className = 'preview-options-control';
+const previewOptionsButton = document.createElement('button');
+previewOptionsButton.type = 'button';
+previewOptionsButton.className = 'preview-toolbar-action preview-options-trigger';
+previewOptionsButton.setAttribute('aria-label', activeUiStrings.sidePreviewMore);
+const previewOptionsLabel = document.createElement('span');
+previewOptionsLabel.className = 'preview-toolbar-action-label';
+previewOptionsLabel.textContent = activeUiStrings.sidePreviewMore;
+previewOptionsButton.append(createElement(SlidersHorizontal, { width: 16, height: 16, 'aria-hidden': 'true', 'data-icon': 'sliders-horizontal' }), previewOptionsLabel);
+previewOptionsControl.append(previewOptionsButton);
+const previewOptionsMenu = createPreviewOptionsMenu(activeUiStrings.sidePreviewMore, [
+  previewFontFamilySlot, previewWidthSlot, previewSourceColoringSlot, previewShowCommentsSlot
+], () => previewController.closeToolbarDropdowns());
+const previewOptionsPanel = previewOptionsMenu.panel;
+previewOptionsMenu.bindTrigger(previewOptionsButton, true);
 const previewFormatGroup = document.createElement('div');
 previewFormatGroup.className = 'preview-format-group';
 previewFormatGroup.setAttribute('role', 'group');
@@ -1011,11 +1030,8 @@ previewFormatGroup.setAttribute('aria-label', activeUiStrings.previewTools);
 previewFormatGroup.append(
   previewOutlineLeftBtn,
   previewPresetSlot,
-  previewFontFamilySlot,
   previewAppearanceSlot,
-  previewSourceColoringSlot,
-  previewShowCommentsSlot,
-  previewWidthSlot,
+  previewOptionsControl,
   exportControl
 );
 
@@ -1198,9 +1214,11 @@ const applyUiLanguage = (language: UiLanguage): void => {
     label.textContent = strings[labelKey];
   }
   previewFormatGroup.setAttribute('aria-label', strings.previewTools);
+  previewOptionsButton.setAttribute('aria-label', strings.sidePreviewMore);
+  previewOptionsLabel.textContent = strings.sidePreviewMore;
+  previewOptionsMenu.setLabel(strings.sidePreviewMore);
   sourcePreviewMoreButton.dataset.tooltip = strings.sidePreviewMore;
   sourcePreviewMoreButton.setAttribute('aria-label', strings.sidePreviewMore);
-  sourcePreviewMorePanel.setAttribute('aria-label', strings.previewTools);
   moreToolsButton.dataset.tooltip = strings.more;
   moreToolsButton.setAttribute('aria-label', strings.moreTools);
   moreToolsPanel.setAttribute('aria-label', strings.moreTools);
@@ -1401,45 +1419,14 @@ sourcePreviewMoreButton.className = 'format-button source-preview-tool-button so
 sourcePreviewMoreButton.dataset.tooltipPlacement = 'right';
 sourcePreviewMoreButton.dataset.tooltip = activeUiStrings.sidePreviewMore;
 sourcePreviewMoreButton.setAttribute('aria-label', activeUiStrings.sidePreviewMore);
-sourcePreviewMoreButton.setAttribute('aria-haspopup', 'dialog');
-sourcePreviewMoreButton.setAttribute('aria-expanded', 'false');
 sourcePreviewMoreButton.append(createElement(Ellipsis, {
   width: 14,
   height: 14,
   'aria-hidden': 'true',
   'data-icon': 'ellipsis'
 }));
-const sourcePreviewMorePanel = document.createElement('div');
-sourcePreviewMorePanel.id = 'source-preview-more-panel';
-sourcePreviewMorePanel.className = 'source-preview-more-panel';
-sourcePreviewMorePanel.setAttribute('role', 'dialog');
-sourcePreviewMorePanel.setAttribute('aria-label', activeUiStrings.previewTools);
-sourcePreviewMorePanel.hidden = true;
-sourcePreviewMoreButton.setAttribute('aria-controls', sourcePreviewMorePanel.id);
-sourcePreviewTools.append(sourcePreviewScrollSyncButton, sourcePreviewMoreButton, sourcePreviewMorePanel);
-const setSourcePreviewMoreOpen = (open: boolean): void => {
-  sourcePreviewMorePanel.hidden = !open;
-  sourcePreviewMoreButton.setAttribute('aria-expanded', String(open));
-  if (open) {
-    sourcePreviewMorePanel.style.left = '0px';
-    const bounds = sourcePreviewMorePanel.getBoundingClientRect();
-    sourcePreviewMorePanel.style.left = `${Math.max(8 - bounds.left, Math.min(0, window.innerWidth - bounds.right - 8))}px`;
-  }
-};
-sourcePreviewMoreButton.addEventListener('click', () => {
-  setSourcePreviewMoreOpen(sourcePreviewMorePanel.hidden);
-});
-document.addEventListener('pointerdown', (event) => {
-  if (sourcePreviewMorePanel.hidden || !(event.target instanceof Node)) return;
-  if (sourcePreviewTools.contains(event.target)) return;
-  if (event.target instanceof Element && event.target.closest('.preview-dropdown-panel')) return;
-  setSourcePreviewMoreOpen(false);
-});
-document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || sourcePreviewMorePanel.hidden) return;
-  setSourcePreviewMoreOpen(false);
-  sourcePreviewMoreButton.focus({ preventScroll: true });
-});
+previewOptionsMenu.bindTrigger(sourcePreviewMoreButton);
+sourcePreviewTools.append(sourcePreviewScrollSyncButton, sourcePreviewMoreButton);
 
 const toolbarOverflowIndicator = document.createElement('button');
 toolbarOverflowIndicator.type = 'button';
@@ -1467,12 +1454,14 @@ toolbarOverflowIndicator.addEventListener('click', () => {
 });
 document.addEventListener('pointerdown', (event) => {
   const target = event.target as Node;
+  if (previewOptionsPanel.contains(target)) return;
+  if (target instanceof Element && target.closest('.preview-dropdown-panel')) return;
   if (!toolbarOverflowIndicator.contains(target) && !toolbarOverflowSection.contains(target)) {
     setToolbarOverflowVisible(false);
   }
 }, true);
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !toolbarOverflowSection.hidden) {
+  if (event.key === 'Escape' && !event.defaultPrevented && !toolbarOverflowSection.hidden) {
     setToolbarOverflowVisible(false);
     toolbarOverflowIndicator.focus();
   }
@@ -1547,6 +1536,7 @@ const syncToolbarOverflow = () => {
   const nextLayoutKey = `${toolbar.clientWidth}:${rightGroup.offsetWidth}:${root.dataset.mode ?? ''}:${activeUiLanguage}:${previewController.getPresetState().preset}`;
   if (nextLayoutKey === toolbarOverflowLayoutKey) return;
   toolbarOverflowLayoutKey = nextLayoutKey;
+  previewOptionsMenu.close();
   restoreToolbarOverflowItems();
 
   const toolbarBounds = toolbar.getBoundingClientRect();
@@ -1800,7 +1790,8 @@ const editorSurface = document.createElement('div');
 editorSurface.className = 'editor-surface';
 editorSurface.append(editorHost, previewController.host);
 editorWrapper.replaceChildren(editorSurface, outlineController.sidebar, selectionMenuElements.menu);
-root.replaceChildren(toolbar, editorNoticeBanner, editorWrapper);
+// Keep the shared popup outside toolbar stacking and inside editor focus ownership.
+root.replaceChildren(toolbar, editorNoticeBanner, editorWrapper, previewOptionsPanel);
 
 const editorModeApplication = createEditorModeApplication();
 let editorModeRuntime: EditorModeRuntime;
@@ -1960,29 +1951,21 @@ const presentPreviewSurface = (
   sourcePreviewButton.classList.toggle('is-active', split);
   sourcePreviewButton.setAttribute('aria-pressed', split ? 'true' : 'false');
   presentSourcePreviewControls();
-  if (split && previewController.fontFamilyControl.parentElement !== sourcePreviewMorePanel) {
+  if (!fullPreview) previewOptionsMenu.close();
+  previewOptionsPanel.classList.toggle('source-preview-more-panel', split);
+  if (split && previewController.presetControl.parentElement !== previewOptionsPanel) {
     restoreToolbarOverflowItems();
     toolbarOverflowLayoutKey = '';
-    sourcePreviewMorePanel.append(
+    previewOptionsPanel.prepend(
       previewController.presetControl,
-      previewController.fontFamilyControl,
-      previewController.appearanceControl,
-      previewController.sourceColoringControl,
-      previewController.showCommentsControl,
-      previewController.widthControl
+      previewController.appearanceControl
     );
-  } else if (!split && previewController.fontFamilyControl.parentElement === sourcePreviewMorePanel) {
+  } else if (!split && previewController.presetControl.parentElement === previewOptionsPanel) {
     restoreToolbarOverflowItems();
     toolbarOverflowLayoutKey = '';
-    setSourcePreviewMoreOpen(false);
-    for (const control of [
-      previewController.presetControl,
-      previewController.fontFamilyControl,
-      previewController.appearanceControl,
-      previewController.sourceColoringControl,
-      previewController.showCommentsControl,
-      previewController.widthControl
-    ]) previewFormatGroup.insertBefore(control, exportControl);
+    previewOptionsMenu.close();
+    previewFormatGroup.insertBefore(previewController.presetControl, previewOptionsControl);
+    previewFormatGroup.insertBefore(previewController.appearanceControl, previewOptionsControl);
   }
   if (atomicSplit && split) {
     const generation = ++sourcePreviewRevealGeneration;

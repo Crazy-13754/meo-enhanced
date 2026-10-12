@@ -30,6 +30,10 @@ export type UiStrings = Readonly<{
   previewControlFixed: string;
   previewControlStyles: string;
   previewControlUnsupported: string;
+  previewUnsupportedOption: string;
+  previewFixedFontFamily: string;
+  previewFixedWidth: string;
+  previewFixedAppearance: string;
   previewPresetError: string;
   previewFixedCodeColorsOn: string;
   previewFixedCodeColorsOff: string;
@@ -348,6 +352,8 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewPresetManage: 'Custom presets…', previewOnlyLight: 'This preset only supports the light theme', previewOnlyDark: 'This preset only supports the dark theme',
     previewThemeSupport: 'Theme support', previewCurrentTheme: 'Current theme', previewControlEditable: 'Adjustable', previewControlFixed: 'Fixed',
     previewControlStyles: 'Set by style', previewControlUnsupported: 'Unavailable', previewPresetError: 'Preset error',
+    previewUnsupportedOption: 'This preset does not support this option', previewFixedFontFamily: 'Font is set by this preset’s style',
+    previewFixedWidth: 'Content width is fixed by this preset', previewFixedAppearance: 'Theme is fixed by this preset',
     previewFixedCodeColorsOn: 'This preset keeps code coloring on', previewFixedCodeColorsOff: 'This preset keeps code coloring off',
     previewFixedCommentsShow: 'This preset always shows HTML comments', previewFixedCommentsHide: 'This preset always hides HTML comments',
     exportStyleNote: 'HTML and PDF use the current preview style.\nWord uses a fixed export style.',
@@ -355,7 +361,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewFontPlaceholder: 'VS Code editor font',
     previewFontUnavailable: 'Local font list unavailable; type a family name',
     previewGenerating: 'Generating preview…',
-    previewFailed: 'Preview generation failed', previewTools: 'Preview tools', exportDocument: 'Export as...',
+    previewFailed: 'Preview generation failed', previewTools: 'Preview tools', exportDocument: 'Export',
     exportHtml: 'Export as HTML', exportPdf: 'Export as PDF', exportDocx: 'Export as Word', exportAsHtml: 'Export as HTML',
     exportAsPdf: 'Export as PDF', exportAsDocx: 'Export as Word document', exportHtmlWithContents: 'Export as HTML with Contents',
     exportPdfWithContents: 'Export as PDF with Contents', exportDocxWithContents: 'Export as Word with Contents', findAndReplace: 'Find and replace', more: 'Settings',
@@ -546,6 +552,8 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewPresetManage: '自定义预设…', previewOnlyLight: '此预设仅支持浅色主题', previewOnlyDark: '此预设仅支持深色主题',
     previewThemeSupport: '主题支持', previewCurrentTheme: '当前主题', previewControlEditable: '可调整', previewControlFixed: '固定',
     previewControlStyles: '由样式决定', previewControlUnsupported: '不支持调整', previewPresetError: '预设错误',
+    previewUnsupportedOption: '此预设不支持此选项', previewFixedFontFamily: '字体由此预设的样式决定',
+    previewFixedWidth: '正文宽度由此预设固定', previewFixedAppearance: '主题由此预设固定',
     previewFixedCodeColorsOn: '此预设固定开启代码着色', previewFixedCodeColorsOff: '此预设固定关闭代码着色',
     previewFixedCommentsShow: '此预设固定显示 HTML 注释', previewFixedCommentsHide: '此预设固定隐藏 HTML 注释',
     exportStyleNote: 'HTML、PDF 沿用当前预览样式。\nWord 使用固定导出样式。',
@@ -553,7 +561,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewFontPlaceholder: 'VS Code 编辑器字体',
     previewFontUnavailable: '无法获取本地字体列表；请手动输入字体名称',
     previewGenerating: '正在生成预览…',
-    previewFailed: '预览生成失败', previewTools: '预览工具', exportDocument: '导出为...', exportHtml: '导出为 HTML',
+    previewFailed: '预览生成失败', previewTools: '预览工具', exportDocument: '导出', exportHtml: '导出为 HTML',
     exportPdf: '导出为 PDF', exportDocx: '导出为 Word', exportAsHtml: '导出为 HTML', exportAsPdf: '导出为 PDF',
     exportAsDocx: '导出为 Word 文档', exportHtmlWithContents: '导出为 HTML（含目录）', exportPdfWithContents: '导出为 PDF（含目录）',
     exportDocxWithContents: '导出为 Word（含目录）',

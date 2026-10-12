@@ -55,6 +55,7 @@ try {
   } })), text);
   await waitFor('preview mode', () => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'preview');
   await waitFor('initial render', () => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.body?.textContent?.includes('After'));
+  await page.click('.preview-options-trigger');
   await page.click('[data-preview-source-coloring="false"]');
   assert.equal(await page.$eval('[data-preview-source-coloring="false"]', element => element.getAttribute('aria-pressed')), 'true');
   await page.click('[data-preview-source-coloring="true"]');

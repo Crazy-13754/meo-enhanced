@@ -53,6 +53,12 @@ try {
     return page;
   };
   const page = await open();
+  await page.evaluate(() => {
+    (window as any).__sharedPreviewMenu = {
+      panel: document.querySelector('.preview-options-panel'),
+      controls: [...document.querySelectorAll('.preview-options-panel > .preview-select-control')]
+    };
+  });
   const waitFor = async (predicate: any, options: any = {}, ...args: any[]) => {
     try { return await page['waitForFunction'](predicate, options, ...args); } catch (error) {
       await page.screenshot({ path: 'tmp/preview-preset-failure.png' });
@@ -153,7 +159,21 @@ try {
   await waitFor(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector<HTMLElement>('.meo-export-code-line-source')?.dataset.meoShiki);
   let github = await read();
   assert.equal(await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector('colgroup[data-meo-preview-columns]') === null), true);
-  assert.deepEqual(github.hidden, [true, true, true, true]);
+  assert.deepEqual(github.hidden, [false, false, false, false]);
+  await page.click('.preview-options-trigger');
+  assert.equal(await page.$$eval('.preview-options-panel button', buttons => buttons.every(button => (button as HTMLButtonElement).disabled)), true);
+  assert.deepEqual(await page.$$eval('.preview-options-panel .preview-toolbar-dropdown-value', values => values.map(value => value.textContent)), ['由样式决定', '适配面板']);
+  for (const [selector, reason] of [
+    ['.preview-font-family-dropdown', '字体由此预设的样式决定'], ['.preview-width-dropdown', '正文宽度由此预设固定'],
+    ['[data-preview-source-coloring="true"]', '此预设固定开启代码着色'], ['[data-preview-comments="false"]', '此预设固定隐藏 HTML 注释']
+  ]) {
+    await page.hover(selector!);
+    await waitFor(reason => document.querySelector('.meo-tooltip.is-visible .meo-tooltip-label')?.textContent === reason, {}, reason);
+    await page.click(selector!);
+    assert.equal(await page.$eval('.meo-tooltip.is-visible .meo-tooltip-label', label => label.textContent), reason, 'Fixed preset controls keep their reason after a click');
+    assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false);
+  }
+  await page.keyboard.press('Escape');
   assert.equal(github.comments, false);
   assert.equal(github.font.includes('Georgia'), false);
   assert.equal(github.background, 'rgb(13, 17, 23)');
@@ -198,7 +218,9 @@ try {
   assert.ok(restored.comments && restored.font.includes('Georgia'));
   assert.equal(restored.background, 'rgb(255, 255, 255)');
   assert.equal(restored.highlighted, false);
-  assert.deepEqual(restored.hidden, [false, false, false, true]);
+  assert.deepEqual(restored.hidden, [false, false, false, false]);
+  assert.equal(await page.$eval('.preview-font-family-dropdown', button => (button as HTMLButtonElement).disabled), false);
+  assert.equal(await page.$eval('.preview-width-dropdown', button => (button as HTMLButtonElement).disabled), true);
   assert.equal(await page.evaluate(() => {
     const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
     return doc.defaultView!.getComputedStyle(doc.scrollingElement!).scrollbarColor;
@@ -239,11 +261,20 @@ try {
     && !document.querySelector<HTMLElement>('.preview-host')!.inert
     && getComputedStyle(document.querySelector<HTMLElement>('.preview-host')!).visibility !== 'hidden');
   await page.click('.source-preview-more-button');
-  assert.equal(await page.$$eval('.source-preview-more-panel .preview-select-control[hidden]', elements => elements.every(element => getComputedStyle(element).display === 'none')), true);
+  assert.equal(await page.evaluate(() => {
+    const original = (window as any).__sharedPreviewMenu;
+    const panel = document.querySelector('.source-preview-more-panel');
+    return panel === original.panel && original.controls.every((control: HTMLElement) => control.parentElement === panel)
+      && document.querySelectorAll('.preview-options-panel').length === 1;
+  }), true, 'Full and split preview share one menu and the same option controls');
+  mkdirSync('tmp/preview-toolbar', { recursive: true });
+  await page.screenshot({ path: 'tmp/preview-toolbar/options-split-zh.png' });
+  assert.equal(await page.$$eval('.source-preview-more-panel .preview-select-control', elements => elements.every(element => !(element as HTMLElement).hidden && element.getBoundingClientRect().height > 0)), true);
   await choose('preset', 'default');
   await waitPreset('default');
   await page.click('button[data-mode="preview"]');
   await waitFor(() => document.querySelector('.preview-format-group .preview-preset-control'));
+  assert.equal(await page.evaluate(() => (window as any).__sharedPreviewMenu.panel === document.querySelector('.preview-options-panel')), true);
   await choose('preset', 'github-readme');
   await waitPreset('github-readme');
   await page.setViewport({ width: 480, height: 760 });
@@ -281,7 +312,8 @@ try {
   assert.equal(saved.previewPresetState.preset, 'github-readme');
   const reopened = await open(saved);
   await reopened.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === 'github-readme');
-  assert.equal(await reopened.$eval('.preview-width-control', element => (element as HTMLElement).hidden), true);
+  assert.equal(await reopened.$eval('.preview-width-control', element => (element as HTMLElement).hidden), false);
+  assert.equal(await reopened.$eval('.preview-width-dropdown', element => (element as HTMLButtonElement).disabled), true);
   await page.bringToFront();
   // A stored GitHub preset must not change exports from editing surfaces.
   for (const mode of ['live', 'source']) {

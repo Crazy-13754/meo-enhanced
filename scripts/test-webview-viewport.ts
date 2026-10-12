@@ -317,7 +317,7 @@ async function main() {
       language: 'zh-CN',
       previewTools: '预览工具',
       sourceColoring: '代码着色',
-      exports: ['导出为...'],
+      exports: ['导出'],
       previewFrameTitle: 'Markdown 预览',
       previewAppearance: '预览主题',
       editorAppearance: '界面主题',
@@ -1182,8 +1182,8 @@ async function main() {
       activeSnapshot.actionIconCount !== 0 ||
       activeSnapshot.actionAriaLabel !== '更新手动快照' ||
       activeSnapshot.actionTitle !== '' ||
-      activeSnapshot.selectHeight !== 28 ||
-      activeSnapshot.actionHeight !== 28 ||
+      activeSnapshot.selectHeight !== 26 ||
+      activeSnapshot.actionHeight !== 26 ||
       activeSnapshot.actionGap !== 2 ||
       activeSnapshot.checkRightInset !== 6 ||
       activeSnapshot.actionBackground !== 'rgba(0, 0, 0, 0)' ||
@@ -1679,6 +1679,7 @@ async function main() {
     if (Object.values(previewHeadingFoldControls).some((count) => count !== 0)) {
       throw new Error(`Preview exposed custom heading folding: ${JSON.stringify(previewHeadingFoldControls)}`);
     }
+    await page.setViewport({ width: 600, height: 520, deviceScaleFactor: 1 });
     await page.waitForFunction(() => (
       document.querySelectorAll('.toolbar-overflow-panel .preview-setting-control').length > 0
     ));
@@ -1700,7 +1701,7 @@ async function main() {
         labels: Array.from(group.querySelectorAll('.preview-select-label'))
           .filter((label) => !label.closest<HTMLElement>('.preview-select-control')!.hidden)
           .map((label) => label.textContent?.trim()),
-        widthControlHidden: group.querySelector<HTMLElement>('.preview-width-control')!.hidden,
+        widthControlDisabled: document.querySelector<HTMLButtonElement>('.preview-width-dropdown')!.disabled,
         appearance: group.querySelector<HTMLSelectElement>('.preview-appearance-select')?.value,
         colorSchemes: selects.map((select) => getComputedStyle(select.closest<HTMLElement>('.preview-select-control')!).colorScheme),
         oldAppearanceButtons: group.querySelectorAll('.preview-appearance-button').length,
@@ -1721,13 +1722,13 @@ async function main() {
     if (
       !previewToolbarLayout.visible ||
       Math.abs(previewToolbarLayout.toolbarHeight - initialToolbarStart.toolbarHeight) > 0.5 ||
-      previewToolbarLayout.selectCount !== 2 ||
+      previewToolbarLayout.selectCount !== 1 ||
       previewToolbarLayout.selectHeights.some((height) => height !== 26) ||
       previewToolbarLayout.selectRadii.some((radius) => radius !== 8) ||
-      previewToolbarLayout.segmentedCount !== 3 ||
+      previewToolbarLayout.segmentedCount !== 1 ||
       previewToolbarLayout.segmentedHeights.some((height) => height !== 26) ||
-      JSON.stringify(previewToolbarLayout.labels) !== JSON.stringify(['预设', '预览字体', '预览主题', '代码着色', 'HTML 注释']) ||
-      !previewToolbarLayout.widthControlHidden ||
+      JSON.stringify(previewToolbarLayout.labels) !== JSON.stringify(['预设', '预览主题']) ||
+      !previewToolbarLayout.widthControlDisabled ||
       previewToolbarLayout.appearance !== 'light' ||
       previewToolbarLayout.colorSchemes.some((scheme) => scheme !== 'dark') ||
       previewToolbarLayout.oldAppearanceButtons !== 0 ||
@@ -1752,6 +1753,7 @@ async function main() {
         )
       );
     });
+    await page.click('.preview-options-trigger');
     const previewToolbarReachability = await page.evaluate(() => {
       const describe = (element: HTMLElement) => {
         const bounds = element.getBoundingClientRect();

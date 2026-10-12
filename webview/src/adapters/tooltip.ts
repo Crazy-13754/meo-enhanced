@@ -21,7 +21,7 @@ let activeTooltip: { hide(reason?: Dismissal): void; reposition(): void; pointer
 let hoverReadyUntil = 0;
 const ownedAnchors = new WeakSet<HTMLElement>();
 const textMeasurementContexts = new WeakMap<Document, CanvasRenderingContext2D | null>();
-const menuSelector = '.heading-dropdown, .table-dropdown, .preview-dropdown-panel, [role="menu"], .changes-review-popover, .meo-md-html-table-context-menu';
+const menuSelector = '.heading-dropdown, .table-dropdown, .preview-dropdown-panel, .preview-options-panel, .source-preview-more-panel, [role="menu"], .changes-review-popover, .meo-md-html-table-context-menu';
 const modalSelector = 'dialog[open], .meo-md-image-fullscreen-scrim, .meo-mermaid-fullscreen-scrim, .meo-latex-math-fullscreen-scrim';
 const intersects = (a: Bounds, b: Bounds) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 
@@ -134,7 +134,7 @@ export function createTooltip(anchor: HTMLElement, options: {
   const tooltip = doc.createElement('span');
   tooltip.id = options.id ?? 'meo-tooltip-' + ++nextTooltipId;
   tooltip.className = 'meo-tooltip';
-  tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, .preview-dropdown-panel, dialog'));
+  tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, .preview-dropdown-panel, .preview-options-panel, .source-preview-more-panel, dialog'));
   tooltip.setAttribute('role', 'tooltip');
   const frameOwner = view.frameElement?.ownerDocument;
   if (frameOwner) {
@@ -211,7 +211,7 @@ export function createTooltip(anchor: HTMLElement, options: {
     const modal = anchor.closest<HTMLElement>(modalSelector);
     const owner = modal ?? doc.fullscreenElement ?? doc.body;
     if (tooltip.parentElement !== owner) owner.append(tooltip);
-    tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, .preview-dropdown-panel, dialog'));
+    tooltip.classList.toggle('meo-tooltip--window', !!anchor.closest('.mode-toolbar, .find-panel, .source-preview-toolbar, .preview-dropdown-panel, .preview-options-panel, .source-preview-more-panel, dialog'));
     const container = modal?.getBoundingClientRect();
     const margin = 4, gap = 6;
     const area: Bounds = { left: Math.max(viewport.left, container?.left ?? viewport.left) + margin, top: Math.max(viewport.top, container?.top ?? viewport.top) + margin,
@@ -356,6 +356,10 @@ export function createTooltip(anchor: HTMLElement, options: {
   }
 
   function pointerDown(event: PointerEvent) {
+    // A disabled control has no action to dismiss its explanation.
+    if (event.button === 0 && event.target instanceof view.Element && anchor.contains(event.target)
+      && (anchor.matches(':disabled, [aria-disabled="true"]')
+        || event.target.closest(':disabled, [aria-disabled="true"]'))) return;
     hoverReadyUntil = 0; pointerSession = false;
     const live = options.liveUpdate ?? anchor.dataset.tooltipLiveUpdate === 'true';
     if (live && event.button === 0 && event.target instanceof view.Node && focusTarget.contains(event.target)) {

@@ -260,10 +260,10 @@ try {
   });
   assert.deepEqual(sideTools, {
     expanded: 'true', open: true,
-    rows: ['Preset', 'Font', 'Preview theme', 'Code color', 'HTML comments', 'Width'],
+    rows: ['Preset', 'Preview theme', 'Font', 'Width', 'Code color', 'HTML comments'],
     hasExport: false, belowSync: true, icon: 'ellipsis', text: '',
     size: { width: 20, height: 20 }, borderRadius: '50%', boxShadow: 'none',
-    controlsVisible: [true, true, true, true, true, false], editorFocused: true
+    controlsVisible: [true, true, true, true, true, true], editorFocused: true
   });
   await page.click('.source-preview-more-button');
   assert.equal(await page.$eval('.source-preview-more-panel', panel => (panel as HTMLElement).hidden), true);
@@ -1897,7 +1897,8 @@ try {
   );
   await page.click('button[data-mode="preview"]');
   await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'preview');
-  assert.equal(await page.$eval('.preview-format-group .preview-font-family-control', element => element.offsetParent !== null), true);
+  await page.click('.preview-options-trigger');
+  assert.equal(await page.$eval('.preview-options-panel .preview-font-family-control', element => element.offsetParent !== null), true);
   await page.click('button[data-mode="source"]');
   await page.waitForFunction(() => (
     document.querySelector<HTMLElement>('#app')?.dataset.mode === 'source'
