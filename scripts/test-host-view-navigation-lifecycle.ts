@@ -52,6 +52,9 @@ assert.deepEqual(
 acceptSelection = true;
 await independentFailure.flush();
 assert.deepEqual(independentFailureReveals.map((reveal) => reveal.kind), ['selection', 'fragment', 'selection']);
+assert.ok(independentFailureReveals.filter((reveal) => reveal.kind === 'selection')
+  .every((reveal) => reveal.preserveViewport === false),
+  'retrying a startup selection must retain its initial navigation policy');
 independentFailure.dispose();
 
 let resolveFailedSelection!: (value: boolean) => void;
@@ -80,6 +83,9 @@ assert.deepEqual(
   [1, 2],
   'a request arriving during a failed output must flush without another external trigger'
 );
+assert.deepEqual(supersedingReveals.filter((reveal) => reveal.kind === 'selection')
+  .map((reveal) => reveal.preserveViewport), [false, true],
+  'a post-ready request superseding a failed startup selection must preserve the viewport');
 superseding.dispose();
 
 const pending = createLifecycle();
@@ -111,6 +117,18 @@ assert.deepEqual(reveals.splice(0), [
   { kind: 'fragment', href: '#retry' }
 ], 'failed output must remain pending for the next flush');
 pending.dispose();
+
+const nativeTabReturn = createLifecycle();
+await nativeTabReturn.ready();
+await nativeTabReturn.revealSelection({ anchor: 0, head: 0 });
+assert.deepEqual(reveals.splice(0), [
+  { kind: 'selection', anchor: 0, head: 0, focus: false, preserveViewport: true }
+], 'the first native Selection after startup must not move an existing reading viewport');
+await nativeTabReturn.revealSelection({ anchor: 10, head: 10 });
+assert.deepEqual(reveals.splice(0), [
+  { kind: 'selection', anchor: 10, head: 10, focus: false, preserveViewport: true }
+], 'later native selections must retain the same viewport policy');
+nativeTabReturn.dispose();
 
 let resolveLate!: (value: boolean) => void;
 const lateReveals: ViewNavigationReveal[] = [];

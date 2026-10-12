@@ -805,6 +805,13 @@ async function main(): Promise<void> {
         const menu = document.createElement('div'); menu.className = 'meo-md-html-table-context-menu';
         menu.style.cssText = 'position:fixed;left:100px;top:100px;z-index:9999';
         menu.innerHTML = '<button id="menu-foreground-probe" class="meo-md-html-table-context-btn meo-md-html-table-context-page-btn">Action</button>';
+        for (const command of ['insert-row-above', 'insert-row-below', 'insert-column-left', 'insert-column-right', 'delete-row', 'delete-column']) {
+          const button = document.querySelector<HTMLButtonElement>(`.meo-md-html-table-context-btn[data-command="${command}"]`)!.cloneNode(true) as HTMLButtonElement;
+          button.id = `menu-${command}-probe`;
+          button.disabled = false;
+          button.tabIndex = 0;
+          menu.append(button);
+        }
         document.querySelector('.cm-editor')!.append(menu);
       }, { appearance, foreground });
       await page.mouse.move(0, 0); await page.hover('#menu-foreground-probe');
@@ -812,7 +819,42 @@ async function main(): Promise<void> {
         const probe = document.createElement('span'); probe.style.color = 'var(--meo-ui-text)'; document.body.append(probe);
         const color = getComputedStyle(probe).color; probe.remove(); return color;
       }), 'Table hover keeps the common neutral foreground despite a colored native menu selection token');
+      for (const command of ['insert-row-above', 'insert-row-below', 'insert-column-left', 'insert-column-right', 'delete-row', 'delete-column']) {
+        const selector = `#menu-${command}-probe`;
+        const readColors = () => page.$eval(selector, button => ({
+          icon: getComputedStyle(button.querySelector('svg')!).color,
+          badge: getComputedStyle(button.querySelector('.meo-md-html-table-context-icon-badge')!).color
+        }));
+        await page.mouse.move(0, 0);
+        const idle = await readColors();
+        const badge = parseComputedColor(idle.badge);
+        assertOpaqueColor(idle.badge, `${appearance} ${command} badge`);
+        assert.ok(command.startsWith('delete') ? badge.red > badge.green && badge.red > badge.blue : badge.green > badge.red && badge.green > badge.blue,
+          `${appearance} ${command} keeps its red/green semantic color: ${idle.badge}`);
+        await page.hover(selector);
+        assert.deepEqual(await readColors(), idle, `${appearance} ${command} keeps icon and badge colors on hover`);
+        await page.focus(selector);
+        await page.keyboard.press('Tab');
+        await page.keyboard.down('Shift');
+        await page.keyboard.press('Tab');
+        await page.keyboard.up('Shift');
+        assert.equal(await page.$eval(selector, button => button.matches(':focus-visible')), true);
+        assert.deepEqual(await readColors(), idle, `${appearance} ${command} keeps icon and badge colors on keyboard focus`);
+        await page.$eval(selector, button => (button as HTMLButtonElement).blur());
+      }
       await page.$eval('#menu-foreground-probe', button => button.parentElement!.remove());
+    }
+    for (const highContrast of [false, true]) {
+      const semantics = await page.evaluate(highContrast => {
+        document.body.classList.toggle('vscode-high-contrast', highContrast);
+        (window as any).TableStabilityHarness.applyUiTheme('dark', true, { success: '#369954', danger: '#dd4040' });
+        const style = getComputedStyle(document.documentElement);
+        return ['success', 'danger'].map(name => ({
+          original: style.getPropertyValue(`--meo-ui-${name}`),
+          emphasized: style.getPropertyValue(`--meo-ui-${name}-emphasis`)
+        }));
+      }, highContrast);
+      for (const color of semantics) assert.equal(color.emphasized, color.original, 'Explicit user colors and high contrast keep their original semantic projection');
     }
     assertTableActionsAppearance(result.darkAppearance, result.darkPalette, 'dark table actions');
     assertTableActionsAppearance(result.lightAppearance, result.lightPalette, 'light table actions');

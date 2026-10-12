@@ -143,6 +143,22 @@ to top must retain the new location when returning to either Live or Source,
 without a body click. It also checks unchanged roundtrips and samples multiple
 frames after the return. It belongs to the quick and targeted viewport gates.
 
+`scripts/test-tab-switch-reading-position.ts` connects the real Host navigation
+adapter to the production Webview in a separate browser document. It hides the
+MEO frame, activates a native-editor fixture, delays its messages until return,
+then replays document sync and focus. Live, Source, Preview, linked split and
+independent split must retain both their visible content and its viewport offset
+on every sampled frame, across two returns with different native selections.
+It covers the first native selection arriving after startup, an initial native
+selection and an unrelated native document. The first post-startup selection
+must preserve the viewport even when no selection was sent during startup;
+deduplication of an initial selection alone cannot prove that path.
+`scripts/test-panel-session-tab-navigation.ts` separately drives actual Panel
+Session activation, visibility and selection subscriptions. Both contracts and
+the navigation lifecycle check belong to `test:reading-position`, which is
+required by quick, targeted viewport and release gates. These browser and Host
+contracts do not replace installed-VSIX Workbench validation.
+
 `scripts/test-preview-preset-position.ts` samples the same content-relative reading
 point on every frame while switching built-in and custom presets with different
 fonts, widths and spacing. It covers light/dark, full Preview, linked and independent
@@ -191,6 +207,11 @@ base surface changes. It also checks that unrelated native menu colors cannot
 recolor the palette. `scripts/test-webview-search-controls.ts` covers empty,
 typed and cleared inputs, inset clear-button geometry and hover feedback in
 light/dark appearances; the panel close action retains toolbar button styling.
+
+`scripts/test-source-active-line.ts`, included in `test:theme-inheritance`, checks
+that ordinary, quoted, and fenced-code Source lines use the native
+`editor.lineHighlightBackground` without a rectangular shadow, border, or outline.
+It covers Light/Dark 2026, custom translucent colors, and transparent backgrounds.
 
 `scripts/test-line-number-rendered-block-stability.ts` runs in the quick, targeted
 viewport, and high-risk browser gates. With real Mermaid, KaTeX and fonts, it

@@ -250,9 +250,21 @@ const packageJson = JSON.parse(
   readFileSync(resolve(repoRoot, 'package.json'), 'utf8')
 ) as { scripts?: Record<string, string> };
 const packageScripts = packageJson.scripts ?? {};
+for (const contract of [
+  'scripts/test-host-view-navigation-lifecycle.ts',
+  'scripts/test-panel-session-tab-navigation.ts',
+  'scripts/test-tab-switch-reading-position.ts'
+]) {
+  assert.ok(packageScripts['test:reading-position']?.includes(`bun ${contract}`),
+    `reading-position gate must retain native tab return contract ${contract}`);
+}
+for (const plan of [quick, release, createTestWorkflowPlan(parseTestWorkflowRequest(['targeted', 'viewport']))]) {
+  assert.ok(flattenTestWorkflowCommands(plan).some(command => command.args.join(' ') === 'run test:reading-position'),
+    `${plan.tier} must run the native tab reading-position gate`);
+}
 assert.equal(packageScripts['test:quick'], 'bun scripts/test-workflow.ts quick');
 assert.equal(packageScripts['test:ui-light'], 'bun scripts/test-workflow.ts ui-light');
-assert.equal(packageScripts['test:theme-inheritance'], 'bun scripts/test-theme-inheritance.ts');
+assert.equal(packageScripts['test:theme-inheritance'], 'bun scripts/test-source-active-line.ts && bun scripts/test-theme-inheritance.ts');
 assert.match(packageScripts['test:unit'] ?? '', /bun scripts\/test-source-theme-customizations\.ts/);
 assert.match(packageScripts['test:browser'] ?? '', /bun run test:theme-inheritance/);
 assert.equal(packageScripts['test:targeted'], 'bun scripts/test-workflow.ts targeted');

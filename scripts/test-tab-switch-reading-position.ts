@@ -1,0 +1,160 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { mock } from 'bun:test';
+import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
+import exportRuntime from '../src/export/runtime';
+
+const vscodeWindow: { activeTextEditor: any; visibleTextEditors: any[] } = {
+  activeTextEditor: undefined, visibleTextEditors: []
+};
+mock.module('vscode', () => ({ window: vscodeWindow }));
+const { createVscodeViewNavigationAdapter } = await import('../src/host/vscodeViewNavigationAdapter');
+const uri = { scheme: 'file', fsPath: 'C:/tmp/tab-reading.md', fragment: '', toString: () => 'file:///tab-reading.md' };
+const text = Array.from({ length: 180 }, (_, index) => `Paragraph ${index + 1}: reading position witness.\n`).join('\n');
+const hostDocument = { uri, offsetAt: (position: number) => position };
+const nativeEditor = { document: hostDocument, selection: { start: 0, end: 0 } };
+const build = await Bun.build({ entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'], target: 'browser', format: 'iife' });
+assert.ok(build.success, build.logs.map(String).join('\n'));
+const bundle = await build.outputs[0]!.text();
+const css = await readFile('webview/src/styles.css', 'utf8');
+const browser = await launchTestBrowser();
+let primaryError: unknown;
+const captureSurfaces = () => {
+  const surfaces: Array<{ owner: string; top: number; witness: string; offset: number }> = [];
+  const capture = (owner: string, scroller: Element, candidates: Element[], viewportTop: number, viewportBottom: number) => {
+    const witness = candidates.find(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.height > 0 && rect.bottom > viewportTop + 2 && rect.top < viewportBottom;
+    });
+    if (!witness) throw new Error(`${owner} has no visible content`);
+    surfaces.push({ owner, top: scroller.scrollTop, witness: witness.textContent!, offset: witness.getBoundingClientRect().top - viewportTop });
+  };
+  if (document.querySelector<HTMLElement>('#app')!.dataset.mode !== 'preview') {
+    const scroller = document.querySelector('.editor-host .cm-scroller')!;
+    const rect = scroller.getBoundingClientRect();
+    capture('editor', scroller, [...scroller.querySelectorAll('.cm-line')].filter(element => element.textContent?.includes('Paragraph')), rect.top, rect.bottom);
+  }
+  const preview = document.querySelector<HTMLIFrameElement>('.preview-frame');
+  if (preview && !document.querySelector<HTMLElement>('.preview-host')!.hidden) {
+    const previewDocument = preview.contentDocument!;
+    capture('preview', previewDocument.scrollingElement!, [...previewDocument.querySelectorAll('p')], 0, previewDocument.documentElement.clientHeight);
+  }
+  return surfaces;
+};
+try {
+  for (const view of ['live', 'source', 'preview', 'linked', 'independent'] as const) {
+    for (const native of ['first-selection', 'initial-selection', 'other-document'] as const) {
+      const initialNative = native === 'initial-selection';
+      const label = `${view}: ${native}`;
+      const page = await browser.newPage();
+      let adapter: ReturnType<typeof createVscodeViewNavigationAdapter> | undefined;
+      try {
+        await page.setViewport({ width: 1200, height: 800 });
+        await page.setContent('<!doctype html><style>html,body{height:100%;margin:0}#meo{width:100%;height:100%;border:0}#native{display:none}</style><input id="native"><iframe id="meo"></iframe>');
+        const frame = await (await page.$('#meo'))!.contentFrame();
+        assert.ok(frame);
+        page.setDefaultTimeout(5000);
+        await frame.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
+        await frame.addStyleTag({ content: css });
+        await page.exposeFunction('__renderTabPreview', (message: any) => message.type === 'requestPreviewRender' ? {
+          type: 'previewRenderResult', requestId: message.requestId,
+          result: { ok: true, value: exportRuntime.renderPreviewDocument({ markdownText: message.text, sourceDocumentPath: uri.fsPath, uiLanguage: message.uiLanguage, styleEnvironment: message.environment }) }
+        } : null);
+        await frame.addScriptTag({ content: 'window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.parent.__renderTabPreview(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent("message",{data:response}));});}});' });
+        await frame.addScriptTag({ content: `window.__captureTabSurfaces = ${captureSurfaces.toString()};` });
+        await frame.addScriptTag({ content: bundle });
+        await frame.evaluate(text => window.dispatchEvent(new MessageEvent('message', {
+          data: {
+            type: 'init', documentId: 'file:///tab-reading.md', text, version: 1, savedRevision: { version: 1, text }, diagnostics: [], mode: 'live', uiLanguage: 'en',
+            sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, editorAppearance: 'light', editorFontSizeMode: 'auto', editorFontSize: 14,
+            gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false,
+            contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260, restoreReadingPositionOnOpen: false, vscodeTheme: null
+          }
+        })), text);
+        await frame.waitForSelector('.cm-editor.meo-mode-live');
+        await frame.waitForFunction(() => !document.querySelector('.editor-wrapper')?.classList.contains('meo-preload-editor-shell'));
+        vscodeWindow.activeTextEditor = initialNative ? nativeEditor : undefined;
+        vscodeWindow.visibleTextEditors = [];
+        nativeEditor.selection = { start: 0, end: 0 };
+        let hidden = false;
+        // Replay Host output that arrives only after the retained Webview returns.
+        const queued: unknown[] = [];
+        adapter = createVscodeViewNavigationAdapter({
+          document: hostDocument as never, documentUri: uri as never, getDocumentFragmentHref: () => null, resolveLocalLinkTarget: async () => null,
+          post: async message => { if (hidden) queued.push(message); else await frame.evaluate(data => window.dispatchEvent(new MessageEvent('message', { data })), message); return true; }
+        });
+        await adapter.ready();
+        if (view !== 'live') {
+          const mode = view === 'preview' ? 'preview' : 'source';
+          await frame.click(`[data-mode="${mode}"]`);
+          await frame.waitForFunction(mode => document.querySelector<HTMLElement>('#app')?.dataset.mode === mode, {}, mode);
+        }
+        if (view === 'linked' || view === 'independent') {
+          await frame.click('.source-preview-button');
+          await frame.waitForFunction(() => document.querySelector('.editor-surface')?.hasAttribute('data-source-preview'));
+          if (view === 'independent') await frame.click('.source-preview-scroll-sync-button');
+        }
+        if (view === 'preview' || view === 'linked' || view === 'independent') {
+          await frame.waitForFunction(() => document.querySelector<HTMLElement>('.preview-status')?.hidden === true && document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('p'));
+        }
+        await new Promise(resolve => setTimeout(resolve, 150));
+        if (view === 'preview') {
+          await frame.evaluate(() => {
+            const previewDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+            previewDocument.scrollingElement!.scrollTop = 1100;
+          });
+        } else {
+          await frame.focus('.cm-content');
+          const bounds = await frame.$eval('.cm-scroller', element => { const rect = element.getBoundingClientRect(); return { x: rect.x + 200, y: rect.y + 150 }; });
+          await page.mouse.move(bounds.x, bounds.y);
+          await page.mouse.wheel({ deltaY: 1100 });
+        }
+        if (view === 'independent') await frame.evaluate(() => {
+          document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop = 650;
+        });
+        await new Promise(resolve => setTimeout(resolve, 250));
+        const before = await frame.evaluate(captureSurfaces);
+        assert.ok(before.every(surface => surface.top > 500), `${label}: fixture must scroll: ${JSON.stringify(before)}`);
+        for (const nativeOffset of [0, 180]) {
+          nativeEditor.selection = { start: nativeOffset, end: nativeOffset };
+          hidden = true;
+          await page.evaluate(() => { document.getElementById('meo')!.style.display = 'none'; document.getElementById('native')!.style.display = 'block'; });
+          await page.focus('#native');
+          const switchedEditor = native === 'other-document'
+            ? { ...nativeEditor, document: { ...hostDocument, uri: { ...uri, toString: () => 'file:///other.md' } } }
+            : nativeEditor;
+          vscodeWindow.activeTextEditor = switchedEditor;
+          vscodeWindow.visibleTextEditors = [switchedEditor];
+          await adapter.revealSelectionForEditor(switchedEditor as never);
+          await adapter.revealCurrentEditorSelection();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await page.evaluate(() => { document.getElementById('native')!.style.display = 'none'; document.getElementById('meo')!.style.display = ''; });
+          vscodeWindow.activeTextEditor = undefined;
+          vscodeWindow.visibleTextEditors = [];
+          await page.focus('#meo');
+          hidden = false;
+          for (const data of queued.splice(0)) await frame.evaluate(data => window.dispatchEvent(new MessageEvent('message', { data })), data);
+          await adapter.flush();
+          await frame.evaluate(text => window.dispatchEvent(new MessageEvent('message', { data: { type: 'docChanged', text, version: 1 } })), text);
+          await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'focusEditor' } })));
+          const after = await frame.evaluate(async () => {
+            const samples: ReturnType<typeof captureSurfaces>[] = [];
+            for (let count = 0; count < 12; count++) {
+              await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+              samples.push((window as any).__captureTabSurfaces());
+            }
+            return samples;
+          });
+          assert.ok(after.every(surfaces => surfaces.length === before.length && surfaces.every((surface, index) => {
+            const expected = before[index]!;
+            return surface.owner === expected.owner && surface.witness === expected.witness
+              && Math.abs(surface.top - expected.top) <= 1 && Math.abs(surface.offset - expected.offset) <= 1;
+          })), `${label}, native offset ${nativeOffset}: tab return lost reading position, before=${JSON.stringify(before)}, after=${JSON.stringify(after)}`);
+        }
+        console.log(`PASS ${label}: two tab returns retained visible content and viewport on every sampled frame`);
+      } catch (error) { throw new Error(label, { cause: error }); }
+      finally { adapter?.dispose(); await page.close(); }
+    }
+  }
+} catch (error) { primaryError = error; throw error; }
+finally { if (primaryError === undefined) await closeTestBrowser(browser); else await closeTestBrowser(browser, primaryError); }

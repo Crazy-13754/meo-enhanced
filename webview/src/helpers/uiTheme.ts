@@ -175,6 +175,12 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
       const accentText = fit(accent, surfaces, 4.55);
       const selectedText = fit(custom.text ? text : neutral(nativeSelectionText ?? text), [selected], 4.55);
       const contentEmphasis = fit(textEmphasis, contentSurfaces, 4.55);
+      // These glyphs/counts use ordinary and hover carriers. Fitting them to
+      // unrelated selected fields washes out their chroma unnecessarily.
+      const vividSemantics = !highContrast && CSS.supports('color', 'oklch(from red l calc(c * 1.4) h)');
+      const semanticEmphasis = (value: Rgb, overridden?: string): Rgb => vividSemantics && !overridden
+        ? fit(sample(`oklch(from ${rgb(value)} l calc(c * 1.4) h)`), [surface, raised, hover], 4.55)
+        : fit(value, surfaces, 4.55);
       const roles: Record<string, string> = Object.fromEntries(Object.entries({
         surface, 'document-background': documentSurface, 'surface-raised': raised, 'surface-field': field, 'surface-hover': hover,
         'surface-pressed': pressed, 'surface-selected': selected, 'segmented-track': track,
@@ -187,6 +193,8 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
         'text-emphasis-content': contentEmphasis,
         'text-emphasis-selected': fit(contentEmphasis, [selected], 4.55),
         success: fit(success, surfaces, 4.55), warning: fit(warning, surfaces, 4.55), danger: fit(danger, surfaces, 4.55),
+        'success-emphasis': semanticEmphasis(success, custom.success),
+        'danger-emphasis': semanticEmphasis(danger, custom.danger),
         'switch-off': switchOff, 'on-switch-off': fit(mix(text, neutral(raised), 0.20), [switchOff], 3.05)
       }).map(([role, value]) => [role, rgb(value)]));
       roles['text-emphasis-background'] = footnoteBackground;

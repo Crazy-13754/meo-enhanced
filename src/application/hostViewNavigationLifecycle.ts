@@ -50,7 +50,7 @@ export function createHostViewNavigationLifecycle(
   let pendingSelection = dependencies.initialSelection;
   let pendingFragment = dependencies.initialFragment;
   let lastSentSelectionKey: string | null = null;
-  let deliveredInitialSelection = false;
+  let pendingSelectionPreservesViewport = false;
   let ready = false;
   let disposed = false;
   let requestGeneration = 0;
@@ -65,7 +65,7 @@ export function createHostViewNavigationLifecycle(
           const selection = pendingSelection;
           const key = selectionKey(selection);
           const attemptGeneration = requestGeneration;
-          const preserveViewport = deliveredInitialSelection;
+          const preserveViewport = pendingSelectionPreservesViewport;
           const posted = await dependencies.output.reveal({
             kind: 'selection',
             anchor: selection.anchor,
@@ -85,7 +85,6 @@ export function createHostViewNavigationLifecycle(
             return;
           }
           lastSentSelectionKey = key;
-          deliveredInitialSelection = true;
           if (pendingSelection && selectionKey(pendingSelection) === key) pendingSelection = null;
           continue;
         }
@@ -117,6 +116,9 @@ export function createHostViewNavigationLifecycle(
     revealSelection(selection) {
       if (disposed || selectionKey(selection) === lastSentSelectionKey) return Promise.resolve();
       pendingSelection = selection;
+      // A native tab can supply its first Selection long after Webview startup.
+      // Only selections queued before ready own the initial reading location.
+      pendingSelectionPreservesViewport = ready;
       requestGeneration += 1;
       return flush();
     },

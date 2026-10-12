@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -144,6 +145,7 @@ async function main(): Promise<void> {
       const panelRect = panel.getBoundingClientRect();
       const headerRect = header.getBoundingClientRect();
       const sectionRect = displaySection.getBoundingClientRect();
+      const lastOptionRect = displaySection.querySelector('.changes-review-toggle')!.getBoundingClientRect();
       const headerDivider = getComputedStyle(header, '::after');
       const sectionDivider = getComputedStyle(displaySection, '::before');
       const children = Array.from(header.children, (child) => child.getBoundingClientRect());
@@ -152,6 +154,9 @@ async function main(): Promise<void> {
       return {
         panelLeft: panelRect.left,
         panelRight: panelRect.right,
+        lastOptionLeftInset: lastOptionRect.left - panelRect.left,
+        lastOptionRightInset: panelRect.right - lastOptionRect.right,
+        lastOptionBottomInset: panelRect.bottom - lastOptionRect.bottom,
         headerDividerLeft: headerRect.left + (Number.parseFloat(headerDivider.left) || 0),
         headerDividerRight: headerRect.right - (Number.parseFloat(headerDivider.right) || 0),
         sectionDividerLeft: sectionRect.left + (Number.parseFloat(sectionDivider.left) || 0),
@@ -182,6 +187,8 @@ async function main(): Promise<void> {
     const expectedLeft = changesMenuGeometry.panelLeft + settingsMenuGeometry.leftInset;
     const expectedRight = changesMenuGeometry.panelRight - settingsMenuGeometry.rightInset;
     if (
+      Math.abs(changesMenuGeometry.lastOptionBottomInset - changesMenuGeometry.lastOptionLeftInset) > 0.5 ||
+      Math.abs(changesMenuGeometry.lastOptionBottomInset - changesMenuGeometry.lastOptionRightInset) > 0.5 ||
       Math.abs(changesMenuGeometry.headerDividerLeft - expectedLeft) > 0.5 ||
       Math.abs(changesMenuGeometry.headerDividerRight - expectedRight) > 0.5 ||
       Math.abs(changesMenuGeometry.sectionDividerLeft - expectedLeft) > 0.5 ||
@@ -257,6 +264,100 @@ async function main(): Promise<void> {
       }
     }
 
+    await page.click('.editor-appearance-button[data-editor-appearance="auto"]');
+    await page.click('.more-tools-wrapper > button');
+    for (const appearance of ['dark', 'light'] as const) {
+      await page.evaluate(appearance => {
+        document.body.className = `vscode-${appearance}`;
+        document.documentElement.style.setProperty('--vscode-editor-background', appearance === 'dark' ? '#24292e' : '#ffffff');
+        document.documentElement.style.setProperty('--vscode-editor-foreground', appearance === 'dark' ? '#e6edf3' : '#202020');
+        window.dispatchEvent(new MessageEvent('message', { data: {
+          type: 'vscodeCodeThemeChanged', appearance, vscodeTheme: { name: 'fixture', type: appearance, colors: {}, tokenColors: [] }
+        }}));
+      }, appearance);
+      await waitForFrames(page);
+      assert.equal(await page.$eval('html', element => (element as HTMLElement).dataset.editorAppearance), appearance);
+      await page.click('.changes-review-trigger');
+      const readCounts = () => page.evaluate(() => {
+        const role = (name: string) => {
+          const probe = document.createElement('span'); probe.style.color = `var(--meo-ui-${name})`; document.body.append(probe);
+          const color = getComputedStyle(probe).color; probe.remove(); return color;
+        };
+        return {
+          backgrounds: ['surface', 'surface-raised', 'surface-hover'].map(role),
+          rows: [...document.querySelectorAll('.changes-review-count')].map(element => {
+            const name = element.classList.contains('is-added') ? 'success' : 'danger';
+            return { color: getComputedStyle(element).color, expected: role(`${name}-emphasis`), original: role(name) };
+          })
+        };
+      });
+      const idle = await readCounts();
+      assert.equal(idle.rows.length, 4, `${appearance}: trigger and menu both show additions/deletions`);
+      const channels = (color: string) => color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(channel => color.startsWith('color(srgb') ? channel * 255 : channel);
+      const saturation = (color: string) => {
+        const rgb = channels(color); return (Math.max(...rgb) - Math.min(...rgb)) / Math.max(...rgb);
+      };
+      const luminance = (color: string) => channels(color).map(channel => {
+        const c = channel / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
+      const contrast = (color: string, background: string) => {
+        const a = luminance(color), b = luminance(background);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      };
+      for (const row of idle.rows) {
+        assert.equal(row.color, row.expected, `${appearance}: counts use the stronger semantic color`);
+        assert.ok(saturation(row.color) > saturation(row.original), `${appearance}: counts are less washed out (${JSON.stringify(row)})`);
+        for (const background of idle.backgrounds) {
+          const a = luminance(row.color), b = luminance(background);
+          assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5, `${appearance}: counts remain readable on ${background}`);
+        }
+      }
+      await page.hover('.changes-review-trigger');
+      assert.deepEqual(await readCounts(), idle, `${appearance}: trigger hover preserves count colors`);
+      await page.hover('.changes-review-header');
+      assert.deepEqual(await readCounts(), idle, `${appearance}: menu hover preserves count colors`);
+      const readMenuState = (selector: string) => page.$eval(selector, element => {
+        const style = getComputedStyle(element);
+        return {
+          color: style.color, background: style.backgroundColor, radius: style.borderRadius,
+          outline: style.outline, outlineOffset: style.outlineOffset, height: style.height
+        };
+      });
+      const selectedState = await readMenuState('.changes-review-snapshot-select.is-selected');
+      assert.equal((await readMenuState('[data-toggle="before-content"]')).background, 'rgba(0, 0, 0, 0)', `${appearance}: enabled Changes switch has no persistent row background`);
+      const hoverStates = [];
+      for (const selector of ['[data-baseline="git-head"]', '.changes-review-snapshot-select', '.changes-review-snapshot-action', '[data-toggle="before-content"]']) {
+        await page.hover(selector);
+        hoverStates.push({ selector, state: await readMenuState(selector), selected: await page.$eval(selector, element =>
+          element.getAttribute('role') === 'menuitemradio' && element.getAttribute('aria-checked') === 'true') });
+      }
+      await page.click('.changes-review-trigger');
+      await page.click('.more-tools-wrapper > button');
+      await page.hover('.more-tools-section-label');
+      const switches = await page.$$eval('.more-tools-option[role="menuitemcheckbox"]', elements => elements.map(element => getComputedStyle(element).backgroundColor));
+      assert.ok(switches.length > 0 && switches.every(color => color === 'rgba(0, 0, 0, 0)'), `${appearance}: Settings switches have no persistent row backgrounds`);
+      await page.hover('.more-tools-option[data-action="sourceLineNumbers"]');
+      const enabledSwitchHover = await readMenuState('.more-tools-option[data-action="sourceLineNumbers"]');
+      await page.hover('.more-tools-option[data-action="liveStrongColoring"]');
+      const settingsHover = await readMenuState('.more-tools-option[data-action="liveStrongColoring"]');
+      assert.deepEqual(enabledSwitchHover, settingsHover, `${appearance}: on/off switches share the same hover style`);
+      assert.notEqual(selectedState.background, settingsHover.background, `${appearance}: radio selection and hover states are distinct`);
+      assert.ok(contrast(selectedState.background, idle.backgrounds[1]!) > contrast(settingsHover.background, idle.backgrounds[1]!), `${appearance}: selected radio background is stronger than hover`);
+      for (const { selector, state, selected } of hoverStates) {
+        assert.deepEqual(state, selected ? selectedState : settingsHover, `${appearance}: ${selector} preserves its radio-selection/hover state`);
+      }
+      const headings = await page.$$eval('.more-tools-panel .more-tools-section-label, .changes-review-panel .changes-review-section-label', elements => elements.map(element => getComputedStyle(element).color));
+      assert.equal(headings.length, 5, 'Both menus expose all five group headings');
+      assert.equal(new Set(headings).size, 1, 'Both menus share the same weaker heading color');
+      for (const color of headings) {
+        assert.ok(contrast(color, idle.backgrounds[1]!) < contrast(settingsHover.color, idle.backgrounds[1]!), `${appearance}: group headings are weaker than ordinary options`);
+        const background = channels(idle.backgrounds[1]!);
+        const distance = (value: string) => channels(value).reduce((sum, channel, index) => sum + Math.abs(channel - background[index]!), 0);
+        assert.ok(distance(color) / distance(settingsHover.color) <= 0.65, `${appearance}: group headings are another step weaker`);
+        assert.ok(contrast(color, idle.backgrounds[1]!) >= 3, `${appearance}: group headings remain distinguishable`);
+      }
+      await page.click('.more-tools-wrapper > button');
+    }
     console.log('changes review consistency checks passed');
   } finally {
     await browser.close();

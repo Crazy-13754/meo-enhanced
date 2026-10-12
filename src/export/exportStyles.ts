@@ -1036,7 +1036,7 @@ pre.meo-export-code-block code {
 blockquote {
   margin-left: 0;
   padding: 0 0 0 3ch;
-  border-left: 3px solid var(--meo-quote-border, var(--meo-quote));
+  border-left: 3px solid color-mix(in srgb, currentColor 60%, transparent);
   background: transparent;
   border-radius: 0;
   color: var(--meo-quote);

@@ -238,7 +238,7 @@ body {
   justify-content: center;
   box-sizing: border-box;
   padding: 0;
-  border: 1px solid var(--meo-ui-border-control);
+  border: 1px solid color-mix(in srgb, var(--meo-ui-border-control) 20%, transparent);
   border-radius: 50%;
   color: var(--meo-ui-text);
   background: var(--meo-ui-surface);
@@ -1355,11 +1355,11 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .changes-review-count.is-added {
-  color: var(--meo-ui-success);
+  color: var(--meo-ui-success-emphasis, var(--meo-ui-success));
 }
 
 .changes-review-count.is-deleted {
-  color: var(--meo-ui-danger);
+  color: var(--meo-ui-danger-emphasis, var(--meo-ui-danger));
 }
 
 .changes-review-empty {
@@ -1423,6 +1423,10 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   padding-top: 5px;
 }
 
+.changes-review-section:last-child {
+  padding-bottom: 0;
+}
+
 .changes-review-header::after,
 .changes-review-section + .changes-review-section::before {
   content: '';
@@ -1453,7 +1457,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   align-items: center;
   gap: 6px;
   width: 100%;
-  min-height: 28px;
+  min-height: 26px;
   padding: 0 6px;
   border: 0;
   border-radius: 6px;
@@ -1517,7 +1521,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 2px;
-  min-height: 28px;
+  min-height: 26px;
 }
 
 .changes-review-snapshot-row.is-empty {
@@ -1552,12 +1556,12 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
 }
 
 .changes-review-snapshot-action {
-  height: 28px;
-  min-height: 28px;
+  height: 26px;
+  min-height: 26px;
   margin-right: 0;
   min-width: 40px;
   padding: 0 4px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 6px;
   color: var(--meo-ui-text);
   background: transparent;
@@ -2254,6 +2258,7 @@ button:focus-visible > .menu-switch {
 }
 
 .cm-editor {
+  --meo-semantic-blockquoteBorder: color-mix(in srgb, var(--meo-semantic-blockquoteForeground) 60%, transparent);
   font-family: var(--meo-active-editor-font);
   font-weight: var(--meo-active-editor-font-weight);
   font-size: var(--meo-user-editor-font-size, var(--meo-active-editor-font-size));
@@ -6690,7 +6695,7 @@ body.outline-resizing .preview-frame {
   height: 20px;
   box-sizing: border-box;
   padding: 0;
-  border: 1px solid var(--meo-ui-border-control);
+  border: 1px solid color-mix(in srgb, var(--meo-ui-border-control) 40%, transparent);
   border-radius: 50%;
   color: var(--meo-ui-text);
   background: var(--meo-ui-surface);
@@ -7227,8 +7232,8 @@ html .cm-editor .meo-md-html-table-context-menu {
   opacity: 0.38;
 }
 
-.cm-editor .meo-md-html-table-context-delete-btn {
-  color: var(--meo-ui-danger);
+.cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-delete-btn:not(:disabled) {
+  color: var(--meo-ui-danger-emphasis, var(--meo-ui-danger));
 }
 
 .cm-editor .meo-md-html-table-context-page-btn {
@@ -7252,7 +7257,7 @@ html .cm-editor .meo-md-html-table-context-menu {
   z-index: 1;
   width: 10px;
   height: 10px;
-  color: var(--meo-ui-success, #89d185);
+  color: var(--meo-ui-success-emphasis, var(--meo-ui-success, #89d185));
   border-radius: 2px;
   background-color: transparent;
   filter:
@@ -8162,7 +8167,6 @@ button:focus-visible > .menu-switch { outline-color: var(--meo-ui-focus); }
 :is(.selection-inline-menu, .cm-editor .meo-md-html-table-context-trigger, .cm-editor .meo-md-html-table-context-menu) { color: var(--meo-ui-text); }
 .cm-editor .meo-md-html-table-context-menu :is(button:hover, button:focus-visible) { color: var(--meo-ui-text); }
 .cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-btn.is-active { color: var(--meo-ui-text-selected); }
-.cm-editor .meo-md-html-table-context-delete-btn { color: var(--meo-ui-danger); }
 
 /* Native high-contrast selection is an explicit foreground/background pair. */
 html[data-meo-ui-contrast='high'] .segmented-control-button.is-active {
@@ -8177,7 +8181,6 @@ html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table-context-btn.is-a
   outline: 1px solid var(--meo-ui-selection-border);
   outline-offset: -1px;
 }
-.cm-editor .meo-md-html-table-context-delete-btn:is(:hover, :focus-visible) { color: var(--meo-ui-text); }
 .cm-tooltip.meo-hex-color-adjustment { box-shadow: var(--meo-ui-shadow); }
 .meo-input-suggestions, html[data-editor-appearance='dark'] .meo-input-suggestions {
   --meo-suggestion-selected-background: var(--meo-ui-surface-selected);
@@ -8211,10 +8214,11 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .cm-editor.meo-mode-source, .cm-editor.meo-mode-source :is(.cm-scroller, .cm-content, .cm-line) { color: var(--meo-source-foreground); }
 .cm-editor.meo-mode-source .cm-gutterElement.cm-activeLineGutter { color: var(--meo-source-active-line-number); }
 /* Diff rows own their background and gap fill, including fenced code. */
-.cm-editor.meo-mode-source .cm-line.cm-activeLine:not(.meo-diff-added-line):not(.meo-diff-changed-line):not(.meo-git-diff-current-line) { background: var(--meo-source-line) !important; box-shadow: inset 0 0 0 1px var(--meo-source-line-border); }
+.cm-editor.meo-mode-source .cm-line.cm-activeLine:not(.meo-diff-added-line):not(.meo-diff-changed-line):not(.meo-git-diff-current-line) { background: var(--meo-source-line) !important; box-shadow: none; }
 .cm-editor.meo-mode-source .cm-line.meo-src-code-block:not(.cm-activeLine):not(.meo-diff-added-line):not(.meo-diff-changed-line):not(.meo-git-diff-current-line) { background: var(--meo-background) !important; }
 .cm-editor.meo-mode-source:not(.cm-focused) .cm-selectionBackground { background: var(--meo-source-inactive-selection) !important; }
-:is(.changes-review-option, .changes-review-snapshot-select):is(:hover, :focus-visible, .is-selected):not(:disabled) { color: var(--meo-ui-text); background: var(--meo-ui-surface-hover); outline: 1px solid var(--meo-ui-selection-border); outline-offset: -1px; }
+:is(.more-tools-option, .changes-review-option, .changes-review-snapshot-select, .changes-review-snapshot-action):is(:hover, :focus-visible):not(:disabled) { color: var(--meo-ui-text); background: var(--meo-ui-surface-hover); outline: none; outline-offset: -1px; }
+html[data-meo-ui-contrast='high'] :is(.more-tools-option, .changes-review-option, .changes-review-snapshot-select, .changes-review-snapshot-action):is(:hover, :focus-visible, .is-selected):not(:disabled) { outline: 1px solid var(--meo-ui-selection-border); }
 :is(.changes-review-header::after, .changes-review-section::before, .cm-editor .meo-md-html-table-context-separator) { background: var(--meo-ui-separator); }
 .changes-review-check.is-warning { color: var(--meo-ui-warning); }
 .table-grid-cell { border-color: var(--meo-ui-border-control); }
@@ -8255,6 +8259,7 @@ body .cm-tooltip.meo-hex-color-adjustment,
 .settings-paste-contexts dd,
 .settings-searchbox > svg,
 .settings-search-clear { color: var(--meo-ui-text-muted); }
+html[data-meo-ui-contrast='normal'] :is(.more-tools-panel .more-tools-section-label, .changes-review-panel .changes-review-section-label) { color: color-mix(in srgb, var(--meo-ui-text) 60%, var(--meo-ui-surface-raised)); }
 .settings-tab:not([aria-selected='true']) { color: var(--meo-ui-text-muted); }
 .settings-tab:hover:not([aria-selected='true']) { color: var(--meo-ui-text); }
 .meo-hex-color-adjustment-actions button:not(.meo-hex-color-adjustment-apply) { color: var(--meo-ui-text); }
@@ -8281,10 +8286,10 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'],
 html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :is(.meo-suggestion-marker, .meo-input-suggestion-detail, .meo-suggestion-parameters) { color: var(--meo-ui-text-selected); }
 .meo-input-suggestion:hover:not([aria-selected='true']) { color: var(--meo-ui-text); }
+:is(.changes-review-option, .changes-review-snapshot-select)[role='menuitemradio'][aria-checked='true']:not(:disabled) { color: var(--meo-ui-text-selected); background: var(--meo-ui-surface-selected); outline: none; outline-offset: -1px; }
 :is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action, .settings-button, .changes-review-option, .changes-review-snapshot-select, .changes-review-snapshot-action):disabled,
 .cm-editor .meo-md-html-table-context-btn:disabled { color: var(--meo-ui-text-disabled); }
 /* These actions retain their semantic foregrounds and paired button fills. */
 .format-button.is-discard-armed, .format-button.is-discard-armed:hover { color: #fff; }
 .find-status.is-error { color: var(--meo-ui-danger); }
 .preview-preset-info.has-error { color: var(--meo-ui-danger); }
-.cm-editor .meo-md-html-table-context-delete-btn { color: var(--meo-ui-danger); }
