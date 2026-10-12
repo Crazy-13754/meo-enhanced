@@ -33,6 +33,7 @@ import { createSegmentedControl } from '../adapters/segmentedControl';
 import { createPreviewPresetInfo } from '../adapters/previewPresetInfo';
 import type { PreviewPresetDiagnostic } from '../../../src/foundation/previewPresets';
 import { resolveEmbeddedImageSrc } from './images';
+import { githubPictureMedia } from '../../../src/shared/githubPicture';
 import {
   createPreviewTableLayoutController,
   type PreviewTableLayoutController
@@ -1357,6 +1358,18 @@ export function createPreviewController({
       commitFrame = frameDocument.defaultView?.requestAnimationFrame(flushCommits) ?? null;
       if (commitFrame === null) flushCommits();
     };
+    for (const source of frameDocument.querySelectorAll<HTMLSourceElement>('picture source[data-meo-deferred-image-srcset]')) {
+      const rawSrc = source.getAttribute('data-meo-deferred-image-srcset') ?? '';
+      source.removeAttribute('data-meo-deferred-image-srcset');
+      source.dataset.meoPreviewImageSource = rawSrc;
+      void resolveEmbeddedImageSrc(rawSrc, abortController.signal).then(resolved => {
+        if (abortController.signal.aborted || disposed || activeFrameDocument !== frameDocument) return;
+        enqueueCommit(() => {
+          if (resolved) source.srcset = resolved;
+          else source.removeAttribute('srcset');
+        });
+      });
+    }
     const images = Array.from(frameDocument.querySelectorAll<HTMLImageElement>(
       'img[data-meo-deferred-image-src]'
     ));
@@ -1654,6 +1667,7 @@ export function createPreviewController({
       if (!previewPresets.some(preset => preset.id === (payload.preset ?? 'default'))) return;
       const preset = getPreviewPreset(payload.preset);
       frameDocument.documentElement.dataset.meoPreviewRenderer = preset.renderer;
+      syncGithubPictures(frameDocument, appearance);
       frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(preset.id === 'default');
       previewTableLayout = preset.renderer === 'meo' ? createPreviewTableLayoutController(frameDocument) : null;
       const presentationGeneration = mermaidPresentationGeneration + 1;
@@ -1909,6 +1923,7 @@ export function createPreviewController({
     // This is a presentation-only update of the same frame and document. A
     // cross-surface semantic projection would race this exact reading offset.
     styleElement.textContent = payload.styles[appearance];
+    syncGithubPictures(frameDocument, appearance);
     frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(presetPreference === 'default');
     previewTableLayout?.refresh();
     syncPreviewCodeHighlight(frameDocument);
@@ -3147,6 +3162,15 @@ export function createPreviewController({
   };
 }
 
+function syncGithubPictures(frameDocument: Document, appearance: 'light' | 'dark'): void {
+  if (frameDocument.documentElement.dataset.meoPreviewRenderer !== 'github-readme') return;
+  for (const source of frameDocument.querySelectorAll<HTMLSourceElement>('picture source[media]')) {
+    const media = source.dataset.meoGithubPictureMedia ?? source.media;
+    source.dataset.meoGithubPictureMedia = media;
+    source.media = githubPictureMedia(media, appearance);
+  }
+}
+
 function bindPreviewLinks(
   frameDocument: Document,
   vscode: { postMessage: (message: WebviewMessage) => void },
@@ -3186,7 +3210,12 @@ function bindPreviewLinks(
       } catch {
         // Keep the literal fragment when it contains malformed escaping.
       }
-      const destination = frameDocument.getElementById(fragmentId);
+      const github = frameDocument.documentElement.dataset.meoPreviewRenderer === 'github-readme';
+      const destination = frameDocument.getElementById(fragmentId) ?? (github
+        ? frameDocument.getElementById(`user-content-${fragmentId}`)
+          ?? frameDocument.getElementsByName(fragmentId)[0]
+          ?? frameDocument.getElementsByName(`user-content-${fragmentId}`)[0]
+        : null);
       if (destination) {
         onNavigate();
         destination.scrollIntoView({ block: 'start' });

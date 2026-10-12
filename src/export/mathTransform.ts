@@ -17,7 +17,14 @@ export function installMathTransform(
   const lookingAhead = new WeakSet<object>();
   const excludedByState = new WeakMap<object, Map<string, { from: number; to: number }[]>>();
   const listInlineTokens = new WeakSet<object>();
+  const htmlCodeDepth = new WeakMap<object, number>();
   if (options.githubStyle) {
+    md.inline.ruler.before('html_inline', 'meo-github-math-html-code', (state, silent) => {
+      if (silent || state.src[state.pos] !== '<') return false;
+      const tag = /^<(\/?)(?:code|pre)(?=[\s>])[^>]*>/i.exec(state.src.slice(state.pos));
+      if (tag) htmlCodeDepth.set(state, Math.max(0, (htmlCodeDepth.get(state) ?? 0) + (tag[1] ? -1 : 1)));
+      return false;
+    });
     // Inline state has no block ancestry; retain the list context of its token array.
     md.core.ruler.before('inline', 'meo-github-math-context', (state) => {
       let listDepth = 0;
@@ -32,7 +39,7 @@ export function installMathTransform(
   // Code, autolinks and literal scripts are consumed by their own enclosing rules.
   md.inline.ruler.before('strikethrough', 'meo_math_inline', (state, silent) => {
     if (lookingAhead.has(state) || state.src[state.pos] !== '$') return false;
-    if (options.githubStyle && (state.env?.meoGithubFootnote
+    if (options.githubStyle && (state.env?.meoGithubFootnote || (htmlCodeDepth.get(state) ?? 0) > 0
       || (state.pos > 0 && !/\s/.test(state.src[state.pos - 1])))) return false;
     let cached = excludedByState.get(state);
     if (!cached) { cached = new Map(); excludedByState.set(state, cached); }

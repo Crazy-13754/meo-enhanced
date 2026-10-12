@@ -13,7 +13,7 @@ Preview 的“预设”入口提供 **默认** 和 **GitHub README**。独立预
 | 正文宽度 | 沿用已有布局 | 最大正文宽度 1012px，窄面板自动收缩；不显示选择控件 |
 | 导出、搜索、目录、复制、导航 | 保留 | 保留 |
 
-固定和不支持的控件隐藏，“预设说明”气泡只用一句话提示本地近似预览可能存在差异。操作入口与 Host 渲染也执行预设规则。平台预设不会覆盖默认预览的字体、代码着色与注释设置；切回默认即可恢复。主题按预设记忆，选择与偏好通过 VS Code Webview 本地状态恢复。默认主题继续以 Host 设置为准，自动主题跟随编辑器的实际明暗状态。旧的“参考宽度”保存值归一到当前固定上限的响应式布局，其他偏好保留。GitHub 的容器上限为 1076px，其中左右内边距各 32px，正文上限为 1012px；窄面板内边距缩为 16px。
+固定和不支持的控件隐藏，“预设说明”气泡简要说明本预设与真实 GitHub README 的显示差异。操作入口与 Host 渲染也执行预设规则。平台预设不会覆盖默认预览的字体、代码着色与注释设置；切回默认即可恢复。主题按预设记忆，选择与偏好通过 VS Code Webview 本地状态恢复。默认主题继续以 Host 设置为准，自动主题跟随编辑器的实际明暗状态。旧的“参考宽度”保存值归一到当前固定上限的响应式布局，其他偏好保留。GitHub 的容器上限为 1076px，其中左右内边距各 32px，正文上限为 1012px；窄面板内边距缩为 16px。
 
 预设影响独立 Preview 和分屏 Preview。默认、GitHub、自定义预设的 HTML、PDF 导出均沿用当前文档的预览配置及已解析的明暗主题，包括没有打开 Preview 的 Live / Source。PDF 按纸张布局，长代码与宽表格换行，避免屏幕横向滚动内容被裁切；Word 保持原有固定格式。
 
@@ -53,9 +53,9 @@ CSS 通过 `github-readme/styles.js` 的 Bun 文本导入打包进 `dist/export-
 
 校准样例保存在 `scripts/fixtures/github-readme/`，覆盖标题、换行、列表、任务、引用、五类 Alerts、表格溢出、多语言代码、图片、折叠块、脚注、公式及 Mermaid。2026-10-09 将合成样例上传至私有仓库 [meo-preview-github-baseline](https://github.com/huangko555/meo-preview-github-baseline)，基准提交 `ea13796`，未上传用户文档。读取 GitHub 实页的正文尺寸、标题字重与间距、代码色值、边框、表格内边距、任务框及脚注结构；浅色实页测量已纳入浏览器断言，深色按 GitHub 主题色值和 Shiki 官方主题验证。此基准是维护用的对照样例，不是运行时依赖。
 
-这是常见仓库 Markdown 的本地近似预览。GitHub 服务端的完整 HTML 白名单、仓库引用、提及、emoji 转换及资源发布后的路径解析尚未完整模拟。预览不会把文档提交给 GitHub；文档中原有的远程图片仍按现有预览机制加载。
+这是常见仓库 Markdown 的本地近似预览。2026-10-12 用真实 GitHub README Preview 校准了 HTML 标签和属性清理、资源协议、自定义锚点、单波浪线删除线、自动链接、特殊 fence 大小写、emoji、原始 code 和 themed picture 等边界。212 项探针中 209 项常规语义对照通过，GeoJSON / TopoJSON / STL 专业查看器仍是明确缺口；这不是总体还原度或完整白名单等价证明。详见 [支持边界校准记录](github-readme-compatibility-audit.md)。仓库资源发布后的路径解析尚未完整模拟。预览不会把文档提交给 GitHub；文档中原有的远程图片仍按现有预览机制加载。
 
-公式继续使用 KaTeX，默认预览的公式实现保持现状。GitHub 使用 MathJax，因此公式字体、符号间距和基线对齐可能略有不同；部分 MathJax 扩展命令（如 `\cancelto`）不受 KaTeX 支持。Mermaid 的内置版本和本地主题配置也可能使图表布局、节点尺寸和颜色与 GitHub 略有不同。界面的“预设说明”只展示 `description` 中的一句整体偏差提示，不逐项罗列这些细节；不承诺所有场景像素一致，也不以未经测量的百分比表示还原度。
+公式继续使用 KaTeX，默认预览的公式实现保持现状。GitHub 使用 MathJax，因此公式字体、符号间距和基线对齐可能略有不同；部分 MathJax 扩展命令（如 `\cancelto`）不受 KaTeX 支持。Mermaid 的内置版本和本地主题配置也可能使图表布局、节点尺寸和颜色与 GitHub 略有不同。界面的“预设说明”展示 `description` 和 `notes`，简要对照真实 GitHub README：GitHub 将 GeoJSON / TopoJSON 渲染为交互地图、STL 渲染为交互 3D 模型，本预设均显示为代码块；不承诺所有场景像素一致，也不以未经测量的百分比表示还原度。
 
 复杂样例的修复与证据见 [GitHub README 复杂文档渲染对照](github-complex-rendering-audit.md)。GitHub 分支对齐标题标点与重复锚点、HTML 删除线及公式的上下文边界；脚注内的公式和 Mermaid 保留源码或代码块。`src/preview/githubMermaid.ts` 为 Preview 与 HTML/PDF 提供同一组 GitHub 图表配置，默认图表继续使用原有配置。图表缓存区分预设和主题，防止同主题切换复用上一个预设的 SVG；复杂嵌套图仍可能存在布局差异。
 

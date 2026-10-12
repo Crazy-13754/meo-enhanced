@@ -25,5 +25,10 @@
     "htmlComments": { "mode": "fixed", "value": false },
     "contentWidth": { "mode": "fixed" }
   },
-  "notes": []
+  "notes": [
+    {
+      "en": "Difference from GitHub README: GitHub renders GeoJSON / TopoJSON as interactive maps and STL as interactive 3D models; this preset displays all three as code blocks.",
+      "zh-CN": "与真实 GitHub README 的差异：GitHub 将 GeoJSON / TopoJSON 渲染为交互地图、STL 渲染为交互 3D 模型；本预设均显示为代码块。"
+    }
+  ]
 }

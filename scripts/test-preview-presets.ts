@@ -15,7 +15,7 @@ const original = render(text, 'default');
 assert.ok(original.html.includes('<br'));
 assert.ok(!github.html.includes('<br'));
 assert.ok(original.html.includes('<mark>highlight</mark>') && original.html.includes('<sub>2</sub>'));
-assert.ok(github.html.includes('==highlight== H~2~O x^2^'));
+assert.ok(github.html.includes('==highlight== H<del>2</del>O x^2^'));
 assert.equal((github.html.match(/meo-export-task-checkbox/g) ?? []).length, 1);
 assert.equal((original.html.match(/meo-export-task-checkbox/g) ?? []).length, 3);
 assert.ok(!github.html.includes('secret note'));

@@ -11,6 +11,7 @@ import { createExportCodeHighlighter } from './shikiCodeHighlighter';
 import { getPreviewPreset, getPreviewPresetCodeTheme, resolvePresetAppearance, resolvePreviewPresetSettings, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
 import { buildPresetPreviewStyles } from '../preview/presetStyles';
 import type { ResolvedWikiResources } from '../foundation/wikiReference';
+import { githubPictureMedia } from '../shared/githubPicture';
 
 export type ExportRuntimeBuildHtmlOptions = {
   wikiResources?: ResolvedWikiResources;
@@ -76,7 +77,9 @@ async function renderExportHtmlDocument(
 
   const htmlDocument = buildStandaloneExportHtmlDocument({
     title: options.title,
-    bodyHtml,
+    bodyHtml: definition.renderer === 'github-readme'
+      ? bodyHtml.replace(/(<source\b[^>]*\bmedia=")([^"]*)(")/g, (_match, before, media, after) => `${before}${githubPictureMedia(media, exportAppearance)}${after}`)
+      : bodyHtml,
     stylesCss,
     target: options.target,
     githubStyle,
