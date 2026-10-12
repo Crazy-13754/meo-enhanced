@@ -1,6 +1,8 @@
 import { buildPreviewStyles, type ExportStyleEnvironment } from '../export/exportStyles';
-import { getPreviewPreset, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
+import { getPreviewPreset, resolvePresetAppearance, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
 import { getGithubMarkdownStyles } from './presets/github-readme/styles.js';
+import { getReadingPresetStyles } from './presets/reading/styles.js';
+import { normalizePreviewFontFamily } from '../protocol/editorStyleEnvironment';
 
 export function buildPresetPreviewStyles(
   preset: PreviewPresetId,
@@ -9,23 +11,32 @@ export function buildPresetPreviewStyles(
   _contentWidth: PreviewContentWidth = 'responsive',
   definition: PreviewPresetDefinition = getPreviewPreset(preset)
 ): string {
+  // A shared pixel basis keeps all presets readable at the user's editor size.
+  const bodyFontSize = Number.isFinite(environment.editorFontSizePx) ? Math.min(32, Math.max(8, environment.editorFontSizePx!)) : 14;
+  const fontSizeStyles = `:root { --meo-font-size-body: ${bodyFontSize}px; --meo-font-size-code: calc(var(--meo-font-size-body) * 0.88); }
+.meo-export-doc { font-size: var(--meo-font-size-body); }
+.meo-export-doc .meo-export-code-language-label { font-size: calc(var(--meo-font-size-body) * 0.75); }
+`;
+  // Non-default presets own document colors; only typography and switches inherit.
+  const baseEnvironment: ExportStyleEnvironment = {
+    previewFontFamily: '',
+    editorFontFamily: environment.editorFontFamily,
+    editorFontSizePx: environment.editorFontSizePx,
+    editorFontWeight: environment.editorFontWeight,
+    liveFontWeight: environment.liveFontWeight,
+    sourceFontWeight: environment.sourceFontWeight,
+    liveLineHeight: environment.liveLineHeight,
+    sourceLineHeight: environment.sourceLineHeight,
+    previewSourceColoring: environment.previewSourceColoring,
+    previewShowComments: environment.previewShowComments,
+    previewThemeIsolation: true
+  };
+  const fontFamily = definition.controls.fontFamily.mode === 'editable' ? normalizePreviewFontFamily(environment.previewFontFamily) : null;
+  // Apply the selected body font after preset CSS, leaving its code font untouched.
+  const fontOverride = fontFamily ? `.meo-export-doc { --meo-font-body: "${fontFamily}", var(--meo-preset-font-body, var(--meo-font-system-sans)); font-family: var(--meo-font-body); }` : '';
   if (definition.custom) {
     const custom = definition.custom;
     const effective = custom.css[appearance] === undefined ? definition.defaults.appearance as 'light' | 'dark' : appearance;
-    // Inherit the base's fixed document colors, never the editor's captured palette.
-    const baseEnvironment: ExportStyleEnvironment = {
-      previewFontFamily: environment.previewFontFamily,
-      editorFontFamily: environment.editorFontFamily,
-      editorFontSizePx: environment.editorFontSizePx,
-      editorFontWeight: environment.editorFontWeight,
-      liveFontWeight: environment.liveFontWeight,
-      sourceFontWeight: environment.sourceFontWeight,
-      liveLineHeight: environment.liveLineHeight,
-      sourceLineHeight: environment.sourceLineHeight,
-      previewSourceColoring: environment.previewSourceColoring,
-      previewShowComments: environment.previewShowComments,
-      previewThemeIsolation: true
-    };
     return `${buildPresetPreviewStyles(custom.base, baseEnvironment, effective, _contentWidth)}
 body, .meo-export-page, .meo-export-doc { background: var(--meo-bg); }
 .meo-export-doc { color: var(--meo-fg); }
@@ -33,13 +44,20 @@ html { scrollbar-color: color-mix(in srgb, var(--meo-fg) 38%, transparent) var(-
 html::-webkit-scrollbar-track, body::-webkit-scrollbar-track { background: var(--meo-bg); }
 ${custom.css.common ?? ''}
 ${custom.css[effective] ?? ''}
+${fontOverride}
+${fontSizeStyles}
 html[data-meo-export-target='pdf'] .meo-export-doc { box-sizing: border-box; width: 100%; max-width: none; }
 `;
   }
-  if (definition.renderer === 'meo') return buildPreviewStyles(environment, appearance);
+  if (definition.renderer === 'meo') {
+    if (preset === 'default') return `${buildPreviewStyles(environment, appearance)}\n${fontSizeStyles}`;
+    const effective = resolvePresetAppearance(definition, appearance, appearance);
+    return `${buildPreviewStyles(baseEnvironment, effective)}\n${getReadingPresetStyles(preset, effective)}\n${fontOverride}\n${fontSizeStyles}`;
+  }
   const background = appearance === 'light' ? '#ffffff' : '#0d1117';
   const foreground = appearance === 'light' ? '#1f2328' : '#f0f6fc';
   return `${getGithubMarkdownStyles(appearance)}
+${fontSizeStyles}
 html { --meo-fg: ${foreground}; --meo-code-fg: ${foreground}; --meo-bg: ${background}; --meo-mermaid-background: ${background}; --meo-mermaid-node-background: ${appearance === 'light' ? '#f6f8fa' : '#151b23'}; --meo-mermaid-foreground: ${foreground}; --meo-mermaid-border: ${appearance === 'light' ? '#d1d9e0' : '#3d444d'}; --meo-mermaid-line: ${foreground}; }
 /* Transparent native tracks expose the VS Code host rather than the reading background. */
 html[data-meo-preview-preset='github-readme'],
@@ -82,8 +100,6 @@ body { margin: 0; background: ${background}; color: ${foreground}; }
 .markdown-body .meo-export-math-display .meo-export-math-canvas { margin-left: auto; margin-right: auto; }
 .markdown-body .footnotes p { margin-top: 16px; }
 .markdown-body .footnote-backref { text-decoration: underline; }
-/* PDF uses screen media; clone padding so every page retains its margins. */
-html[data-meo-export-target='pdf'] .markdown-body { max-width: none; padding: 14mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 html[data-meo-export-target='pdf'] .markdown-body .meo-table-scroll { overflow: visible; }
 html[data-meo-export-target='pdf'] .markdown-body table { display: table; width: 100%; }
 html[data-meo-export-target='pdf'] .markdown-body .meo-table-scroll :is(th, td, pre, code) { overflow-wrap: anywhere; white-space: normal; }
@@ -94,7 +110,6 @@ html[data-meo-export-target='pdf'] .markdown-body :is(h1, h2, h3, h4, h5, h6) { 
 html[data-meo-export-target='pdf'] .markdown-body :is(pre, blockquote, table, .meo-export-alert) { break-inside: avoid; }
 html[data-meo-export-target='pdf'] .markdown-body [data-meo-pdf-allow-break] { break-inside: auto; }
 @media print {
-  @page { margin: 14mm; }
   .markdown-body { max-width: none; padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .meo-export-page { min-height: 0; }
   .markdown-body .meo-table-scroll { overflow: visible; }

@@ -1,0 +1,38 @@
+{
+  "$schema": "../../preset.schema.json",
+  "schemaVersion": 1,
+  "id": "whitey",
+  "name": {
+    "en": "Typora Whitey",
+    "zh-CN": "Typora Whitey"
+  },
+  "description": {
+    "en": "White paper, centered headings and fine dividers inspired by Typora Whitey. Light theme only.",
+    "zh-CN": "参考 Typora Whitey 的白色纸面、居中标题与细分隔线，仅提供浅色主题。"
+  },
+  "base": "default",
+  "controls": {
+    "fontFamily": {
+      "mode": "editable"
+    },
+    "codeColoring": {
+      "mode": "editable"
+    },
+    "htmlComments": {
+      "mode": "editable"
+    }
+  },
+  "styles": {
+    "common": "common.css"
+  },
+  "themes": {
+    "light": {
+      "css": "light.css",
+      "codeTheme": "light-plus"
+    }
+  },
+  "author": "MEO Enhanced contributors",
+  "version": "1.0.0",
+  "source": "https://github.com/typora/typora-default-themes/blob/master/themes/whitey.css",
+  "license": "MIT"
+}

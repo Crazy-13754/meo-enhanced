@@ -285,41 +285,6 @@ body[data-meo-export-target='pdf'] {
   width: 100%;
 }
 
-html[data-meo-export-target='pdf'] body,
-body[data-meo-export-target='pdf'] {
-  position: relative;
-}
-
-html[data-meo-export-target='pdf'] body::after,
-body[data-meo-export-target='pdf']::after {
-  content: '';
-  position: fixed;
-  top: 0;
-  right: -8px;
-  bottom: 0;
-  width: 16px;
-  background: var(--meo-bg);
-  pointer-events: none;
-}
-
-html[data-meo-export-target='pdf'] .meo-export-doc,
-body[data-meo-export-target='pdf'] .meo-export-doc {
-  width: calc(100% + 8px);
-  margin: 0;
-  margin-right: -8px;
-  border: 0;
-  border-radius: 0;
-  padding: calc(0.5in + 24px);
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
-}
-
-html[data-meo-export-target='pdf'] .meo-export-page,
-body[data-meo-export-target='pdf'] .meo-export-page {
-  width: calc(100% + 8px);
-  margin-right: -8px;
-}
-
 html[data-meo-export-target='pdf'] .meo-export-mermaid-svg svg,
 body[data-meo-export-target='pdf'] .meo-export-mermaid-svg svg {
   width: auto;
@@ -1006,7 +971,9 @@ pre.meo-export-code-block code {
   background: transparent;
 }
 .meo-export-code-block-wrap > pre.meo-export-code-block code {
-  font-size: 0;
+  /* Keep a real font basis for third-party em sizes; zero line-height removes
+     separator whitespace without collapsing descendant code lines. */
+  font-size: inherit;
   line-height: 0;
 }
 .meo-export-code-line {
@@ -1306,7 +1273,6 @@ th:empty::before {
 
 @page {
   size: A4;
-  margin: 0;
 }
 
 @media print {

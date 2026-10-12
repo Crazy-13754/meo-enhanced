@@ -1,0 +1,2686 @@
+{
+  "capturedAt": "2026-10-12",
+  "source": "Native GitHub README edit/Preview, synthetic uncommitted draft at https://github.com/huangko555/meo-preview-github-baseline/edit/main/README.md",
+  "normalization": "Reading semantics only; source attributes and navigation receive separate focused assertions. This is not a pixel or complete HTML sanitizer equivalence test.",
+  "probes": [
+    {
+      "id": "P01",
+      "name": "style-class-id",
+      "markdown": "<div style=\"color:red\" class=\"audit-class\" id=\"audit-id\">STYLE_TEXT</div>",
+      "expected": {
+        "text": "STYLE_TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P02",
+      "name": "inline-style",
+      "markdown": "Inline <span style=\"color:red\" class=\"audit-class\" id=\"audit-inline\">SPAN_TEXT</span>.",
+      "expected": {
+        "text": "Inline SPAN_TEXT.",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P03",
+      "name": "custom-id-name",
+      "markdown": "<a id=\"audit-id\" name=\"audit-name\"></a>\n\n[ID](#audit-id) [NAME](#audit-name)",
+      "expected": {
+        "text": "ID NAME",
+        "links": [
+          "#audit-id",
+          "#audit-name"
+        ],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P04",
+      "name": "align",
+      "markdown": "<p align=\"center\">CENTER_TEXT</p>",
+      "expected": {
+        "text": "CENTER_TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P05",
+      "name": "tag-script",
+      "markdown": "<script>TAG_SCRIPT <strong>BOLD</strong></script>",
+      "expected": {
+        "text": "<script>TAG_SCRIPT BOLD</script>",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P06",
+      "name": "tag-style",
+      "markdown": "<style>TAG_STYLE <strong>BOLD</strong></style>",
+      "expected": {
+        "text": "<style>TAG_STYLE BOLD</style>",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P07",
+      "name": "tag-iframe",
+      "markdown": "<iframe>TAG_IFRAME <strong>BOLD</strong></iframe>",
+      "expected": {
+        "text": "<iframe>TAG_IFRAME BOLD</iframe>",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P08",
+      "name": "tag-form",
+      "markdown": "<form>TAG_FORM <strong>BOLD</strong></form>",
+      "expected": {
+        "text": "TAG_FORM BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P09",
+      "name": "tag-textarea",
+      "markdown": "<textarea>TAG_TEXTAREA <strong>BOLD</strong></textarea>",
+      "expected": {
+        "text": "<textarea>TAG_TEXTAREA BOLD</textarea>",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P10",
+      "name": "tag-button",
+      "markdown": "<button>TAG_BUTTON <strong>BOLD</strong></button>",
+      "expected": {
+        "text": "TAG_BUTTON BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P11",
+      "name": "tag-select",
+      "markdown": "<select>TAG_SELECT <strong>BOLD</strong></select>",
+      "expected": {
+        "text": "TAG_SELECT BOLD",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P12",
+      "name": "tag-object",
+      "markdown": "<object>TAG_OBJECT <strong>BOLD</strong></object>",
+      "expected": {
+        "text": "TAG_OBJECT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P13",
+      "name": "tag-embed",
+      "markdown": "<embed>TAG_EMBED <strong>BOLD</strong></embed>",
+      "expected": {
+        "text": "TAG_EMBED BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P14",
+      "name": "tag-canvas",
+      "markdown": "<canvas>TAG_CANVAS <strong>BOLD</strong></canvas>",
+      "expected": {
+        "text": "TAG_CANVAS BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P15",
+      "name": "tag-section",
+      "markdown": "<section>TAG_SECTION <strong>BOLD</strong></section>",
+      "expected": {
+        "text": "TAG_SECTION BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "section",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P16",
+      "name": "tag-article",
+      "markdown": "<article>TAG_ARTICLE <strong>BOLD</strong></article>",
+      "expected": {
+        "text": "TAG_ARTICLE BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P17",
+      "name": "tag-nav",
+      "markdown": "<nav>TAG_NAV <strong>BOLD</strong></nav>",
+      "expected": {
+        "text": "TAG_NAV BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P18",
+      "name": "tag-header",
+      "markdown": "<header>TAG_HEADER <strong>BOLD</strong></header>",
+      "expected": {
+        "text": "TAG_HEADER BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P19",
+      "name": "tag-footer",
+      "markdown": "<footer>TAG_FOOTER <strong>BOLD</strong></footer>",
+      "expected": {
+        "text": "TAG_FOOTER BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P20",
+      "name": "tag-main",
+      "markdown": "<main>TAG_MAIN <strong>BOLD</strong></main>",
+      "expected": {
+        "text": "TAG_MAIN BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P21",
+      "name": "tag-aside",
+      "markdown": "<aside>TAG_ASIDE <strong>BOLD</strong></aside>",
+      "expected": {
+        "text": "TAG_ASIDE BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P22",
+      "name": "tag-figure",
+      "markdown": "<figure>TAG_FIGURE <strong>BOLD</strong></figure>",
+      "expected": {
+        "text": "TAG_FIGURE BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P23",
+      "name": "tag-figcaption",
+      "markdown": "<figcaption>TAG_FIGCAPTION <strong>BOLD</strong></figcaption>",
+      "expected": {
+        "text": "TAG_FIGCAPTION BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P24",
+      "name": "tag-center",
+      "markdown": "<center>TAG_CENTER <strong>BOLD</strong></center>",
+      "expected": {
+        "text": "TAG_CENTER BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P25",
+      "name": "tag-font",
+      "markdown": "<font>TAG_FONT <strong>BOLD</strong></font>",
+      "expected": {
+        "text": "TAG_FONT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P26",
+      "name": "tag-mark",
+      "markdown": "<mark>TAG_MARK <strong>BOLD</strong></mark>",
+      "expected": {
+        "text": "TAG_MARK BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "mark",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P27",
+      "name": "tag-u",
+      "markdown": "<u>TAG_U <strong>BOLD</strong></u>",
+      "expected": {
+        "text": "TAG_U BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P28",
+      "name": "tag-ins",
+      "markdown": "<ins>TAG_INS <strong>BOLD</strong></ins>",
+      "expected": {
+        "text": "TAG_INS BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "ins",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P29",
+      "name": "tag-strike",
+      "markdown": "<strike>TAG_STRIKE <strong>BOLD</strong></strike>",
+      "expected": {
+        "text": "TAG_STRIKE BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strike",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P30",
+      "name": "tag-tt",
+      "markdown": "<tt>TAG_TT <strong>BOLD</strong></tt>",
+      "expected": {
+        "text": "TAG_TT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "tt",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P31",
+      "name": "tag-var",
+      "markdown": "<var>TAG_VAR <strong>BOLD</strong></var>",
+      "expected": {
+        "text": "TAG_VAR BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "var",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P32",
+      "name": "tag-samp",
+      "markdown": "<samp>TAG_SAMP <strong>BOLD</strong></samp>",
+      "expected": {
+        "text": "TAG_SAMP BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "samp",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P33",
+      "name": "tag-q",
+      "markdown": "<q>TAG_Q <strong>BOLD</strong></q>",
+      "expected": {
+        "text": "TAG_Q BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "q",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P34",
+      "name": "tag-small",
+      "markdown": "<small>TAG_SMALL <strong>BOLD</strong></small>",
+      "expected": {
+        "text": "TAG_SMALL BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P35",
+      "name": "tag-big",
+      "markdown": "<big>TAG_BIG <strong>BOLD</strong></big>",
+      "expected": {
+        "text": "TAG_BIG BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P36",
+      "name": "tag-abbr",
+      "markdown": "<abbr>TAG_ABBR <strong>BOLD</strong></abbr>",
+      "expected": {
+        "text": "TAG_ABBR BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P37",
+      "name": "tag-time",
+      "markdown": "<time>TAG_TIME <strong>BOLD</strong></time>",
+      "expected": {
+        "text": "TAG_TIME BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P38",
+      "name": "tag-ruby",
+      "markdown": "<ruby>TAG_RUBY <strong>BOLD</strong></ruby>",
+      "expected": {
+        "text": "TAG_RUBY BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "ruby",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P39",
+      "name": "tag-input",
+      "markdown": "<input type=\"checkbox\" checked disabled>",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P40",
+      "name": "tag-svg",
+      "markdown": "<svg width=\"120\" height=\"30\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"120\" height=\"30\" fill=\"red\"/><text x=\"2\" y=\"20\">SVG_TEXT</text></svg>",
+      "expected": {
+        "text": "SVG_TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P41",
+      "name": "tag-video",
+      "markdown": "<video controls src=\"https://example.com/audit.mp4\">VIDEO_FALLBACK</video>",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P42",
+      "name": "tag-audio",
+      "markdown": "<audio controls src=\"https://example.com/audit.mp3\">AUDIO_FALLBACK</audio>",
+      "expected": {
+        "text": "AUDIO_FALLBACK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P43",
+      "name": "tag-h1",
+      "markdown": "<h1>HTML_HEADING</h1>",
+      "expected": {
+        "text": "HTML_HEADING",
+        "links": [],
+        "images": [],
+        "elements": [
+          "h1"
+        ]
+      }
+    },
+    {
+      "id": "P44",
+      "name": "tag-hr",
+      "markdown": "Before\n\n<hr>\n\nAfter",
+      "expected": {
+        "text": "Before After",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P45",
+      "name": "tag-pre",
+      "markdown": "<pre><code>**literal** &amp; CODE_TEXT</code></pre>",
+      "expected": {
+        "text": "**literal** & CODE_TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P46",
+      "name": "picture-source",
+      "markdown": "<picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\"><img src=\"sample.svg\" alt=\"PICTURE_FALLBACK\" width=\"180\"></picture>",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [
+          {
+            "alt": "PICTURE_FALLBACK",
+            "src": "sample.svg"
+          }
+        ],
+        "elements": [
+          "picture",
+          "source"
+        ]
+      }
+    },
+    {
+      "id": "P47",
+      "name": "raw-img-data",
+      "markdown": "<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==\" alt=\"DATA_IMG\">",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [
+          {
+            "alt": "DATA_IMG",
+            "src": ""
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "P48",
+      "name": "md-img-data",
+      "markdown": "![DATA_MD](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==)",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [
+          {
+            "alt": "DATA_MD",
+            "src": ""
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "P49",
+      "name": "raw-img-protocol-relative",
+      "markdown": "<img src=\"//example.com/audit.png\" alt=\"PROTOCOL_IMG\">",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [
+          {
+            "alt": "PROTOCOL_IMG",
+            "src": ""
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "P50",
+      "name": "raw-img-file",
+      "markdown": "<img src=\"file:///C:/audit/image.png\" alt=\"FILE_IMG\">",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [
+          {
+            "alt": "FILE_IMG",
+            "src": ""
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "P51",
+      "name": "img-dimensions",
+      "markdown": "<img src=\"sample.svg\" alt=\"DIMENSIONS\" width=\"180\" height=\"50\" align=\"right\" hspace=\"10\">",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [
+          {
+            "alt": "DIMENSIONS",
+            "src": "sample.svg"
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "P52",
+      "name": "table-attributes",
+      "markdown": "<table border=\"1\" width=\"80%\"><tr><td align=\"center\" valign=\"top\" width=\"50\" colspan=\"2\">TABLE_CELL</td></tr></table>",
+      "expected": {
+        "text": "TABLE_CELL",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P53",
+      "name": "global-attributes",
+      "markdown": "<p dir=\"rtl\" lang=\"en\" title=\"AUDIT_TITLE\" data-audit=\"x\" aria-label=\"AUDIT_ARIA\">GLOBAL_TEXT</p>",
+      "expected": {
+        "text": "GLOBAL_TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P54",
+      "name": "details-markdown",
+      "markdown": "<details open><summary>SUMMARY_TEXT</summary>\n\n**DETAILS_BOLD**\n\n</details>",
+      "expected": {
+        "text": "SUMMARY_TEXT DETAILS_BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "details",
+          "summary",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P55",
+      "name": "html-comment",
+      "markdown": "BEFORE <!-- COMMENT_TEXT --> AFTER",
+      "expected": {
+        "text": "BEFORE AFTER",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P56",
+      "name": "dangerous-href",
+      "markdown": "<a href=\"javascript:void(0)\">JS_LINK</a> <a href=\"data:text/plain,AUDIT\">DATA_LINK</a>",
+      "expected": {
+        "text": "JS_LINK DATA_LINK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P57",
+      "name": "href-file",
+      "markdown": "<a href=\"file:///C:/audit/file.txt\">FILE_LINK</a>",
+      "expected": {
+        "text": "FILE_LINK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P58",
+      "name": "href-ftp",
+      "markdown": "<a href=\"ftp://example.com/audit\">FTP_LINK</a>",
+      "expected": {
+        "text": "FTP_LINK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P59",
+      "name": "href-tel",
+      "markdown": "<a href=\"tel:+10000000000\">TEL_LINK</a>",
+      "expected": {
+        "text": "TEL_LINK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P60",
+      "name": "href-protocol-relative",
+      "markdown": "<a href=\"//example.com/audit\">PROTOCOL_LINK</a>",
+      "expected": {
+        "text": "PROTOCOL_LINK",
+        "links": [
+          "//example.com/audit"
+        ],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P61",
+      "name": "href-target",
+      "markdown": "<a href=\"https://example.com\" target=\"_blank\" rel=\"nofollow\" download>HTTPS_LINK</a>",
+      "expected": {
+        "text": "HTTPS_LINK",
+        "links": [
+          "https://example.com"
+        ],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P62",
+      "name": "extension-highlight",
+      "markdown": "==HIGHLIGHT_TEXT==",
+      "expected": {
+        "text": "==HIGHLIGHT_TEXT==",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P63",
+      "name": "extension-sub-sup",
+      "markdown": "H~2~O x^2^",
+      "expected": {
+        "text": "H2O x^2^",
+        "links": [],
+        "images": [],
+        "elements": [
+          "del"
+        ]
+      }
+    },
+    {
+      "id": "P64",
+      "name": "strikethrough-single",
+      "markdown": "~SINGLE_STRIKE~ ~~DOUBLE_STRIKE~~",
+      "expected": {
+        "text": "SINGLE_STRIKE DOUBLE_STRIKE",
+        "links": [],
+        "images": [],
+        "elements": [
+          "del",
+          "del"
+        ]
+      }
+    },
+    {
+      "id": "P65",
+      "name": "definition-list",
+      "markdown": "Term\n: DEFINITION_TEXT",
+      "expected": {
+        "text": "Term : DEFINITION_TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P66",
+      "name": "toc",
+      "markdown": "[TOC]\n\n[[_TOC_]]\n\n# TOC_HEADING",
+      "expected": {
+        "text": "[TOC] [[TOC]] TOC_HEADING",
+        "links": [],
+        "images": [],
+        "elements": [
+          "em",
+          "h1"
+        ]
+      }
+    },
+    {
+      "id": "P67",
+      "name": "wikilink",
+      "markdown": "[[AuditPage]] [[AuditPage|LABEL]]",
+      "expected": {
+        "text": "[[AuditPage]] [[AuditPage|LABEL]]",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P68",
+      "name": "extended-tasks",
+      "markdown": "- [ ] EMPTY\n- [x] DONE\n- [X] UPPER\n- [~] DOING\n- [-] CANCELLED",
+      "expected": {
+        "text": "EMPTY DONE UPPER [~] DOING [-] CANCELLED",
+        "links": [],
+        "images": [],
+        "elements": [
+          "input",
+          "input",
+          "input"
+        ]
+      }
+    },
+    {
+      "id": "P69",
+      "name": "emoji",
+      "markdown": ":smile: :+1: :octocat: :not_a_real_emoji:",
+      "expected": {
+        "text": "😄 👍 :not_a_real_emoji:",
+        "links": [],
+        "images": [
+          {
+            "alt": ":octocat:",
+            "src": "https://github.githubassets.com/images/icons/emoji/octocat.png"
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "P70",
+      "name": "bare-links",
+      "markdown": "https://example.com www.example.com example.com audit@example.com",
+      "expected": {
+        "text": "https://example.com www.example.com example.com audit@example.com",
+        "links": [
+          "https://example.com",
+          "http://www.example.com",
+          "mailto:audit@example.com"
+        ],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P71",
+      "name": "repo-references",
+      "markdown": "@octocat #1 huangko555/meo-preview-github-baseline#1",
+      "expected": {
+        "text": "@octocat #1 huangko555/meo-preview-github-baseline#1",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P72",
+      "name": "markdown-in-html",
+      "markdown": "<div>\n**NO_BLANK_BOLD**\n</div>\n\n<div>\n\n**BLANK_BOLD**\n\n</div>",
+      "expected": {
+        "text": "**NO_BLANK_BOLD** BLANK_BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P73",
+      "name": "math-latex-fence",
+      "markdown": "```latex\nx^2\n```",
+      "expected": {
+        "text": "x^2",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P74",
+      "name": "math-math-fence",
+      "markdown": "```math\nx^2\n```",
+      "expected": {
+        "text": "[math]",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P75",
+      "name": "math-uppercase-fence",
+      "markdown": "```Math\nx^2\n```",
+      "expected": {
+        "text": "x^2",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P76",
+      "name": "math-extra-info",
+      "markdown": "```math title=audit\nx^2\n```",
+      "expected": {
+        "text": "[math]",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P77",
+      "name": "puml",
+      "markdown": "```puml\n@startuml\nAlice -> Bob: Hello\n@enduml\n```",
+      "expected": {
+        "text": "@startuml Alice -> Bob: Hello @enduml",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P78",
+      "name": "mermaid-info",
+      "markdown": "```mermaid\ninfo\n```",
+      "expected": {
+        "text": "[mermaid]",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P79",
+      "name": "geojson",
+      "markdown": "```geojson\n{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[0,0]},\"properties\":{\"name\":\"AUDIT\"}}\n```",
+      "expected": {
+        "text": "[geojson]",
+        "links": [],
+        "images": [],
+        "elements": []
+      },
+      "pending": "GitHub GeoJSON viewer is not implemented locally; native viewer remained Loading."
+    },
+    {
+      "id": "P80",
+      "name": "topojson",
+      "markdown": "```topojson\n{\"type\":\"Topology\",\"objects\":{\"audit\":{\"type\":\"Point\",\"coordinates\":[0,0]}},\"arcs\":[]}\n```",
+      "expected": {
+        "text": "[topojson]",
+        "links": [],
+        "images": [],
+        "elements": []
+      },
+      "pending": "GitHub TopoJSON viewer is not implemented locally; native viewer remained Loading."
+    },
+    {
+      "id": "P81",
+      "name": "stl",
+      "markdown": "```stl\nsolid audit\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid audit\n```",
+      "expected": {
+        "text": "[stl]",
+        "links": [],
+        "images": [],
+        "elements": []
+      },
+      "pending": "GitHub STL viewer is not implemented locally; native viewer remained Loading."
+    },
+    {
+      "id": "P82",
+      "name": "nested-alert",
+      "markdown": "> > [!NOTE]\n> > NESTED_ALERT",
+      "expected": {
+        "text": "[!NOTE] NESTED_ALERT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P83",
+      "name": "list-alert",
+      "markdown": "- List\n\n  > [!NOTE]\n  > LIST_ALERT",
+      "expected": {
+        "text": "List [!NOTE] LIST_ALERT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "P84",
+      "name": "html-code",
+      "markdown": "<code>**BOLD** $x$ :smile:</code>\n\nRegular $x$.",
+      "expected": {
+        "text": "BOLD $x$ :smile: Regular [math].",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "P85",
+      "name": "footnote-rich",
+      "markdown": "REF[^audit]\n\n[^audit]: FOOTNOTE $x$.\n\n    ```mermaid\n    graph LR\n      A --> B\n    ```",
+      "expected": {
+        "text": "REF[footnote]",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q01",
+      "name": "event-handlers",
+      "markdown": "<p onclick=\"audit()\">EVENT_TEXT <img src=\"sample.svg\" alt=\"EVENT_IMG\" onerror=\"audit()\"></p>",
+      "expected": {
+        "text": "EVENT_TEXT",
+        "links": [],
+        "images": [
+          {
+            "alt": "EVENT_IMG",
+            "src": "sample.svg"
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q02",
+      "name": "script-no-nesting",
+      "markdown": "<script>audit()</script>",
+      "expected": {
+        "text": "<script>audit()</script>",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q03",
+      "name": "style-no-nesting",
+      "markdown": "<style>.audit {color:red}</style>",
+      "expected": {
+        "text": "<style>.audit {color:red}</style>",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q04",
+      "name": "iframe-src",
+      "markdown": "<iframe src=\"https://example.com\">IFRAME_FALLBACK</iframe>",
+      "expected": {
+        "text": "<iframe src=\"https://example.com\">IFRAME_FALLBACK</iframe>",
+        "links": [
+          "https://example.com\">IFRAME_FALLBACK</iframe>"
+        ],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q05",
+      "name": "raw-mark",
+      "markdown": "<mark>MARK_TEXT</mark>",
+      "expected": {
+        "text": "MARK_TEXT",
+        "links": [],
+        "images": [],
+        "elements": [
+          "mark"
+        ]
+      }
+    },
+    {
+      "id": "Q06",
+      "name": "md-link-data",
+      "markdown": "[DATA_LINK](data:text/plain,AUDIT)",
+      "expected": {
+        "text": "DATA_LINK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q07",
+      "name": "md-link-file",
+      "markdown": "[FILE_LINK](file:///C:/audit/file.txt)",
+      "expected": {
+        "text": "FILE_LINK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q08",
+      "name": "md-link-tel",
+      "markdown": "[TEL_LINK](tel:+10000000000)",
+      "expected": {
+        "text": "TEL_LINK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q09",
+      "name": "md-link-protocol-relative",
+      "markdown": "[PROTOCOL_LINK](//example.com/audit)",
+      "expected": {
+        "text": "PROTOCOL_LINK",
+        "links": [
+          "//example.com/audit"
+        ],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q10",
+      "name": "md-link-ftp",
+      "markdown": "[FTP_LINK](ftp://example.com/audit)",
+      "expected": {
+        "text": "FTP_LINK",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q11",
+      "name": "mermaid-uppercase",
+      "markdown": "```Mermaid\nflowchart LR\n  A --> B\n```",
+      "expected": {
+        "text": "flowchart LR A --> B",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q12",
+      "name": "mermaid-extra-info",
+      "markdown": "```mermaid title=audit\nflowchart LR\n  A --> B\n```",
+      "expected": {
+        "text": "[mermaid]",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q13",
+      "name": "math-tex-fence",
+      "markdown": "```tex\nx^2\n```",
+      "expected": {
+        "text": "x^2",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q14",
+      "name": "align-on-span",
+      "markdown": "<span align=\"center\">SPAN_ALIGN</span>",
+      "expected": {
+        "text": "SPAN_ALIGN",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "Q15",
+      "name": "s-del",
+      "markdown": "<s>S_TEXT</s> <del>DEL_TEXT</del>",
+      "expected": {
+        "text": "S_TEXT DEL_TEXT",
+        "links": [],
+        "images": [],
+        "elements": [
+          "s",
+          "del"
+        ]
+      }
+    },
+    {
+      "id": "Q16",
+      "name": "multiple-tildes",
+      "markdown": "~~DOUBLE~~ ~SINGLE~ H~2~O ~a b~ ~ a ~ ~a\nb~",
+      "expected": {
+        "text": "DOUBLE SINGLE H2O a b ~ a ~ a b",
+        "links": [],
+        "images": [],
+        "elements": [
+          "del",
+          "del",
+          "del",
+          "del",
+          "del"
+        ]
+      }
+    },
+    {
+      "id": "T-a",
+      "markdown": "<a>TEXT <strong>BOLD</strong></a>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-abbr",
+      "markdown": "<abbr>TEXT <strong>BOLD</strong></abbr>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-acronym",
+      "markdown": "<acronym>TEXT <strong>BOLD</strong></acronym>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-address",
+      "markdown": "<address>TEXT <strong>BOLD</strong></address>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-area",
+      "markdown": "<area>TEXT <strong>BOLD</strong></area>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-b",
+      "markdown": "<b>TEXT <strong>BOLD</strong></b>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-bdi",
+      "markdown": "<bdi>TEXT <strong>BOLD</strong></bdi>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-bdo",
+      "markdown": "<bdo>TEXT <strong>BOLD</strong></bdo>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-big",
+      "markdown": "<big>TEXT <strong>BOLD</strong></big>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-blockquote",
+      "markdown": "<blockquote>TEXT <strong>BOLD</strong></blockquote>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-br",
+      "markdown": "<br>TEXT <strong>BOLD</strong></br>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "br",
+          "strong",
+          "br"
+        ]
+      }
+    },
+    {
+      "id": "T-caption",
+      "markdown": "<caption>TEXT <strong>BOLD</strong></caption>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-center",
+      "markdown": "<center>TEXT <strong>BOLD</strong></center>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-cite",
+      "markdown": "<cite>TEXT <strong>BOLD</strong></cite>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-code",
+      "markdown": "<code>TEXT <strong>BOLD</strong></code>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-col",
+      "markdown": "<col>TEXT <strong>BOLD</strong></col>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-colgroup",
+      "markdown": "<colgroup>TEXT <strong>BOLD</strong></colgroup>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-data",
+      "markdown": "<data>TEXT <strong>BOLD</strong></data>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-dd",
+      "markdown": "<dd>TEXT <strong>BOLD</strong></dd>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-del",
+      "markdown": "<del>TEXT <strong>BOLD</strong></del>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "del",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-details",
+      "markdown": "<details>TEXT <strong>BOLD</strong></details>",
+      "expected": {
+        "text": "DetailsTEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "details",
+          "summary",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-dfn",
+      "markdown": "<dfn>TEXT <strong>BOLD</strong></dfn>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-div",
+      "markdown": "<div>TEXT <strong>BOLD</strong></div>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-dl",
+      "markdown": "<dl>TEXT <strong>BOLD</strong></dl>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-dt",
+      "markdown": "<dt>TEXT <strong>BOLD</strong></dt>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-em",
+      "markdown": "<em>TEXT <strong>BOLD</strong></em>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "em",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-figure",
+      "markdown": "<figure>TEXT <strong>BOLD</strong></figure>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-figcaption",
+      "markdown": "<figcaption>TEXT <strong>BOLD</strong></figcaption>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-font",
+      "markdown": "<font>TEXT <strong>BOLD</strong></font>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-h1",
+      "markdown": "<h1>TEXT <strong>BOLD</strong></h1>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "h1",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-h2",
+      "markdown": "<h2>TEXT <strong>BOLD</strong></h2>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "h2",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-h3",
+      "markdown": "<h3>TEXT <strong>BOLD</strong></h3>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "h3",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-h4",
+      "markdown": "<h4>TEXT <strong>BOLD</strong></h4>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "h4",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-h5",
+      "markdown": "<h5>TEXT <strong>BOLD</strong></h5>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "h5",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-h6",
+      "markdown": "<h6>TEXT <strong>BOLD</strong></h6>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "h6",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-hr",
+      "markdown": "<hr>TEXT <strong>BOLD</strong></hr>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-i",
+      "markdown": "<i>TEXT <strong>BOLD</strong></i>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-img",
+      "markdown": "<img>TEXT <strong>BOLD</strong></img>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [
+          {
+            "alt": "",
+            "src": ""
+          }
+        ],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-ins",
+      "markdown": "<ins>TEXT <strong>BOLD</strong></ins>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "ins",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-kbd",
+      "markdown": "<kbd>TEXT <strong>BOLD</strong></kbd>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-label",
+      "markdown": "<label>TEXT <strong>BOLD</strong></label>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-legend",
+      "markdown": "<legend>TEXT <strong>BOLD</strong></legend>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-li",
+      "markdown": "<li>TEXT <strong>BOLD</strong></li>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-map",
+      "markdown": "<map>TEXT <strong>BOLD</strong></map>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-mark",
+      "markdown": "<mark>TEXT <strong>BOLD</strong></mark>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "mark",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-menu",
+      "markdown": "<menu>TEXT <strong>BOLD</strong></menu>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-meter",
+      "markdown": "<meter>TEXT <strong>BOLD</strong></meter>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-nav",
+      "markdown": "<nav>TEXT <strong>BOLD</strong></nav>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-ol",
+      "markdown": "<ol>TEXT <strong>BOLD</strong></ol>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-optgroup",
+      "markdown": "<optgroup>TEXT <strong>BOLD</strong></optgroup>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-option",
+      "markdown": "<option>TEXT <strong>BOLD</strong></option>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-output",
+      "markdown": "<output>TEXT <strong>BOLD</strong></output>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-p",
+      "markdown": "<p>TEXT <strong>BOLD</strong></p>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-picture",
+      "markdown": "<picture>TEXT <strong>BOLD</strong></picture>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "picture",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-pre",
+      "markdown": "<pre>TEXT <strong>BOLD</strong></pre>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-progress",
+      "markdown": "<progress>TEXT <strong>BOLD</strong></progress>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-q",
+      "markdown": "<q>TEXT <strong>BOLD</strong></q>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "q",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-rp",
+      "markdown": "<rp>TEXT <strong>BOLD</strong></rp>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "rp",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-rt",
+      "markdown": "<rt>TEXT <strong>BOLD</strong></rt>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "rt",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-ruby",
+      "markdown": "<ruby>TEXT <strong>BOLD</strong></ruby>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "ruby",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-s",
+      "markdown": "<s>TEXT <strong>BOLD</strong></s>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "s",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-samp",
+      "markdown": "<samp>TEXT <strong>BOLD</strong></samp>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "samp",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-section",
+      "markdown": "<section>TEXT <strong>BOLD</strong></section>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "section",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-small",
+      "markdown": "<small>TEXT <strong>BOLD</strong></small>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-source",
+      "markdown": "<source>TEXT <strong>BOLD</strong></source>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "source",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-span",
+      "markdown": "<span>TEXT <strong>BOLD</strong></span>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-strike",
+      "markdown": "<strike>TEXT <strong>BOLD</strong></strike>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strike",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-strong",
+      "markdown": "<strong>TEXT <strong>BOLD</strong></strong>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-sub",
+      "markdown": "<sub>TEXT <strong>BOLD</strong></sub>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-summary",
+      "markdown": "<summary>TEXT <strong>BOLD</strong></summary>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "summary",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-sup",
+      "markdown": "<sup>TEXT <strong>BOLD</strong></sup>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-table",
+      "markdown": "<table>TEXT <strong>BOLD</strong></table>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-tbody",
+      "markdown": "<tbody>TEXT <strong>BOLD</strong></tbody>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-td",
+      "markdown": "<td>TEXT <strong>BOLD</strong></td>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-tfoot",
+      "markdown": "<tfoot>TEXT <strong>BOLD</strong></tfoot>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-th",
+      "markdown": "<th>TEXT <strong>BOLD</strong></th>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-thead",
+      "markdown": "<thead>TEXT <strong>BOLD</strong></thead>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-time",
+      "markdown": "<time>TEXT <strong>BOLD</strong></time>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-tr",
+      "markdown": "<tr>TEXT <strong>BOLD</strong></tr>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-tt",
+      "markdown": "<tt>TEXT <strong>BOLD</strong></tt>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "tt",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-u",
+      "markdown": "<u>TEXT <strong>BOLD</strong></u>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-ul",
+      "markdown": "<ul>TEXT <strong>BOLD</strong></ul>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-var",
+      "markdown": "<var>TEXT <strong>BOLD</strong></var>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "var",
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-wbr",
+      "markdown": "<wbr>TEXT <strong>BOLD</strong></wbr>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "T-video",
+      "markdown": "<video>TEXT <strong>BOLD</strong></video>",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "T-audio",
+      "markdown": "<audio>TEXT <strong>BOLD</strong></audio>",
+      "expected": {
+        "text": "TEXT BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "A-p",
+      "markdown": "<p id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</p>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-div",
+      "markdown": "<div id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</div>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-span",
+      "markdown": "<span id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</span>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-img",
+      "markdown": "<img id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\" src=\"sample.svg\">TEXT</img>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [
+          {
+            "alt": "AUDIT",
+            "src": "sample.svg"
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-a",
+      "markdown": "<a id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\" href=\"https://example.com\">TEXT</a>",
+      "expected": {
+        "text": "TEXT",
+        "links": [
+          "https://example.com"
+        ],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-table",
+      "markdown": "<table id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</table>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-td",
+      "markdown": "<td id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</td>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-th",
+      "markdown": "<th id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</th>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-ol",
+      "markdown": "<ol id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</ol>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-li",
+      "markdown": "<li id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</li>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "A-details",
+      "markdown": "<details id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</details>",
+      "expected": {
+        "text": "DetailsTEXT",
+        "links": [],
+        "images": [],
+        "elements": [
+          "details",
+          "summary"
+        ]
+      }
+    },
+    {
+      "id": "A-source",
+      "markdown": "<source id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</source>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": [
+          "source"
+        ]
+      }
+    },
+    {
+      "id": "A-q",
+      "markdown": "<q id=\"audit-id\" name=\"audit-name\" title=\"AUDIT\" dir=\"rtl\" lang=\"AUDIT\" align=\"center\" width=\"50\" height=\"50\" hspace=\"AUDIT\" vspace=\"AUDIT\" valign=\"top\" border=\"AUDIT\" colspan=\"2\" rowspan=\"2\" scope=\"AUDIT\" start=\"3\" reversed=\"AUDIT\" value=\"3\" cite=\"https://example.com\" datetime=\"AUDIT\" open=\"\" media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg\" loading=\"AUDIT\" longdesc=\"https://example.com\" alt=\"AUDIT\" target=\"AUDIT\" rel=\"AUDIT\" download=\"AUDIT\" style=\"AUDIT\" class=\"AUDIT\" onclick=\"AUDIT\" role=\"AUDIT\" aria-label=\"AUDIT\" tabindex=\"AUDIT\">TEXT</q>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": [
+          "q"
+        ]
+      }
+    },
+    {
+      "id": "E-0",
+      "markdown": "~a~ ~~b~~ ~a b~ ~ a ~ ~a\nb~ ~a~b~ ~a~~b~ ~~a~b~~ ~~~a~~~ ~~~~a~~~~",
+      "expected": {
+        "text": "a b a b ~ a ~ a b ab~ a~~b a~b ~~~a~~~ ~~~~a~~~~",
+        "links": [],
+        "images": [],
+        "elements": [
+          "del",
+          "del",
+          "del",
+          "del",
+          "del",
+          "del",
+          "del"
+        ]
+      }
+    },
+    {
+      "id": "E-1",
+      "markdown": ":smile: x:smile:y :SMILE: \\:smile: `<code>:smile:</code>` <code>:smile: **bold** $x$</code> [URL](https://example.com/:smile:) ![:smile:](sample.svg)",
+      "expected": {
+        "text": "😄 x😄y :SMILE: 😄 <code>:smile:</code> :smile: bold $x$ URL",
+        "links": [
+          "https://example.com/:smile:"
+        ],
+        "images": [
+          {
+            "alt": ":smile:",
+            "src": "sample.svg"
+          }
+        ],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "E-2",
+      "markdown": "<h2 id=\"custom\">**literal** <em>Heading</em></h2>\n\n[Custom](#custom) [Heading](#literal-heading)",
+      "expected": {
+        "text": "**literal** Heading Custom Heading",
+        "links": [
+          "#custom",
+          "#literal-heading"
+        ],
+        "images": [],
+        "elements": [
+          "h2",
+          "em"
+        ]
+      }
+    },
+    {
+      "id": "E-3",
+      "markdown": "<div>\n\n~STRIKE~ :smile:\n\n</div>",
+      "expected": {
+        "text": "STRIKE 😄",
+        "links": [],
+        "images": [],
+        "elements": [
+          "del"
+        ]
+      }
+    },
+    {
+      "id": "E-4",
+      "markdown": "[JS](javascript:void(0)) ![JS](javascript:void(0)) ![PROTO](//example.com/a.png) [MAIL](mailto:a@example.com)",
+      "expected": {
+        "text": "JS MAIL",
+        "links": [
+          "mailto:a@example.com"
+        ],
+        "images": [
+          {
+            "alt": "JS",
+            "src": ""
+          },
+          {
+            "alt": "PROTO",
+            "src": ""
+          }
+        ],
+        "elements": []
+      }
+    },
+    {
+      "id": "R01",
+      "name": "srcset-list",
+      "markdown": "<picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"sample.svg 1x, https://example.com/dark.svg 2x\"><img src=\"sample.svg\" alt=\"THEME\"></picture>",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [
+          {
+            "alt": "THEME",
+            "src": "sample.svg"
+          }
+        ],
+        "elements": [
+          "picture",
+          "source"
+        ]
+      }
+    },
+    {
+      "id": "R02",
+      "name": "srcset-protocols",
+      "markdown": "<picture><source srcset=\"data:image/png;base64,AUDIT\"><source srcset=\"//example.com/a.svg\"><source srcset=\"file:///C:/audit/a.svg\"><img src=\"sample.svg\"></picture>",
+      "expected": {
+        "text": "",
+        "links": [],
+        "images": [
+          {
+            "alt": "",
+            "src": "sample.svg"
+          }
+        ],
+        "elements": [
+          "picture",
+          "source",
+          "source",
+          "source"
+        ]
+      }
+    },
+    {
+      "id": "R03",
+      "name": "global-attrs-more",
+      "markdown": "<div abbr=\"AUDIT\" accept=\"AUDIT\" accept-charset=\"AUDIT\" accesskey='example' action=\"AUDIT\" axis=\"AUDIT\" char=\"AUDIT\" charoff=\"AUDIT\" charset=\"AUDIT\" checked=\"AUDIT\" clear=\"AUDIT\" cols=\"AUDIT\" compact=\"AUDIT\" coords=\"AUDIT\" disabled=\"AUDIT\" enctype=\"AUDIT\" for=\"AUDIT\" frame=\"AUDIT\" headers=\"AUDIT\" hreflang=\"AUDIT\" ismap=\"AUDIT\" label=\"AUDIT\" maxlength=\"AUDIT\" method=\"AUDIT\" multiple=\"AUDIT\" nohref=\"AUDIT\" noshade=\"AUDIT\" nowrap=\"AUDIT\" progress=\"AUDIT\" prompt=\"AUDIT\" readonly=\"AUDIT\" rev=\"AUDIT\" rows=\"AUDIT\" rules=\"AUDIT\" selected=\"AUDIT\" shape=\"AUDIT\" size=\"AUDIT\" span=\"AUDIT\" summary=\"AUDIT\" type=\"AUDIT\" usemap=\"AUDIT\" itemprop=\"AUDIT\" itemscope=\"AUDIT\" itemtype=\"AUDIT\" aria-hidden=\"AUDIT\" aria-describedby=\"AUDIT\" aria-labelledby=\"AUDIT\">TEXT</div>",
+      "expected": {
+        "text": "TEXT",
+        "links": [],
+        "images": [],
+        "elements": []
+      }
+    },
+    {
+      "id": "R04",
+      "name": "emoji-heading",
+      "markdown": "# :smile: Emoji\n\n<h2>:smile: Raw heading</h2>",
+      "expected": {
+        "text": "😄 Emoji 😄 Raw heading",
+        "links": [],
+        "images": [],
+        "elements": [
+          "h1",
+          "h2"
+        ]
+      }
+    },
+    {
+      "id": "R05",
+      "name": "section-attributes",
+      "markdown": "<section id=\"audit-section\" class=\"audit\" data-example=\"yes\">SECTION</section>",
+      "expected": {
+        "text": "SECTION",
+        "links": [],
+        "images": [],
+        "elements": [
+          "section"
+        ]
+      }
+    },
+    {
+      "id": "R06",
+      "name": "html-code-boundaries",
+      "markdown": "<code>$x$ **bold** :smile:</code> outside $x$ :smile:.\n\n<pre><code>:smile: **bold** $x$</code></pre>\n\n`~strike~ :smile: $x$`",
+      "expected": {
+        "text": "$x$ bold :smile: outside [math] 😄. :smile: **bold** $x$ ~strike~ :smile: $x$",
+        "links": [],
+        "images": [],
+        "elements": [
+          "strong"
+        ]
+      }
+    },
+    {
+      "id": "R07",
+      "name": "details-default-summary",
+      "markdown": "<details>\n\n**BOLD**\n\n</details>",
+      "expected": {
+        "text": "Details BOLD",
+        "links": [],
+        "images": [],
+        "elements": [
+          "details",
+          "summary",
+          "strong"
+        ]
+      }
+    }
+  ]
+}

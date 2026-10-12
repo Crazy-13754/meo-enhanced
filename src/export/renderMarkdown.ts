@@ -31,6 +31,7 @@ import { getPreviewPreset, type PreviewPresetId, type PreviewPresetDefinition } 
 import { load as loadYaml } from 'js-yaml';
 import { installWikiReferenceTransform } from './wikiReferences';
 import type { ResolvedWikiResources } from '../foundation/wikiReference';
+import { addGithubDetailsSummary, createGithubHtmlSanitizer, githubHtmlAttributes, githubHtmlTags, installGithubInlineRules, isGithubImageSource, isGithubLink, linkifyGithubFilteredHtml, replaceGithubEmoji, stripGithubSelectMarkup } from './githubReadme';
 
 const POWER_QUERY_KEYWORDS =
   'let in each if then else try otherwise error and or not as is type meta section shared';
@@ -101,6 +102,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     embeddedImageDataUrlCache
   });
   const deferImageSrc = (rawSrc: string): { src: string; deferredSrc?: string } => (
+    github && !isGithubImageSource(rawSrc) ? { src: '' } :
     options.deferImages && (isLocalImageSrc(rawSrc) || /^(?:https?:)?\/\//i.test(rawSrc.trim()))
       ? { src: DEFERRED_IMAGE_PLACEHOLDER, deferredSrc: rawSrc }
       : { src: rewriteImageSrc(rawSrc) }
@@ -116,6 +118,8 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     breaks: !github,
     langPrefix: 'language-'
   });
+  if (github) installGithubInlineRules(md);
+  const githubHtml = github ? createGithubHtmlSanitizer(deferImageSrc) : undefined;
   // The bundled backtick rule strips bounding spaces even from all-space code.
   // Preserve that CommonMark exception before the regular rule handles other spans.
   md.inline.ruler.before('backticks', 'meo_code_space_literal', (state, silent) => {
@@ -157,7 +161,8 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     }),
     !github && options.showComments === true,
     !github,
-    github ? generatedFootnoteTags : undefined
+    github ? generatedFootnoteTags : undefined,
+    githubHtml?.sanitize
   );
   if (shouldEnableMathTransform) {
     installMathTransform(md, {
@@ -188,9 +193,10 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       ? ` data-source-line="${escapeHtmlAttr(sourceLine)}"${sourceEndLine ? ` data-source-end-line="${escapeHtmlAttr(sourceEndLine)}"` : ''}`
       : '';
     const source = String(codeBlock.content ?? '');
+    const richLanguage = github ? codeBlock.info.trim().split(/\s+/)[0] : language;
     const renderRichContent = !github || !env?.meoGithubFootnote;
 
-    if (renderRichContent && (github ? language === 'math' : isMathFenceLanguage(language))) {
+    if (renderRichContent && (github ? richLanguage === 'math' : isMathFenceLanguage(language))) {
       const mathContent = mathFenceContent(source);
       const renderedMath = renderLatexMathToHtml(mathContent, 'display');
       if (renderedMath) {
@@ -202,7 +208,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       }
     }
 
-    if (renderRichContent && language === 'mermaid') {
+    if (renderRichContent && richLanguage === 'mermaid') {
       hasMermaid = true;
       const sourceB64 = Buffer.from(source, 'utf8').toString('base64');
       return [
@@ -266,10 +272,10 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     bodyHtml,
     preparedMarkdown.footnotesHtml
   ].join('');
-  const html = sanitizeHtml(rawHtml, {
+  const html = sanitizeHtml(github ? replaceGithubEmoji(linkifyGithubFilteredHtml(addGithubDetailsSummary(stripGithubSelectMarkup(rawHtml))), deferImageSrc) : rawHtml, {
     allowedTags: [
       ...sanitizeHtml.defaults.allowedTags,
-      ...(github ? ['input', 'kbd', 'del'] : []),
+      ...(github ? [...githubHtmlTags, 'input'] : []),
       'mark',
       'details',
       'summary',
@@ -303,18 +309,20 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     ],
     allowedAttributes: {
       ...(github ? { input: ['type', 'disabled', 'checked', 'aria-label'] } : {}),
+      ...(github ? Object.fromEntries(Object.entries(githubHtmlAttributes).filter(([tag]) => !['*', 'a', 'img', 'ol', 'th', 'td', 'p', 'div', 'span', 'details'].includes(tag))) : {}),
+      ...(github ? { source: ['srcset', 'data-meo-deferred-image-srcset'] } : {}),
       a: ['href', 'name', 'target', 'rel', 'title', 'aria-label'],
       details: ['open'],
-      img: ['src', 'alt', 'title', 'width', 'height', 'loading', DEFERRED_IMAGE_ATTRIBUTE],
-      ol: ['start', 'reversed'],
+      img: ['src', 'alt', 'title', 'width', 'height', 'loading', DEFERRED_IMAGE_ATTRIBUTE, ...(github ? githubHtmlAttributes.img : [])],
+      ol: ['start', 'reversed', ...(github ? githubHtmlAttributes.ol : [])],
       li: ['value'],
-      '*': ['class', 'style', 'id', 'data-source-b64', 'data-source-line', 'data-source-end-line', 'aria-hidden'],
+      '*': ['class', 'style', 'id', 'data-source-b64', 'data-source-line', 'data-source-end-line', 'aria-hidden', ...(github ? githubHtmlAttributes['*'] : [])],
       span: ['class', 'style', 'title', 'role', 'aria-label', 'aria-hidden', 'data-line-number'],
       th: ['colspan', 'rowspan', 'scope', 'style'],
       td: ['colspan', 'rowspan', 'style'],
       code: ['class'],
       p: ['align'],
-      div: ['class', 'data-source-b64', 'align'],
+      div: ['class', 'data-source-b64', 'align', ...(github ? githubHtmlAttributes.div : [])],
       nav: ['class', 'aria-label'],
       svg: [
         'xmlns',
@@ -345,9 +353,12 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     },
     allowedSchemes: ['http', 'https', 'mailto', 'tel', 'file', 'data', 'meo-wiki'],
     allowedSchemesByTag: {
-      img: ['http', 'https', 'file', 'data']
+      img: ['http', 'https', 'file', 'data'],
+      ...(github ? { srcset: ['http', 'https', 'file', 'data'] } : {})
     },
-    allowProtocolRelative: false,
+    allowProtocolRelative: github,
+    ...(github ? { nonTextTags: ['script', 'style', 'textarea', 'option', 'video'] } : {}),
+    ...(github ? { exclusiveFilter: (frame: sanitizeHtml.IFrame) => frame.tag === 'a' && !frame.attribs.href && !frame.attribs.id && !frame.attribs.name ? 'excludeTag' as const : false } : {}),
     allowedStyles: {
       img: { width: [/^\d+px$/], height: [/^\d+px$/] },
       '*': {
@@ -374,6 +385,10 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       }
     },
     transformTags: {
+      ...(github ? { '*': (tagName: string, attribs: Record<string, string>) => ({
+        tagName,
+        attribs: /^(?:p|div|h[1-6]|ol|ul|blockquote)$/.test(tagName) && !attribs.dir ? { ...attribs, dir: 'auto' } : attribs
+      }) } : {}),
       svg: (tagName, attribs) => {
         const viewBox = attribs.viewBox ?? attribs.viewbox;
         const preserveAspectRatio = attribs.preserveAspectRatio ?? attribs.preserveaspectratio;
@@ -390,6 +405,16 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
         };
       },
       a: (tagName, attribs) => {
+        if (github && attribs.href) {
+          if (!isGithubLink(attribs.href)) delete attribs.href;
+          else if (attribs.href.startsWith('#')) {
+            let anchor = attribs.href.slice(1);
+            try { anchor = decodeURIComponent(anchor); } catch { /* Preserve malformed fragments. */ }
+            if (githubHtml?.anchors.has(anchor) && !headings.some(heading => heading.id === anchor)) {
+              attribs.href = `#user-content-${encodeURIComponent(anchor)}`;
+            }
+          }
+        }
         const href = `${attribs.href ?? ''}`.trim();
         const next = { ...attribs };
         if (/^https?:/i.test(href)) {
@@ -462,10 +487,11 @@ function installSafeHtmlTransform(
   resolveSourceRange: (startIndex: number, endIndex: number) => { start: number; end: number },
   showComments: boolean,
   preserveSourceStyles = true,
-  generatedFootnoteTags?: ReadonlySet<string>
+  generatedFootnoteTags?: ReadonlySet<string>,
+  githubSanitize?: (source: string) => string
 ): void {
   // HTML code contents are literal, including when another paragraph enables math rendering.
-  md.inline.ruler.before('html_inline', 'meo_literal_html_code', (state, silent) => {
+  if (!githubSanitize) md.inline.ruler.before('html_inline', 'meo_literal_html_code', (state, silent) => {
     const match = matchInlineHtmlCode(state.src, state.pos, state.posMax);
     if (!match) return false;
     if (!silent) state.push('html_inline', '', 0).content = state.src.slice(state.pos, match.to);
@@ -587,7 +613,17 @@ function installSafeHtmlTransform(
     const htmlNode = tokens[index];
     const source = String(htmlNode?.content ?? '');
     if (htmlNode?.meta?.meoTrustedHtml === true || generatedFootnoteTags?.has(source)) return source;
-    const rendered = sanitizeRawSource(source, String(htmlNode?.type ?? ''));
+    let rendered = githubSanitize ? githubSanitize(source) : sanitizeRawSource(source, String(htmlNode?.type ?? ''));
+    if (githubSanitize && Array.isArray(htmlNode.meta?.meoGithubHeadingIds)) {
+      let headingIndex = 0;
+      rendered = rendered.replace(/<h[1-6]\b[^>]*>/gi, (opening) => {
+        const id = htmlNode.meta.meoGithubHeadingIds[headingIndex++];
+        if (!id) return opening;
+        return /\bid=/.test(opening)
+          ? `${opening}<a id="${escapeHtmlAttr(id)}"></a>`
+          : opening.replace(/>$/, ` id="${escapeHtmlAttr(id)}">`);
+      });
+    }
     if (rendered === '') return '';
     if (htmlNode?.type !== 'html_block' || !Array.isArray(htmlNode.map)) return rendered;
     const sourceRange = resolveSourceRange(Number(htmlNode.map[0]), Number(htmlNode.map[1]));
@@ -611,6 +647,15 @@ function installSourcePositionAndHeadingAnchorTransform(
     if (state.env?.meoTableCell) return;
     const slugCounts = new Map<string, number>();
     const tokens = state.tokens as any[];
+    const githubId = (text: string) => {
+      const base = text.trim().toLowerCase().replace(/<[^>]*>/g, '')
+        .replace(/[^\p{Letter}\p{Number}\p{Mark} _-]/gu, '').replace(/ /g, '-');
+      let id = base, suffix = slugCounts.get(base) ?? 0;
+      while (slugCounts.has(id)) id = `${base}-${++suffix}`;
+      slugCounts.set(base, suffix);
+      slugCounts.set(id, 0);
+      return id;
+    };
 
     for (let index = 0; index < tokens.length; index += 1) {
       const headingOpen = tokens[index];
@@ -619,6 +664,17 @@ function installSourcePositionAndHeadingAnchorTransform(
         : null;
       const sourceLine = sourceRange?.start ?? 0;
       const sourceEndLine = sourceRange?.end ?? 0;
+      if (github && headingOpen.type === 'html_block') {
+        const ids: string[] = [];
+        for (const match of String(headingOpen.content).matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1\s*>/gi)) {
+          let text = '';
+          new Parser({ ontext: part => { text += part; } }).end(match[2]);
+          const id = githubId(text);
+          ids.push(id);
+          onHeading?.({ level: Number(match[1]), id, text });
+        }
+        if (ids.length) headingOpen.meta = { ...headingOpen.meta, meoGithubHeadingIds: ids };
+      }
       if ((headingOpen.nesting === 1 || headingOpen.type === 'fence' || headingOpen.type === 'code_block' || headingOpen.type === 'meo_math_block') && sourceLine > 0) {
         headingOpen.attrSet('data-source-line', String(sourceLine));
         headingOpen.attrSet('data-source-end-line', String(Math.max(sourceLine, sourceEndLine)));
@@ -636,10 +692,7 @@ function installSourcePositionAndHeadingAnchorTransform(
         : markdownHeadingAnchor(headingSource);
       let id = baseSlug;
       if (github) {
-        let suffix = slugCounts.get(baseSlug) ?? 0;
-        while (slugCounts.has(id)) id = `${baseSlug}-${++suffix}`;
-        slugCounts.set(baseSlug, suffix);
-        slugCounts.set(id, 0);
+        id = githubId(headingSource);
       } else {
         const occurrence = (slugCounts.get(baseSlug) ?? 0) + 1;
         slugCounts.set(baseSlug, occurrence);

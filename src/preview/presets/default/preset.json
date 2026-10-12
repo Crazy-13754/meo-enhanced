@@ -8,6 +8,9 @@
     "zh-CN": "使用编辑器的阅读样式与预览设置。"
   },
   "renderer": "meo",
+  "author": "MEO Enhanced contributors",
+  "version": "1.0.0",
+  "license": "MIT",
   "defaults": { "appearance": "auto", "contentWidth": "responsive" },
   "controls": {
     "fontFamily": { "mode": "editable" },

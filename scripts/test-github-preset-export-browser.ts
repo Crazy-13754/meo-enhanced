@@ -12,7 +12,8 @@ const base = {
   readingSnapshot: {
     snapshotId: 'github-export', text, appearance: 'light' as 'light' | 'dark', uiLanguage: 'en' as const,
     preset: 'github-readme' as const,
-    environment: { previewFontFamily: 'Georgia', previewSourceColoring: false, previewShowComments: true }
+    // GitHub's measured reference uses a 16px body; presets now share the selected size.
+    environment: { previewFontFamily: 'Georgia', previewSourceColoring: false, previewShowComments: true, editorFontSizePx: 16 }
   },
   sourceDocumentPath: fixture,
   outputFilePath: path.resolve('tmp/github-export/baseline.html'),
@@ -108,9 +109,9 @@ try {
     const pdfHtmlPath = path.resolve(`tmp/github-export/${appearance}-pdf.html`);
     await exportRuntime.writeHtmlExport({ htmlDocument: pdf.htmlDocument, outputHtmlPath: pdfHtmlPath });
     const pdfPage = await browser.newPage();
-    await pdfPage.setViewport({ width: 793, height: 1122 });
-    // Production PDF rendering intentionally uses screen media for its fit pass.
-    await pdfPage.emulateMediaType('screen');
+    await pdfPage.setViewport({ width: 641, height: 970 });
+    // Match the production fit pass inside A4's shared 20mm page margins.
+    await pdfPage.emulateMediaType('print');
     await pdfPage.goto(pathToFileURL(pdfHtmlPath).href);
     await pdfPage.waitForFunction(() => (window as any).__MEO_EXPORT_READY__ === true);
     assert.deepEqual(await pdfPage.evaluate(() => [...document.querySelectorAll('pre, table')].filter(el => el.scrollWidth > el.clientWidth + 1).map(el => ({ tag: el.tagName, width: el.clientWidth, scroll: el.scrollWidth }))), [], 'Production PDF must not retain screen-only horizontal scrolling');

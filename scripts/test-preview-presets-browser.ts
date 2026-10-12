@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { launchTestBrowser } from './browser-test-helpers';
 import exportRuntime from '../src/export/runtime';
+import { createCustomPreviewPreset, parseCustomPreviewPresetManifest } from '../src/foundation/customPreviewPreset';
+import type { PreviewPresetDefinition } from '../src/foundation/previewPresets';
 
 const build = await Bun.build({ entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'], target: 'browser', format: 'iife' });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
@@ -29,7 +31,7 @@ const browser = await launchTestBrowser();
 try {
   let nextDelay = 0;
   const errors: string[] = [];
-  const open = async (state: unknown = undefined) => {
+  const open = async (state: unknown = undefined, customPreviewPresets: readonly PreviewPresetDefinition[] = []) => {
     const page = await browser.newPage();
     page.on('pageerror', error => errors.push(String(error)));
     await page.setViewport({ width: 1400, height: 760 });
@@ -42,13 +44,14 @@ try {
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
       return { type: 'previewRenderResult', requestId: message.requestId, result: { ok: true, value: exportRuntime.renderPreviewDocument({
         markdownText: message.text, sourceDocumentPath: 'C:/tmp/presets.md', uiLanguage: message.uiLanguage,
-        styleEnvironment: message.environment, preset: message.preset, contentWidth: message.contentWidth
+        styleEnvironment: message.environment, preset: message.preset, contentWidth: message.contentWidth,
+        presetDefinition: customPreviewPresets.find(preset => preset.id === message.preset)
       }) } };
     });
     await page.addScriptTag({ content: `window.__presetState=${JSON.stringify(state ?? { sourcePreviewScrollSyncEnabled: false })};window.__presetMessages=[];window.acquireVsCodeApi=()=>({getState(){return window.__presetState},setState(state){window.__presetState=state},postMessage(message){window.__presetMessages.push(message);window.__renderPreset(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent('message',{data:response}));});}});` });
     await page.addScriptTag({ path: 'webview/dist/mermaid.min.js' });
     await page.addScriptTag({ content: bundle });
-    await page.evaluate(init => window.dispatchEvent(new MessageEvent('message', { data: init })), init);
+    await page.evaluate(init => window.dispatchEvent(new MessageEvent('message', { data: init })), { ...init, customPreviewPresets });
     await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.body?.textContent?.includes('Preview presets'));
     return page;
   };
@@ -267,6 +270,20 @@ try {
     return panel === original.panel && original.controls.every((control: HTMLElement) => control.parentElement === panel)
       && document.querySelectorAll('.preview-options-panel').length === 1;
   }), true, 'Full and split preview share one menu and the same option controls');
+  assert.equal(await page.evaluate(() => {
+    const host = document.querySelector<HTMLElement>('.preview-host')!;
+    const panel = document.querySelector<HTMLElement>('.source-preview-more-panel')!;
+    const styles = getComputedStyle(panel);
+    return styles.color === host.style.getPropertyValue('--meo-preview-foreground')
+      && styles.getPropertyValue('--meo-preview-background').trim() === host.style.getPropertyValue('--meo-preview-background');
+  }), true, 'The portaled split menu retains the actual preview palette');
+  assert.equal(await page.$eval('.source-preview-more-panel .preview-preset-control', control => {
+    const dropdown = control.querySelector<HTMLElement>('.preview-preset-dropdown')!;
+    const info = control.querySelector<HTMLElement>('.preview-preset-info')!;
+    const row = control.getBoundingClientRect();
+    return dropdown.getBoundingClientRect().width < row.width - 40
+      && Math.abs(info.getBoundingClientRect().right - row.right) < 1;
+  }), true, 'The split preset selector keeps content width and aligns to the right');
   mkdirSync('tmp/preview-toolbar', { recursive: true });
   await page.screenshot({ path: 'tmp/preview-toolbar/options-split-zh.png' });
   assert.equal(await page.$$eval('.source-preview-more-panel .preview-select-control', elements => elements.every(element => !(element as HTMLElement).hidden && element.getBoundingClientRect().height > 0)), true);
@@ -312,6 +329,7 @@ try {
   assert.equal(saved.previewPresetState.preset, 'github-readme');
   const reopened = await open(saved);
   await reopened.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === 'github-readme');
+  assert.equal(await reopened.evaluate(() => (window as any).__presetMessages.findLast((message: any) => message.type === 'setPreviewPreset')?.preset), 'github-readme', 'Existing document choices migrate to Host startup memory');
   assert.equal(await reopened.$eval('.preview-width-control', element => (element as HTMLElement).hidden), false);
   assert.equal(await reopened.$eval('.preview-width-dropdown', element => (element as HTMLButtonElement).disabled), true);
   await page.bringToFront();
@@ -327,6 +345,63 @@ try {
     await waitFor((mode: string) => (window as any).__presetMessages.some((message: any) => message.type === 'exportSnapshotResult' && message.requestId === `${mode}-export`), { timeout: 5000 }, mode);
     assert.equal(await page.evaluate(mode => (window as any).__presetMessages.findLast((message: any) => message.type === 'exportSnapshotResult' && message.requestId === `${mode}-export`).result.value.preset, mode), 'github-readme');
   }
+  const fontPage = await open();
+  const selectReadingPreset = async (id: string) => {
+    await fontPage.select('.preview-preset-control select', id);
+    await fontPage.waitForFunction(id => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === id, {}, id);
+  };
+  await selectReadingPreset('newsprint');
+  assert.equal(await fontPage.$eval('.preview-font-family-control select', element => (element as HTMLSelectElement).value), '');
+  await fontPage.select('.preview-font-family-control select', 'Arial');
+  await fontPage.waitForFunction(() => {
+    const root = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-doc');
+    return root && getComputedStyle(root).fontFamily.startsWith('Arial');
+  });
+  // Text existing in the DOM is insufficient: a zero-size ancestor used to hide every code line.
+  for (const id of ['newsprint', 'whitey', 'obsidian-minimal']) {
+    await selectReadingPreset(id);
+    assert.ok(await fontPage.$eval('.preview-frame', frame => {
+      const doc = (frame as HTMLIFrameElement).contentDocument!;
+      const lines = [...doc.querySelectorAll('.meo-export-code-line-source')];
+      return lines.length > 0 && lines.every(line => parseFloat(getComputedStyle(line).fontSize) > 0 && line.getBoundingClientRect().height > 0);
+    }), `${id} displays its actual code text`);
+  }
+  await selectReadingPreset('newsprint');
+  const codeFont = await fontPage.$eval('.preview-frame', frame => getComputedStyle((frame as HTMLIFrameElement).contentDocument!.querySelector('code')!).fontFamily);
+  await selectReadingPreset('obsidian-minimal');
+  assert.equal(await fontPage.$eval('.preview-font-family-control select', element => (element as HTMLSelectElement).value), '');
+  await fontPage.select('.preview-font-family-control select', 'Georgia');
+  await selectReadingPreset('newsprint');
+  assert.equal(await fontPage.$eval('.preview-font-family-control select', element => (element as HTMLSelectElement).value), 'Arial');
+  assert.equal(await fontPage.$eval('.preview-frame', frame => getComputedStyle((frame as HTMLIFrameElement).contentDocument!.querySelector('code')!).fontFamily), codeFont);
+  assert.ok(!await fontPage.evaluate(() => (window as any).__presetMessages.some((message: any) => message.type === 'setPreviewFontFamily')), 'Preset font overrides never write Default settings');
+  const fontSaved = await fontPage.evaluate(() => (window as any).__presetState);
+  const fontReopened = await open(fontSaved);
+  await fontReopened.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === 'newsprint');
+  assert.equal(await fontReopened.$eval('.preview-font-family-control select', element => (element as HTMLSelectElement).value), 'Arial');
+  await fontPage.select('.preview-font-family-control select', '');
+  await fontPage.waitForFunction(() => {
+    const root = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-doc');
+    return root && !getComputedStyle(root).fontFamily.startsWith('Arial');
+  });
+  await selectReadingPreset('default');
+  assert.equal(await fontPage.$eval('.preview-font-family-control select', element => (element as HTMLSelectElement).value), 'Georgia');
+  await fontPage.close();
+  await fontReopened.close();
+  const invalidCodePreset = createCustomPreviewPreset(parseCustomPreviewPresetManifest({
+    schemaVersion: 1, id: 'invalid-code-size', name: 'Invalid code size', description: 'Readability fallback test',
+    themes: { light: { css: 'light.css' }, dark: { css: 'dark.css' } }
+  }), { light: '.meo-export-doc .meo-export-code-line { font-size: 0 !important; line-height: 0 !important; }', dark: '' }, 'd'.repeat(64));
+  const fallbackPage = await open(undefined, [invalidCodePreset]);
+  await fallbackPage.select('.preview-preset-control select', invalidCodePreset.id);
+  await fallbackPage.click('[data-preview-appearance-choice="light"]');
+  await fallbackPage.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('[data-meo-code-typography-fallback]'));
+  assert.ok(await fallbackPage.$eval('.preview-frame', frame => [...(frame as HTMLIFrameElement).contentDocument!.querySelectorAll('.meo-export-code-line-source')].every(line => parseFloat(getComputedStyle(line).fontSize) > 0 && line.getBoundingClientRect().height > 0)));
+  assert.equal(await fallbackPage.$eval('.preview-preset-info', element => element.classList.contains('has-error')), true);
+  await fallbackPage.click('[data-preview-appearance-choice="dark"]');
+  await fallbackPage.waitForFunction(() => !document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('[data-meo-code-typography-fallback]'));
+  assert.equal(await fallbackPage.$eval('.preview-preset-info', element => element.classList.contains('has-error')), false);
+  await fallbackPage.close();
   await page.close();
   await reopened.close();
   assert.deepEqual(errors, []);

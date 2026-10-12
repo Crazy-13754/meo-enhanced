@@ -1,0 +1,38 @@
+{
+  "$schema": "../../preset.schema.json",
+  "schemaVersion": 1,
+  "id": "default",
+  "name": {
+    "en": "Default",
+    "zh-CN": "默认"
+  },
+  "description": {
+    "en": "Default reading typography with light and dark themes.",
+    "zh-CN": "默认阅读排版，支持浅色与深色主题。"
+  },
+  "base": "default",
+  "controls": {
+    "fontFamily": {
+      "mode": "editable"
+    },
+    "codeColoring": {
+      "mode": "editable"
+    },
+    "htmlComments": {
+      "mode": "editable"
+    }
+  },
+  "themes": {
+    "light": {
+      "css": "light.css",
+      "codeTheme": "light-plus"
+    },
+    "dark": {
+      "css": "dark.css",
+      "codeTheme": "dark-plus"
+    }
+  },
+  "author": "MEO Enhanced contributors",
+  "version": "1.0.0",
+  "license": "MIT"
+}

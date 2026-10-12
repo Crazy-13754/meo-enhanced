@@ -63,11 +63,50 @@ assert.ok(decodePreviewRenderRequest({ type: 'requestPreviewRender', requestId: 
 assert.equal(decodePreviewRenderRequest({ type: 'requestPreviewRender', requestId: 'custom', text: '# Test', uiLanguage: 'en', environment: { previewFontFamily: '' }, preset: dual.id, presetRevision: 'invalid' }), null);
 
 const basic = { schemaVersion: 1, id: 'test-style', name: 'Test', description: 'Example', themes: { light: { css: 'light.css' } } };
+const adjustable = await library.import(JSON.stringify({ ...basic, id: 'adjustable-font', controls: { fontFamily: { mode: 'editable' } } }), async () => '.meo-export-doc { font-family: Georgia, serif; }');
+assert.equal(adjustable.controls.fontFamily.mode, 'editable');
+assert.deepEqual(decodeCustomPreviewPresets([adjustable]), [adjustable], 'Font policy survives catalog transport');
+const adjustableReload = createPreviewPresetLibrary(storage);
+assert.deepEqual(await adjustableReload.load(), []);
+assert.equal(adjustableReload.get(adjustable.id)?.controls.fontFamily.mode, 'editable');
+for (const base of ['default', 'github-readme'] as const) {
+  const preset = createCustomPreviewPreset(parseCustomPreviewPresetManifest({ ...basic, base, controls: { fontFamily: { mode: 'editable' } } }), { light: '.meo-export-doc { font-family: Georgia, serif; }' }, 'a'.repeat(64));
+  const styles = buildPresetPreviewStyles(preset.id, { previewFontFamily: 'Arial' }, 'light', 'responsive', preset);
+  assert.ok(styles.lastIndexOf('"Arial"') > styles.lastIndexOf('font-family: Georgia'), 'Selected body font wins over preset CSS on both bases');
+  assert.ok(!buildPresetPreviewStyles(preset.id, { previewFontFamily: '' }, 'light', 'responsive', preset).includes('"Arial"'));
+}
+await library.remove(adjustable.id);
+const bilingualText = { en: 'A reading style. Differences belong in this explanation.', 'zh-CN': '阅读样式，相关差异也写在这段说明中。' };
+const bilingualName = { en: 'Paper notes', 'zh-CN': '纸面笔记' };
+const bilingual = await library.import(JSON.stringify({ ...basic, id: 'bilingual', name: bilingualName, description: bilingualText }), async () => '.meo-export-doc { color: #333; }');
+assert.deepEqual(bilingual.name, bilingualName);
+assert.deepEqual((saved.get('bilingual') as StoredPreviewPreset).manifest.name, bilingualName);
+assert.deepEqual(decodeCustomPreviewPresets([bilingual])?.[0].name, bilingualName);
+assert.deepEqual(bilingual.description, bilingualText);
+assert.deepEqual((saved.get('bilingual') as StoredPreviewPreset).manifest.description, bilingualText, 'Saving preserves both description translations');
+assert.deepEqual(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: [bilingual] })?.presets[0].description, bilingualText, 'Catalog transport preserves both languages');
+const bilingualReload = createPreviewPresetLibrary(storage);
+assert.deepEqual(await bilingualReload.load(), []);
+assert.deepEqual(bilingualReload.get(bilingual.id)?.description, bilingualText, 'Reloading preserves both languages');
+assert.deepEqual(bilingualReload.get(bilingual.id)?.name, bilingualName, 'Reloading preserves both names');
+await library.remove(bilingual.id);
+for (const provided of ['Example', { en: 'Example' }, { 'zh-CN': 'Example' }]) {
+  const manifest = parseCustomPreviewPresetManifest({ ...basic, name: provided, description: provided });
+  const preset = createCustomPreviewPreset(manifest, { light: '.meo-export-doc { color: #333; }' }, 'a'.repeat(64));
+  assert.deepEqual(preset.description, { en: 'Example', 'zh-CN': 'Example' }, 'Plain text and a single translation work in both UI languages');
+  assert.deepEqual(preset.name, { en: 'Example', 'zh-CN': 'Example' });
+  assert.deepEqual(decodeCustomPreviewPresets([preset]), [preset]);
+}
 for (const value of [
   { ...basic, themes: {} }, { ...basic, base: 'user:paper-notes' }, { ...basic, id: '../escape' },
   { ...basic, themes: { light: { css: '../escape.css' } } }, { ...basic, themes: { light: { css: 'C:/escape.css' } } },
   { ...basic, themes: { light: { css: 'light.css', codeTheme: 'unknown' } } },
+  ...[null, [], {}, { fr: 'Example' }, { en: '' }, { en: ' ' }, { en: 1 }, { en: 'x'.repeat(501) }, { en: 'Example', 'zh-CN': null }]
+    .map(description => ({ ...basic, description })),
+  ...[null, [], {}, { fr: 'Example' }, { en: '' }, { en: 1 }, { en: 'x'.repeat(81) }]
+    .map(name => ({ ...basic, name })),
   ...[null, [], { unknown: {} }, { htmlComments: {} }, { htmlComments: { mode: 'unsupported' } },
+    { fontFamily: null }, { fontFamily: {} }, { fontFamily: { mode: 'unsupported' } }, { fontFamily: { mode: 'fixed', value: true } },
     { htmlComments: { mode: 'editable', value: true } }, { codeColoring: { mode: 'fixed' } },
     { codeColoring: { mode: 'fixed', value: 'false' } }, { codeColoring: { mode: 'fixed', value: true, extra: 1 } }
   ].map(controls => ({ ...basic, controls }))
@@ -110,9 +149,23 @@ for (const css of [
   '@import "remote.css";', '@font-face { font-family: test; src: url(font.woff2); }',
   '.meo-export-doc { background: url(https://example.com/image.png); }',
   String.raw`.meo-export-doc { background: \75rl(secret.png); }`,
-  '.meo-export-doc { h1 { color: red; } }', '.meo-export-doc { color: red;'
+  '.meo-export-doc { h1 { color: red; } }', '.meo-export-doc { color: red;',
+  '@page { size: Letter; }', '@page :first { margin: 10mm; }',
+  '@page { @top-left { content: "header"; } }', '@page { margin: url(secret.png); }'
 ]) assert.throws(() => validatePresetCss(css, 'invalid.css'));
 assert.ok(validatePresetCss('@media (max-width: 600px) { .meo-export-doc :is(th, td) { padding: 8px; } }', 'valid.css'));
+assert.ok(validatePresetCss('@page { margin: 0; margin-left: 12mm; }', 'legacy-page.css'));
+assert.ok(validatePresetCss('@media print { @page { margin: var(--legacy-page-margin); } }', 'legacy-page.css'));
+const marginCss = ':root { --legacy-page-margin: 12mm; } @media print { @page { margin: 0; margin-left: var(--legacy-page-margin); } }';
+const marginPreset = await library.import(JSON.stringify({ ...basic, id: 'page-margins' }), async () => marginCss);
+const marginExport = await exportRuntime.renderExportHtmlDocument({
+  readingSnapshot: { snapshotId: 'margins', text: '# Page margins', appearance: 'light', uiLanguage: 'en', environment: { previewSourceColoring: false }, preset: marginPreset.id },
+  presetDefinition: marginPreset, sourceDocumentPath: 'C:/tmp/test.md', outputFilePath: 'C:/tmp/test.pdf', target: 'pdf',
+  mermaidRuntimeSrc: '', baseHref: '', title: 'Page margins', shikiLanguageAssetsRoot: ''
+});
+assert.ok(marginExport.htmlDocument.includes(marginCss), 'Imported page margins reach the PDF renderer without losing zero values or variables');
+assert.ok(marginExport.htmlDocument.indexOf('@page { size: A4; margin: 20mm; }') < marginExport.htmlDocument.indexOf(marginCss), 'User page margins follow the defaults in the CSS cascade');
+await library.remove(marginPreset.id);
 
 const before = saved.get('paper-notes');
 await assert.rejects(library.import(JSON.stringify({ ...basic, id: 'paper-notes' }), async () => 'body { color: red; }'));
@@ -199,4 +252,10 @@ assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', preset
 assert.equal(invalidReload.list().length, 1);
 assert.deepEqual(saved.get('broken'), {}, 'Invalid records are not rewritten');
 replaceCustomPreviewPresets([]);
+for (const id of ['default', 'github-readme', 'newsprint', 'whitey', 'obsidian-minimal']) {
+  const example = await importExample(id);
+  assert.equal(example.id, `user:${id}`, 'Standard examples import as custom copies without replacing built-ins');
+  assert.deepEqual(example.controls.appearance.options, id === 'newsprint' || id === 'whitey' ? ['light'] : ['auto', 'light', 'dark']);
+  assert.ok(!example.description.en.includes('MEO Markdown rendering'));
+}
 console.log('Custom preset import, persistence, recovery, CSS scope, theme support and frozen export checks passed.');

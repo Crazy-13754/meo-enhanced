@@ -1665,6 +1665,7 @@ const waitForInitialPreviewPaint = (): Promise<void> => {
 let previewViewportInteractionGeneration = 0;
 const previewController = createPreviewController({
   vscode,
+  optionsMenu: previewOptionsPanel,
   uiLanguage: activeUiLanguage,
   getEditorAppearance: () => resolveEditorAppearanceForPreview(),
   isCurrentText: (text) => normalizeDocumentText(getCurrentEditorText()) === text,
@@ -1967,6 +1968,7 @@ const presentPreviewSurface = (
     previewFormatGroup.insertBefore(previewController.presetControl, previewOptionsControl);
     previewFormatGroup.insertBefore(previewController.appearanceControl, previewOptionsControl);
   }
+  previewController.setSourcePreviewControls(split);
   if (atomicSplit && split) {
     const generation = ++sourcePreviewRevealGeneration;
     pendingSourcePreviewReveal = { generation, editorReady: false, previewReady: false };
@@ -3177,7 +3179,8 @@ const exportAdapter = createExportWebviewAdapter({
   getStyleEnvironment: () => previewController.getStyleEnvironment(),
   getCodeTheme: () => themeAdapter.getCodePalette(previewController.getAppearance()).sourceTheme,
   getPreset: () => previewController.getPresetState().preset,
-  getPresetRevision: () => previewController.getPresetRevision()
+  getPresetRevision: () => previewController.getPresetRevision(),
+  getPresetFontFamily: () => previewController.getPresetFontFamily()
 });
 
 const themeAdapter = createAppearanceWebviewAdapter({
@@ -3360,9 +3363,15 @@ window.addEventListener('message', (event) => {
         fontFamily: message.previewFontFamily,
         sourceColoring: message.previewSourceColoring,
         showComments: message.previewShowComments,
-        presetState: restoredPresetState,
+        presetState: message.previewPreset !== undefined
+          ? { preset: message.previewPreset, preferences: restoredPresetState?.preferences ?? {} }
+          : restoredPresetState,
         active: false
       });
+      // Migrate a pre-existing document selection before Host-level memory existed.
+      if (message.previewPreset === undefined && restoredPresetState) {
+        vscode.postMessage({ type: 'setPreviewPreset', preset: previewController.getPresetState().preset });
+      }
 
       void editorModeRuntime.dispatch({ type: 'initialize', hostMode: message.mode })
         .then(async () => {

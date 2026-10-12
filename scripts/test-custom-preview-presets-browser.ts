@@ -164,11 +164,11 @@ try {
   const uiBefore = await page.$eval('.mode-toolbar', el => getComputedStyle(el).backgroundColor);
   const showInfo = async (target = page) => {
     await target.hover('.preview-preset-info');
-    await target.waitForFunction(() => [...document.querySelectorAll<HTMLElement>('.meo-tooltip--details')].some(el => getComputedStyle(el).opacity === '1' && getComputedStyle(el).visibility === 'visible'));
-    return target.$eval('.meo-tooltip--details', el => el.textContent!);
+    await target.waitForFunction(() => [...document.querySelectorAll<HTMLElement>('.meo-tooltip.is-visible')].some(el => getComputedStyle(el).opacity === '1' && getComputedStyle(el).visibility === 'visible'));
+    return target.$eval('.meo-tooltip.is-visible', el => el.textContent!);
   };
   assert.equal(await page.$eval('.preview-preset-info', el => (el as HTMLElement).hidden), false, 'Default also exposes preset information');
-  assert.ok((await showInfo()).includes('主题支持'));
+  assert.equal(await showInfo(), '使用编辑器的阅读样式与预览设置。');
   await page.screenshot({ path: 'tmp/custom-presets/info-default.png' });
   await page.mouse.move(1300, 500);
   await choose(dual.id);
@@ -244,7 +244,9 @@ try {
   assert.equal((await controlState('.preview-show-comments')).hidden, false);
   assert.ok((await controlState('.preview-show-comments')).buttons.every(button => !button.disabled));
   assert.equal((await controlState('.preview-source-coloring')).hidden, false);
-  assert.ok((await showInfo()).includes('固定 · 开'));
+  assert.ok((await controlState('.preview-source-coloring')).buttons.every(button => button.disabled));
+  assert.ok((await controlState('.preview-source-coloring')).reason?.includes('固定开启代码着色'));
+  assert.equal(await showInfo(), single.description['zh-CN']);
   await page.mouse.move(1300, 500);
   await page.click('.preview-options-trigger');
   await page.click('[data-preview-comments="true"]');
@@ -272,7 +274,7 @@ try {
     assert.equal(await page.evaluate(() => (window as any).__presetMessages.length), messageCount, 'Disabled controls do not change preferences or render');
   }
   await choose(fixedOn.id);
-  assert.ok((await showInfo()).includes('固定 · 显示'));
+  assert.equal(await showInfo(), fixedOn.description['zh-CN']);
   await page.mouse.move(1300, 500);
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-mermaid.is-rendered'));
   assert.equal(await page.$eval('.preview-frame', frame => {
@@ -298,8 +300,7 @@ try {
   }
   const english = await open(await page.evaluate(() => (window as any).__presetState), 'en');
   await english.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === 'user:fixed-on');
-  assert.ok((await showInfo(english)).includes('Fixed · Show'));
-  assert.ok((await showInfo(english)).includes('Fixed · Off'));
+  assert.equal(await showInfo(english), fixedOn.description.en);
   await english.close();
   await choose('default');
   await waitBehavior(true, false);
@@ -320,13 +321,15 @@ try {
   assert.equal((await visual()).background, 'rgb(255, 255, 255)', 'An invalid update keeps the last usable preset');
   await page.screenshot({ path: 'tmp/custom-presets/info-error.png' });
   await page.mouse.move(1300, 500);
-  const englishManifest = { ...library.files(single.id)!.manifest, id: 'github-paper-en', name: 'GitHub Paper', description: 'A light reading style based on GitHub, with editable HTML comments and fixed code coloring.' };
+  const englishManifest = { ...library.files(single.id)!.manifest, id: 'github-paper-en', name: 'GitHub Paper', description: { en: 'A light reading style based on GitHub.', 'zh-CN': '采用 GitHub 外观的浅色阅读样式。' } };
   const englishPreset = await library.import(JSON.stringify(englishManifest), async file => library.files(single.id)!.files[file]!);
   await assert.rejects(library.import(JSON.stringify(englishManifest), async () => '.toolbar { color: red; }'));
   const englishText = '# Custom preset preview\n\nBody text with **bold**, *italic*, and a [sample link](https://example.com).\n\n<!-- custom preset comment -->\n\n## Headings and code\n\n> [!NOTE]\n> The previous working style stays available after an invalid update.\n\n```typescript\nconst value = { answer: 42 };\n```\n\n| Name | Description |\n| --- | --- |\n| Example | Table content |\n\n$$\nx^2 + y^2 = z^2\n$$\n\n```mermaid\nflowchart LR\n  A[Markdown] --> B[Preview]\n```';
   const englishError = await open({ previewPresetState: { preset: englishPreset.id, preferences: {} } }, 'en', englishText);
   await englishError.waitForSelector('.preview-preset-info.has-error');
-  assert.ok((await showInfo(englishError)).includes('Preset error'));
+  const englishErrorInfo = await showInfo(englishError);
+  assert.ok(englishErrorInfo.includes(englishManifest.description.en) && englishErrorInfo.includes('Preset error'));
+  assert.ok(!englishErrorInfo.includes(englishManifest.description['zh-CN']));
   await englishError.screenshot({ path: 'tmp/custom-presets/info-error-en.png' });
   await englishError.close();
   await library.remove(englishPreset.id);
@@ -389,7 +392,7 @@ try {
   assert.equal(await page.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), false);
   await choose('github-readme');
   assert.equal((await visual()).background, 'rgb(13, 17, 23)');
-  assert.ok((await showInfo()).includes('固定 · 隐藏'), 'Built-in GitHub uses the same capability summary');
+  assert.ok((await showInfo()).includes('与真实 GitHub README 的差异'), 'Built-in differences remain part of the description');
   await page.mouse.move(1300, 500);
   failRenderPreset = 'github-readme';
   await page.evaluate(event => window.dispatchEvent(new MessageEvent('message', { data: event })), { type: 'previewPresetsChanged', presets: library.list(), diagnostics: [] });

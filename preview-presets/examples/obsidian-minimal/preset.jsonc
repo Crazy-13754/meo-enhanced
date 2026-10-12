@@ -1,0 +1,42 @@
+{
+  "$schema": "../../preset.schema.json",
+  "schemaVersion": 1,
+  "id": "obsidian-minimal",
+  "name": {
+    "en": "Obsidian Minimal",
+    "zh-CN": "Obsidian Minimal"
+  },
+  "description": {
+    "en": "Quiet colors and compact reading typography inspired by Obsidian Minimal. Light and dark themes.",
+    "zh-CN": "参考 Obsidian Minimal 的克制配色与简洁阅读排版，支持浅色与深色主题。"
+  },
+  "base": "default",
+  "controls": {
+    "fontFamily": {
+      "mode": "editable"
+    },
+    "codeColoring": {
+      "mode": "editable"
+    },
+    "htmlComments": {
+      "mode": "editable"
+    }
+  },
+  "styles": {
+    "common": "common.css"
+  },
+  "themes": {
+    "light": {
+      "css": "light.css",
+      "codeTheme": "light-plus"
+    },
+    "dark": {
+      "css": "dark.css",
+      "codeTheme": "dark-plus"
+    }
+  },
+  "author": "MEO Enhanced contributors",
+  "version": "1.0.0",
+  "source": "https://github.com/kepano/obsidian-minimal",
+  "license": "MIT"
+}

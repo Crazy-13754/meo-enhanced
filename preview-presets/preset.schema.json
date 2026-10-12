@@ -8,13 +8,25 @@
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1, "description": "Configuration format version. Currently 1." },
     "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$", "description": "Stable ID; reimporting this ID updates the saved preset." },
-    "name": { "type": "string", "minLength": 1, "maxLength": 80, "description": "Name displayed in the preset menu." },
-    "description": { "type": "string", "minLength": 1, "maxLength": 500, "description": "Text displayed in the preset information tooltip." },
+    "name": {
+      "oneOf": [
+        { "$ref": "#/definitions/nameText" },
+        { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "en": { "$ref": "#/definitions/nameText" }, "zh-CN": { "$ref": "#/definitions/nameText" } } }
+      ],
+      "description": "Menu name. A string appears in both languages; en / zh-CN follows the UI language and falls back to the available translation."
+    },
+    "description": {
+      "oneOf": [
+        { "$ref": "#/definitions/descriptionText" },
+        { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "en": { "$ref": "#/definitions/descriptionText" }, "zh-CN": { "$ref": "#/definitions/descriptionText" } } }
+      ],
+      "description": "Preset explanation, including any relevant differences. A string appears in both UI languages; en / zh-CN text follows the UI language and falls back to the available translation."
+    },
     "base": { "enum": ["default", "github-readme"], "default": "default", "description": "Fixed base document styles and light/dark palettes, without editor theme colors. Custom presets use MEO Markdown rendering and independent controls." },
     "controls": {
       "type": "object", "additionalProperties": false,
-      "properties": { "htmlComments": { "$ref": "#/definitions/control" }, "codeColoring": { "$ref": "#/definitions/control" } },
-      "description": "Omitted controls are editable and use the user's current settings. Fixed controls are hidden; their values appear in preset information."
+      "properties": { "fontFamily": { "$ref": "#/definitions/fontControl" }, "htmlComments": { "$ref": "#/definitions/control" }, "codeColoring": { "$ref": "#/definitions/control" } },
+      "description": "Font defaults to fixed for compatibility; editable allows a per-preset body font override. Other omitted controls are editable and use the user's current settings. Fixed controls are hidden."
     },
     "styles": {
       "type": "object", "additionalProperties": false,
@@ -31,6 +43,12 @@
     "license": { "type": "string", "minLength": 1, "maxLength": 500 }
   },
   "definitions": {
+    "nameText": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "fontControl": {
+      "type": "object", "additionalProperties": false, "required": ["mode"],
+      "properties": { "mode": { "enum": ["editable", "fixed"] } }
+    },
+    "descriptionText": { "type": "string", "minLength": 1, "maxLength": 500 },
     "control": {
       "oneOf": [
         { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": { "const": "editable" } } },

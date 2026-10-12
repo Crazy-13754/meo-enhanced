@@ -83,6 +83,7 @@ const browser = await launchTestBrowser();
 const referenceLanguage = nativeGrammar ? 'markdown-reference' : 'markdown';
 const reference = await createHighlighter({ themes: [], langs: [nativeGrammar ? { ...JSON.parse(fs.readFileSync(nativeGrammar, 'utf8')), name: referenceLanguage } : 'markdown', 'yaml', 'html', 'html-derivative', 'typescript', 'python'] });
 const content: Record<string, unknown> = {};
+const previewCodeFontRows: Record<string, { index: number; previousSize: string; expectedSize: string }[]> = {};
 const errors: string[] = [];
 try {
   const page = await browser.newPage();
@@ -199,12 +200,20 @@ try {
     await page.click('button[data-mode="preview"]');
     await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'preview');
     await page.waitForFunction(() => !!document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('h1'));
-    content[profile.id + ':preview'] = await page.evaluate(() => {
+    const previewContent = await page.evaluate(() => {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-      return [...doc.querySelectorAll('body,h1,p,strong,em,code,code span,blockquote,table,th,td,pre')].map(el => {
+      const elements = [...doc.querySelectorAll('body,h1,p,strong,em,code,code span,blockquote,table,th,td,pre')];
+      const rows = elements.map(el => {
         const s = doc.defaultView!.getComputedStyle(el); return [el.tagName, el.textContent, s.color, s.backgroundColor, s.borderColor, s.fontSize, s.fontWeight, s.fontStyle];
       });
+      return { rows, codeFonts: elements.flatMap((el, index) => !el.matches('pre') && el.closest('pre.meo-export-code-block')
+        ? [{ index, previousSize: el.matches('code') ? '0px' : '15px', expectedSize: el.matches('code') ? '15px' : '13.2px' }] : []) };
     });
+    content[profile.id + ':preview'] = previewContent.rows;
+    previewCodeFontRows[profile.id + ':preview'] = previewContent.codeFonts;
+    if (!baseline) for (const { index, expectedSize } of previewContent.codeFonts) {
+      assert.equal(previewContent.rows[index]![5], expectedSize, `${profile.id}: code typography follows the editor basis and stays readable`);
+    }
     await screenshot(profile.id + '-preview.png');
     await page.click('button[data-mode="source"]');
     await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'source');
@@ -221,7 +230,7 @@ try {
         const active = read('.source-preview-button'), activeBackground = read('.source-preview-button', 'backgroundColor');
         button.classList.remove('is-active');
         return { inactive, active, activeBackground, icon: read('.source-preview-button > svg'),
-          inline: read('.selection-inline-button'), menu: read('.source-preview-more-panel'), menuBackground: read('.source-preview-more-panel', 'backgroundColor'),
+          inline: read('.selection-inline-button'), menu: read('.preview-options-panel'), menuBackground: read('.preview-options-panel', 'backgroundColor'),
           muted: role('--meo-ui-text-muted'), foreground: role('--meo-ui-text'), hover: role('--meo-ui-surface-hover'),
           iconForeground: role('--meo-ui-text'), menuForeground: role('--meo-ui-text'), menuSurface: role('--meo-ui-surface-raised') };
       });
@@ -230,8 +239,8 @@ try {
       assert.equal(controls.activeBackground, controls.hover, `${profile.id}: Source preview button active surface`);
       assert.equal(controls.icon, controls.iconForeground, `${profile.id}: Source preview icon`);
       assert.equal(controls.inline, controls.menuForeground, `${profile.id}: selected-text toolbar button`);
-      assert.equal(controls.menu, controls.menuForeground, `${profile.id}: Source preview menu text`);
-      assert.equal(controls.menuBackground, controls.menuSurface, `${profile.id}: Source preview menu background`);
+      assert.equal(controls.menu, controls.menuForeground, `${profile.id}: shared Preview options menu text`);
+      assert.equal(controls.menuBackground, controls.menuSurface, `${profile.id}: shared Preview options menu background`);
       const foregroundChannels = controls.foreground.match(/\d+/g)!.map(Number);
       assert.equal(foregroundChannels[0], foregroundChannels[1], `${profile.id}: ordinary UI foreground is neutral`);
       assert.equal(foregroundChannels[1], foregroundChannels[2], `${profile.id}: ordinary UI icons share the neutral foreground`);
@@ -585,7 +594,15 @@ try {
         for (const [selector, previous] of Object.entries(previousSurfaces[profile])) {
           restore((retainedStyles as Record<string, string[][]>)[selector]!, previous as [number, string][][]);
         }
-      } else restore(retainedStyles as string[][], previousSurfaces[profile]);
+      } else {
+        restore(retainedStyles as string[][], previousSurfaces[profile]);
+        // The 15px fixture keeps a readable container and derives code lines at 88%.
+        // Restore only those approved font fields for the immutable color/content oracle.
+        for (const { index, previousSize } of previewCodeFontRows[profile]!) {
+          const row = (retainedStyles as string[][])[index]!;
+          row[5] = previousSize;
+        }
+      }
       const fingerprint = createHash('sha256').update(JSON.stringify(retainedStyles)).digest('hex');
       assert.equal(fingerprint, expectedContent.hashes[profile], `${profile}: Live/Preview content styles differ from ${expectedContent.baseCommit}`);
     }

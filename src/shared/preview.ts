@@ -5,6 +5,7 @@ export type ResolvedPreviewAppearance = Exclude<PreviewAppearance, 'auto'>;
 
 export const PREVIEW_APPEARANCE_STATE_KEY = 'previewAppearance';
 export const PREVIEW_FONT_FAMILY_STATE_KEY = 'previewFontFamily';
+export const PREVIEW_PRESET_STATE_KEY = 'previewPreset';
 export const PREVIEW_SOURCE_COLORING_STATE_KEY = 'previewSourceColoring';
 export {
   MAX_PREVIEW_FONT_FAMILY_LENGTH,

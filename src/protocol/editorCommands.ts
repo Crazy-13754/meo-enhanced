@@ -1,4 +1,5 @@
 import { normalizePreviewFontFamily } from './editorStyleEnvironment';
+import { isPreviewPresetId, type PreviewPresetId } from '../foundation/previewPresets';
 import { isUiLanguagePreference, type UiLanguagePreference } from '../foundation/uiLanguage';
 import type { SourceLineNumberMode } from './readyInit';
 import {
@@ -44,6 +45,7 @@ export type EditorCommand =
     }
   | { readonly type: 'setPreviewAppearance'; readonly appearance: EditorAppearance }
   | { readonly type: 'setPreviewFontFamily'; readonly fontFamily: string }
+  | { readonly type: 'setPreviewPreset'; readonly preset: PreviewPresetId }
   | { readonly type: 'setPreviewSourceColoring'; readonly enabled: boolean }
   | { readonly type: 'setPreviewShowComments'; readonly enabled: boolean }
   | { readonly type: 'setLiveStrongColoring'; readonly enabled: boolean }
@@ -140,6 +142,8 @@ export function decodeEditorCommand(value: unknown): EditorCommand | null {
       const fontFamily = normalizePreviewFontFamily(value.fontFamily);
       return fontFamily === null ? null : { type: value.type, fontFamily };
     }
+    case 'setPreviewPreset':
+      return isPreviewPresetId(value.preset) ? { type: value.type, preset: value.preset } : null;
     case 'setUiLanguagePreference':
       return isUiLanguagePreference(value.language) ? value as EditorCommand : null;
     case 'setSourceLineNumbers':

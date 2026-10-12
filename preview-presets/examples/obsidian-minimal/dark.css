@@ -1,0 +1,16 @@
+/* Dark counterpart of the same MEO reading-view adaptation. */
+:root {
+  --meo-bg: #1e1e1e;
+  --meo-fg: #d4d4d4;
+  --meo-muted: #999999;
+  --meo-link: #b4a5ee;
+  --meo-code-bg: #282828;
+  --meo-preset-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Microsoft YaHei", sans-serif;
+}
+.meo-export-doc { max-width: 760px; }
+.meo-export-doc h1 { font-size: 1.8em; }
+.meo-export-doc h2 { font-size: 1.4em; }
+.meo-export-doc h3 { font-size: 1.15em; }
+.meo-export-doc blockquote { border-left-width: 2px; }
+.meo-export-doc .meo-export-code-block-wrap > pre.meo-export-code-block { border: 0; border-radius: 6px; }
+.meo-export-doc :is(th, td) { border-left: 0; border-right: 0; }

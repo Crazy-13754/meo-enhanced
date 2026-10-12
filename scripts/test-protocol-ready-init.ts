@@ -80,6 +80,8 @@ assert.deepEqual(decodeInitMessage({ ...completeInit, customPreviewPresets: unde
 assert.equal(decodeInitMessage({ ...completeInit, editingPreferencesRevision: -1 }), null);
 assert.equal(decodeInitMessage({ ...completeInit, editingPreferences: { input: {}, shortcuts: {} } }), null);
 const init = decodeInitMessage(completeInit);
+assert.equal(decodeInitMessage({ ...completeInit, previewPreset: 'newsprint' })?.previewPreset, 'newsprint');
+assert.equal(decodeInitMessage({ ...completeInit, previewPreset: 'invalid' }), null);
 assert.equal(init?.version, 3);
 if (init === null) throw new Error('Expected decoded init');
 const initializedSession = createDocumentSessionCoordinatorFromInit(init);

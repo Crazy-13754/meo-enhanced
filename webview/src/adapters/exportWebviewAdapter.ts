@@ -17,6 +17,7 @@ export type ExportWebviewAdapterDependencies = {
   readonly getCodeTheme: () => CodeThemeDto;
   readonly getPreset?: () => PreviewPresetId;
   readonly getPresetRevision?: () => string | undefined;
+  readonly getPresetFontFamily?: () => string | undefined;
 };
 
 export type ExportWebviewAdapter = {
@@ -74,6 +75,7 @@ export function createExportWebviewAdapter(
           const environment = structuredClone(dependencies.getStyleEnvironment());
           const codeTheme = structuredClone(dependencies.getCodeTheme());
           const revision = dependencies.getPresetRevision?.();
+          const presetFontFamily = dependencies.getPresetFontFamily?.();
           settle(requestId, {
             ok: true,
             value: Object.freeze({
@@ -84,7 +86,8 @@ export function createExportWebviewAdapter(
               environment: Object.freeze(environment),
               codeTheme: Object.freeze(codeTheme),
               ...(dependencies.getPreset ? { preset: dependencies.getPreset() } : {}),
-              ...(revision ? { presetRevision: revision } : {})
+              ...(revision ? { presetRevision: revision } : {}),
+              ...(presetFontFamily !== undefined ? { presetFontFamily } : {})
             })
           });
         } catch (error) {

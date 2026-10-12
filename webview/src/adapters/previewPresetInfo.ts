@@ -17,24 +17,12 @@ export function createPreviewPresetInfo(target: string | HTMLButtonElement = 'pr
     element,
     present(preset: PreviewPresetDefinition, language: UiLanguage, errors: readonly string[] = []) {
       const strings = getUiStrings(language);
-      const policyText = (key: 'codeColoring' | 'htmlComments') => {
-        const policy = preset.controls[key];
-        if (policy.mode === 'unsupported') return strings.previewControlUnsupported;
-        if (policy.mode === 'editable') return strings.previewControlEditable;
-        const enabled = policy.value === true;
-        return `${strings.previewControlFixed} · ${key === 'codeColoring' ? enabled ? strings.previewCodeColorsOn : strings.previewCodeColorsOff : enabled ? strings.previewCommentsShow : strings.previewCommentsHide}`;
-      };
       element.classList.toggle('has-error', errors.length > 0);
       if (!menuOption) element.setAttribute('aria-label', `${strings.previewPresetInfo}: ${preset.name[language]}${errors.length ? ` · ${strings.previewPresetError}` : ''}`);
       tooltip.setContent({ kind: 'description',
-        text: [preset.description[language], ...preset.notes.map(note => `• ${note[language]}`)].join('\n\n'),
-        rows: [
-          { label: strings.previewThemeSupport, value: ['light', 'dark'].filter(value => preset.controls.appearance.options?.includes(value)).map(value => value === 'light' ? strings.light : strings.dark).join(' / ') },
-          { label: strings.showComments, value: policyText('htmlComments') },
-          { label: strings.previewCodeColors, value: policyText('codeColoring') },
-          { label: strings.previewFontFamily, value: preset.controls.fontFamily.mode === 'editable' ? strings.previewControlEditable : strings.previewControlStyles },
-          { label: strings.previewWidth, value: preset.controls.contentWidth.mode === 'editable' ? strings.previewControlEditable : preset.controls.contentWidth.mode === 'fixed' ? strings.previewControlStyles : strings.previewControlUnsupported }
-        ], ...(errors.length ? { error: { title: strings.previewPresetError, text: errors.join('\n\n') } } : {})
+        // Older built-in notes remain part of the description, without a separate list.
+        text: [preset.description[language], ...preset.notes.map(note => note[language])].join('\n\n'),
+        ...(errors.length ? { error: { title: strings.previewPresetError, text: errors.join('\n\n') } } : {})
       });
     },
     dispose: () => tooltip.dispose()

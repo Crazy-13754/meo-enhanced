@@ -3,6 +3,7 @@ import { buildExportHtmlDocument as buildStandaloneExportHtmlDocument } from './
 import { buildExportStyles, type ExportStyleEnvironment } from './exportStyles';
 import { writeHtmlExport } from './htmlExport';
 import { renderPdfFromHtmlExport } from './pdfRenderer';
+import { buildPdfExportStyles } from './pdfStyles';
 import { writeDocxExport } from './docxRenderer';
 import type { PreviewAppearance, PreviewRenderResult } from '../shared/preview';
 import type { ReadingSnapshot } from '../protocol/exportSnapshot';
@@ -11,6 +12,7 @@ import { createExportCodeHighlighter } from './shikiCodeHighlighter';
 import { getPreviewPreset, getPreviewPresetCodeTheme, resolvePresetAppearance, resolvePreviewPresetSettings, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
 import { buildPresetPreviewStyles } from '../preview/presetStyles';
 import type { ResolvedWikiResources } from '../foundation/wikiReference';
+import { githubPictureMedia } from '../shared/githubPicture';
 
 export type ExportRuntimeBuildHtmlOptions = {
   wikiResources?: ResolvedWikiResources;
@@ -38,8 +40,10 @@ async function renderExportHtmlDocument(
   if (definition.id !== preset) throw new Error('Export preset does not match its snapshot');
   const githubStyle = definition.custom?.base === 'github-readme' || definition.renderer === 'github-readme';
   const exportAppearance = options.target === 'docx' ? 'light' : resolvePresetAppearance(definition, snapshot.appearance, snapshot.appearance);
-  const environment = options.target === 'docx' ? snapshot.environment
-    : { ...snapshot.environment, ...resolvePreviewPresetSettings(preset, snapshot.environment, definition) };
+  const styleEnvironment = options.target === 'docx' ? snapshot.environment
+    : { ...snapshot.environment, previewFontFamily: snapshot.presetFontFamily ?? snapshot.environment.previewFontFamily };
+  const environment = options.target === 'docx' ? styleEnvironment
+    : { ...styleEnvironment, ...resolvePreviewPresetSettings(preset, styleEnvironment, definition) };
   const namedTheme = getPreviewPresetCodeTheme(definition, exportAppearance);
   const fallbackTheme = namedTheme
     ? (await importPresetCodeTheme(namedTheme))
@@ -76,8 +80,10 @@ async function renderExportHtmlDocument(
 
   const htmlDocument = buildStandaloneExportHtmlDocument({
     title: options.title,
-    bodyHtml,
-    stylesCss,
+    bodyHtml: definition.renderer === 'github-readme'
+      ? bodyHtml.replace(/(<source\b[^>]*\bmedia=")([^"]*)(")/g, (_match, before, media, after) => `${before}${githubPictureMedia(media, exportAppearance)}${after}`)
+      : bodyHtml,
+    stylesCss: options.target === 'pdf' ? buildPdfExportStyles(stylesCss) : stylesCss,
     target: options.target,
     githubStyle,
     githubMermaid: definition.renderer === 'github-readme',

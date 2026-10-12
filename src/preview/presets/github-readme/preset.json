@@ -4,10 +4,13 @@
   "id": "github-readme",
   "name": { "en": "GitHub README", "zh-CN": "GitHub README" },
   "description": {
-    "en": "Approximate GitHub README preview; actual rendering may differ slightly.",
-    "zh-CN": "GitHub README 的近似预览，实际显示可能略有差异。"
+    "en": "Local approximation of GitHub README.\n\nDifference from GitHub README: GitHub renders GeoJSON / TopoJSON as interactive maps and STL as interactive 3D models; this preset displays all three as code blocks.",
+    "zh-CN": "GitHub README 的本地近似预览。\n\n与真实 GitHub README 的差异：GitHub 将 GeoJSON / TopoJSON 渲染为交互地图、STL 渲染为交互 3D 模型；本预设均显示为代码块。"
   },
   "renderer": "github-readme",
+  "author": "MEO Enhanced contributors",
+  "version": "1.0.0",
+  "license": "MIT",
   "styles": {
     "light": "github-markdown-light.css",
     "dark": "github-markdown-dark.css"

@@ -62,7 +62,10 @@ try {
   assert.equal(await page.$eval('.preview-preset-dropdown', element => element.hasAttribute('data-tooltip') || element.hasAttribute('title')), false);
   await page.click('.preview-preset-dropdown');
   await page.hover('.preview-preset-dropdown-panel [data-value="github-readme"]');
-  await page.waitForFunction(() => document.querySelector<HTMLElement>('.meo-tooltip--details.is-visible')?.dataset.side === 'right');
+  await page.waitForFunction(() => {
+    const hint = document.querySelector<HTMLElement>('.meo-tooltip.is-visible');
+    return hint?.dataset.side === 'right' && hint.textContent?.includes('与真实 GitHub README 的差异');
+  });
   assert.equal(await page.$eval('.preview-preset-dropdown-panel', element => (element as HTMLElement).hidden), false, 'Preset explanations keep the selection menu open');
   mkdirSync('tmp/preview-toolbar', { recursive: true });
   await page.screenshot({ path: 'tmp/preview-toolbar/preset-hover-dark-zh.png' });
