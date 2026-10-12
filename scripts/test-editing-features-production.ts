@@ -105,6 +105,29 @@ try {
     await page.evaluate(() => (window as any).editor.undo()); await waitText('');
     await prepare(mode, '', 0, 0, { convertTables: false, pasteHtml: false }); await paste('A\tB'); assert.equal(await text(), 'A\tB');
     await prepare(mode, '', 0, 0, { convertTables: false }); await paste('A\tB', '<table><tr><td>A</td><td>B</td></tr></table>'); assert.equal(await text(), 'A\tB');
+    const mixedHtml = '<p>前文标记：这段文字应保留。</p><table><thead><tr><th>名称</th><th>数值</th></tr></thead><tbody><tr><td>测试项</td><td>1</td></tr></tbody></table><p>后文标记：这段文字也应保留。</p>';
+    const mixedPlain = '前文标记：这段文字应保留。\n名称\t数值\n测试项\t1\n后文标记：这段文字也应保留。';
+    const mixedMarkdown = '前文标记：这段文字应保留。\n\n| 名称 | 数值 |\n| --- | --- |\n| 测试项 | 1 |\n\n后文标记：这段文字也应保留。';
+    await prepare(mode, '', 0, 0, { pasteHtml: true }); assert.equal(await paste(mixedPlain, mixedHtml), true);
+    assert.equal(await text(), mixedMarkdown, mode + ': mixed HTML preserves prose around its table');
+    assert.deepEqual(await page.evaluate(() => (window as any).editor.getHistoryDepth()), { undo: 1, redo: 0 });
+    await page.evaluate(() => (window as any).editor.undo()); await waitText('');
+    await page.evaluate(() => (window as any).editor.redo()); await waitText(mixedMarkdown);
+    for (const preferences of [{ pasteHtml: false }, { convertTables: false }, { pasteHtml: false, convertTables: false }]) {
+      await prepare(mode, '', 0, 0, preferences); await paste(mixedPlain, mixedHtml);
+      assert.equal(await text(), mixedPlain, mode + ': disabled mixed-content conversion retains the whole plain payload');
+    }
+    const twoTablesHtml = '<div><p><strong>Before</strong> <a href="https://example.test/">link</a></p><table><caption>First table</caption><tr><th>A</th><th>B</th></tr><tr><td rowspan="2"><em>one</em><br>two</td><td>x|y</td></tr><tr><td>z</td></tr></table><p>Between</p><table><tr><th>C</th></tr><tr><td><code>code</code></td></tr></table><p>After</p></div>';
+    const twoTablesMarkdown = '**Before** [link](https://example.test/)\n\nFirst table\n\n| A | B |\n| --- | --- |\n| *one*<br>two | x\\|y |\n|  | z |\n\nBetween\n\n| C |\n| --- |\n| `code` |\n\nAfter';
+    await prepare(mode, '', 0, 0, { pasteHtml: true }); await paste('Before link\nA\tB\none\tx|y\n\tz\nBetween\nC\ncode\nAfter', twoTablesHtml);
+    assert.equal(await text(), twoTablesMarkdown, mode + ': wrapped HTML retains both tables, intervening prose, caption, spans and inline formatting');
+    if (mode === 'live') await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-table-shell').length === 2);
+    await prepare(mode, 'left right', 5, 5, { pasteHtml: true }); await paste(mixedPlain, mixedHtml);
+    assert.equal(await text(), 'left ' + mixedMarkdown + 'right', mode + ': mixed paste preserves surrounding document text');
+    await page.evaluate(() => (window as any).editor.undo()); await waitText('left right');
+    await prepare(mode, 'replace me', 0, 10, { pasteHtml: true }); await paste(mixedPlain, mixedHtml);
+    assert.equal(await text(), mixedMarkdown, mode + ': mixed paste replaces exactly the selected text');
+    await page.evaluate(() => (window as any).editor.undo()); await waitText('replace me');
     await prepare(mode); await paste('word\tv', '<table><tr><td><strong>word</strong></td><td>v</td></tr></table>'); assert.equal(await text(), '| **word** | v |\n| --- | --- |');
     await prepare(mode, '', 0, 0, { pasteHtml: false }); await paste('word\tv', '<table><tr><td><strong>word</strong></td><td>v</td></tr></table>'); assert.equal(await text(), '| word | v |\n| --- | --- |');
     await prepare(mode, '```\n\n```', 4); await paste('A\tB', '<b>bold</b>'); assert.equal(await text(), '```\nA\tB\n```');
