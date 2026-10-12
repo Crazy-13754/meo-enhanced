@@ -3109,9 +3109,6 @@ export function createPreviewController({
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      appearanceSegments.dispose();
-      sourceColoringSegments.dispose();
-      showCommentsSegments.dispose();
       cancelPaintReady();
       cancelHighlightFrame();
       requestGeneration += 1;

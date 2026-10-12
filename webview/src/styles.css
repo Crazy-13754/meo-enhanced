@@ -748,7 +748,8 @@ html[data-editor-appearance='light'] .editor-notice {
   .segmented-control-button-label {
     text-box-trim: trim-both;
     text-box-edge: cap alphabetic;
-    transform: translateY(var(--segmented-label-offset, 0px));
+    /* Font metrics keep a shared baseline without per-label glyph offsets. */
+    transform: none;
   }
 }
 

@@ -11,7 +11,7 @@ import { bindTooltips, createTooltip } from './adapters/tooltip';
 import { createEditingPreferencesTransport } from './adapters/editingPreferencesTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -1016,7 +1016,7 @@ previewOptionsButton.setAttribute('aria-label', activeUiStrings.sidePreviewMore)
 const previewOptionsLabel = document.createElement('span');
 previewOptionsLabel.className = 'preview-toolbar-action-label';
 previewOptionsLabel.textContent = activeUiStrings.sidePreviewMore;
-previewOptionsButton.append(createElement(SlidersHorizontal, { width: 16, height: 16, 'aria-hidden': 'true', 'data-icon': 'sliders-horizontal' }), previewOptionsLabel);
+previewOptionsButton.append(createElement(Settings2, { width: 16, height: 16, 'aria-hidden': 'true', 'data-icon': 'settings-2' }), previewOptionsLabel);
 previewOptionsControl.append(previewOptionsButton);
 const previewOptionsMenu = createPreviewOptionsMenu(activeUiStrings.sidePreviewMore, [
   previewFontFamilySlot, previewWidthSlot, previewSourceColoringSlot, previewShowCommentsSlot
@@ -3645,10 +3645,6 @@ window.addEventListener('focus', () => {
 
 window.addEventListener('beforeunload', () => {
   settingsWindow?.dispose();
-  editorAppearanceControl.dispose();
-  uiLanguageControl.dispose();
-  editorFontSizeModeControl.dispose();
-  modeControl.dispose();
   largeDocumentTooltip?.dispose();
   tooltipBinding.dispose();
   imageLocationSettings.dispose();

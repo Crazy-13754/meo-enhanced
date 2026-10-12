@@ -15,6 +15,20 @@ try {
   await page.setViewport({ width: 1400, height: 700 });
   await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
   await page.addStyleTag({ path: 'webview/src/styles.css' });
+  await page.addStyleTag({ content: ':root{--vscode-font-family:"Segoe WPC","Segoe UI",sans-serif}' });
+  const assertSegmentedLabelAlignment = async () => {
+    await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const labels = await page.$$eval('.segmented-control-button', buttons => buttons
+      .filter(button => button.getBoundingClientRect().width > 0)
+      .map(button => {
+        const label = button.querySelector('.segmented-control-button-label')!.getBoundingClientRect();
+        const indicator = button.querySelector('.segmented-control-button-indicator')!.getBoundingClientRect();
+        return { text: button.textContent, offset: (label.top + label.bottom - indicator.top - indicator.bottom) / 2 };
+      }));
+    assert.ok(labels.length > 0 && labels.every(label => Math.abs(label.offset) <= 0.05),
+      `Segmented labels should share the pill's vertical center: ${JSON.stringify(labels)}`);
+  };
   await page.exposeFunction('__renderPreview', (message: any) => exportRuntime.renderPreviewDocument({
     markdownText: message.text, sourceDocumentPath: 'C:/tmp/preview-toolbar.md', uiLanguage: message.uiLanguage,
     styleEnvironment: message.environment, preset: message.preset, contentWidth: message.contentWidth
@@ -55,7 +69,7 @@ try {
   await page.click('.preview-preset-dropdown-panel [data-value="default"]');
   await page.hover('.preview-options-trigger');
   await page.waitForFunction(() => document.querySelector('.preview-options-trigger')?.getAttribute('aria-expanded') === 'true');
-  assert.equal(await page.$eval('.preview-options-trigger svg', element => element.getAttribute('data-icon')), 'sliders-horizontal');
+  assert.equal(await page.$eval('.preview-options-trigger svg', element => element.getAttribute('data-icon')), 'settings-2');
   const hoverGap = await page.$eval('.preview-options-trigger', element => {
     const bounds = element.getBoundingClientRect();
     return { x: bounds.left + bounds.width / 2, y: bounds.bottom + 2 };
@@ -285,6 +299,11 @@ try {
       return { text: button.textContent, offset: (content.left + content.right - indicator.left - indicator.right) / 2 };
     })));
   assert.ok(segmentCenters.every(segment => Math.abs(segment.offset) <= 0.05), JSON.stringify(segmentCenters));
+  for (const scale of [1, 1.2, 2]) {
+    await page.setViewport({ width: 1400, height: 700, deviceScaleFactor: scale });
+    await assertSegmentedLabelAlignment();
+  }
+  await page.setViewport({ width: 1400, height: 700, deviceScaleFactor: 1 });
   await page.mouse.click(4, 10);
   assert.equal(await page.$eval('.more-tools-panel', panel => (panel as HTMLElement).hidden), true);
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true);
@@ -293,6 +312,11 @@ try {
   await page.click('.editor-appearance-button[data-editor-appearance="dark"]');
   await page.click('.preview-options-trigger');
   assert.deepEqual(await page.$$eval('.preview-options-panel .preview-select-label', labels => labels.map(label => label.textContent)), ['Font', 'Width', 'Code color', 'HTML comments']);
+  for (const scale of [1, 1.2, 2]) {
+    await page.setViewport({ width: 1400, height: 700, deviceScaleFactor: scale });
+    await assertSegmentedLabelAlignment();
+  }
+  await page.setViewport({ width: 1400, height: 700, deviceScaleFactor: 1 });
   await page.screenshot({ path: 'tmp/preview-toolbar/options-dark-en.png' });
   await page.keyboard.press('Escape');
   await page.setViewport({ width: 420, height: 700 });
