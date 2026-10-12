@@ -86,6 +86,7 @@ function targetedCommands(
         script('scripts/test-input-assistance-production.ts'),
         script('scripts/test-html-comment-input-production.ts'),
         script('scripts/test-editing-features-production.ts'),
+        script('scripts/test-mixed-html-paste-production.ts'),
         script('scripts/test-slash-commands-production.ts'),
         script('scripts/test-editor-shortcuts.ts'),
         script('scripts/test-editor-history-runtime.ts'),
@@ -99,6 +100,7 @@ function targetedCommands(
     case 'table':
       return [
         script('scripts/test-editing-features-production.ts'),
+        script('scripts/test-mixed-html-paste-production.ts'),
         script('scripts/test-slash-commands-production.ts'),
         script('scripts/test-table-clipboard.ts'),
         script('scripts/test-table-clipboard-production.ts'),
@@ -297,6 +299,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-html-comment-input-production.ts'),
           script('scripts/test-inline-code-layout-production.ts'),
           script('scripts/test-editing-features-production.ts'),
+          script('scripts/test-mixed-html-paste-production.ts'),
           script('scripts/test-slash-commands-production.ts'),
           script('scripts/test-settings-window-production.ts'),
           script('scripts/test-ui-colors.ts'),
