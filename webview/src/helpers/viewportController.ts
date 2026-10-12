@@ -60,6 +60,7 @@ export interface PreviewViewportSurface {
     lineOffset: number;
     editorLineOffset?: number;
     viewportOffset?: number;
+    interpolatedWhitespace?: boolean;
     sourceRange?: { startLine: number; endLine: number; progress: number };
   } | null;
   captureReadingPosition?(viewportRatio: number): {
@@ -67,6 +68,7 @@ export interface PreviewViewportSurface {
     lineOffset: number;
     editorLineOffset?: number;
     viewportOffset?: number;
+    interpolatedWhitespace?: boolean;
     sourceRange?: { startLine: number; endLine: number; progress: number };
   } | null;
   restoreTopVisiblePosition(
@@ -880,14 +882,20 @@ export class ViewportController {
             readingAnchor = topAnchor;
           }
         } else {
-          readingAnchor = this.capturePreviewDocumentAnchor(undefined, 1 / 3);
+          const readingBand = this.capturePreviewDocumentAnchor(undefined, 1 / 3);
+          // Reading bands inside content keep their relative point during preset
+          // reflow. Only a freshly interpolated whitespace line needs the exact
+          // top edge; retained mode-transition projections keep their reading band.
+          readingAnchor = readingBand?.interpolatedWhitespace
+            ? this.capturePreviewDocumentAnchor()
+            : readingBand;
         }
       }
       mutate();
       this.linkedViewportMapDirty = true;
       // Async Preview presentation commits can change the height of content above
       // the reading point. When Source owns an idle viewport, project the semantic
-      // position sampled from Preview's reading band against the committed geometry
+      // position sampled from Preview against the committed geometry
       // in the same frame. Content refreshes map that anchor through the text diff;
       // presentation-only commits retain its exact rendered-range progress. During
       // a scroll gesture, preserve the physical follower position so layout cannot
@@ -2875,7 +2883,7 @@ export class ViewportController {
     viewportOffset = 0,
     viewportRatio?: number,
     sourceText?: string
-  ): ViewportDocumentAnchor | null {
+  ): (ViewportDocumentAnchor & { interpolatedWhitespace?: boolean }) | null {
     const position = viewportRatio === undefined
       ? this.previewSurface?.captureTopVisiblePosition(viewportOffset)
       : this.previewSurface?.captureReadingPosition?.(viewportRatio)
@@ -2897,6 +2905,7 @@ export class ViewportController {
       viewportOffset: position.viewportOffset !== undefined && Number.isFinite(position.viewportOffset)
         ? Math.max(0, position.viewportOffset)
         : undefined,
+      interpolatedWhitespace: position.interpolatedWhitespace,
       sourceRange: position.sourceRange
         ? {
             startLine: Math.min(

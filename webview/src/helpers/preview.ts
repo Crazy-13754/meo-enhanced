@@ -2778,6 +2778,7 @@ export function createPreviewController({
     topLineOffset: number;
     editorLineOffset: number;
     viewportOffset: number;
+    interpolatedWhitespace?: boolean;
     sourceRange?: { startLine: number; endLine: number; progress: number };
   } | null => {
     const frameDocument = getFrameDocument();
@@ -2834,7 +2835,8 @@ export function createPreviewController({
           topLine: Math.round(range.end + (next.start - range.end) * ratio),
           topLineOffset: 0,
           editorLineOffset: 0,
-          viewportOffset: boundedViewportOffset
+          viewportOffset: boundedViewportOffset,
+          interpolatedWhitespace: true
         };
       }
     }

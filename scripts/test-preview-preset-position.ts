@@ -166,6 +166,38 @@ try {
     await settle();
     await assertSamples('late response after user scrolling', scrolledPoint);
 
+    if (surface === 'preview') {
+      // A trusted Source interaction ends the earlier Preview mode chain. Its
+      // ordinary-line projection has no rendered range and must retain the band.
+      await page.click('[data-mode="source"]');
+      const sourceBounds = await page.$eval('.cm-scroller', element => {
+        const rect = element.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      await page.mouse.move(sourceBounds.x, sourceBounds.y);
+      await page.mouse.wheel({ deltaY: 80 });
+      await settle(350);
+      await page.click('[data-mode="preview"]');
+      await settle(350);
+      const roundtripPoint = await page.evaluate(() => {
+        const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+        const y = doc.defaultView!.innerHeight / 3;
+        const paragraph = [...doc.querySelectorAll('p')].find(element => {
+          const rect = element.getBoundingClientRect();
+          return rect.top <= y && rect.bottom > y;
+        });
+        if (!paragraph) throw new Error('Source roundtrip must return to an ordinary paragraph');
+        const rect = paragraph.getBoundingClientRect();
+        return { target: paragraph.textContent!.split(':')[0]! + ':', progress: (y - rect.top) / rect.height };
+      });
+      const roundtripExpected = await witness(roundtripPoint);
+      await startSampling(roundtripPoint);
+      await choose('github-readme');
+      await waitPreset('github-readme');
+      await settle();
+      await assertSamples('preset after a fresh Source reading projection', roundtripExpected);
+    }
+
     await page.evaluate(() => { document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop = 0; });
     await settle();
     for (const preset of ['default', 'github-readme', custom.id, 'default']) {

@@ -9,7 +9,7 @@ const build = await Bun.build({
 if (!build.success) throw Error(build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
 try {
-  for (const scenario of ['ready', 'margin', 'multiple', 'authored-size', 'error', 'hidden', 'replaced']) {
+  for (const scenario of ['ready', 'margin', 'gap', 'multiple', 'authored-size', 'error', 'hidden', 'replaced']) {
     const page = await browser.newPage();
     const pageErrors: string[] = [];
     page.on('pageerror', error => pageErrors.push(String(error)));
@@ -42,7 +42,9 @@ try {
     await page.addScriptTag({ content: `window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.__renderPreview(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent('message',{data:response}));});}});` });
     await page.addScriptTag({ content: await build.outputs[0]!.text() });
     const text = [
-      '# Reading geometry', scenario === 'authored-size'
+      '# Reading geometry', scenario === 'gap'
+        ? '<img src="https://preview-image.test/tall.svg" width="16" height="16" alt="Pending image">'
+        : scenario === 'authored-size'
         ? '<img src="https://preview-image.test/tall.svg" width="320" alt="Pending image" title="Authored image">'
         : '![Pending image](https://preview-image.test/tall.svg)',
       ...(scenario === 'multiple' ? ['![Second image](https://preview-image.test/tall.svg)'] : []),
@@ -73,14 +75,19 @@ try {
     await page.mouse.move(frameBox.x + frameBox.width / 2, frameBox.y + frameBox.height / 2);
     await page.mouse.wheel({deltaY: 1});
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    const before = await page.evaluate(margin => {
+    const before = await page.evaluate(({ margin, gap }) => {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
       const anchor = Array.from(doc.querySelectorAll('p')).find(p => p.textContent!.startsWith('Reading paragraph 4:'))!;
       anchor.setAttribute('data-reading-anchor', 'true');
+      // Put the reading band inside whitespace while the current top stays on
+      // a real paragraph. The fixed-size image commit must not quantize it.
+      if (gap) (anchor as HTMLElement).style.marginBottom = '300px';
       anchor.scrollIntoView({block: 'start'});
       if (margin) doc.scrollingElement!.scrollTop -= 10;
       return anchor.getBoundingClientRect().top;
-    }, scenario === 'margin');
+    }, { margin: scenario === 'margin', gap: scenario === 'gap' });
+    const beforeHeight = await page.$eval('.preview-frame', element =>
+      (element as HTMLIFrameElement).contentDocument!.scrollingElement!.scrollHeight);
     assert.ok(releaseImage, 'The visible image must start loading before moving the reading position');
     let sourceTop = 0;
     if (scenario === 'hidden' || scenario === 'replaced') {
@@ -132,6 +139,11 @@ try {
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const after = await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!
       .contentDocument!.querySelector('[data-reading-anchor]')!.getBoundingClientRect().top);
+    if (scenario === 'gap') {
+      const afterHeight = await page.$eval('.preview-frame', element =>
+        (element as HTMLIFrameElement).contentDocument!.scrollingElement!.scrollHeight);
+      assert.equal(afterHeight, beforeHeight, 'The fixed-size image must exercise a geometry-neutral commit');
+    }
     if (scenario === 'hidden') {
       assert.equal(await page.$eval('#app', element => (element as HTMLElement).dataset.mode), 'source');
       const sourceAfter = await page.$eval('.cm-scroller', element => element.scrollTop);

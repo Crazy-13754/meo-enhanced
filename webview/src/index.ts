@@ -2824,6 +2824,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
           lineOffset: position.topLineOffset,
           editorLineOffset: position.editorLineOffset,
           viewportOffset: position.viewportOffset,
+          interpolatedWhitespace: position.interpolatedWhitespace,
           sourceRange: position.sourceRange
         } : null;
       },

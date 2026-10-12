@@ -2604,4 +2604,32 @@ for (const mode of ['source', 'live'] as const) {
   }
 }
 
+// A retained Source-to-Preview projection can lack a rendered range without
+// being whitespace. Only freshly interpolated gaps use the exact top edge.
+for (const interpolatedWhitespace of [undefined, true]) {
+  const projections: Array<{ line: number; viewportOffset?: number }> = [];
+  const controller = new ViewportController(anchorView as any, {
+    attachInteractions: false,
+    previewSurface: {
+      readScrollTop: () => 300,
+      writeScrollTop: () => {},
+      captureTopVisiblePosition: () => ({ line: 3, lineOffset: 0, viewportOffset: 0 }),
+      captureReadingPosition: () => ({
+        line: 7, lineOffset: 0, viewportOffset: 200, interpolatedWhitespace
+      }),
+      restoreTopVisiblePosition(position, isCurrent) {
+        if (isCurrent()) projections.push(position);
+      }
+    }
+  });
+  try {
+    controller.runPreviewPresentationTransaction(() => {});
+    const expected = interpolatedWhitespace ? { line: 3, offset: 0 } : { line: 7, offset: 200 };
+    if (projections.length !== 1 || projections[0].line !== expected.line
+      || projections[0].viewportOffset !== expected.offset) {
+      throw new Error(`Preview presentation confused a retained reading band with whitespace: ${JSON.stringify(projections)}`);
+    }
+  } finally { controller.destroy(); }
+}
+
 console.log('viewport controller checks passed');
