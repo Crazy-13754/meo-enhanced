@@ -1,4 +1,4 @@
-import { clipboardHtmlToMarkdown } from './htmlPaste';
+import { clipboardHtmlToMarkdown, parseClipboardHtml } from './htmlPaste';
 import { parseDelimitedTable } from '../application/delimitedTable';
 export const meoTableClipboardMime = 'application/x-meo-table-cells+json';
 
@@ -7,7 +7,7 @@ export interface TableClipboardMatrix {
   readonly source: 'meo' | 'external';
 }
 
-const maxClipboardCells = 10_000;
+export const maxClipboardCells = 10_000;
 const maxClipboardCharacters = 5_000_000;
 
 function normalizeMatrix(value: unknown): string[][] | null {
@@ -59,18 +59,14 @@ export function parseTsvTableClipboard(value: string): TableClipboardMatrix | nu
   return cells ? { cells, source: 'external' } : null;
 }
 
-export function parseHtmlTableClipboard(value: string, preserveFormatting = false, requireSingleTable = false): TableClipboardMatrix | null {
+export function parseHtmlTableClipboard(value: string, preserveFormatting = false): TableClipboardMatrix | null {
   if (!value || value.length > maxClipboardCharacters || typeof DOMParser === 'undefined') return null;
-  const document = new DOMParser().parseFromString(value, 'text/html');
-  const table = document.querySelector('table');
+  const table = parseClipboardHtml(value)?.querySelector('table');
   if (!table) return null;
-  if (requireSingleTable) {
-    table.remove();
-    if (document.querySelector('table') || clipboardHtmlToMarkdown(document.body.innerHTML)) return null;
-  }
   return parseHtmlTableElement(table, preserveFormatting);
 }
 
+/** Reuses a table from the inert clipboard fragment without parsing its HTML again. */
 export function parseHtmlTableElement(table: Element, preserveFormatting = false): TableClipboardMatrix | null {
   const sourceRows = Array.from(table.querySelectorAll('tr')).filter(row => row.closest('table') === table);
   if (sourceRows.length > maxClipboardCells) return null;
@@ -100,7 +96,7 @@ export function parseHtmlTableElement(table: Element, preserveFormatting = false
           if (occupied.has(key)) return null;
           occupied.add(key); if (occupied.size > maxClipboardCells) return null;
           target[c] = r === rowIndex && c === column ? preserveFormatting
-            ? (clipboardHtmlToMarkdown(cell.innerHTML) ?? '').replace(/<br>\n/g, '<br>')
+            ? (clipboardHtmlToMarkdown(cell) ?? '').replace(/<br>\n/g, '<br>')
             : Array.from(cell.childNodes, text).join('').replace(/\n$/, '') : '';
         }
       }

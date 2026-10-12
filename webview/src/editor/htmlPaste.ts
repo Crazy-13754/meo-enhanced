@@ -7,22 +7,46 @@ export function safeClipboardUrl(value: string): string | null {
 
 const escapeText = (value: string) => value.replace(/\s+/g, ' ').replaceAll('&', '&amp;').replace(/[\\`*_\[\]]/g, '\\$&').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 const destination = (value: string) => value.trim().replace(/\s/g, '%20').replaceAll('\\', '%5C').replaceAll('(', '%28').replaceAll(')', '%29');
+const ignoredTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'META', 'LINK', 'IFRAME', 'OBJECT', 'SVG'];
 function allowedDestination(value: string): boolean {
   value = value.trim();
   return !!value && !/[\u0000-\u001f]/.test(value) && !/^(?:javascript|data|vbscript|file):/i.test(value)
     && (!/^[a-z][a-z\d+.-]*:/i.test(value) || /^(?:https?|mailto):/i.test(value));
 }
 
-/** Converts inert clipboard HTML to the subset supported by the editor. Never inserts HTML DOM. */
-export function clipboardHtmlToMarkdown(html: string, tableToMarkdown?: (table: Element) => string | null): string | null {
+export function parseClipboardHtml(html: string): HTMLElement | null {
   if (!html || html.length > 5_000_000) return null;
-  const document = new DOMParser().parseFromString(html, 'text/html');
+  return new DOMParser().parseFromString(html, 'text/html').body;
+}
+
+/** Structural blocks at either edge need separation from the destination paragraph. */
+export function clipboardHtmlBlockEdges(root: Element): { start: boolean; end: boolean } {
+  const edge = (parent: Element, end: boolean): boolean | null => {
+    const nodes = Array.from(parent.childNodes);
+    if (end) nodes.reverse();
+    for (const node of nodes) {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) return false;
+      if (!(node instanceof Element) || ignoredTags.includes(node.tagName)) continue;
+      if (['TABLE', 'PRE', 'BLOCKQUOTE', 'UL', 'OL', 'HR'].includes(node.tagName) || /^H[1-6]$/.test(node.tagName)) return true;
+      if (node.tagName === 'IMG' && allowedDestination(node.getAttribute('src') ?? '')) return false;
+      const child = edge(node, end);
+      if (child !== null) return child;
+    }
+    return null;
+  };
+  return { start: edge(root, false) ?? false, end: edge(root, true) ?? false };
+}
+
+/** Converts inert clipboard HTML to Markdown, never inserting HTML DOM. Elements reuse a parsed fragment; only their children are converted. */
+export function clipboardHtmlToMarkdown(html: string | Element, tableToMarkdown?: (table: Element) => string | null): string | null {
+  const root = typeof html === 'string' ? parseClipboardHtml(html) : html;
+  if (!root) return null;
   const children = (node: Node): string => Array.from(node.childNodes, convert).join('');
   const convert = (node: Node): string => {
     if (node.nodeType === Node.TEXT_NODE) return escapeText(node.textContent ?? '');
     if (!(node instanceof Element)) return '';
     const tag = node.tagName;
-    if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'META', 'LINK', 'IFRAME', 'OBJECT', 'SVG'].includes(tag)) return '';
+    if (ignoredTags.includes(tag)) return '';
     if (tag === 'PRE') {
       const value = (node.textContent ?? '').replace(/\r\n?/g, '\n');
       let length = 3; for (const match of value.matchAll(/`+/g)) length = Math.max(length, match[0].length + 1);
@@ -72,5 +96,5 @@ export function clipboardHtmlToMarkdown(html: string, tableToMarkdown?: (table: 
     if (['P', 'DIV', 'SECTION', 'ARTICLE', 'TR', 'TABLE'].includes(tag)) return '\n\n' + content.trim() + '\n\n';
     return content;
   };
-  return children(document.body).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() || null;
+  return children(root).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() || null;
 }
