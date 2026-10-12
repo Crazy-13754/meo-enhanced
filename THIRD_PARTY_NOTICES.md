@@ -1,5 +1,16 @@
 # Third-Party Notices
 
+## Typora and Obsidian app marks
+
+- Typora source: https://typora.io/img/favicon-64.png
+- Obsidian source: https://obsidian.md/images/obsidian-logo-gradient.svg
+- Obsidian brand guidelines: https://obsidian.md/brand
+- Bundled assets: `webview/src/helpers/previewPresetBrandIcons.json`, embedded data URLs for offline Preview preset menus
+
+These marks identify the applications that inspired the reading styles. They
+remain the property of their respective owners and are not covered by this
+project's MIT license. Their inclusion does not imply affiliation or endorsement.
+
 ## GitHub Octicons mark-github-16
 
 - Source: https://github.com/primer/octicons/blob/main/icons/mark-github-16.svg

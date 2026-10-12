@@ -1,4 +1,4 @@
-import { decodeEditorStyleEnvironment, type EditorStyleEnvironment } from './editorStyleEnvironment';
+import { decodeEditorStyleEnvironment, normalizePreviewFontFamily, type EditorStyleEnvironment } from './editorStyleEnvironment';
 import type { PreviewAppearance } from './previewRender';
 import { decodeRequestResult, type RequestResult } from './requestResult';
 import { isUiLanguage, type UiLanguage } from '../foundation/uiLanguage';
@@ -21,6 +21,8 @@ export type ReadingSnapshot = {
   readonly codeTheme?: CodeThemeDto;
   readonly preset?: PreviewPresetId;
   readonly presetRevision?: string;
+  /** Independent body font for HTML/PDF; environment keeps Default's font for Word. */
+  readonly presetFontFamily?: string;
 };
 
 export type ExportSnapshotValue = ReadingSnapshot;
@@ -58,6 +60,8 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
         if (environment === null) return null;
         if (candidate.preset !== undefined && !isPreviewPresetId(candidate.preset)) return null;
         if (candidate.presetRevision !== undefined && (typeof candidate.presetRevision !== 'string' || !/^[a-f0-9]{64}$/.test(candidate.presetRevision))) return null;
+        const presetFontFamily = candidate.presetFontFamily === undefined ? undefined : normalizePreviewFontFamily(candidate.presetFontFamily);
+        if (presetFontFamily === null) return null;
         const codeTheme = decodeCodeTheme(candidate.codeTheme);
         if (codeTheme === false || codeTheme === null) return null;
         return {
@@ -68,6 +72,7 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
           environment,
           ...(candidate.preset ? { preset: candidate.preset } : {}),
           ...(candidate.presetRevision ? { presetRevision: candidate.presetRevision } : {}),
+          ...(presetFontFamily !== undefined ? { presetFontFamily } : {}),
           ...(codeTheme ? { codeTheme } : {})
         };
       })

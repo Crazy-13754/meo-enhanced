@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import exportRuntime from '../src/export/runtime';
 import { decodePreviewRenderRequest, decodePreviewRenderResponse } from '../src/protocol/previewRender';
-import { decodePreviewPresetState, previewPresets, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
+import { decodePreviewPresetState, getPreviewPreset, isPreviewPresetId, previewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
 import { decodeExportSnapshotResponse } from '../src/protocol/exportSnapshot';
 
 const environment = { previewFontFamily: 'Comic Sans MS', previewSourceColoring: false, previewShowComments: true };
@@ -104,14 +104,62 @@ const snapshot = { type: 'exportSnapshotResult', requestId: 'export', result: { 
 assert.equal(decodeExportSnapshotResponse(snapshot)?.result.ok, true);
 assert.equal(decodeExportSnapshotResponse({ ...snapshot, result: { ...snapshot.result, value: { ...snapshot.result.value, preset: 'unknown' } } }), null);
 assert.equal(new Set(previewPresets.map(preset => preset.id)).size, previewPresets.length);
+assert.deepEqual(previewPresets.map(preset => preset.id), ['default', 'github-readme', 'newsprint', 'whitey', 'obsidian-minimal']);
 for (const preset of previewPresets) {
   for (const language of ['en', 'zh-CN'] as const) assert.ok(preset.name[language] && preset.description[language]);
   for (const key of ['codeColoring', 'htmlComments'] as const) {
     if (preset.controls[key].mode === 'fixed') assert.equal(typeof preset.controls[key].value, 'boolean');
   }
   for (const path of Object.values(preset.styles ?? {})) {
-    assert.ok(readFileSync(`src/preview/presets/${preset.id}/${path}`, 'utf8').includes('.markdown-body'));
+    const css = readFileSync(`src/preview/presets/${preset.id}/${path}`, 'utf8');
+    assert.ok(css.includes(preset.renderer === 'github-readme' ? '.markdown-body' : '.meo-export-doc'));
   }
+}
+const readingText = '# Reading\n\n中文正文与 **bold**。\n第二行\n\n==highlight== H~2~O\n\n<!-- reading comment -->\n\n```ts\nconst value = 42;\n```';
+const defaultReading = render(readingText, 'default');
+for (const id of ['default', 'github-readme', 'newsprint', 'whitey', 'obsidian-minimal'] as const) {
+  for (const editorFontSizePx of [14, 20]) {
+    const value = exportRuntime.renderPreviewDocument({ markdownText: readingText, sourceDocumentPath: 'C:/tmp/preset.md', uiLanguage: 'en', preset: id, styleEnvironment: { previewFontFamily: '', editorFontSizePx } });
+    for (const css of Object.values(value.styles)) assert.ok(css.includes(`--meo-font-size-body: ${editorFontSizePx}px`), 'All presets use the same editor font size');
+  }
+}
+for (const id of ['newsprint', 'obsidian-minimal', 'whitey'] as const) {
+  const preset = getPreviewPreset(id);
+  assert.ok(isPreviewPresetId(id));
+  assert.ok(decodePreviewRenderRequest({ ...request, preset: id }));
+  assert.equal(preset.controls.fontFamily.mode, 'editable');
+  assert.ok(preset.author && preset.version && preset.license && preset.source?.url);
+  const preview = exportRuntime.renderPreviewDocument({ markdownText: readingText, sourceDocumentPath: 'C:/tmp/preset.md', uiLanguage: 'en', preset: id, styleEnvironment: environment });
+  assert.equal(preview.html, defaultReading.html, `${id} keeps MEO rendering, comments and extensions`);
+  for (const css of Object.values(preview.styles)) {
+    assert.ok(css.includes('--meo-preset-font-body:') && css.includes('"Comic Sans MS"'));
+    assert.ok(css.includes('--meo-font-code: ui-monospace'), `${id} has an independent code font`);
+  }
+  assert.equal(resolvePresetAppearance(preset, 'dark', 'dark'), id === 'obsidian-minimal' ? 'dark' : 'light');
+  const withoutOverride = exportRuntime.renderPreviewDocument({ markdownText: readingText, sourceDocumentPath: 'C:/tmp/preset.md', uiLanguage: 'en', preset: id, styleEnvironment: { previewFontFamily: '' } });
+  assert.ok(!withoutOverride.styles.light.includes('Comic Sans MS'), 'Preset fonts restore when the override is cleared');
+  for (const target of ['html', 'pdf', 'docx'] as const) {
+    const exported = await exportRuntime.renderExportHtmlDocument({
+      readingSnapshot: { snapshotId: 'reading-style', text: readingText, appearance: 'dark', uiLanguage: 'en', environment: { ...environment, previewFontFamily: 'Georgia' }, preset: id, presetFontFamily: 'Comic Sans MS' },
+      sourceDocumentPath: 'C:/tmp/preset.md', outputFilePath: `C:/tmp/reading.${target}`, target,
+      title: 'Reading styles', baseHref: '', mermaidRuntimeSrc: '', shikiLanguageAssetsRoot: ''
+    });
+    if (target === 'docx') {
+      assert.ok(exported.htmlDocument.includes('"Georgia"') && !exported.htmlDocument.includes('Comic Sans MS'), 'Word keeps Default typography');
+    } else {
+      assert.ok(exported.htmlDocument.includes('"Comic Sans MS"'));
+      assert.ok(exported.htmlDocument.includes(id === 'obsidian-minimal' ? '--meo-bg: #1e1e1e' : id === 'newsprint' ? '--meo-bg: #f3f2ee' : '--meo-bg: #fefefe'));
+    }
+  }
+}
+const fontState = { preset: 'newsprint', preferences: { newsprint: { appearance: 'light', contentWidth: 'responsive', fontFamily: 'Georgia' }, 'obsidian-minimal': { appearance: 'dark', contentWidth: 'responsive', fontFamily: 'Arial' } } };
+assert.deepEqual(decodePreviewPresetState(fontState), fontState, 'Each preset keeps its own selected font');
+assert.equal(decodePreviewPresetState({ preset: 'newsprint', preferences: { newsprint: { ...fontState.preferences.newsprint, fontFamily: 'bad; font' } } }), null);
+assert.equal(decodePreviewPresetState({ preset: 'github-readme', preferences: { 'github-readme': { appearance: 'dark', contentWidth: 'responsive', fontFamily: 'Georgia' } } })?.preferences['github-readme']?.fontFamily, undefined, 'Fixed fonts cannot be restored through saved state');
+for (const presetFontFamily of ['', 'Arial', 'invalid;font', 42]) {
+  const decoded = decodeExportSnapshotResponse({ ...snapshot, result: { ok: true, value: { ...snapshot.result.value, presetFontFamily } } });
+  assert.equal(decoded?.result.ok === true, typeof presetFontFamily === 'string' && !presetFontFamily.includes(';'));
+  if (decoded?.result.ok) assert.equal(decoded.result.value.presetFontFamily, presetFontFamily);
 }
 assert.ok(readFileSync('THIRD_PARTY_NOTICES.md', 'utf8').includes(readFileSync('src/preview/presets/github-readme/license', 'utf8').trim()));
 console.log('Preview preset rendering, capabilities and protocol tests passed.');

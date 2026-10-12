@@ -1,0 +1,41 @@
+{
+  "$schema": "../../preset.schema.json",
+  "schemaVersion": 1,
+  "id": "github-readme",
+  "name": {
+    "en": "GitHub README",
+    "zh-CN": "GitHub README"
+  },
+  "description": {
+    "en": "GitHub README reading styles with light and dark themes.",
+    "zh-CN": "GitHub README 阅读外观，支持浅色与深色主题。"
+  },
+  "base": "github-readme",
+  "controls": {
+    "fontFamily": {
+      "mode": "fixed"
+    },
+    "codeColoring": {
+      "mode": "fixed",
+      "value": true
+    },
+    "htmlComments": {
+      "mode": "fixed",
+      "value": false
+    }
+  },
+  "themes": {
+    "light": {
+      "css": "light.css",
+      "codeTheme": "github-light-default"
+    },
+    "dark": {
+      "css": "dark.css",
+      "codeTheme": "github-dark-default"
+    }
+  },
+  "author": "MEO Enhanced contributors",
+  "version": "1.0.0",
+  "source": "https://github.com/sindresorhus/github-markdown-css",
+  "license": "MIT"
+}

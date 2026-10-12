@@ -202,4 +202,24 @@ assert.equal(posted.length, 0, 'late idle completion must not emit a second resp
 adapter.requestExport('pdf', { includeTableOfContents: true });
 assert.equal(posted.length, 0, 'disposed adapter must reject new user actions');
 
+const fontMessages: WebviewToHostMessage[] = [];
+let presetFontFamily = 'Arial';
+const fontAdapter = createExportWebviewAdapter({
+  postMessage: message => { fontMessages.push(message); },
+  getCurrentText: () => '# Font isolation', whenDocumentIdle: async () => {},
+  getPreviewAppearance: () => 'light', getUiLanguage: () => 'en',
+  getStyleEnvironment: () => ({ previewFontFamily: 'Georgia' }),
+  getCodeTheme: () => ({ name: 'test', type: 'light', colors: {}, tokenColors: [] }),
+  getPreset: () => 'newsprint', getPresetFontFamily: () => presetFontFamily
+});
+for (const value of ['Arial', '']) {
+  presetFontFamily = value;
+  fontAdapter.accept({ type: 'requestExportSnapshot', requestId: `font-${value}` });
+  await Promise.resolve();
+  const response = fontMessages.shift();
+  assert.ok(response?.type === 'exportSnapshotResult' && response.result.ok);
+  assert.equal(response.result.value.presetFontFamily, value, 'An empty selection explicitly restores the preset font');
+  assert.equal(response.result.value.environment.previewFontFamily, 'Georgia', 'Word retains Default font settings');
+}
+fontAdapter.dispose();
 console.log('Export Webview Adapter checks passed');

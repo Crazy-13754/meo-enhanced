@@ -12,7 +12,8 @@ const base = {
   readingSnapshot: {
     snapshotId: 'github-export', text, appearance: 'light' as 'light' | 'dark', uiLanguage: 'en' as const,
     preset: 'github-readme' as const,
-    environment: { previewFontFamily: 'Georgia', previewSourceColoring: false, previewShowComments: true }
+    // GitHub's measured reference uses a 16px body; presets now share the selected size.
+    environment: { previewFontFamily: 'Georgia', previewSourceColoring: false, previewShowComments: true, editorFontSizePx: 16 }
   },
   sourceDocumentPath: fixture,
   outputFilePath: path.resolve('tmp/github-export/baseline.html'),

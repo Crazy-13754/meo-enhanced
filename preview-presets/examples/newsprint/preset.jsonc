@@ -1,0 +1,38 @@
+{
+  "$schema": "../../preset.schema.json",
+  "schemaVersion": 1,
+  "id": "newsprint",
+  "name": {
+    "en": "Typora Newsprint",
+    "zh-CN": "Typora Newsprint"
+  },
+  "description": {
+    "en": "Warm paper and serif typography inspired by Typora Newsprint. Light theme only.",
+    "zh-CN": "参考 Typora Newsprint 的暖灰纸面与衬线排版，仅提供浅色主题。"
+  },
+  "base": "default",
+  "controls": {
+    "fontFamily": {
+      "mode": "editable"
+    },
+    "codeColoring": {
+      "mode": "editable"
+    },
+    "htmlComments": {
+      "mode": "editable"
+    }
+  },
+  "styles": {
+    "common": "common.css"
+  },
+  "themes": {
+    "light": {
+      "css": "light.css",
+      "codeTheme": "light-plus"
+    }
+  },
+  "author": "MEO Enhanced contributors",
+  "version": "1.0.0",
+  "source": "https://github.com/typora/typora-default-themes/blob/master/themes/newsprint.css",
+  "license": "MIT"
+}

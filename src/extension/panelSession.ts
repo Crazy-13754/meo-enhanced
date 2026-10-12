@@ -61,6 +61,8 @@ import type { GitBaselinePayload } from '../git/types';
 import { SavedRevisionTracker } from '../diff/savedRevisionTracker';
 import type { ExportStyleEnvironment } from '../export/runtime';
 import type { PreviewAppearance, PreviewRenderResult } from '../shared/preview';
+import { PREVIEW_PRESET_STATE_KEY } from '../shared/preview';
+import { isPreviewPresetId } from '../foundation/previewPresets';
 import type { EditorAppearance } from '../shared/editorAppearance';
 import type { RawVscodeTheme } from '../shared/vscodeTheme';
 import type { EditorFontSizePreference } from '../foundation/editorFontSize';
@@ -445,6 +447,12 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       : null;
     const message: InitMessage = {
       type: 'init',
+      previewPreset: (() => {
+        const stored = context.globalState.get(PREVIEW_PRESET_STATE_KEY);
+        return isPreviewPresetId(stored)
+          && (!stored.startsWith('user:') || params.getCustomPreviewPresets?.().some(preset => preset.id === stored))
+          && !params.getDisabledPreviewPresets?.().includes(stored) ? stored : stored === undefined ? undefined : 'default';
+      })(),
       customPreviewPresets: params.getCustomPreviewPresets?.() ?? [],
       previewPresetDiagnostics: params.getPreviewPresetDiagnostics?.() ?? [],
       disabledPreviewPresets: params.getDisabledPreviewPresets?.() ?? [],
@@ -785,6 +793,12 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         return;
       case 'setPreviewFontFamily':
         await setPreviewFontFamily(raw.fontFamily);
+        return;
+      case 'setPreviewPreset':
+        if ((!raw.preset.startsWith('user:') || params.getCustomPreviewPresets?.().some(preset => preset.id === raw.preset))
+          && !params.getDisabledPreviewPresets?.().includes(raw.preset)) {
+          await context.globalState.update(PREVIEW_PRESET_STATE_KEY, raw.preset);
+        }
         return;
       case 'setPreviewSourceColoring':
         await setPreviewSourceColoring(raw.enabled);

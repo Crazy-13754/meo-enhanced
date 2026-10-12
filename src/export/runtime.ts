@@ -39,8 +39,10 @@ async function renderExportHtmlDocument(
   if (definition.id !== preset) throw new Error('Export preset does not match its snapshot');
   const githubStyle = definition.custom?.base === 'github-readme' || definition.renderer === 'github-readme';
   const exportAppearance = options.target === 'docx' ? 'light' : resolvePresetAppearance(definition, snapshot.appearance, snapshot.appearance);
-  const environment = options.target === 'docx' ? snapshot.environment
-    : { ...snapshot.environment, ...resolvePreviewPresetSettings(preset, snapshot.environment, definition) };
+  const styleEnvironment = options.target === 'docx' ? snapshot.environment
+    : { ...snapshot.environment, previewFontFamily: snapshot.presetFontFamily ?? snapshot.environment.previewFontFamily };
+  const environment = options.target === 'docx' ? styleEnvironment
+    : { ...styleEnvironment, ...resolvePreviewPresetSettings(preset, styleEnvironment, definition) };
   const namedTheme = getPreviewPresetCodeTheme(definition, exportAppearance);
   const fallbackTheme = namedTheme
     ? (await importPresetCodeTheme(namedTheme))

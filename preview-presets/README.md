@@ -7,16 +7,32 @@ Each preset consists of one UTF-8 JSON/JSONC configuration file and one to three
 ## Quick start
 
 1. Copy the [Paper Notes example](examples/paper-notes/) (light and dark) or the [GitHub Paper example](examples/github-paper/) (light only). Keep the CSS files referenced by the configuration.
-2. Edit `id`, `name`, `description`, and the CSS. Keeping the same `id` updates an existing preset; changing it creates another preset. Names and descriptions are displayed as written, so you can replace the example's Chinese text with your own text.
-3. Choose **Custom presets…** at the bottom of Preview's **Preset** menu to open **Settings → Preview presets**. Click **Import preset** and select a folder containing exactly one `preset.jsonc` or `preset.json` at its root. The command palette's **MEO Enhanced: Manage custom preview presets** opens the same page.
+2. Edit `id`, `name`, `description`, and the CSS. Keeping the same `id` updates an existing preset; changing it creates another preset. Names are displayed as written. Descriptions accept plain text or English and Chinese translations.
+3. Choose **Custom presets…** at the bottom of Preview's **Preview preset** menu to open **Settings → Preview presets**. Click **Import preset** and select a folder containing exactly one `preset.jsonc` or `preset.json` at its root. The command palette's **MEO Enhanced: Manage custom preview presets** opens the same page.
 4. New imports are enabled without switching the current Preview. Select the new preset in Preview's toolbar. Dual-theme presets support Auto / Light / Dark; single-theme controls remain visible but disabled, with an explanation.
 5. Check the Preview before exporting HTML/PDF. After editing CSS, import the folder again. The same ID prompts for an update; a failed update retains the previous version.
 
+## Standard examples of built-in styles
+
+Each built-in style has an importable folder containing `preset.jsonc` and every referenced CSS file:
+
+| Example folder | Themes | Base styles |
+| --- | --- | --- |
+| [Default](examples/default/) | Light, dark | `default` |
+| [GitHub README](examples/github-readme/) | Light, dark | `github-readme` |
+| [Typora Newsprint](examples/newsprint/) | Light | `default` + `common.css`, `light.css` |
+| [Typora Whitey](examples/whitey/) | Light | `default` + `common.css`, `light.css` |
+| [Obsidian Minimal](examples/obsidian-minimal/) | Light, dark | `default` + `common.css`, theme CSS |
+
+Copy the entire folder, edit `id`, localized `name`, and CSS, then import it using the quick-start steps. This creates a custom copy without replacing a built-in preset. Default and GitHub theme files provide override entry points; the extension supplies their base CSS. The Default copy uses fixed base colors. The GitHub copy inherits reading styles, while Markdown support follows custom preset rules.
+
+The two floating buttons, options panel, and dropdown lists in Source's side preview follow the preview document colors. Standalone Preview toolbars and menus continue to follow the editor theme. Tooltips use the same style in every location.
+
 ## Manage presets
 
-- Default and GitHub README are built in, always enabled, and cannot be removed.
+- Built-in presets are always enabled and cannot be removed.
 - Check a custom preset to show it in Preview's menu. Unchecking hides the entry but keeps its files. Open previews using that preset return to Default; enabling it again does not switch the preview.
-- Each information icon shares the Preview toolbar component and shows the author's notes, supported themes and setting policies. Management does not mark the currently selected preset.
+- Each information icon shares the Preview toolbar component and shows only the description and necessary error details. Relevant differences belong in the description. Management does not mark the currently selected preset.
 - Each custom row has **Export** and **Remove** icons after the information icon. Confirm removal in the small popover below the icon.
 - Import copies validated configuration and referenced CSS without moving the originals. Updates preserve visibility; new imports are enabled.
 - **Creation guide** opens the Chinese or English GitHub guide in your browser, following the current MEO interface language. Guides and examples live in this repository and are excluded from the extension package. Imported presets work offline; the small configuration Schema remains bundled for offline completion and validation.
@@ -46,21 +62,31 @@ Each preset consists of one UTF-8 JSON/JSONC configuration file and one to three
 | --- | --- |
 | `schemaVersion` | Required. Currently `1`. |
 | `id` | Required stable identifier, up to 64 characters. Start with a lowercase letter, followed by lowercase letters, digits, or hyphens. |
-| `name` | Required menu label, up to 80 characters. Presets with the same name remain distinct by ID. |
-| `description` | Required text for the preset information tooltip, up to 500 characters. |
+| `name` | Required string or `{ "en": "Paper notes", "zh-CN": "纸面笔记" }`; up to 80 characters per name. Follows the UI language and falls back to the available translation. Presets with the same name remain distinct by ID. |
+| `description` | Required explanation, including relevant differences. Accepts a string or an object with `en` / `zh-CN`, up to 500 characters per language. Follows the UI language and falls back to the available translation; a string appears unchanged in both languages. |
 | `base` | Optional: `default` or `github-readme`. Inherits fixed document styles and light/dark base palettes, without editor colors. Defaults to `default`. |
 | `controls.htmlComments` / `controls.codeColoring` | Optional independent policies for HTML comments and code coloring. Omitted controls are editable. |
+| `controls.fontFamily` | Optional `{ "mode": "editable" }` or `{ "mode": "fixed" }`. Omitted means fixed for compatibility. Editable presets remember their own body font; the empty choice restores preset CSS. |
 | `styles.common` | Optional CSS shared by both themes. |
 | `themes.light` / `themes.dark` | Provide at least one. Each theme requires `css`. The entries determine which themes are supported. |
 | `codeTheme` | Optional: `light-plus`, `dark-plus`, `github-light-default`, or `github-dark-default`. When omitted, the Default base uses fixed Light+/Dark+ palettes, and the GitHub base uses fixed GitHub light/dark palettes. Applies only when coloring is enabled; it does not enable or lock coloring. |
-| `author` / `version` / `source` / `license` | Optional sharing metadata, up to 500 characters each. They do not affect rendering. |
+| `author` / `version` / `source` / `license` | Optional sharing metadata, up to 500 characters each. Stored in the configuration without appearing in the information tooltip. |
 | `$schema` | Optional link to the [JSON Schema](preset.schema.json) for completion and validation. After copying an example, update its relative path or remove this field. |
 
 `base` determines appearance without inheriting control policies. All custom presets use MEO Markdown rendering, including line breaks, Alerts, task lists, and HTML comment handling. A preset based on `github-readme` uses GitHub styles and can still show comments. CSS loads in this order: base styles → common → current theme. Built-in Default and GitHub retain their existing behavior; built-in GitHub still hides comments and enables code coloring. Imports cannot replace built-ins, and custom presets cannot inherit from other custom presets.
 
+For a bilingual description, provide either or both translations:
+
+```jsonc
+"description": {
+  "en": "For long documents and notes.",
+  "zh-CN": "适合长文和笔记阅读。"
+}
+```
+
 Name the root configuration `preset.jsonc` or `preset.json`. Use `$schema` for completion and validation.
 
-CSS controls custom fonts and document width, so the corresponding menu controls are hidden. `themes` determines theme support. Preset selection and theme preferences are restored for the current document.
+CSS defines the preset's fonts and document width. Font selection is hidden unless `controls.fontFamily` is `editable`; document width has no menu control. `themes` determines theme support. Preset selection, theme preferences, and editable font choices are restored for the current document.
 
 ### Color ownership
 
@@ -72,7 +98,9 @@ Define page backgrounds, document text, headings, links, code backgrounds, table
 
 ### Comments and code coloring
 
-`controls` supports only `htmlComments` and `codeColoring`. Configure each independently:
+`controls` supports `fontFamily`, `htmlComments`, and `codeColoring`. For font selection, use `{ "mode": "editable" }` to expose a per-preset body font override, or `{ "mode": "fixed" }` to keep the CSS font. Omitted font policies remain fixed for compatibility. Choosing **Preset font** restores the original CSS; other choices apply after preset CSS and do not overwrite Default's font setting. Code typography remains defined by the CSS.
+
+Configure comments and code coloring independently:
 
 | Configuration | Behavior |
 | --- | --- |
@@ -80,9 +108,9 @@ Define page backgrounds, document text, headings, links, code backgrounds, table
 | `{ "mode": "fixed", "value": true }` | Always show comments or enable code coloring. |
 | `{ "mode": "fixed", "value": false }` | Always hide comments or disable code coloring. |
 
-Fixed comment and code-coloring controls are hidden; their effective values appear in preset information. Theme controls are the exception: a single supported theme keeps them visible but disabled, with an explanatory tooltip. Fixed values do not overwrite user preferences; switching to an editable preset restores the user's choices. `editable` accepts no `value`; `fixed` requires a boolean `value`. These policies apply to Preview and HTML/PDF.
+Fixed comment and code-coloring controls are hidden. Theme controls are the exception: a single supported theme keeps them visible but disabled, with an explanatory tooltip. Fixed values do not overwrite user preferences; switching to an editable preset restores the user's choices. `editable` accepts no `value`; `fixed` requires a boolean `value`. These policies apply to Preview and HTML/PDF.
 
-Default, GitHub, and custom presets share the same information and control rules. Built-in configurations are provided by the extension and cannot be replaced by user configuration files. Information shows the author's text first, then a divider and fixed fields: supported themes and configuration policies for HTML comments, code coloring, font, and document width. It does not show the current appearance or user toggle state.
+Default, GitHub, and custom presets share the same information and control rules. Built-in configurations are provided by the extension and cannot be replaced by user configuration files. Information shows only the description and necessary error details, without control policies, author information, or licensing metadata.
 
 When import, loading, or rendering fails, the information icon turns red and displays error details. A failed update retains the previous version. A preset that cannot load at startup is skipped and falls back to Default, with its loading error shown in preset information. Correcting and successfully reimporting the package clears its error. Source files and saved copies are not watched automatically; reimport or reload the window after editing.
 

@@ -1006,7 +1006,9 @@ pre.meo-export-code-block code {
   background: transparent;
 }
 .meo-export-code-block-wrap > pre.meo-export-code-block code {
-  font-size: 0;
+  /* Keep a real font basis for third-party em sizes; zero line-height removes
+     separator whitespace without collapsing descendant code lines. */
+  font-size: inherit;
   line-height: 0;
 }
 .meo-export-code-line {

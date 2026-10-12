@@ -269,6 +269,19 @@ body {
   pointer-events: none;
 }
 
+/* Preview's floating action belongs to the reading palette in both layouts. */
+.preview-host > .document-scroll-top {
+  color: var(--meo-preview-foreground, var(--meo-ui-text));
+  background: var(--meo-preview-background, var(--meo-ui-surface));
+  border-color: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-ui-text)) 25%, var(--meo-preview-background, var(--meo-ui-surface)));
+}
+.preview-host > .document-scroll-top:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-ui-text)) 8%, var(--meo-preview-background, var(--meo-ui-surface)));
+}
+.preview-host > .document-scroll-top:active {
+  background: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-ui-text)) 14%, var(--meo-preview-background, var(--meo-ui-surface)));
+}
+
 .editor-root.outline-visible
   .editor-wrapper[data-outline-mode='floating'][data-outline-position='right']
   .document-scroll-top {
@@ -864,28 +877,22 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 }
 
 .preview-preset-control {
-  gap: 3px;
+  gap: 5px;
   margin-inline-end: 4px;
 }
 
 .preview-preset-dropdown {
   --preview-preset-accent: var(--meo-ui-accent-text);
-  gap: 10px;
-  padding-inline: 9px 10px;
+  gap: 8px;
   border-color: color-mix(in srgb, var(--preview-select-foreground) 15%, var(--preview-select-background));
   background: var(--preview-select-background);
 }
 
-.preview-preset-heading { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 5px; color: var(--meo-ui-accent-text); }
-.preview-preset-heading > svg { flex: 0 0 auto; }
-.preview-preset-dropdown .preview-preset-heading .preview-select-label { color: inherit; font-weight: 500; }
+.preview-preset-heading { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 5px; color: var(--meo-ui-text-muted); }
+.preview-preset-heading > :is(svg, img) { flex: 0 0 auto; }
 
 .preview-preset-dropdown .preview-select-label {
   color: var(--preview-select-label-foreground);
-}
-
-.preview-preset-dropdown .preview-toolbar-dropdown-value {
-  font-weight: 600;
 }
 
 .preview-preset-dropdown .preview-toolbar-dropdown-chevron {
@@ -895,7 +902,6 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 
 .preview-preset-control .preview-preset-dropdown:is(:hover, [aria-expanded='true']) {
   border-color: color-mix(in srgb, var(--preview-select-foreground) 25%, var(--preview-select-background));
-  background: color-mix(in srgb, var(--preview-select-foreground) 4%, var(--preview-select-background));
 }
 
 .preview-preset-control .preview-preset-dropdown:focus-visible {
@@ -6747,21 +6753,12 @@ body.outline-resizing .preview-frame {
 }
 
 .source-preview-more-panel .preview-preset-control {
-  gap: 6px;
+  gap: 8px;
   margin-inline-end: 0;
 }
 
 .source-preview-more-panel .preview-preset-control .preview-select-shell {
-  flex: 1;
-}
-
-.source-preview-more-panel .preview-preset-dropdown {
-  width: 100%;
-  justify-content: flex-start;
-}
-
-.source-preview-more-panel .preview-preset-dropdown .preview-toolbar-dropdown-chevron {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .source-preview-more-panel .preview-font-family-dropdown {
@@ -8149,8 +8146,8 @@ html[data-editor-appearance='light'] .segmented-control-button.is-active .segmen
 html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):is(:hover, :focus-visible) { color: var(--meo-ui-text); background: transparent; }
 .segmented-control-button:focus-visible .segmented-control-button-indicator { box-shadow: inset 0 0 0 1px var(--meo-ui-focus); }
 .preview-select-control { --preview-select-background: var(--meo-ui-surface-field); --preview-select-foreground: var(--meo-ui-text); --preview-select-border: var(--meo-ui-border-control); --preview-select-hover-border: var(--meo-ui-focus); }
-.preview-preset-dropdown, html[data-editor-appearance='dark'] .preview-preset-dropdown { --preview-preset-accent: var(--meo-ui-accent-text); border-color: var(--meo-ui-border-control); background: var(--meo-ui-surface-hover); }
-.preview-preset-control .preview-preset-dropdown:is(:hover, [aria-expanded='true']) { border-color: var(--meo-ui-border-control); background: var(--meo-ui-surface-pressed); }
+.preview-preset-dropdown, html[data-editor-appearance='dark'] .preview-preset-dropdown { --preview-preset-accent: var(--meo-ui-accent-text); border-color: var(--meo-ui-border-control); }
+.preview-preset-control .preview-preset-dropdown:is(:hover, [aria-expanded='true']) { border-color: var(--meo-ui-border-control); }
 .preview-preset-control .preview-preset-dropdown:focus-visible { border-color: var(--meo-ui-focus); outline-color: var(--meo-ui-focus); }
 html[data-editor-appearance='dark'] .preview-preset-dropdown-panel { border-color: var(--meo-ui-border-float); }
 .preview-dropdown-panel .preview-dropdown-option:is(:hover, :focus-visible, .is-selected) { color: var(--meo-ui-text-selected); background: var(--meo-ui-surface-selected); outline: 1px solid var(--meo-ui-selection-border); outline-offset: -1px; }
@@ -8288,3 +8285,27 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .find-status.is-error { color: var(--meo-ui-danger); }
 .preview-preset-info.has-error { color: var(--meo-ui-danger); }
 .cm-editor .meo-md-html-table-context-delete-btn { color: var(--meo-ui-danger); }
+
+/* Only Source preview chrome uses the document palette; toolbar popups opt in after portaling. */
+.source-preview-tools,
+.preview-dropdown-panel[data-source-preview-theme] {
+  --meo-ui-text: var(--meo-preview-foreground);
+  --meo-ui-text-muted: color-mix(in srgb, var(--meo-preview-foreground) 70%, var(--meo-preview-background));
+  --meo-ui-text-disabled: color-mix(in srgb, var(--meo-preview-foreground) 40%, var(--meo-preview-background));
+  --meo-ui-text-selected: var(--meo-preview-foreground);
+  --meo-ui-accent-text: var(--meo-preview-foreground);
+  --meo-ui-surface: var(--meo-preview-background);
+  --meo-ui-surface-field: var(--meo-preview-background);
+  --meo-ui-surface-raised: color-mix(in srgb, var(--meo-preview-foreground) 3%, var(--meo-preview-background));
+  --meo-ui-surface-hover: color-mix(in srgb, var(--meo-preview-foreground) 8%, var(--meo-preview-background));
+  --meo-ui-surface-pressed: color-mix(in srgb, var(--meo-preview-foreground) 12%, var(--meo-preview-background));
+  --meo-ui-surface-selected: color-mix(in srgb, var(--meo-preview-foreground) 14%, var(--meo-preview-background));
+  --meo-ui-segmented-track: var(--meo-ui-surface-hover);
+  --meo-ui-border-control: color-mix(in srgb, var(--meo-preview-foreground) 20%, var(--meo-preview-background));
+  --meo-ui-border-float: var(--meo-ui-border-control);
+  --meo-ui-separator: var(--meo-ui-border-control);
+  --meo-ui-selection-border: color-mix(in srgb, var(--meo-preview-foreground) 30%, var(--meo-preview-background));
+  --meo-ui-focus: color-mix(in srgb, var(--meo-preview-foreground) 55%, var(--meo-preview-background));
+  --meo-ui-danger: light-dark(#b42318, #ff837b);
+  --meo-ui-shadow: 0 4px 14px rgb(0 0 0 / 24%);
+}

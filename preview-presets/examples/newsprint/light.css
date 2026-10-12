@@ -1,0 +1,19 @@
+/* Independent MEO adaptation of Newsprint's paper palette and reading proportions. */
+:root {
+  --meo-bg: #f3f2ee;
+  --meo-fg: #1f0909;
+  --meo-muted: #656565;
+  --meo-link: #065588;
+  --meo-code-bg: #e5e4df;
+  --meo-preset-font-body: "PT Serif", Georgia, "Noto Serif SC", "Songti SC", SimSun, serif;
+  --meo-line-height: 1.65;
+}
+.meo-export-doc { max-width: 800px; }
+.meo-export-doc h1 { font-size: 1.875em; font-weight: 400; padding-bottom: 0.5em; border-bottom: 1px solid var(--meo-border); }
+.meo-export-doc :is(h2, h3) { font-size: 1.3125em; margin-top: 1.8em; }
+.meo-export-doc h3 { font-weight: 400; }
+.meo-export-doc h4 { font-size: 1.125em; }
+.meo-export-doc :is(p, ul, ol) { margin-bottom: 1.35em; }
+.meo-export-doc blockquote { border-left-width: 4px; font-style: italic; }
+.meo-export-doc .meo-export-code-block-wrap > pre.meo-export-code-block { border: 0; border-radius: 0; }
+.meo-export-doc tbody tr:nth-child(even) { background: color-mix(in srgb, var(--meo-code-bg) 45%, var(--meo-bg)); }
