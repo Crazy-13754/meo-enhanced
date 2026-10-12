@@ -3,6 +3,7 @@ import { buildExportHtmlDocument as buildStandaloneExportHtmlDocument } from './
 import { buildExportStyles, type ExportStyleEnvironment } from './exportStyles';
 import { writeHtmlExport } from './htmlExport';
 import { renderPdfFromHtmlExport } from './pdfRenderer';
+import { buildPdfExportStyles } from './pdfStyles';
 import { writeDocxExport } from './docxRenderer';
 import type { PreviewAppearance, PreviewRenderResult } from '../shared/preview';
 import type { ReadingSnapshot } from '../protocol/exportSnapshot';
@@ -82,7 +83,7 @@ async function renderExportHtmlDocument(
     bodyHtml: definition.renderer === 'github-readme'
       ? bodyHtml.replace(/(<source\b[^>]*\bmedia=")([^"]*)(")/g, (_match, before, media, after) => `${before}${githubPictureMedia(media, exportAppearance)}${after}`)
       : bodyHtml,
-    stylesCss,
+    stylesCss: options.target === 'pdf' ? buildPdfExportStyles(stylesCss) : stylesCss,
     target: options.target,
     githubStyle,
     githubMermaid: definition.renderer === 'github-readme',

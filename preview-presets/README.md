@@ -210,7 +210,7 @@ Configuration files and individual CSS files are limited to 512 KiB each, a pack
 
 HTML/PDF exports for Default, GitHub, and custom presets use the actual preview preset, resolved light/dark theme, and colors captured when export starts. Auto resolves to the editor's current appearance. Changing themes or updating styles during export does not change the captured export. When Preview is closed, export still uses the current document's preview configuration. Word keeps its fixed styles.
 
-PDF keeps the existing A4 layout and pagination rules, adapting wide tables, long code, and formulas to the page. CSS can adjust font size, padding, and document width, but screen and page widths differ, so arbitrary long code may still wrap. The first version has no separate PDF CSS or paper configuration.
+PDF uses A4 with shared 20 mm page margins by default; presets need no margin configuration. Existing explicit page-margin styles take precedence. Wide tables, long code, and formulas adapt to the paper. Screen and paper widths differ, so long content may still wrap.
 
 **With table of contents** generates a table of contents inside the exported document. The editor's sidebar outline is UI and is not exported. Interactive preview features such as copy buttons and search markers are also excluded. If an HTML reader does not have the requested fonts installed, CSS fallback fonts are used.
 

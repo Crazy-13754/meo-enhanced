@@ -1,15 +1,16 @@
 import { launchTestBrowser } from './browser-test-helpers';
 import { buildExportStyles } from '../src/export/exportStyles';
 import { preparePdfPagination } from '../src/export/pdfRenderer';
+import { buildPdfExportStyles } from '../src/export/pdfStyles';
 
-const styles = buildExportStyles({
+const styles = buildPdfExportStyles(buildExportStyles({
   previewFontFamily: '',
   editorBackgroundColor: '#20252b',
   editorForegroundColor: '#d8dee9',
   codeBlockBackgroundColor: '#171b20',
   sideBarBackgroundColor: '#252b32',
   panelBorderColor: '#474b50'
-}, 'dark');
+}, 'dark'));
 
 const svg = (className: string, width: number, height: number) => `
   <div class="meo-export-mermaid is-rendered ${className}">
@@ -23,7 +24,8 @@ const svg = (className: string, width: number, height: number) => `
 const browser = await launchTestBrowser();
 try {
   const page = await browser.newPage();
-  await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+  await page.setViewport({ width: 641, height: 970, deviceScaleFactor: 1 });
+  await page.emulateMediaType('print');
   await page.setContent(`<!doctype html>
     <html data-meo-export-target="pdf">
       <head><style>${styles}</style></head>
@@ -47,7 +49,7 @@ try {
       </body>
     </html>`);
 
-  await preparePdfPagination(page);
+  await preparePdfPagination(page, 970);
 
   const layout = await page.evaluate(() => {
     const read = (selector: string) => {

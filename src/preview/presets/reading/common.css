@@ -69,8 +69,3 @@ html::-webkit-scrollbar-track, body::-webkit-scrollbar-track { background: var(-
 @media (max-width: 600px) {
   .meo-export-doc { padding: 24px 20px 48px; }
 }
-/* Paper layout overrides screen widths without disturbing the shared PDF rules. */
-html[data-meo-export-target='pdf'] .meo-export-doc { max-width: none; padding: 0; }
-@media print {
-  .meo-export-doc { max-width: none; padding: 0; }
-}

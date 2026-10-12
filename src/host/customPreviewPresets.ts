@@ -19,6 +19,10 @@ export function validatePresetCss(css: string, file: string): string {
   try {
     const root = postcss.parse(css, { from: file });
     root.walkAtRules(rule => {
+      if (rule.name.toLowerCase() === 'page') {
+        if (rule.params.trim() || !rule.nodes || rule.nodes.some(node => node.type !== 'comment' && (node.type !== 'decl' || !/^margin(?:-(?:top|right|bottom|left))?$/i.test(node.prop)))) throw rule.error('Only unqualified @page margin declarations are supported');
+        return;
+      }
       if (!['media', 'supports', 'layer'].includes(rule.name.toLowerCase()) || !rule.nodes) throw rule.error('Only @media, @supports and @layer blocks are supported');
     });
     root.walkRules(rule => {
@@ -29,7 +33,7 @@ export function validatePresetCss(css: string, file: string): string {
       if (rule.nodes.some(node => !['decl', 'comment'].includes(node.type))) throw rule.error('Nested CSS rules are not supported; use explicit document selectors');
     });
     root.walkDecls(declaration => {
-      if (declaration.parent?.type !== 'rule') throw declaration.error('Declarations must belong to a document rule');
+      if (declaration.parent?.type !== 'rule' && !(declaration.parent?.type === 'atrule' && declaration.parent.name.toLowerCase() === 'page')) throw declaration.error('Declarations must belong to a document rule');
       // Escaped spellings must not bypass the local-only resource policy.
       const value = declaration.value.replace(/\\([0-9a-f]{1,6})\s?/gi, (_, hex: string) => String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff))).replace(/\\(.)/g, '$1').replace(/\/\*[\s\S]*?\*\//g, '');
       if (/(?:url|image-set|expression)\s*\(/i.test(value) || /^(?:behavior|-moz-binding)$/i.test(declaration.prop)) throw declaration.error('External resources and executable CSS are not supported');

@@ -100,8 +100,6 @@ body { margin: 0; background: ${background}; color: ${foreground}; }
 .markdown-body .meo-export-math-display .meo-export-math-canvas { margin-left: auto; margin-right: auto; }
 .markdown-body .footnotes p { margin-top: 16px; }
 .markdown-body .footnote-backref { text-decoration: underline; }
-/* PDF uses screen media; clone padding so every page retains its margins. */
-html[data-meo-export-target='pdf'] .markdown-body { max-width: none; padding: 14mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 html[data-meo-export-target='pdf'] .markdown-body .meo-table-scroll { overflow: visible; }
 html[data-meo-export-target='pdf'] .markdown-body table { display: table; width: 100%; }
 html[data-meo-export-target='pdf'] .markdown-body .meo-table-scroll :is(th, td, pre, code) { overflow-wrap: anywhere; white-space: normal; }
@@ -112,7 +110,6 @@ html[data-meo-export-target='pdf'] .markdown-body :is(h1, h2, h3, h4, h5, h6) { 
 html[data-meo-export-target='pdf'] .markdown-body :is(pre, blockquote, table, .meo-export-alert) { break-inside: avoid; }
 html[data-meo-export-target='pdf'] .markdown-body [data-meo-pdf-allow-break] { break-inside: auto; }
 @media print {
-  @page { margin: 14mm; }
   .markdown-body { max-width: none; padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .meo-export-page { min-height: 0; }
   .markdown-body .meo-table-scroll { overflow: visible; }

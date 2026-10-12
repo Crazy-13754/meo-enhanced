@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import postcss from 'postcss';
 import exportRuntime from '../src/export/runtime';
 import { decodePreviewRenderRequest, decodePreviewRenderResponse } from '../src/protocol/previewRender';
 import { decodePreviewPresetState, getPreviewPreset, isPreviewPresetId, previewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
@@ -162,4 +163,25 @@ for (const presetFontFamily of ['', 'Arial', 'invalid;font', 42]) {
   if (decoded?.result.ok) assert.equal(decoded.result.value.presetFontFamily, presetFontFamily);
 }
 assert.ok(readFileSync('THIRD_PARTY_NOTICES.md', 'utf8').includes(readFileSync('src/preview/presets/github-readme/license', 'utf8').trim()));
+for (const preset of previewPresets) {
+  const options = {
+    readingSnapshot: { snapshotId: 'page-margins', text: readingText, appearance: 'light' as const, uiLanguage: 'en' as const, environment, preset: preset.id },
+    sourceDocumentPath: 'C:/tmp/preset.md', outputFilePath: 'C:/tmp/preset.pdf',
+    title: 'Page margins', baseHref: '', mermaidRuntimeSrc: '', shikiLanguageAssetsRoot: ''
+  };
+  const pdf = await exportRuntime.renderExportHtmlDocument({ ...options, target: 'pdf' });
+  const css = postcss.parse(pdf.htmlDocument.match(/<style>([\s\S]*?)<\/style>/)![1]);
+  const margins: string[] = [];
+  css.walkAtRules('page', rule => { rule.walkDecls(/^margin/, declaration => { margins.push(declaration.value); }); });
+  assert.deepEqual(margins, ['20mm'], `${preset.id}: PDF margins come from the export layer`);
+  const padding: string[] = [];
+  css.walkRules(rule => {
+    if (rule.selector.includes("html[data-meo-export-target='pdf'] .meo-export-doc")) {
+      rule.walkDecls('padding', declaration => { padding.push(declaration.value); });
+    }
+  });
+  assert.equal(padding.at(-1), '0', `${preset.id}: screen padding does not double PDF margins`);
+  const html = await exportRuntime.renderExportHtmlDocument({ ...options, target: 'html' });
+  assert.ok(!html.htmlDocument.includes('@page { size: A4; margin: 20mm; }'), 'HTML retains its screen layout');
+}
 console.log('Preview preset rendering, capabilities and protocol tests passed.');

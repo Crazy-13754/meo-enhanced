@@ -149,9 +149,23 @@ for (const css of [
   '@import "remote.css";', '@font-face { font-family: test; src: url(font.woff2); }',
   '.meo-export-doc { background: url(https://example.com/image.png); }',
   String.raw`.meo-export-doc { background: \75rl(secret.png); }`,
-  '.meo-export-doc { h1 { color: red; } }', '.meo-export-doc { color: red;'
+  '.meo-export-doc { h1 { color: red; } }', '.meo-export-doc { color: red;',
+  '@page { size: Letter; }', '@page :first { margin: 10mm; }',
+  '@page { @top-left { content: "header"; } }', '@page { margin: url(secret.png); }'
 ]) assert.throws(() => validatePresetCss(css, 'invalid.css'));
 assert.ok(validatePresetCss('@media (max-width: 600px) { .meo-export-doc :is(th, td) { padding: 8px; } }', 'valid.css'));
+assert.ok(validatePresetCss('@page { margin: 0; margin-left: 12mm; }', 'legacy-page.css'));
+assert.ok(validatePresetCss('@media print { @page { margin: var(--legacy-page-margin); } }', 'legacy-page.css'));
+const marginCss = ':root { --legacy-page-margin: 12mm; } @media print { @page { margin: 0; margin-left: var(--legacy-page-margin); } }';
+const marginPreset = await library.import(JSON.stringify({ ...basic, id: 'page-margins' }), async () => marginCss);
+const marginExport = await exportRuntime.renderExportHtmlDocument({
+  readingSnapshot: { snapshotId: 'margins', text: '# Page margins', appearance: 'light', uiLanguage: 'en', environment: { previewSourceColoring: false }, preset: marginPreset.id },
+  presetDefinition: marginPreset, sourceDocumentPath: 'C:/tmp/test.md', outputFilePath: 'C:/tmp/test.pdf', target: 'pdf',
+  mermaidRuntimeSrc: '', baseHref: '', title: 'Page margins', shikiLanguageAssetsRoot: ''
+});
+assert.ok(marginExport.htmlDocument.includes(marginCss), 'Imported page margins reach the PDF renderer without losing zero values or variables');
+assert.ok(marginExport.htmlDocument.indexOf('@page { size: A4; margin: 20mm; }') < marginExport.htmlDocument.indexOf(marginCss), 'User page margins follow the defaults in the CSS cascade');
+await library.remove(marginPreset.id);
 
 const before = saved.get('paper-notes');
 await assert.rejects(library.import(JSON.stringify({ ...basic, id: 'paper-notes' }), async () => 'body { color: red; }'));

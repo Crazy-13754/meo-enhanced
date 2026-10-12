@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { findPdfBrowserExecutablePath } from './browserDiscovery';
+import { DEFAULT_PDF_MARGIN_MM } from './pdfStyles';
 
 export type HeadlessExportOptions = {
   htmlDocument: string;
@@ -29,17 +30,74 @@ const PDF_VIEWPORT = {
   deviceScaleFactor: 1
 };
 
+type PdfPageMargins = { top: number; right: number; bottom: number; left: number };
+
+/** Resolve @page margins with the browser's CSS cascade, including print media and CSS variables. */
+async function resolvePdfPageMargins(page: any): Promise<PdfPageMargins> {
+  return page.evaluate(({ defaultMargin, width, height }: { defaultMargin: number; width: number; height: number }) => {
+    const selector = '.meo-pdf-margin-probe';
+    const pageRules = (rules: CSSRuleList): string => Array.from(rules).map(rule => {
+      if (rule.type === CSSRule.PAGE_RULE) {
+        const pageRule = rule as CSSPageRule;
+        if (pageRule.selectorText) return '';
+        // Variable shorthands can leave longhands empty until computed-value resolution.
+        const declarations = ['margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left'].map(property => {
+          const value = pageRule.style.getPropertyValue(property);
+          const priority = pageRule.style.getPropertyPriority(property);
+          return value ? `${property}:${value}${priority ? ' !important' : ''};` : '';
+        }).join('');
+        return declarations ? `${selector}{${declarations}}` : '';
+      }
+      if ('cssRules' in rule) {
+        const nested = pageRules((rule as CSSGroupingRule).cssRules);
+        return nested ? `${rule.cssText.slice(0, rule.cssText.indexOf('{'))}{${nested}}` : '';
+      }
+      return '';
+    }).join('\n');
+    const style = document.createElement('style');
+    style.textContent = `@layer meo-pdf-default { ${selector}{margin:${defaultMargin}mm;} }\n` + Array.from(document.styleSheets).map(sheet => {
+      try { return pageRules(sheet.cssRules); } catch { return ''; }
+    }).join('\n');
+    const container = document.createElement('div');
+    container.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;height:0;';
+    const probe = document.createElement('div');
+    probe.className = selector.slice(1);
+    probe.style.fontSize = getComputedStyle(document.documentElement).fontSize;
+    container.append(probe);
+    document.head.append(style);
+    document.body.append(container);
+    try {
+      // Page percentages use the corresponding paper dimension, unlike ordinary vertical margins.
+      container.style.width = `${height}mm`;
+      const vertical = getComputedStyle(probe);
+      const top = Number.parseFloat(vertical.marginTop);
+      const bottom = Number.parseFloat(vertical.marginBottom);
+      container.style.width = `${width}mm`;
+      const horizontal = getComputedStyle(probe);
+      const right = Number.parseFloat(horizontal.marginRight);
+      const left = Number.parseFloat(horizontal.marginLeft);
+      const fallback = defaultMargin * 96 / 25.4;
+      const usable = (value: number) => Number.isFinite(value) && value >= 0 ? value : fallback;
+      return { top: usable(top), right: usable(right), bottom: usable(bottom), left: usable(left) };
+    } finally {
+      container.remove();
+      style.remove();
+    }
+  }, { defaultMargin: DEFAULT_PDF_MARGIN_MM, width: A4_WIDTH_MM, height: A4_HEIGHT_MM });
+}
+
 export async function renderPdfFromHtmlExport(options: RenderPdfExportOptions): Promise<void> {
-  await withPreparedExportPage(options, async (page) => {
+  await withPreparedExportPage(options, async (page, margins) => {
     await page.pdf({
       path: options.outputPdfPath,
       printBackground: true,
       format: 'A4',
+      preferCSSPageSize: true,
       margin: {
-        top: '0in',
-        right: '0in',
-        bottom: '0in',
-        left: '0in'
+        top: `${margins.top}px`,
+        right: `${margins.right}px`,
+        bottom: `${margins.bottom}px`,
+        left: `${margins.left}px`
       }
     });
   });
@@ -84,7 +142,7 @@ export async function materializeDocxBodyFromHtmlExport(options: HeadlessExportO
   }, 'docx');
 }
 
-export async function preparePdfPagination(page: any): Promise<void> {
+export async function preparePdfPagination(page: any, pageHeight = PDF_VIEWPORT.height): Promise<void> {
   await page.evaluate((pageHeight: number) => {
     const documentRoot = document.querySelector<HTMLElement>('.meo-export-doc');
     if (!documentRoot) return;
@@ -129,24 +187,27 @@ export async function preparePdfPagination(page: any): Promise<void> {
         ? preceding : null;
       const heading = (description?.previousElementSibling ?? preceding) as HTMLElement | null;
       const graphic = diagram.querySelector('.meo-export-mermaid-svg > svg') as SVGSVGElement | null;
-      if (!heading?.matches('h1, h2, h3, h4, h5, h6') || !graphic) continue;
+      if (!graphic) continue;
 
       const graphicHeight = graphic.getBoundingClientRect().height;
-      const fixedPairHeight = outerHeight(heading) + (description ? outerHeight(description) : 0)
+      const hasHeading = heading?.matches('h1, h2, h3, h4, h5, h6');
+      const fixedPairHeight = (hasHeading ? outerHeight(heading!) + (description ? outerHeight(description) : 0) : 0)
         + outerHeight(diagram) - graphicHeight;
-      const maximumGraphicHeight = Math.max(160, Math.floor(contentHeight - fixedPairHeight - 8));
-      diagram.setAttribute('data-meo-pdf-heading-pair', '');
-      description?.setAttribute('data-meo-pdf-heading-description', '');
+      const maximumGraphicHeight = Math.max(1, Math.floor(contentHeight - fixedPairHeight - 8));
+      if (hasHeading) {
+        diagram.setAttribute('data-meo-pdf-heading-pair', '');
+        description?.setAttribute('data-meo-pdf-heading-description', '');
+      }
       if (graphicHeight > maximumGraphicHeight) {
         graphic.style.maxHeight = `${maximumGraphicHeight}px`;
         graphic.style.width = 'auto';
       }
     }
-  }, PDF_VIEWPORT.height);
+  }, pageHeight);
 }
 
-export async function fitBlockMathForPdf(page: any): Promise<void> {
-  await page.setViewport(PDF_VIEWPORT);
+export async function fitBlockMathForPdf(page: any, viewport = PDF_VIEWPORT): Promise<void> {
+  await page.setViewport(viewport);
   const failures = await page.evaluate(async () => {
     const roots = Array.from(document.querySelectorAll<HTMLElement>('.meo-export-math-fenced-display'));
 
@@ -243,7 +304,7 @@ export async function fitBlockMathForPdf(page: any): Promise<void> {
 
 async function withPreparedExportPage<T>(
   options: HeadlessExportOptions,
-  action: (page: any) => Promise<T>,
+  action: (page: any, margins: PdfPageMargins) => Promise<T>,
   target: 'pdf' | 'docx' = 'pdf'
 ): Promise<T> {
   const timeoutMs = Math.max(1000, options.timeoutMs ?? 30000);
@@ -280,7 +341,7 @@ async function withPreparedExportPage<T>(
     const page = await browser.newPage();
     page.setDefaultNavigationTimeout(timeoutMs);
     page.setDefaultTimeout(timeoutMs);
-    await page.emulateMediaType('screen');
+    await page.emulateMediaType(target === 'pdf' ? 'print' : 'screen');
 
     await page.goto(pathToFileURL(tempHtmlPath).toString(), {
       waitUntil: 'domcontentloaded'
@@ -290,6 +351,14 @@ async function withPreparedExportPage<T>(
       document.documentElement.setAttribute('data-meo-export-target', exportTarget);
       document.body.setAttribute('data-meo-export-target', exportTarget);
     }, target);
+
+    const margins = target === 'pdf' ? await resolvePdfPageMargins(page) : { top: 0, right: 0, bottom: 0, left: 0 };
+    const viewport = {
+      ...PDF_VIEWPORT,
+      width: Math.max(1, Math.floor(PDF_VIEWPORT.width - margins.left - margins.right)),
+      height: Math.max(1, Math.floor(PDF_VIEWPORT.height - margins.top - margins.bottom))
+    };
+    if (target === 'pdf') await page.setViewport(viewport);
 
     stage = 'waiting for diagrams, formulas, and images';
     await page.waitForFunction(() => (window as any).__MEO_EXPORT_READY__ === true, {
@@ -307,12 +376,12 @@ async function withPreparedExportPage<T>(
     });
     stage = 'preparing the final document';
     if (target === 'pdf') {
-      await fitBlockMathForPdf(page);
-      await preparePdfPagination(page);
+      await fitBlockMathForPdf(page, viewport);
+      await preparePdfPagination(page, viewport.height);
     }
 
     stage = 'writing the export';
-    return await action(page);
+    return await action(page, margins);
   } catch (error) {
     operationFailed = true;
     const message = error instanceof Error ? error.message : String(error);
