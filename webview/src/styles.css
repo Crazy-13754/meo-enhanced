@@ -2848,14 +2848,13 @@ html[data-editor-appearance='dark'] .meo-tooltip {
 .meo-tooltip-error-icon { flex: none; color: #ff6b6b; }
 /* Equal top, bottom and end insets keep the nested shortcut corners concentric. */
 .meo-tooltip--shortcut { padding-right: 4px; }
-/* Center font metrics instead of the line box's extra leading. Keep Latin descenders. */
+/* Share the cap-to-baseline alignment used by Chinese labels. */
 .meo-tooltip-label {
   min-width: 0;
   overflow-wrap: anywhere;
   text-box-trim: trim-both;
-  text-box-edge: cap text;
+  text-box-edge: cap alphabetic;
 }
-.meo-tooltip-label:lang(zh) { text-box-edge: cap alphabetic; }
 /* Match the text line boxes on both sides of detailed hints' separators. */
 .meo-tooltip--details .meo-tooltip-label { text-box-trim: none; }
 .meo-tooltip--wrap .meo-tooltip-label { white-space: pre-wrap; }
