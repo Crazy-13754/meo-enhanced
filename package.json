@@ -693,7 +693,8 @@
     "@types/sanitize-html": "^2.16.0",
     "@vscode/vsce": "3.9.2",
     "jszip": "3.10.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vscode-uri": "3.0.8"
   },
   "patchedDependencies": {
     "@shikijs/primitive@4.2.0": "patches/shiki-primitive-empty-lines.patch"

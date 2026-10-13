@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import MarkdownIt from 'markdown-it';
 import exportRuntime from '../src/export/runtime';
 import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
 
@@ -13,6 +14,10 @@ if (!focused && !process.argv.includes('--confirm-long-run')) {
 }
 const source = fs.readFileSync(documentArgument.slice('--document='.length), 'utf8');
 const lineCount = source.split(/\r?\n/).length;
+// The representative document can change; address a real top-level diagram by its source anchor.
+const mermaidMap = new MarkdownIt().parse(source, {}).find((token) =>
+  token.type === 'fence' && token.info.trim() === 'mermaid' && token.level === 0 && token.map)?.map;
+const mermaidLine = mermaidMap ? mermaidMap[0] + 1 : null;
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-font-full-document-'));
 const build = await Bun.build({
   entrypoints: [path.join(root, 'scripts/test-font-size-full-document-entry.ts')],
@@ -88,8 +93,8 @@ try {
   let samples = 0;
   let bottomConstrainedSteps = 0;
   const requestedLines = process.argv.find((argument) => argument.startsWith('--lines='))?.slice('--lines='.length);
-  const positions = requestedLines ? requestedLines.split(',').map(Number) : focused ? [1, 634, 788, 1005, 1020] : Array.from(new Set([
-    1, 634, 788, 1005, 1020, lineCount,
+  const positions = requestedLines ? requestedLines.split(',').map(Number) : focused ? [1, mermaidLine ?? 634, 788, 1005, 1020].filter((line) => line <= lineCount) : Array.from(new Set([
+    1, ...[634, 788, 1005, 1020].filter((line) => line <= lineCount), ...(mermaidLine ? [mermaidLine] : []), lineCount,
     ...Array.from({ length: Math.ceil(lineCount / 12) }, (_, index) => Math.min(lineCount, 1 + index * 12))
   ])).sort((a, b) => a - b);
   const requestedModes = process.argv.find((argument) => argument.startsWith('--modes='))?.slice('--modes='.length);
@@ -242,10 +247,10 @@ try {
         });
         console.log(`live line ${line} nearby blocks: ${JSON.stringify(nearbyBlocks)}`);
       }
-      const scenario = mode === 'live' && line === 634 ? ['preview', 'split', 'source'] : ['default'];
+      const scenario = mode === 'live' && line === mermaidLine ? ['preview', 'split', 'source'] : ['default'];
       for (const blockMode of scenario) {
         if (blockMode !== 'default') {
-          if (process.argv.includes('--details')) console.log('mermaid probe', await page.evaluate(() => {
+          if (process.argv.includes('--details')) console.log('mermaid probe', await page.evaluate((targetLine) => {
             const view = (window as any).__fontTestView();
             const rect = view.scrollDOM.getBoundingClientRect();
             const top = view.posAtCoords({ x: rect.left + 100, y: rect.top + 2 });
@@ -255,37 +260,46 @@ try {
               scrollTop: view.scrollDOM.scrollTop,
               scrollHeight: view.scrollDOM.scrollHeight,
               clientHeight: view.scrollDOM.clientHeight,
-              targetTop: view.lineBlockAt(view.state.doc.line(634).from).top,
+              targetTop: view.lineBlockAt(view.state.doc.line(targetLine).from).top,
               controls: Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-toolbar'))
                 .map((item) => item.getAttribute('aria-label')) };
-          }));
-          await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-toolbar'))
-            .some((item) => item.getAttribute('aria-label')?.includes('640')), { timeout: 5000 });
+          }, line));
+          await page.waitForFunction((targetLine) => {
+            const anchor = String((window as any).__fontTestView().state.doc.line(targetLine).from);
+            return Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-toolbar'))
+              .some((item) => item.dataset.meoBlockFrom === anchor);
+          }, { timeout: 5000 }, line);
         }
         if (blockMode !== 'default' && blockMode !== 'preview') {
-          const modeChange = await page.evaluate(() => {
+          const modeChange = await page.evaluate((targetLine) => {
+            const anchor = String((window as any).__fontTestView().state.doc.line(targetLine).from);
             const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-mermaid-mode-btn'))
-              .find((item) => item.closest('[role="group"]')?.getAttribute('aria-label')?.includes('640'));
+              .find((item) => (item.closest('[role="group"]') as HTMLElement | null)?.dataset.meoBlockFrom === anchor);
             if (!button) return 'missing';
             button.click();
             return button.getAttribute('aria-label');
-          });
+          }, line);
           if (modeChange === 'missing') {
             const visibleControls = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-mode-btn'))
               .map((item) => item.closest('[role="group"]')?.getAttribute('aria-label')));
-            throw new Error(`Mermaid controls at line 640 were not visible: ${JSON.stringify(visibleControls)}`);
+            throw new Error(`Mermaid controls at line ${line} were not visible: ${JSON.stringify(visibleControls)}`);
           }
-          await page.waitForFunction((expectedMode) => Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-toolbar'))
-            .some((item) => item.getAttribute('aria-label')?.includes('640')
-              && item.dataset.meoMermaidMode === expectedMode), { timeout: 5000 }, blockMode);
+          await page.waitForFunction(({ targetLine, expectedMode }) => {
+            const anchor = String((window as any).__fontTestView().state.doc.line(targetLine).from);
+            return Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-toolbar'))
+              .some((item) => item.dataset.meoBlockFrom === anchor && item.dataset.meoMermaidMode === expectedMode);
+          }, { timeout: 5000 }, { targetLine: line, expectedMode: blockMode });
           if (!process.argv.includes('--rapid-mermaid')) {
             await page.evaluate(async () => { for (let i = 0; i < 20; i++) await new Promise(requestAnimationFrame); });
           }
         }
         if (blockMode !== 'default') {
-          const actualMode = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-toolbar'))
-            .find((item) => item.getAttribute('aria-label')?.includes('640'))?.dataset.meoMermaidMode);
-          if (actualMode !== blockMode) throw new Error(`Mermaid line 640 should be ${blockMode}, got ${actualMode}`);
+          const actualMode = await page.evaluate((targetLine) => {
+            const anchor = String((window as any).__fontTestView().state.doc.line(targetLine).from);
+            return Array.from(document.querySelectorAll<HTMLElement>('.meo-mermaid-toolbar'))
+              .find((item) => item.dataset.meoBlockFrom === anchor)?.dataset.meoMermaidMode;
+          }, line);
+          if (actualMode !== blockMode) throw new Error(`Mermaid line ${line} should be ${blockMode}, got ${actualMode}`);
         }
         for (let step = 0; step < 5; step++) {
           const up = await measureStep(mode, 1);
