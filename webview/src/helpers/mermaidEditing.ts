@@ -286,6 +286,11 @@ function updateMermaidModeButton(
     uiLanguage
   });
   const label = getUiStrings(uiLanguage)[mode];
+  const buttonLabel = `${label}, ${decision.modeButton.label}`;
+  // Source or measured-layout updates can arrive between pointerdown and up.
+  // Replacing an unchanged label detaches the pressed target and cancels click.
+  if (button.getAttribute('aria-label') === buttonLabel
+    && button.querySelector('.meo-mermaid-mode-label')?.textContent === label) return;
   const text = button.ownerDocument.createElement('span');
   text.className = 'meo-mermaid-mode-label';
   text.textContent = label;
@@ -305,7 +310,7 @@ function updateMermaidModeButton(
   path.setAttribute('d', 'M6.24 16.8a4.8 4.8 0 0 1 0-9.6h6.32M8.8 3.44l3.76 3.76-3.76 3.76M17.76 7.2a4.8 4.8 0 0 1 0 9.6h-6.32M15.2 13.04l-3.76 3.76 3.76 3.76');
   icon.appendChild(path);
   button.replaceChildren(icon, text);
-  button.setAttribute('aria-label', `${label}, ${decision.modeButton.label}`);
+  button.setAttribute('aria-label', buttonLabel);
   button.dataset.tooltip = decision.modeButton.label;
   button.dataset.tooltipLiveUpdate = 'true';
 }

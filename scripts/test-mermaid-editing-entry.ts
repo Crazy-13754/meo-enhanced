@@ -4,6 +4,7 @@ import darkPlus from '@shikijs/themes/dark-plus';
 import lightPlus from '@shikijs/themes/light-plus';
 import { setShikiTheme, type RawVscodeTheme } from '../webview/src/helpers/shikiHighlighter';
 import { applyUiTheme } from '../webview/src/helpers/uiTheme';
+import { createMermaidToolbarWidget } from '../webview/src/helpers/mermaidEditing';
 
 function applyCodeTheme(appearance: 'light' | 'dark'): void {
   const theme = (appearance === 'light' ? lightPlus : darkPlus) as RawVscodeTheme;
@@ -18,5 +19,6 @@ function applyCodeTheme(appearance: 'light' | 'dark'): void {
     applyCodeTheme: typeof applyCodeTheme;
     editorViewportBounds: typeof editorViewportBounds;
     applyUiTheme: typeof applyUiTheme;
+    createMermaidToolbarWidget: typeof createMermaidToolbarWidget;
   };
-}).MermaidEditingHarness = { createEditor, refreshMermaidTheme, applyCodeTheme, editorViewportBounds, applyUiTheme };
+}).MermaidEditingHarness = { createEditor, refreshMermaidTheme, applyCodeTheme, editorViewportBounds, applyUiTheme, createMermaidToolbarWidget };

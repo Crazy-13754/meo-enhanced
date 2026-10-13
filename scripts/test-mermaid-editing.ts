@@ -974,6 +974,56 @@ async function assertDocumentLineClickKeepsViewport(
   }
 }
 
+async function assertMermaidModePointerSurvivesToolbarUpdate(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.id = 'mermaid-mode-pointer-probe';
+    host.style.cssText = 'position:fixed;inset:0;z-index:10000;background:white';
+    document.body.append(host);
+    const harness = (window as any).MermaidEditingHarness;
+    (window as any).__mermaidModePointerProbe = harness.createEditor({
+      parent: host, text: '```mermaid\nflowchart LR\nA --> B\n```', initialMode: 'live', onApplyChanges() {}
+    });
+  });
+  const selector = '#mermaid-mode-pointer-probe .meo-mermaid-mode-label';
+  try {
+    await page.waitForSelector(selector);
+    await page.hover(selector);
+    await page.waitForFunction((query) => {
+      const label = document.querySelector(query)!;
+      const rect = label.getBoundingClientRect();
+      return document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) === label;
+    }, {}, selector);
+    const label = (await page.$(selector))!;
+    const rect = (await label.boundingBox())!;
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.down();
+    try {
+      await page.evaluate(() => {
+        const harness = (window as any).MermaidEditingHarness;
+        const view = (window as any).__mermaidModePointerProbe.view;
+        // The real toolbar update runs while the trusted gesture is held.
+        harness.createMermaidToolbarWidget(0, 1, 'preview', 'flowchart LR\nA --> C', view.state.doc.length)
+          .updateDOM(document.querySelector('#mermaid-mode-pointer-probe .meo-mermaid-toolbar'), view);
+      });
+      if (!await label.evaluate(element => element.isConnected)) {
+        throw new Error('Mermaid toolbar update detached the pressed mode label');
+      }
+    } finally {
+      await page.mouse.up();
+      await label.dispose();
+    }
+    await page.waitForFunction(() => document.querySelector('#mermaid-mode-pointer-probe .meo-mermaid-toolbar')
+      ?.getAttribute('data-meo-mermaid-mode') === 'split');
+  } finally {
+    await page.evaluate(() => {
+      (window as any).__mermaidModePointerProbe.destroy();
+      delete (window as any).__mermaidModePointerProbe;
+      document.getElementById('mermaid-mode-pointer-probe')?.remove();
+    });
+  }
+}
+
 async function main() {
   const build = await Bun.build({
     entrypoints: [path.join(repoRoot, 'scripts', 'test-mermaid-editing-entry.ts')],
@@ -1089,6 +1139,7 @@ async function main() {
     });
     // Display math now has a reading surface and main-document source editing.
     await waitForFrames(page);
+    await assertMermaidModePointerSurvivesToolbarUpdate(page);
 
     const defaultMode = await page.evaluate(() => {
       const latexRoot = document.querySelector<HTMLElement>('.meo-md-math-fenced-display')!;
