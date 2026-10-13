@@ -2821,7 +2821,18 @@ async function main() {
           let stableFrames = 0;
           for (let settleAttempt = 0; settleAttempt < 20; settleAttempt += 1) {
             await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            const pendingRect = pending.getBoundingClientRect();
+            // CodeMirror can recreate a virtualized block during measurement.
+            // A detached original has a zero rect and is not a settled baseline.
+            const currentPending = document.querySelector<HTMLElement>(
+              '.meo-mermaid-block[aria-busy="true"]:has(svg[height="3000"])'
+            );
+            if (!currentPending?.isConnected) {
+              stableFrames = 0;
+              previousSignature = '';
+              continue;
+            }
+            const pendingRect = currentPending.getBoundingClientRect();
+            if (pendingRect.height <= 0 || pendingRect.width <= 0) continue;
             const anchor = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
               .find((line) => (
                 line.getBoundingClientRect().top >= pendingRect.bottom &&
@@ -2837,7 +2848,7 @@ async function main() {
             });
             stableFrames = signature === previousSignature ? stableFrames + 1 : 0;
             previousSignature = signature;
-            if (stableFrames >= 2) {
+            if (stableFrames >= 2 && anchorTop !== null) {
               return {
                 text: anchor?.textContent ?? null,
                 top: anchorTop,
@@ -2857,7 +2868,7 @@ async function main() {
       }
       return null;
     });
-    if (!tallMermaidBefore || tallMermaidBefore.top === null) {
+    if (!tallMermaidBefore || tallMermaidBefore.top === null || tallMermaidBefore.blockHeight <= 0) {
       throw new Error(`Tall Mermaid did not enter the controlled pending state: ${JSON.stringify(tallMermaidBefore)}`);
     }
     const tallMermaidWheelDelta = -20;
