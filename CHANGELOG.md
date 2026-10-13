@@ -3,6 +3,9 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## Unreleased
+- Added Whitey dark mode using Typora Whitey Deep's palette, with Auto/Light/Dark choices, per-document appearance memory, and matching custom preset examples and HTML/PDF exports.
+
 ## 0.3.32
 - Validated retained Webview layout sizes against actual panel visibility, preventing an open outline from collapsing Preview during native tab switches while preserving normal resizing under VS Code's clipping containers.
 - Distinguished visible small panels from parked Webviews using browser intersection geometry, preserving hidden-tab reading positions without treating a fixed viewport size as hidden.

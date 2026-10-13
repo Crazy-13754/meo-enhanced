@@ -255,7 +255,7 @@ replaceCustomPreviewPresets([]);
 for (const id of ['default', 'github-readme', 'newsprint', 'whitey', 'obsidian-minimal']) {
   const example = await importExample(id);
   assert.equal(example.id, `user:${id}`, 'Standard examples import as custom copies without replacing built-ins');
-  assert.deepEqual(example.controls.appearance.options, id === 'newsprint' || id === 'whitey' ? ['light'] : ['auto', 'light', 'dark']);
+  assert.deepEqual(example.controls.appearance.options, id === 'newsprint' ? ['light'] : ['auto', 'light', 'dark']);
   assert.ok(!example.description.en.includes('MEO Markdown rendering'));
 }
 console.log('Custom preset import, persistence, recovery, CSS scope, theme support and frozen export checks passed.');

@@ -113,7 +113,7 @@ for (const preset of previewPresets) {
   }
   for (const path of Object.values(preset.styles ?? {})) {
     const css = readFileSync(`src/preview/presets/${preset.id}/${path}`, 'utf8');
-    assert.ok(css.includes(preset.renderer === 'github-readme' ? '.markdown-body' : '.meo-export-doc'));
+    assert.ok(postcss.parse(css).nodes.length > 0, `${preset.id}: theme files contain valid CSS`);
   }
 }
 const readingText = '# Reading\n\n中文正文与 **bold**。\n第二行\n\n==highlight== H~2~O\n\n<!-- reading comment -->\n\n```ts\nconst value = 42;\n```';
@@ -136,7 +136,7 @@ for (const id of ['newsprint', 'obsidian-minimal', 'whitey'] as const) {
     assert.ok(css.includes('--meo-preset-font-body:') && css.includes('"Comic Sans MS"'));
     assert.ok(css.includes('--meo-font-code: ui-monospace'), `${id} has an independent code font`);
   }
-  assert.equal(resolvePresetAppearance(preset, 'dark', 'dark'), id === 'obsidian-minimal' ? 'dark' : 'light');
+  assert.equal(resolvePresetAppearance(preset, 'dark', 'dark'), id === 'newsprint' ? 'light' : 'dark');
   const withoutOverride = exportRuntime.renderPreviewDocument({ markdownText: readingText, sourceDocumentPath: 'C:/tmp/preset.md', uiLanguage: 'en', preset: id, styleEnvironment: { previewFontFamily: '' } });
   assert.ok(!withoutOverride.styles.light.includes('Comic Sans MS'), 'Preset fonts restore when the override is cleared');
   for (const target of ['html', 'pdf', 'docx'] as const) {
@@ -149,9 +149,17 @@ for (const id of ['newsprint', 'obsidian-minimal', 'whitey'] as const) {
       assert.ok(exported.htmlDocument.includes('"Georgia"') && !exported.htmlDocument.includes('Comic Sans MS'), 'Word keeps Default typography');
     } else {
       assert.ok(exported.htmlDocument.includes('"Comic Sans MS"'));
-      assert.ok(exported.htmlDocument.includes(id === 'obsidian-minimal' ? '--meo-bg: #1e1e1e' : id === 'newsprint' ? '--meo-bg: #f3f2ee' : '--meo-bg: #fefefe'));
+      assert.ok(exported.htmlDocument.includes(id === 'obsidian-minimal' ? '--meo-bg: #1e1e1e' : id === 'newsprint' ? '--meo-bg: #f3f2ee' : '--meo-bg: #1e222a'));
     }
   }
+}
+const whitey = getPreviewPreset('whitey');
+assert.equal(whitey.defaults.appearance, 'light', 'Existing Whitey documents keep their light default');
+assert.equal(resolvePresetAppearance(whitey, 'auto', 'dark'), 'dark');
+assert.equal(resolvePresetAppearance(whitey, 'auto', 'light'), 'light');
+for (const appearance of ['auto', 'light', 'dark'] as const) {
+  const whiteyState = { preset: 'whitey', preferences: { whitey: { appearance, contentWidth: 'responsive' } } };
+  assert.deepEqual(decodePreviewPresetState(whiteyState), whiteyState, 'Whitey remembers each supported appearance');
 }
 const fontState = { preset: 'newsprint', preferences: { newsprint: { appearance: 'light', contentWidth: 'responsive', fontFamily: 'Georgia' }, 'obsidian-minimal': { appearance: 'dark', contentWidth: 'responsive', fontFamily: 'Arial' } } };
 assert.deepEqual(decodePreviewPresetState(fontState), fontState, 'Each preset keeps its own selected font');

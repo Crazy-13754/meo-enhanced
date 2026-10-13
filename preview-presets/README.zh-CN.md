@@ -21,7 +21,7 @@
 | [默认](examples/default/) | 浅色、深色 | `default` |
 | [GitHub README](examples/github-readme/) | 浅色、深色 | `github-readme` |
 | [Typora Newsprint](examples/newsprint/) | 浅色 | `default` + `common.css`、`light.css` |
-| [Typora Whitey](examples/whitey/) | 浅色 | `default` + `common.css`、`light.css` |
+| [Typora Whitey](examples/whitey/) | 浅色、深色 | `default` + `common.css`、主题 CSS |
 | [Obsidian Minimal](examples/obsidian-minimal/) | 浅色、深色 | `default` + `common.css`、主题 CSS |
 
 复制所需的整个文件夹，修改 `id`、中英文 `name` 与 CSS，再按“快速开始”导入。导入的是自定义副本，不会替换内置预设。默认与 GitHub 示例的主题文件提供覆写入口，基础 CSS 由扩展继承；默认副本使用固定的基础配色，GitHub 副本继承阅读外观，Markdown 支持范围仍按自定义预设规则处理。

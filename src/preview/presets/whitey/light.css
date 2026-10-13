@@ -6,19 +6,4 @@
   --meo-muted: #777777;
   --meo-link: #2484c1;
   --meo-code-bg: #f8f8f8;
-  --meo-preset-font-body: Vollkorn, "Palatino Linotype", Palatino, Georgia, "Noto Serif SC", "Songti SC", SimSun, serif;
-  --meo-line-height: 1.65;
-}
-.meo-export-doc { max-width: 960px; padding-top: 48px; }
-.meo-export-doc :is(h1, h2, h3) { text-align: center; font-weight: 400; }
-.meo-export-doc h1 { font-size: 2.6em; margin-bottom: 0.9em; }
-.meo-export-doc h2 { font-size: 1.6em; margin-top: 2em; }
-.meo-export-doc h2::after { content: ''; display: block; width: 100px; margin: 0.45em auto 0; border-bottom: 1px solid var(--meo-fg); }
-.meo-export-doc h3 { font-size: 1.25em; font-style: italic; line-height: 1.4; }
-.meo-export-doc blockquote { border-left-width: 1px; }
-.meo-export-doc .meo-export-code-block-wrap > pre.meo-export-code-block { border: 1px solid var(--meo-code-border); border-radius: 0; background: var(--meo-bg); }
-.meo-export-doc :is(th, td) { border-left: 0; border-right: 0; background: transparent; }
-@media (max-width: 600px) {
-  .meo-export-doc { padding-top: 24px; }
-  .meo-export-doc h1 { font-size: 2em; }
 }

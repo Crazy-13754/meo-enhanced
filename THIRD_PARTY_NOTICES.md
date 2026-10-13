@@ -1,5 +1,10 @@
 # Third-Party Notices
 
+## Typora Whitey Deep palette
+
+- Source: https://github.com/typora/typora-default-themes/blob/master/themes/whitey-deep.css
+- Usage: Whitey's dark document palette adapts the upstream background, text, link, code background and divider colors to MEO's preset variables.
+
 ## Typora and Obsidian app marks
 
 - Typora source: https://typora.io/img/favicon-64.png

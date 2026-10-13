@@ -4,19 +4,19 @@
   "id": "whitey",
   "name": { "en": "Typora Whitey", "zh-CN": "Typora Whitey" },
   "description": {
-    "en": "White paper, centered headings and fine dividers inspired by Typora Whitey. Light theme only.",
-    "zh-CN": "参考 Typora Whitey 的白色纸面、居中标题与细分隔线，仅提供浅色主题。"
+    "en": "Centered headings and fine dividers inspired by Typora Whitey, with light and dark themes.",
+    "zh-CN": "参考 Typora Whitey 的居中标题与细分隔线，提供浅色与深色主题。"
   },
   "renderer": "meo",
-  "styles": { "light": "light.css" },
+  "styles": { "light": "light.css", "dark": "dark.css" },
   "author": "MEO Enhanced contributors",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "source": { "url": "https://github.com/typora/typora-default-themes/blob/master/themes/whitey.css" },
   "license": "MIT",
   "defaults": { "appearance": "light", "contentWidth": "responsive" },
   "controls": {
     "fontFamily": { "mode": "editable" },
-    "appearance": { "mode": "fixed", "options": ["light"] },
+    "appearance": { "mode": "editable", "options": ["auto", "light", "dark"] },
     "codeColoring": { "mode": "editable" },
     "htmlComments": { "mode": "editable" },
     "contentWidth": { "mode": "fixed" }

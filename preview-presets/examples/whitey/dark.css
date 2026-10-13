@@ -1,0 +1,10 @@
+/* Palette: https://github.com/typora/typora-default-themes/blob/master/themes/whitey-deep.css */
+:root {
+  --meo-bg: #1e222a;
+  --meo-fg: #cecfcf;
+  --meo-muted: #cecfcf;
+  --meo-link: #4fb3ff;
+  --meo-code-bg: #011f4b;
+  --meo-border: #dddddd;
+}
+.meo-export-doc .meo-export-code-block-wrap > pre.meo-export-code-block { background: var(--meo-code-bg); }

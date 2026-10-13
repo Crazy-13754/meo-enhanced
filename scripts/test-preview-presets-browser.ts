@@ -31,7 +31,7 @@ const browser = await launchTestBrowser();
 try {
   let nextDelay = 0;
   const errors: string[] = [];
-  const open = async (state: unknown = undefined, customPreviewPresets: readonly PreviewPresetDefinition[] = []) => {
+  const open = async (state: unknown = undefined, customPreviewPresets: readonly PreviewPresetDefinition[] = [], uiLanguage: 'en' | 'zh-CN' = 'zh-CN') => {
     const page = await browser.newPage();
     page.on('pageerror', error => errors.push(String(error)));
     await page.setViewport({ width: 1400, height: 760 });
@@ -51,7 +51,7 @@ try {
     await page.addScriptTag({ content: `window.__presetState=${JSON.stringify(state ?? { sourcePreviewScrollSyncEnabled: false })};window.__presetMessages=[];window.acquireVsCodeApi=()=>({getState(){return window.__presetState},setState(state){window.__presetState=state},postMessage(message){window.__presetMessages.push(message);window.__renderPreset(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent('message',{data:response}));});}});` });
     await page.addScriptTag({ path: 'webview/dist/mermaid.min.js' });
     await page.addScriptTag({ content: bundle });
-    await page.evaluate(init => window.dispatchEvent(new MessageEvent('message', { data: init })), { ...init, customPreviewPresets });
+    await page.evaluate(init => window.dispatchEvent(new MessageEvent('message', { data: init })), { ...init, uiLanguage, customPreviewPresets });
     await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.body?.textContent?.includes('Preview presets'));
     return page;
   };
@@ -388,6 +388,67 @@ try {
   assert.equal(await fontPage.$eval('.preview-font-family-control select', element => (element as HTMLSelectElement).value), 'Georgia');
   await fontPage.close();
   await fontReopened.close();
+  for (const language of ['zh-CN', 'en'] as const) {
+    const whiteyPage = await open(undefined, [], language);
+    await whiteyPage.select('.preview-preset-control select', 'whitey');
+    const waitWhitey = async (appearance: 'light' | 'dark') => whiteyPage.waitForFunction(appearance => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+      const root = doc?.querySelector('.meo-export-doc');
+      const diagram = doc?.querySelector<HTMLElement>('.meo-export-mermaid.is-rendered');
+      return root && doc?.defaultView?.getComputedStyle(root).backgroundColor === (appearance === 'dark' ? 'rgb(30, 34, 42)' : 'rgb(254, 254, 254)')
+        && diagram?.dataset.meoPreviewMermaidPreset === 'whitey' && diagram.dataset.meoPreviewMermaidAppearance === appearance;
+    }, {}, appearance);
+    await waitWhitey('light');
+    const whiteyTypography = async () => whiteyPage.$eval('.preview-frame', frame => {
+      const doc = (frame as HTMLIFrameElement).contentDocument!;
+      return ['.meo-export-doc', 'h1', 'h2', 'pre.meo-export-code-block', 'th', 'td'].map(selector => {
+        const style = doc.defaultView!.getComputedStyle(doc.querySelector(selector)!);
+        return [style.fontFamily, style.fontSize, style.lineHeight, style.fontWeight, style.padding, style.maxWidth, style.textAlign];
+      });
+    });
+    const lightTypography = await whiteyTypography();
+    assert.equal(await whiteyPage.$$eval('[data-preview-appearance-choice]', buttons => buttons.every(button => !(button as HTMLButtonElement).disabled)), true);
+    await whiteyPage.screenshot({ path: `tmp/whitey-${language}-light.png` });
+    await whiteyPage.click('[data-preview-appearance-choice="dark"]');
+    await waitWhitey('dark');
+    assert.deepEqual(await whiteyTypography(), lightTypography, 'Whitey appearance changes preserve manuscript typography');
+    const colors = await whiteyPage.$eval('.preview-frame', frame => {
+      const doc = (frame as HTMLIFrameElement).contentDocument!;
+      const style = (selector: string) => doc.defaultView!.getComputedStyle(doc.querySelector(selector)!);
+      return { text: style('.meo-export-doc').color, link: style('a').color, code: style('pre.meo-export-code-block').backgroundColor, heading: style('h1').textAlign };
+    });
+    assert.deepEqual(colors, { text: 'rgb(206, 207, 207)', link: 'rgb(79, 179, 255)', code: 'rgb(1, 31, 75)', heading: 'center' });
+    await whiteyPage.screenshot({ path: `tmp/whitey-${language}-dark.png` });
+    await whiteyPage.click('.preview-options-trigger');
+    await whiteyPage.click('[data-preview-source-coloring="true"]');
+    await whiteyPage.click('.preview-options-trigger');
+    await whiteyPage.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector<HTMLElement>('.meo-export-code-line-source')?.dataset.meoShiki);
+    await whiteyPage.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'requestExportSnapshot', requestId: 'whitey-dark-export' } })));
+    await whiteyPage.waitForFunction(() => (window as any).__presetMessages.some((message: any) => message.type === 'exportSnapshotResult' && message.requestId === 'whitey-dark-export'));
+    const snapshot = await whiteyPage.evaluate(() => (window as any).__presetMessages.findLast((message: any) => message.type === 'exportSnapshotResult' && message.requestId === 'whitey-dark-export').result.value);
+    assert.equal(snapshot.preset, 'whitey');
+    assert.equal(snapshot.appearance, 'dark');
+    const whiteySaved = await whiteyPage.evaluate(() => (window as any).__presetState);
+    const whiteyReopened = await open(whiteySaved, [], language);
+    await whiteyReopened.waitForFunction(() => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+      return doc?.documentElement.dataset.meoPreviewPreset === 'whitey' && doc.defaultView!.getComputedStyle(doc.querySelector('.meo-export-doc')!).backgroundColor === 'rgb(30, 34, 42)';
+    });
+    await whiteyReopened.close();
+    await whiteyPage.click('[data-preview-appearance-choice="auto"]');
+    await whiteyPage.click('.more-tools-wrapper > .format-button');
+    await whiteyPage.click('.editor-appearance-button[data-editor-appearance="light"]');
+    await waitWhitey('light');
+    await whiteyPage.click('.editor-appearance-button[data-editor-appearance="dark"]');
+    await waitWhitey('dark');
+    await whiteyPage.click('.more-tools-wrapper > .format-button');
+    await whiteyPage.click('[data-mode="source"]');
+    await whiteyPage.waitForSelector('.source-preview-button', { visible: true });
+    if (await whiteyPage.$eval('.source-preview-button', button => button.getAttribute('aria-pressed') !== 'true')) await whiteyPage.click('.source-preview-button');
+    await whiteyPage.waitForFunction(() => !document.querySelector<HTMLElement>('.preview-host')!.inert);
+    await waitWhitey('dark');
+    await whiteyPage.close();
+  }
   const invalidCodePreset = createCustomPreviewPreset(parseCustomPreviewPresetManifest({
     schemaVersion: 1, id: 'invalid-code-size', name: 'Invalid code size', description: 'Readability fallback test',
     themes: { light: { css: 'light.css' }, dark: { css: 'dark.css' } }
