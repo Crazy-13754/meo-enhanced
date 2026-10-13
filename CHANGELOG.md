@@ -4,6 +4,7 @@ This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
 ## 0.3.29
+- Removed build-machine paths from the PDF browser runtime and checked every packaged text file before release, while preserving relocated QuickJS/WASM proxy support.
 - Added GitHub README and custom Preview presets, with import, update, sharing, visibility and removal controls in Settings. Preset authoring guides and examples are available on GitHub; HTML and PDF follow the selected preset and appearance while Word retains its fixed document format.
 - Preserved the reading position when switching presets in full and split Preview, including rapid changes and late render responses.
 - Added Obsidian wiki images and vault-aware resource lookup, with readable Unicode link targets.

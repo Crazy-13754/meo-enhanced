@@ -836,6 +836,14 @@ and write release notes from that inventory. Do not describe an unconfirmed repo
 as fixed. Record the candidate commit, clean working-tree state, runtime versions,
 commands, exit codes, log locations, and final VSIX size and SHA-256.
 
+After packaging, run `bun scripts/test-vsix-contents.ts <artifact.vsix>` against
+the final archive. This verifies CRCs, release manifest identity, file inventory,
+licenses, and every UTF-8 text file (including VSIX metadata) for private build
+paths and credentials. `bun run package:check` also checks prospective package
+contents and relocated Puppeteer/QuickJS/WASM operation in Node without development
+dependencies. Publish the same final file to every release channel; rebuilding
+after acceptance requires repeating the artifact checks.
+
 When font-size or viewport behavior changes, supplement the release gate with
 `bun scripts/test-font-size-full-document.ts --document=<absolute-markdown-path>
 --confirm-long-run` on a representative rich document. The runner checks every
