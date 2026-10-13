@@ -1727,7 +1727,7 @@ async function main() {
       previewToolbarLayout.selectRadii.some((radius) => radius !== 8) ||
       previewToolbarLayout.segmentedCount !== 1 ||
       previewToolbarLayout.segmentedHeights.some((height) => height !== 26) ||
-      JSON.stringify(previewToolbarLayout.labels) !== JSON.stringify(['预设', '预览主题']) ||
+      JSON.stringify(previewToolbarLayout.labels) !== JSON.stringify(['预览预设', '预览主题']) ||
       !previewToolbarLayout.widthControlDisabled ||
       previewToolbarLayout.appearance !== 'light' ||
       previewToolbarLayout.colorSchemes.some((scheme) => scheme !== 'dark') ||

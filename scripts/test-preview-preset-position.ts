@@ -170,12 +170,41 @@ try {
       // A trusted Source interaction ends the earlier Preview mode chain. Its
       // ordinary-line projection has no rendered range and must retain the band.
       await page.click('[data-mode="source"]');
+      // This case starts with a settled Source projection; rapid mode-entry input is covered separately.
+      await page.evaluate(async () => {
+        let previous = '';
+        let stableFrames = 0;
+        for (let frame = 0; frame < 120; frame++) {
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+          const scroller = document.querySelector<HTMLElement>('.cm-scroller')!;
+          const current = [scroller.scrollTop, scroller.scrollHeight, scroller.clientHeight].join(':');
+          stableFrames = current === previous ? stableFrames + 1 : 0;
+          previous = current;
+          if (stableFrames >= 3 && scroller.clientHeight > 0) return;
+        }
+        throw new Error('Source reading surface did not settle before trusted scrolling');
+      });
       const sourceBounds = await page.$eval('.cm-scroller', element => {
         const rect = element.getBoundingClientRect();
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       });
+      // Explicitly focus Source after leaving the iframe before beginning its wheel gesture.
+      await page.mouse.click(sourceBounds.x, sourceBounds.y);
+      await settle();
+      const sourceGesture = await page.$eval('.cm-scroller', element => {
+        const bounds = element.getBoundingClientRect();
+        const band = bounds.top + element.clientHeight / 3;
+        const paragraph = [...element.querySelectorAll<HTMLElement>('.cm-line')].find(line => {
+          const rect = line.getBoundingClientRect();
+          return line.textContent!.startsWith('Paragraph ') && rect.top > band && rect.bottom < bounds.bottom;
+        });
+        if (!paragraph) throw new Error('Source gesture needs a visible ordinary paragraph below the reading band');
+        const rect = paragraph.getBoundingClientRect();
+        return { top: element.scrollTop, deltaY: rect.top + rect.height * 0.37 - band };
+      });
       await page.mouse.move(sourceBounds.x, sourceBounds.y);
-      await page.mouse.wheel({ deltaY: 80 });
+      await page.mouse.wheel({ deltaY: sourceGesture.deltaY });
+      await page.waitForFunction(previous => document.querySelector<HTMLElement>('.cm-scroller')!.scrollTop !== previous, {}, sourceGesture.top);
       await settle(350);
       await page.click('[data-mode="preview"]');
       await settle(350);

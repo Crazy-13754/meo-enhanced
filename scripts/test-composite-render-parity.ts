@@ -57,7 +57,7 @@ try {
   await page.setViewport({ width: 900, height: 2000 });
   await page.setContent('<div id="live"></div><div id="preview"></div>');
   await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
-  await page.addStyleTag({ content: ':root{--meo-semantic-blockquoteBorder:#8c959f}' });
+  await page.addStyleTag({ content: ':root{--meo-semantic-blockquoteBorder:#8c959f;--meo-semantic-blockquoteForeground:#24292f}' });
   await page.addScriptTag({ content: await build.outputs[0]!.text() });
   for (const cell of cases) {
     const source = '| Content |\n| --- |\n| ' + cell + ' |';

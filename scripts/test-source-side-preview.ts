@@ -260,7 +260,7 @@ try {
   });
   assert.deepEqual(sideTools, {
     expanded: 'true', open: true,
-    rows: ['Preset', 'Preview theme', 'Font', 'Width', 'Code color', 'HTML comments'],
+    rows: ['Preview preset', 'Preview theme', 'Font', 'Width', 'Code color', 'HTML comments'],
     hasExport: false, belowSync: true, icon: 'ellipsis', text: '',
     size: { width: 20, height: 20 }, borderRadius: '50%', boxShadow: 'none',
     controlsVisible: [true, true, true, true, true, true], editorFocused: true

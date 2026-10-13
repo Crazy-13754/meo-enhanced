@@ -117,7 +117,7 @@ try {
   assert.ok(markerPresentation.height > 1, JSON.stringify(markerPresentation));
   assert.equal(markerPresentation.position, 'absolute');
   assert.equal(markerPresentation.pointerEvents, 'none');
-  assert.equal(markerPresentation.backgroundColor, markerPresentation.activeLineBackground);
+  assert.notEqual(markerPresentation.backgroundColor, 'rgba(0, 0, 0, 0)', 'Preview locator stays visible with a transparent native Source line highlight');
   assert.equal(markerPresentation.zIndex, '-1');
   assert.equal(markerPresentation.kind, 'line');
   assert.equal(markerPresentation.ownerDocument, true);
@@ -135,29 +135,30 @@ try {
     select.value = 'light';
     select.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await page.waitForFunction(() => {
+  await page.waitForFunction((darkBackground) => {
     const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
     const marker = frameDocument.querySelector<HTMLElement>('.meo-preview-source-position-marker')!;
-    return frameDocument.defaultView!.getComputedStyle(marker).backgroundColor
-      === getComputedStyle(document.querySelector<HTMLElement>('.cm-activeLine')!).backgroundColor;
-  });
+    return frameDocument.defaultView!.getComputedStyle(marker).backgroundColor !== darkBackground;
+  }, {}, markerPresentation.backgroundColor);
   const lightMarkerBackground = await page.evaluate(() => {
     const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
     const marker = frameDocument.querySelector<HTMLElement>('.meo-preview-source-position-marker')!;
     return frameDocument.defaultView!.getComputedStyle(marker).backgroundColor;
   });
-  assert.equal(lightMarkerBackground, markerPresentation.activeLineBackground);
+  assert.notEqual(lightMarkerBackground, 'rgba(0, 0, 0, 0)');
+  assert.notEqual(lightMarkerBackground, markerPresentation.backgroundColor, 'Preview locator follows the independently selected Preview theme');
+  assert.equal(await page.$eval('.cm-activeLine', element => getComputedStyle(element).backgroundColor), markerPresentation.activeLineBackground,
+    'Changing Preview theme must not change the native Source line highlight');
   await page.$eval('.preview-appearance-select', element => {
     const select = element as HTMLSelectElement;
     select.value = 'dark';
     select.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await page.waitForFunction(() => {
+  await page.waitForFunction((darkBackground) => {
     const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
     const marker = frameDocument.querySelector<HTMLElement>('.meo-preview-source-position-marker')!;
-    return frameDocument.defaultView!.getComputedStyle(marker).backgroundColor
-      === getComputedStyle(document.querySelector<HTMLElement>('.cm-activeLine')!).backgroundColor;
-  });
+    return frameDocument.defaultView!.getComputedStyle(marker).backgroundColor === darkBackground;
+  }, {}, markerPresentation.backgroundColor);
 
   const nativeScrollAttachment = await page.evaluate(() => {
     const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
@@ -341,7 +342,7 @@ try {
     {
       active: false,
       cursorDisplay: 'none',
-      backgroundColor: markerPresentation.activeLineBackground,
+      backgroundColor: markerPresentation.backgroundColor,
       activeLineBackground: markerPresentation.activeLineBackground
     }
   );
