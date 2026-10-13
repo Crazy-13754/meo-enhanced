@@ -3632,6 +3632,36 @@ window.addEventListener('paste', async (event) => {
   });
 });
 
+// Protect the first tab deactivation too: parking can clamp Preview before blur.
+const initialReadingLayout = root.getBoundingClientRect();
+root.style.minWidth = `${initialReadingLayout.width}px`;
+root.style.minHeight = `${initialReadingLayout.height}px`;
+let readingLayoutPending = false;
+const readingLayoutObserver = new IntersectionObserver(entries => {
+  readingLayoutPending = false;
+  const entry = entries.at(-1);
+  if (!entry?.isIntersecting || entry.intersectionRect.width <= 0 || entry.intersectionRect.height <= 0) return;
+  // The HTML viewport is independent of the retained app minimum. Browser
+  // intersection includes ancestor frames, distinguishing an actual small
+  // panel from a parked Webview without relying on its size or focus.
+  const { width, height } = entry.boundingClientRect;
+  if (width <= 0 || height <= 0) return;
+  const minWidth = `${width}px`;
+  const minHeight = `${height}px`;
+  if (root.style.minWidth !== minWidth) root.style.minWidth = minWidth;
+  if (root.style.minHeight !== minHeight) root.style.minHeight = minHeight;
+});
+const updateReadingLayout = (): void => {
+  if (readingLayoutPending) return;
+  readingLayoutPending = true;
+  // Refresh the initial intersection on every resize, even when the visible
+  // ratio stays constant. Coalesce pending requests and avoid synchronous
+  // layout reads in the resize handler.
+  readingLayoutObserver.disconnect();
+  readingLayoutObserver.takeRecords();
+  readingLayoutObserver.observe(document.documentElement);
+};
+updateReadingLayout();
 window.addEventListener('blur', () => {
   commitEditorTransientEdits();
 });
@@ -3653,6 +3683,7 @@ window.addEventListener('focus', () => {
 });
 
 window.addEventListener('beforeunload', () => {
+  readingLayoutObserver.disconnect();
   settingsWindow?.dispose();
   largeDocumentTooltip?.dispose();
   tooltipBinding.dispose();
@@ -3684,6 +3715,7 @@ window.addEventListener('beforeunload', () => {
 });
 
 window.addEventListener('resize', () => {
+  updateReadingLayout();
   findPanelController.updateAnchor();
   if (editor) {
     editor.refreshSelectionOverlay();

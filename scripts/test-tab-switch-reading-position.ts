@@ -17,6 +17,20 @@ const build = await Bun.build({ entrypoints: ['scripts/test-preview-reading-surf
 assert.ok(build.success, build.logs.map(String).join('\n'));
 const bundle = await build.outputs[0]!.text();
 const css = await readFile('webview/src/styles.css', 'utf8');
+type ReadingView = 'live' | 'source' | 'preview' | 'linked' | 'independent';
+type NativeView = 'first-selection' | 'initial-selection' | 'other-document';
+const cases: Array<{ view: ReadingView; native: NativeView; outlineVisible: boolean; preset: string }> = [];
+const nativeViews: NativeView[] = ['first-selection', 'initial-selection', 'other-document'];
+for (const view of ['live', 'source', 'preview', 'linked', 'independent'] as const) {
+  for (const native of nativeViews) cases.push({ view, native, outlineVisible: false, preset: 'default' });
+}
+for (const preset of ['default', 'github-readme', 'whitey', 'obsidian-minimal', 'newsprint']) {
+  for (const view of ['preview', 'linked', 'independent'] as const) {
+    for (const native of preset === 'default' ? nativeViews : ['other-document'] as const) {
+      cases.push({ view, native, outlineVisible: true, preset });
+    }
+  }
+}
 const browser = await launchTestBrowser();
 let primaryError: unknown;
 const captureSurfaces = () => {
@@ -42,15 +56,14 @@ const captureSurfaces = () => {
   return surfaces;
 };
 try {
-  for (const view of ['live', 'source', 'preview', 'linked', 'independent'] as const) {
-    for (const native of ['first-selection', 'initial-selection', 'other-document'] as const) {
+  for (const { view, native, outlineVisible, preset } of cases) {
       const initialNative = native === 'initial-selection';
-      const label = `${view}: ${native}`;
+      const label = `${view}: ${native}${outlineVisible ? `, retained with outline (${preset})` : ''}`;
       const page = await browser.newPage();
       let adapter: ReturnType<typeof createVscodeViewNavigationAdapter> | undefined;
       try {
         await page.setViewport({ width: 1200, height: 800 });
-        await page.setContent('<!doctype html><style>html,body{height:100%;margin:0}#meo{width:100%;height:100%;border:0}#native{display:none}</style><input id="native"><iframe id="meo"></iframe>');
+        await page.setContent('<!doctype html><style>html,body{height:100%;margin:0}#meo{width:100%;height:100%;border:0}#native{display:none;position:fixed;top:0;left:0}</style><input id="native"><iframe id="meo"></iframe>');
         const frame = await (await page.$('#meo'))!.contentFrame();
         assert.ok(frame);
         page.setDefaultTimeout(5000);
@@ -63,16 +76,17 @@ try {
         await frame.addScriptTag({ content: 'window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.parent.__renderTabPreview(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent("message",{data:response}));});}});' });
         await frame.addScriptTag({ content: `window.__captureTabSurfaces = ${captureSurfaces.toString()};` });
         await frame.addScriptTag({ content: bundle });
-        await frame.evaluate(text => window.dispatchEvent(new MessageEvent('message', {
+        await frame.evaluate(({ text, outlineVisible, preset }) => window.dispatchEvent(new MessageEvent('message', {
           data: {
             type: 'init', documentId: 'file:///tab-reading.md', text, version: 1, savedRevision: { version: 1, text }, diagnostics: [], mode: 'live', uiLanguage: 'en',
             sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, editorAppearance: 'light', editorFontSizeMode: 'auto', editorFontSize: 14,
             gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false,
-            contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260, restoreReadingPositionOnOpen: false, vscodeTheme: null
+            contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible, outlineWidth: outlineVisible ? 340 : 260, previewPreset: preset, restoreReadingPositionOnOpen: false, vscodeTheme: null
           }
-        })), text);
+        })), { text, outlineVisible, preset });
         await frame.waitForSelector('.cm-editor.meo-mode-live');
         await frame.waitForFunction(() => !document.querySelector('.editor-wrapper')?.classList.contains('meo-preload-editor-shell'));
+        assert.equal(await frame.$eval('.preview-preset-control select', element => (element as HTMLSelectElement).value), preset, `${label}: selected preset`);
         vscodeWindow.activeTextEditor = initialNative ? nativeEditor : undefined;
         vscodeWindow.visibleTextEditors = [];
         nativeEditor.selection = { start: 0, end: 0 };
@@ -115,11 +129,32 @@ try {
         await new Promise(resolve => setTimeout(resolve, 250));
         const before = await frame.evaluate(captureSurfaces);
         assert.ok(before.every(surface => surface.top > 500), `${label}: fixture must scroll: ${JSON.stringify(before)}`);
-        for (const nativeOffset of [0, 180]) {
+        const tabReturns = outlineVisible ? [
+          { nativeOffset: 0, width: 300, height: 150, parkBeforeBlur: false },
+          { nativeOffset: 180, width: 320, height: 180, parkBeforeBlur: true },
+          { nativeOffset: 0, width: 260, height: 130, parkBeforeBlur: true },
+          { nativeOffset: 180, width: 300, height: 150, parkBeforeBlur: true }
+        ] : [{ nativeOffset: 0, parkBeforeBlur: false }, { nativeOffset: 180, parkBeforeBlur: false }];
+        for (const { nativeOffset, parkBeforeBlur, ...parkedSize } of tabReturns) {
           nativeEditor.selection = { start: nativeOffset, end: nativeOffset };
           hidden = true;
-          await page.evaluate(() => { document.getElementById('meo')!.style.display = 'none'; document.getElementById('native')!.style.display = 'block'; });
-          await page.focus('#native');
+          await page.evaluate(() => { document.getElementById('native')!.style.display = 'block'; });
+          if (!parkBeforeBlur) await page.focus('#native');
+          await page.evaluate(({ outlineVisible, width, height }) => {
+            const retained = document.getElementById('meo')!;
+            // VS Code parks retained Webviews away from the active editor.
+            // A wide outline used to collapse Preview in the smaller frame.
+            if (outlineVisible) {
+              Object.assign(retained.style, { position: 'absolute', left: '-10000px', width: `${width}px`, height: `${height}px` });
+              // Mouse tab switches can lay out the parked frame before blur.
+              // Force that layout rather than letting the later focus hide it.
+              const preview = (retained as HTMLIFrameElement).contentDocument!
+                .querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+              void preview.documentElement.clientWidth;
+            }
+            else retained.style.display = 'none';
+          }, { outlineVisible, ...parkedSize } as { outlineVisible: boolean; width?: number; height?: number });
+          if (parkBeforeBlur) await page.focus('#native');
           const switchedEditor = native === 'other-document'
             ? { ...nativeEditor, document: { ...hostDocument, uri: { ...uri, toString: () => 'file:///other.md' } } }
             : nativeEditor;
@@ -128,7 +163,10 @@ try {
           await adapter.revealSelectionForEditor(switchedEditor as never);
           await adapter.revealCurrentEditorSelection();
           await new Promise(resolve => setTimeout(resolve, 100));
-          await page.evaluate(() => { document.getElementById('native')!.style.display = 'none'; document.getElementById('meo')!.style.display = ''; });
+          await page.evaluate(() => {
+            document.getElementById('native')!.style.display = 'none';
+            Object.assign(document.getElementById('meo')!.style, { display: '', position: '', left: '', width: '', height: '' });
+          });
           vscodeWindow.activeTextEditor = undefined;
           vscodeWindow.visibleTextEditors = [];
           await page.focus('#meo');
@@ -151,10 +189,18 @@ try {
               && Math.abs(surface.top - expected.top) <= 1 && Math.abs(surface.offset - expected.offset) <= 1;
           })), `${label}, native offset ${nativeOffset}: tab return lost reading position, before=${JSON.stringify(before)}, after=${JSON.stringify(after)}`);
         }
-        console.log(`PASS ${label}: two tab returns retained visible content and viewport on every sampled frame`);
+        if (outlineVisible) {
+          for (const [width, height] of [[1000,700],[600,350],[300,150],[301,150],[300,151],[1200,800]]) {
+            await page.setViewport({ width: width!, height: height! });
+            await frame.waitForFunction(() => {
+              const rect = document.getElementById('app')!.getBoundingClientRect();
+              return Math.abs(rect.width - innerWidth) <= 1 && Math.abs(rect.height - innerHeight) <= 1;
+            });
+          }
+        }
+        console.log(`PASS ${label}: ${tabReturns.length} tab returns retained visible content and viewport on every sampled frame`);
       } catch (error) { throw new Error(label, { cause: error }); }
       finally { adapter?.dispose(); await page.close(); }
-    }
   }
 } catch (error) { primaryError = error; throw error; }
 finally { if (primaryError === undefined) await closeTestBrowser(browser); else await closeTestBrowser(browser, primaryError); }

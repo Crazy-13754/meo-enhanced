@@ -72,20 +72,27 @@ try {
       && !document.querySelector('.editor-host')!.hasAttribute('data-preview-cover'));
     const frameBox = await (await page.$('.preview-frame'))!.boundingBox();
     assert.ok(frameBox);
+    if (scenario === 'gap') await page.evaluate(async () => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      const anchor = Array.from(doc.querySelectorAll('p')).find(p => p.textContent!.startsWith('Reading paragraph 4:'))!;
+      (anchor as HTMLElement).style.marginBottom = '300px';
+      // Establish whitespace geometry before sampling the reading position.
+      // Otherwise its pending resize is mixed into the neutral image commit.
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    });
     await page.mouse.move(frameBox.x + frameBox.width / 2, frameBox.y + frameBox.height / 2);
     await page.mouse.wheel({deltaY: 1});
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    const before = await page.evaluate(({ margin, gap }) => {
+    const before = await page.evaluate(({ margin }) => {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
       const anchor = Array.from(doc.querySelectorAll('p')).find(p => p.textContent!.startsWith('Reading paragraph 4:'))!;
       anchor.setAttribute('data-reading-anchor', 'true');
       // Put the reading band inside whitespace while the current top stays on
       // a real paragraph. The fixed-size image commit must not quantize it.
-      if (gap) (anchor as HTMLElement).style.marginBottom = '300px';
       anchor.scrollIntoView({block: 'start'});
       if (margin) doc.scrollingElement!.scrollTop -= 10;
       return anchor.getBoundingClientRect().top;
-    }, { margin: scenario === 'margin', gap: scenario === 'gap' });
+    }, { margin: scenario === 'margin' });
     const beforeHeight = await page.$eval('.preview-frame', element =>
       (element as HTMLIFrameElement).contentDocument!.scrollingElement!.scrollHeight);
     assert.ok(releaseImage, 'The visible image must start loading before moving the reading position');

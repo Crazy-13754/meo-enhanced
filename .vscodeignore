@@ -18,6 +18,7 @@ src/**
 **/*.map
 **/*.ts
 *.vsix
+debug.log
 **/.vscode-test.*
 scripts/**
 releases/**

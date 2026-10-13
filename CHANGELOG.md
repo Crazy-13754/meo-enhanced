@@ -3,6 +3,17 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## 0.3.32
+- Distinguished visible small panels from parked Webviews using browser intersection geometry, preserving hidden-tab reading positions without treating a fixed viewport size as hidden.
+- Coalesced reading-layout resize updates and removed synchronous layout reads from the resize handler, with coverage for adjacent small-panel sizes and different parked-frame dimensions.
+
+## 0.3.31
+- Fixed Source split Preview returning to the start when mouse tab switches park the retained Webview before its blur event. Reading layout protection now applies before tab deactivation, with regression coverage for both focus/parking orders and real panel resizing.
+
+## 0.3.30
+- Preserved Preview and Source split Preview reading positions when switching to native VS Code editor tabs with the document outline open. Retained tabs keep their reading layout while VS Code parks the Webview in a smaller iframe.
+- Kept hidden-tab reflow from disturbing delayed image layout updates, with regression coverage for all built-in Preview presets and same-file or different-file native tabs.
+
 ## 0.3.29
 - Removed build-machine paths from the PDF browser runtime and checked every packaged text file before release, while preserving relocated QuickJS/WASM proxy support.
 - Added GitHub README and custom Preview presets, with import, update, sharing, visibility and removal controls in Settings. Preset authoring guides and examples are available on GitHub; HTML and PDF follow the selected preset and appearance while Word retains its fixed document format.
