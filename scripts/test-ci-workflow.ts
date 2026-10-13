@@ -59,6 +59,9 @@ for (const command of requiredCommands) {
 if (runCommands.indexOf('bun run package:check') <= runCommands.indexOf('bun run build')) {
   throw new Error('Architecture gate must validate VSIX contents after building runtime artifacts');
 }
+if (runCommands.indexOf('bun run test:unit') <= runCommands.indexOf('bun run build')) {
+  throw new Error('CI must build Shiki language assets before the preset export unit checks');
+}
 
 const consolidatedUnitContracts = [
   'scripts/test-document-session.ts',
