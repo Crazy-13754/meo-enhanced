@@ -29,8 +29,14 @@ export default {
           async goto(url) { log('goto:' + url); fail('goto'); },
           async waitForFunction() { log('wait'); fail('wait'); },
           async setViewport() {},
-          async evaluate(fn) {
+          async evaluate(fn, argument) {
             const source = String(fn);
+            if (source.includes('meo-pdf-margin-probe')) {
+              log('margins');
+              fail('margins');
+              const margin = argument.defaultMargin * 96 / 25.4;
+              return { top: margin, right: margin, bottom: margin, left: margin };
+            }
             if (source.includes('__MEO_EXPORT_ERROR__')) {
               return process.env.MEO_EXPORT_TEST_PAGE_ERROR || null;
             }
@@ -98,6 +104,7 @@ try {
     launch: 'launching the browser',
     newPage: 'loading the rendered document',
     goto: 'loading the rendered document',
+    margins: 'loading the rendered document',
     wait: 'waiting for diagrams, formulas, and images',
     action: 'writing the export'
   } as const;
