@@ -351,8 +351,21 @@ try {
     throw new Error(`Font change displaced the active wheel owner: ${JSON.stringify({ wheelStart, activeWheel })}`);
   }
   await regressionPage.close();
-  console.log('font size viewport checks passed, including tall-table source retention');
 } finally {
   await browser.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
+
+// Warm the preceding table/code projections before shrinking the partially
+// folded code. A direct jump does not exercise CodeMirror's later scroll rewrite.
+const longCodeFixture = path.join(root, 'scripts/fixtures/github-readme/complex/README.md');
+const codeStart = fs.readFileSync(longCodeFixture, 'utf8').split(/\r?\n/)
+  .findIndex(line => line.trim() === 'const nestedLongLine01 = 1;') + 1;
+if (codeStart < 30) throw new Error('Missing indented long-code font regression fixture');
+const codePositions = [-29, -17, -5, 4, 7, 19, 31].map(offset => codeStart + offset);
+const longCodeRegression = Bun.spawn([
+  process.execPath, path.join(root, 'scripts/test-font-size-full-document.ts'),
+  `--document=${longCodeFixture}`, '--focus', `--lines=${codePositions.join(',')}`, '--modes=live'
+], { cwd: root, stdout: 'inherit', stderr: 'inherit' });
+if (await longCodeRegression.exited !== 0) throw new Error('Long-code font change flashed its reading anchor');
+console.log('font size viewport checks passed, including tall-table and folded-code source retention');

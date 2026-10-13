@@ -1480,13 +1480,16 @@ export class ViewportController {
     if (visualAnchor && visualTop !== undefined && currentBlock?.isConnected && !this.isUserScrolling()) {
       const ownerGeneration = this.generation + 1;
       const correctVisualAnchor = () => {
-        if (this.generation !== ownerGeneration) return;
+        if (this.generation !== ownerGeneration || this.activeElementRetentionCorrection !== correctVisualAnchor) return;
         const current = resolveVisualAnchor();
         if (current && !this.destroyed && !this.isUserScrolling()) this.writeScrollPosition({
           top: scroller.scrollTop + current.getBoundingClientRect().top - visualTop,
           left: scroller.scrollLeft
         });
       };
+      // CodeMirror's measured update can adjust scrolling after DOM observers
+      // run. Reconcile this font anchor in that same pre-paint update too.
+      this.activeElementRetentionCorrection = correctVisualAnchor;
       const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
         correctVisualAnchor();
       });
@@ -1496,7 +1499,11 @@ export class ViewportController {
       scroller.addEventListener('scroll', correctVisualAnchor, { passive: true });
       let remainingFrames = 8;
       const release = () => {
-        if (--remainingFrames <= 0 || this.destroyed || this.generation !== ownerGeneration) {
+        if (--remainingFrames <= 0 || this.destroyed || this.generation !== ownerGeneration
+          || this.activeElementRetentionCorrection !== correctVisualAnchor) {
+          if (this.activeElementRetentionCorrection === correctVisualAnchor) {
+            this.activeElementRetentionCorrection = null;
+          }
           observer?.disconnect();
           mutations.disconnect();
           scroller.removeEventListener('scroll', correctVisualAnchor);
