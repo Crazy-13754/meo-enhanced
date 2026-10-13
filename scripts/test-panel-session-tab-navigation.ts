@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock } from 'bun:test';
+import { decodeHostToWebviewMessage, decodeWebviewToHostMessage } from '../src/protocol/messages';
 import {
   createPanelSessionControllerParams,
   createPanelSessionTestDocument,
@@ -30,10 +31,13 @@ const [{ createPanelSessionController }, { createPendingDraftRecovery }, { creat
   import('../src/host/vscodeViewNavigationAdapter')
 ]);
 const messages: Array<Record<string, unknown>> = [];
+assert.equal(decodeWebviewToHostMessage({ type: 'requestWebviewVisibility', requestId: '' }), null);
+assert.equal(decodeHostToWebviewMessage({ type: 'webviewVisibilityResult', requestId: 'panel', visible: 1 }), null);
 let onViewState!: (event: { webviewPanel: typeof panel }) => void;
 const post = async (message: unknown) => { messages.push(message as Record<string, unknown>); return true; };
 const panel = {
   active: true,
+  visible: true,
   webview: { postMessage: post, onDidReceiveMessage: () => panelSessionDisposable() },
   onDidChangeViewState(listener: typeof onViewState) { onViewState = listener; return panelSessionDisposable(); },
   onDidDispose: () => panelSessionDisposable()
@@ -52,9 +56,16 @@ try {
   await controller.handleMessage({ type: 'ready' });
   assert.equal(messages.filter(message => message.type === 'init').length, 1);
   assert.equal(messages.some(message => message.type === 'revealSelection'), false);
+  await controller.handleMessage({ type: 'requestWebviewVisibility', requestId: 'visible-panel' });
+  assert.deepEqual(messages.at(-1), { type: 'webviewVisibilityResult', requestId: 'visible-panel', visible: true });
+  panel.visible = false;
+  await controller.handleMessage({ type: 'requestWebviewVisibility', requestId: 'hidden-panel' });
+  assert.deepEqual(messages.at(-1), { type: 'webviewVisibilityResult', requestId: 'hidden-panel', visible: false });
+  panel.visible = true;
   const nativeEditor = { document, selection: { start: 0, end: 0 } };
   for (const offset of [0, 8]) {
     panel.active = false;
+    panel.visible = false;
     onViewState({ webviewPanel: panel });
     nativeEditor.selection = { start: offset, end: offset };
     window.activeTextEditor = nativeEditor;
@@ -68,6 +79,7 @@ try {
     onActiveEditor(undefined);
     onVisibleEditors();
     panel.active = true;
+    panel.visible = true;
     onViewState({ webviewPanel: panel });
     await Bun.sleep(0);
   }

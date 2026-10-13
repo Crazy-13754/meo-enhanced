@@ -77,6 +77,7 @@ import type { ChangesReviewDiffSummary } from './application/changesReview';
 import { setGitDiffDetailsVisible } from './helpers/gitDiffDetails';
 import { createReadingPositionLifecycle, type ReadingPositionLifecycle } from './application/readingPositionLifecycle';
 import { createEditorFocusController } from './adapters/editorFocusController';
+import { createReadingLayoutController } from './adapters/readingLayout';
 
 let settingsWindow: ReturnType<typeof createSettingsWindow> | null = null;
 let uiColors: UiColors = { light: {}, dark: {} };
@@ -3317,6 +3318,8 @@ window.addEventListener('message', (event) => {
   }
 
   queueMicrotask(() => { if (settingsWindow?.isOpen()) settingsWindow.present(); });
+  if (message.type === 'webviewVisibilityResult') { readingLayout.accept(message); return; }
+  if (message.type === 'webviewVisibilityChanged') { readingLayout.refresh(); return; }
   if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
   if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
   if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }
@@ -3632,36 +3635,8 @@ window.addEventListener('paste', async (event) => {
   });
 });
 
-// Protect the first tab deactivation too: parking can clamp Preview before blur.
-const initialReadingLayout = root.getBoundingClientRect();
-root.style.minWidth = `${initialReadingLayout.width}px`;
-root.style.minHeight = `${initialReadingLayout.height}px`;
-let readingLayoutPending = false;
-const readingLayoutObserver = new IntersectionObserver(entries => {
-  readingLayoutPending = false;
-  const entry = entries.at(-1);
-  if (!entry?.isIntersecting || entry.intersectionRect.width <= 0 || entry.intersectionRect.height <= 0) return;
-  // The HTML viewport is independent of the retained app minimum. Browser
-  // intersection includes ancestor frames, distinguishing an actual small
-  // panel from a parked Webview without relying on its size or focus.
-  const { width, height } = entry.boundingClientRect;
-  if (width <= 0 || height <= 0) return;
-  const minWidth = `${width}px`;
-  const minHeight = `${height}px`;
-  if (root.style.minWidth !== minWidth) root.style.minWidth = minWidth;
-  if (root.style.minHeight !== minHeight) root.style.minHeight = minHeight;
-});
-const updateReadingLayout = (): void => {
-  if (readingLayoutPending) return;
-  readingLayoutPending = true;
-  // Refresh the initial intersection on every resize, even when the visible
-  // ratio stays constant. Coalesce pending requests and avoid synchronous
-  // layout reads in the resize handler.
-  readingLayoutObserver.disconnect();
-  readingLayoutObserver.takeRecords();
-  readingLayoutObserver.observe(document.documentElement);
-};
-updateReadingLayout();
+// Protection precedes blur because VS Code can park the frame before that event.
+const readingLayout = createReadingLayoutController(root, message => vscode.postMessage(message));
 window.addEventListener('blur', () => {
   commitEditorTransientEdits();
 });
@@ -3679,11 +3654,12 @@ window.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('focus', () => {
+  readingLayout.refresh();
   scheduleEditorSurfaceRecovery();
 });
 
 window.addEventListener('beforeunload', () => {
-  readingLayoutObserver.disconnect();
+  readingLayout.dispose();
   settingsWindow?.dispose();
   largeDocumentTooltip?.dispose();
   tooltipBinding.dispose();
@@ -3715,7 +3691,7 @@ window.addEventListener('beforeunload', () => {
 });
 
 window.addEventListener('resize', () => {
-  updateReadingLayout();
+  readingLayout.refresh();
   findPanelController.updateAnchor();
   if (editor) {
     editor.refreshSelectionOverlay();

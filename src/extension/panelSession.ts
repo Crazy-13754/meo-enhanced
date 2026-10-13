@@ -646,6 +646,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     switch (raw.type) {
+      case 'requestWebviewVisibility':
+        await postToWebview({ type: 'webviewVisibilityResult', requestId: raw.requestId, visible: panel.visible });
+        return;
       case 'previewPresetRequest':
         await postToWebview(params.performPreviewPresetAction ? await params.performPreviewPresetAction(raw) : {
           type: 'previewPresetResult', requestId: raw.requestId,
@@ -1110,6 +1113,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   });
 
   const viewStateSubscription = panel.onDidChangeViewState((event) => {
+    runBackground(postToWebview({ type: 'webviewVisibilityChanged', visible: event.webviewPanel.visible }), 'webview.visibility');
     if (event.webviewPanel.active) {
       onPanelActivated(event.webviewPanel);
       refreshGitBaseline({ forcePost: true, delayMs: GIT_BASELINE_REFRESH_DELAY_MS });

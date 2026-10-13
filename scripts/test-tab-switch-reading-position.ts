@@ -61,15 +61,49 @@ try {
       const label = `${view}: ${native}${outlineVisible ? `, retained with outline (${preset})` : ''}`;
       const page = await browser.newPage();
       let adapter: ReturnType<typeof createVscodeViewNavigationAdapter> | undefined;
+      let hidden = false;
+      let delayNextVisibility = false;
+      let releaseDelayedVisibility: (() => void) | null = null;
+      let visibilityHeld!: () => void;
+      const heldVisibility = new Promise<void>(resolve => { visibilityHeld = resolve; });
+      const visibilityResult = (requestId: string) => {
+        const response = { type: 'webviewVisibilityResult', requestId, visible: !hidden };
+        if (!delayNextVisibility) return response;
+        delayNextVisibility = false;
+        return new Promise(resolve => {
+          releaseDelayedVisibility = () => resolve(response);
+          visibilityHeld();
+        });
+      };
       try {
         await page.setViewport({ width: 1200, height: 800 });
-        await page.setContent('<!doctype html><style>html,body{height:100%;margin:0}#meo{width:100%;height:100%;border:0}#native{display:none;position:fixed;top:0;left:0}</style><input id="native"><iframe id="meo"></iframe>');
+        // The native clipping container can yield conservative visibility false
+        // negatives. Opacity below 1 guarantees that branch in newer browsers too.
+        await page.setContent('<!doctype html><style>html,body,#overlay{height:100%;margin:0}#overlay{clip-path:content-box;opacity:.99}#meo{width:100%;height:100%;border:0}#native{display:none;position:fixed;top:0;left:0}</style><input id="native"><div id="overlay"><iframe id="meo"></iframe></div>');
         const frame = await (await page.$('#meo'))!.contentFrame();
         assert.ok(frame);
         page.setDefaultTimeout(5000);
         await frame.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
         await frame.addStyleTag({ content: css });
-        await page.exposeFunction('__renderTabPreview', (message: any) => message.type === 'requestPreviewRender' ? {
+        let readingObservationHeld!: () => void;
+        const heldReadingObservation = new Promise<void>(resolve => { readingObservationHeld = resolve; });
+        await page.exposeFunction('__readingObservationHeld', () => readingObservationHeld());
+        await frame.addScriptTag({ content: `{
+          const OriginalObserver = window.IntersectionObserver;
+          window.IntersectionObserver = class extends OriginalObserver {
+            constructor(callback, options) {
+              super((entries, observer) => {
+                if (options?.trackVisibility && window.__holdNextReadingObservation) {
+                  window.__holdNextReadingObservation = false;
+                  window.__releaseReadingObservation = () => callback(entries, observer);
+                  window.parent.__readingObservationHeld();
+                } else callback(entries, observer);
+              }, options);
+            }
+          };
+        }` });
+        await page.exposeFunction('__renderTabPreview', (message: any) => message.type === 'requestWebviewVisibility'
+          ? visibilityResult(message.requestId) : message.type === 'requestPreviewRender' ? {
           type: 'previewRenderResult', requestId: message.requestId,
           result: { ok: true, value: exportRuntime.renderPreviewDocument({ markdownText: message.text, sourceDocumentPath: uri.fsPath, uiLanguage: message.uiLanguage, styleEnvironment: message.environment }) }
         } : null);
@@ -90,7 +124,6 @@ try {
         vscodeWindow.activeTextEditor = initialNative ? nativeEditor : undefined;
         vscodeWindow.visibleTextEditors = [];
         nativeEditor.selection = { start: 0, end: 0 };
-        let hidden = false;
         // Replay Host output that arrives only after the retained Webview returns.
         const queued: unknown[] = [];
         adapter = createVscodeViewNavigationAdapter({
@@ -129,23 +162,35 @@ try {
         await new Promise(resolve => setTimeout(resolve, 250));
         const before = await frame.evaluate(captureSurfaces);
         assert.ok(before.every(surface => surface.top > 500), `${label}: fixture must scroll: ${JSON.stringify(before)}`);
-        const tabReturns = outlineVisible ? [
+        const parkedReturns = [
           { nativeOffset: 0, width: 300, height: 150, parkBeforeBlur: false },
           { nativeOffset: 180, width: 320, height: 180, parkBeforeBlur: true },
           { nativeOffset: 0, width: 260, height: 130, parkBeforeBlur: true },
           { nativeOffset: 180, width: 300, height: 150, parkBeforeBlur: true }
-        ] : [{ nativeOffset: 0, parkBeforeBlur: false }, { nativeOffset: 180, parkBeforeBlur: false }];
-        for (const { nativeOffset, parkBeforeBlur, ...parkedSize } of tabReturns) {
+        ];
+        const tabReturns = outlineVisible
+          ? ['offscreen', 'visibility'].flatMap(parking => parkedReturns.map(entry => ({ ...entry, parking })))
+          : [
+            { nativeOffset: 0, parkBeforeBlur: false, parking: 'display' },
+            { nativeOffset: 180, parkBeforeBlur: false, parking: 'display' },
+            { nativeOffset: 0, parkBeforeBlur: true, parking: 'visibility', width: 300, height: 150 }
+          ];
+        for (const { nativeOffset, parkBeforeBlur, parking, ...parkedSize } of tabReturns) {
           nativeEditor.selection = { start: nativeOffset, end: nativeOffset };
           hidden = true;
           await page.evaluate(() => { document.getElementById('native')!.style.display = 'block'; });
           if (!parkBeforeBlur) await page.focus('#native');
-          await page.evaluate(({ outlineVisible, width, height }) => {
+          await page.evaluate(({ parking, width, height }) => {
             const retained = document.getElementById('meo')!;
-            // VS Code parks retained Webviews away from the active editor.
-            // A wide outline used to collapse Preview in the smaller frame.
-            if (outlineVisible) {
-              Object.assign(retained.style, { position: 'absolute', left: '-10000px', width: `${width}px`, height: `${height}px` });
+            // VS Code can retain the Webview with visibility:hidden while its
+            // rectangle still intersects the viewport. Moving it offscreen
+            // alone misses the outline collapsing Preview in that hidden frame.
+            if (parking !== 'display') {
+              Object.assign(retained.style, {
+                position: 'absolute', left: parking === 'offscreen' ? '-10000px' : '0px',
+                visibility: parking === 'visibility' ? 'hidden' : '',
+                width: `${width}px`, height: `${height}px`
+              });
               // Mouse tab switches can lay out the parked frame before blur.
               // Force that layout rather than letting the later focus hide it.
               const preview = (retained as HTMLIFrameElement).contentDocument!
@@ -153,7 +198,7 @@ try {
               void preview.documentElement.clientWidth;
             }
             else retained.style.display = 'none';
-          }, { outlineVisible, ...parkedSize } as { outlineVisible: boolean; width?: number; height?: number });
+          }, { parking, ...parkedSize } as { parking: string; width?: number; height?: number });
           if (parkBeforeBlur) await page.focus('#native');
           const switchedEditor = native === 'other-document'
             ? { ...nativeEditor, document: { ...hostDocument, uri: { ...uri, toString: () => 'file:///other.md' } } }
@@ -165,12 +210,13 @@ try {
           await new Promise(resolve => setTimeout(resolve, 100));
           await page.evaluate(() => {
             document.getElementById('native')!.style.display = 'none';
-            Object.assign(document.getElementById('meo')!.style, { display: '', position: '', left: '', width: '', height: '' });
+            Object.assign(document.getElementById('meo')!.style, { display: '', position: '', left: '', visibility: '', width: '', height: '' });
           });
           vscodeWindow.activeTextEditor = undefined;
           vscodeWindow.visibleTextEditors = [];
           await page.focus('#meo');
           hidden = false;
+          await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'webviewVisibilityChanged', visible: true } })));
           for (const data of queued.splice(0)) await frame.evaluate(data => window.dispatchEvent(new MessageEvent('message', { data })), data);
           await adapter.flush();
           await frame.evaluate(text => window.dispatchEvent(new MessageEvent('message', { data: { type: 'docChanged', text, version: 1 } })), text);
@@ -187,7 +233,7 @@ try {
             const expected = before[index]!;
             return surface.owner === expected.owner && surface.witness === expected.witness
               && Math.abs(surface.top - expected.top) <= 1 && Math.abs(surface.offset - expected.offset) <= 1;
-          })), `${label}, native offset ${nativeOffset}: tab return lost reading position, before=${JSON.stringify(before)}, after=${JSON.stringify(after)}`);
+          })), `${label}, ${parking}, native offset ${nativeOffset}: tab return lost reading position, before=${JSON.stringify(before)}, after=${JSON.stringify(after)}`);
         }
         if (outlineVisible) {
           for (const [width, height] of [[1000,700],[600,350],[300,150],[301,150],[300,151],[1200,800]]) {
@@ -197,6 +243,31 @@ try {
               return Math.abs(rect.width - innerWidth) <= 1 && Math.abs(rect.height - innerHeight) <= 1;
             });
           }
+        }
+        if (view === 'preview' && native === 'other-document' && outlineVisible && preset === 'default') {
+          await frame.evaluate(() => { (window as any).__holdNextReadingObservation = true; });
+          await page.setViewport({ width: 1000, height: 700 });
+          await Promise.race([heldReadingObservation, new Promise((_, reject) => setTimeout(() => reject(new Error('Missing reading observation')), 3000))]);
+          await page.setViewport({ width: 900, height: 650 });
+          await frame.waitForFunction(() => document.getElementById('app')!.getBoundingClientRect().width === 900);
+          await frame.evaluate(() => { (window as any).__releaseReadingObservation(); });
+          await frame.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          assert.equal(await frame.$eval('#app', element => element.getBoundingClientRect().width), 900,
+            'A delayed observation must not suppress the final visible resize');
+          delayNextVisibility = true;
+          await page.setViewport({ width: 300, height: 150 });
+          await Promise.race([heldVisibility, new Promise((_, reject) => setTimeout(() => reject(new Error('Missing visibility request')), 3000))]);
+          await page.setViewport({ width: 900, height: 650 });
+          await frame.waitForFunction(() => document.getElementById('app')!.getBoundingClientRect().width === 900);
+          hidden = true;
+          await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'webviewVisibilityChanged', visible: false } })));
+          await page.evaluate(() => { document.getElementById('meo')!.style.visibility = 'hidden'; });
+          await page.setViewport({ width: 300, height: 150 });
+          releaseDelayedVisibility!();
+          await frame.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          assert.equal(await frame.$eval('#app', element => element.getBoundingClientRect().width), 900,
+            'A late visible reply must not authorize the same size after the panel has been hidden');
+          hidden = false;
         }
         console.log(`PASS ${label}: ${tabReturns.length} tab returns retained visible content and viewport on every sampled frame`);
       } catch (error) { throw new Error(label, { cause: error }); }

@@ -13,6 +13,15 @@ since the last release before selecting acceptance evidence. Gate membership is
 necessary, but a visible control or emitted message alone is not a successful
 operation. Report browser, Host-contract and final installed-VSIX evidence separately.
 
+`scripts/test-tab-switch-reading-position.ts` checks retained Webviews with both
+offscreen parking and `visibility:hidden` inside the viewport. Geometric intersection
+alone treats the latter as visible; accepting its smaller size can let the outline
+collapse Preview and reset its scroll. Check outline on/off, native selection messages,
+full/split Preview, built-in presets and actual small-panel resizing. Confirm the
+visible paragraph and its offset throughout the return, rather than only the final scroll.
+Include VS Code's `clip-path:content-box` ancestor: painted visibility can report
+false negatives there, so the correlated Host reply must still permit visible resizing.
+
 `scripts/test-native-scroll-progress-production.ts` checks trusted wheel input in
 both directions, instantaneous scrolling and the browser's multi-frame native
 scroll animation, with independent visible-content witnesses. The headless wheel

@@ -3,6 +3,7 @@ import type { DiffBaselineMode, OutlinePosition } from './editorCommands';
 export type HostEditorEvent =
   | { readonly type: 'wikiResourcesChanged' }
   | { readonly type: 'focusEditor' }
+  | { readonly type: 'webviewVisibilityChanged'; readonly visible: boolean }
   | {
       readonly type: 'externalFileStatusChanged';
       readonly status: 'current' | 'modified-while-dirty' | 'deleted-while-dirty' | 'unreadable-while-dirty';
@@ -49,6 +50,7 @@ export function decodeHostEditorEvent(value: unknown): HostEditorEvent | null {
     case 'outlinePositionChanged':
       return value.position === 'left' || value.position === 'right' ? value as HostEditorEvent : null;
     case 'outlineVisibilityChanged':
+    case 'webviewVisibilityChanged':
       return typeof value.visible === 'boolean' ? value as HostEditorEvent : null;
     case 'gitChangesGutterChanged':
     case 'gitDiffLineHighlightsChanged':

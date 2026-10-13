@@ -17,12 +17,14 @@ import { decodePreviewRenderRequest, decodePreviewRenderResponse, type PreviewRe
 import { decodeInitMessage, decodeReadyMessage, type InitMessage, type ReadyMessage } from './readyInit';
 import { decodeResolveWikiLinksRequest, decodeResolvedWikiLinksResponse, type ResolveWikiLinksRequest, type ResolvedWikiLinksResponse } from './wikiLinkResolution';
 import { decodeReadingPositionChangedMessage, type ReadingPositionChangedMessage } from './readingPosition';
+import { decodeWebviewVisibilityRequest, decodeWebviewVisibilityResponse, type WebviewVisibilityRequest, type WebviewVisibilityResponse } from './webviewVisibility';
 import { decodePreviewPresetsChanged, decodePreviewPresetRequest, decodePreviewPresetResponse, type PreviewPresetRequest, type PreviewPresetResponse, type OpenPreviewPresetSettings, type PreviewPresetsChanged } from './previewPresets';
 
 import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageStorageChangedEvent, type ImageLocationRequest, type ImageLocationResponse, type ImageStorageChangedEvent } from './imageStorage';
 import { decodeUpdateUiColorsRequest, decodeUiColorsResult, type UpdateUiColorsRequest, type UiColorsResult } from './uiColors';
 
 export type WebviewToHostMessage =
+  | WebviewVisibilityRequest
   | UpdateUiColorsRequest
   | PreviewPresetRequest
   | ImageLocationRequest
@@ -44,6 +46,7 @@ export type WebviewToHostMessage =
   | ExportSnapshotResponse;
 
 export type HostToWebviewMessage =
+  | WebviewVisibilityResponse
   | UiColorsResult
   | PreviewPresetResponse
   | OpenPreviewPresetSettings
@@ -71,7 +74,8 @@ export type HostToWebviewMessage =
   | GitBaselineChangedEvent;
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
-  return decodePreviewPresetRequest(value)
+  return decodeWebviewVisibilityRequest(value)
+    ?? decodePreviewPresetRequest(value)
     ?? decodeImageLocationRequest(value)
     ?? decodeUpdateUiColorsRequest(value)
     ?? decodeEditorServiceRequest(value)
@@ -94,7 +98,8 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
 
 export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage | null {
   if (value && typeof value === 'object' && 'type' in value && value.type === 'openPreviewPresetSettings') return { type: 'openPreviewPresetSettings' };
-  return decodePreviewPresetsChanged(value)
+  return decodeWebviewVisibilityResponse(value)
+    ?? decodePreviewPresetsChanged(value)
     ?? decodeUiColorsResult(value)
     ?? decodePreviewPresetResponse(value)
     ?? decodeImageLocationResponse(value)

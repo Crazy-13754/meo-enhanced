@@ -65,16 +65,28 @@ try {
       document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === preset, {}, preset);
     await waitPreset('default');
     if (surface !== 'preview') {
+      await page.waitForSelector('[data-mode="source"]', { visible: true });
       await page.click('[data-mode="source"]');
-      if (await page.$eval('.source-preview-button', element => element.getAttribute('aria-pressed') !== 'true')) await page.click('.source-preview-button');
+      if (await page.$eval('.source-preview-button', element => element.getAttribute('aria-pressed') !== 'true')) {
+        await page.waitForSelector('.source-preview-button', { visible: true });
+        await page.click('.source-preview-button');
+      }
       await page.waitForFunction(() => !document.querySelector<HTMLElement>('.preview-host')!.inert && !document.querySelector<HTMLElement>('.preview-host')!.hidden);
       const linked = surface === 'linked-source';
+      await page.waitForSelector('.source-preview-scroll-sync-button', { visible: true });
       if (await page.$eval('.source-preview-scroll-sync-button', element => element.getAttribute('aria-pressed') === 'true') !== linked) await page.click('.source-preview-scroll-sync-button');
       assert.equal(await page.$eval('.source-preview-scroll-sync-button', element => element.getAttribute('aria-pressed')), String(linked));
     }
     const choose = async (preset: string) => {
-      if (surface !== 'preview' && await page.$eval('.source-preview-more-panel', element => (element as HTMLElement).hidden)) await page.click('.source-preview-more-button');
+      // Render metadata can arrive before the atomic surface handoff exposes its
+      // controls. Wait for the actual click targets while retaining frame sampling.
+      if (surface !== 'preview' && await page.$eval('.source-preview-more-panel', element => (element as HTMLElement).hidden)) {
+        await page.waitForSelector('.source-preview-more-button', { visible: true });
+        await page.click('.source-preview-more-button');
+      }
+      await page.waitForSelector('.preview-preset-dropdown', { visible: true });
       await page.click('.preview-preset-dropdown');
+      await page.waitForSelector(`.preview-preset-dropdown-panel [data-value="${preset}"]`, { visible: true });
       await page.click(`.preview-preset-dropdown-panel [data-value="${preset}"]`);
     };
     // A content-relative point remains meaningful when the same paragraph wraps differently.

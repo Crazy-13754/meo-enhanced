@@ -4,6 +4,7 @@ This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
 ## 0.3.32
+- Validated retained Webview layout sizes against actual panel visibility, preventing an open outline from collapsing Preview during native tab switches while preserving normal resizing under VS Code's clipping containers.
 - Distinguished visible small panels from parked Webviews using browser intersection geometry, preserving hidden-tab reading positions without treating a fixed viewport size as hidden.
 - Coalesced reading-layout resize updates and removed synchronous layout reads from the resize handler, with coverage for adjacent small-panel sizes and different parked-frame dimensions.
 
