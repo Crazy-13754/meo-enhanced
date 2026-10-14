@@ -92,6 +92,7 @@ import { EDITING_PREFERENCES_SETTING } from './host/editingPreferences';
 import type { EditingPreferencesChangedEvent } from './protocol/editingPreferences';
 import { createVscodePreviewPresets } from './host/vscodePreviewPresets';
 import { getPreviewPreset, type PreviewPresetDefinition, type PreviewPresetId } from './foundation/previewPresets';
+import { createPreviewFonts, readSystemPreviewFonts } from './host/previewFonts';
 import { createPreviewPresetPreferences, PREVIEW_PRESET_PREFERENCES_STATE_KEY } from './host/previewPresetPreferences';
 import type { PreviewPresetsChanged, PreviewPresetRequest, PreviewPresetResponse } from './protocol/previewPresets';
 
@@ -379,6 +380,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
+  private readonly previewFonts = createPreviewFonts(() => vscode.env.remoteName
+    ? Promise.reject(new Error('Local font list unavailable in remote Host')) : readSystemPreviewFonts());
   private readonly previewPresetPreferences: ReturnType<typeof createPreviewPresetPreferences>;
   private readonly activePanels = new Set<vscode.WebviewPanel>();
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
@@ -685,6 +688,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       getPreviewAppearance: this.appearanceSettings.getPreviewAppearance,
       setPreviewAppearance: this.appearanceSettings.setPreviewAppearance,
       getPreviewFontFamily: this.appearanceSettings.getPreviewFontFamily,
+      getPreviewCodeFontFamily: this.appearanceSettings.getPreviewCodeFontFamily,
+      setPreviewCodeFontFamily: this.appearanceSettings.setPreviewCodeFontFamily,
+      getPreviewFonts: this.previewFonts.read,
       setPreviewFontFamily: this.appearanceSettings.setPreviewFontFamily,
       getPreviewSourceColoring: this.appearanceSettings.getPreviewSourceColoring,
       setPreviewSourceColoring: this.appearanceSettings.setPreviewSourceColoring,

@@ -24,6 +24,7 @@ export type PreviewStyles = Record<ResolvedPreviewAppearance, string>;
 
 export type PreviewStyleEnvironment = {
   previewFontFamily: string;
+  previewCodeFontFamily?: string;
   editorFontFamily?: string;
   editorFontSizePx?: number;
   editorFontWeight?: string;

@@ -163,6 +163,9 @@ type PanelSessionControllerParams = {
   getPreviewAppearance: () => PreviewAppearance;
   setPreviewAppearance: (appearance: PreviewAppearance) => Promise<void>;
   getPreviewFontFamily: () => string;
+  getPreviewCodeFontFamily?: () => string;
+  setPreviewCodeFontFamily?: (fontFamily: string) => Promise<void>;
+  getPreviewFonts?: (refresh: boolean) => Promise<readonly import('../foundation/previewFonts').PreviewFont[]>;
   setPreviewFontFamily: (fontFamily: string) => Promise<void>;
   getPreviewSourceColoring: () => boolean;
   setPreviewSourceColoring: (enabled: boolean) => Promise<void>;
@@ -475,6 +478,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       editingPreferences: params.editingPreferences?.read() ?? { input: { ...defaultInputAssistance }, shortcuts: {} },
       previewAppearance: getPreviewAppearance(),
       previewFontFamily: getPreviewFontFamily(),
+      previewCodeFontFamily: params.getPreviewCodeFontFamily?.() ?? '',
       previewSourceColoring: getPreviewSourceColoring(),
       previewShowComments: getPreviewShowComments(),
       liveStrongColoring: getLiveStrongColoring(),
@@ -796,6 +800,19 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         return;
       case 'setPreviewAppearance':
         await setPreviewAppearance(raw.appearance);
+        return;
+      case 'getPreviewFonts': {
+        try {
+          const fonts = await params.getPreviewFonts?.(raw.refresh);
+          if (!fonts) throw new Error('Unavailable');
+          await postToWebview({ type: 'previewFontsResult', requestId: raw.requestId, result: { ok: true, value: fonts } });
+        } catch {
+          await postToWebview({ type: 'previewFontsResult', requestId: raw.requestId, result: { ok: false, error: { code: 'operation-failed', message: 'System font list unavailable' } } });
+        }
+        return;
+      }
+      case 'setPreviewCodeFontFamily':
+        await params.setPreviewCodeFontFamily?.(raw.fontFamily);
         return;
       case 'setPreviewFontFamily':
         await setPreviewFontFamily(raw.fontFamily);

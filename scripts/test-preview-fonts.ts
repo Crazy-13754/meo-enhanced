@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import { mergePreviewFonts, decodePreviewFonts } from '../src/foundation/previewFonts';
+import { createAppearanceSettingsOwner } from '../src/host/appearanceSettings';
+import { createPreviewFonts } from '../src/host/previewFonts';
+import { decodeHostToWebviewMessage, decodeWebviewToHostMessage } from '../src/protocol/messages';
+import { decodeEditorStyleEnvironment } from '../src/protocol/editorStyleEnvironment';
+import { decodePreviewPresetPreferences, getPreviewPreset } from '../src/foundation/previewPresets';
+import { createPreviewPresetPreferences } from '../src/host/previewPresetPreferences';
+import { buildPresetPreviewStyles } from '../src/preview/presetStyles';
+import { createPreviewFontsTransport } from '../webview/src/adapters/previewFontsTransport';
+
+const fonts = [{ family: 'Example Sans', aliases: ['示例字体'] }, { family: 'example sans', aliases: ['Example'] }];
+assert.deepEqual(mergePreviewFonts(fonts), [{ family: 'Example Sans', aliases: ['示例字体', 'Example'] }]);
+assert.equal(decodePreviewFonts([{ family: 'Bad; name', aliases: [] }]), null);
+assert.equal(decodePreviewFonts([{ family: 'Good', aliases: [12] }]), null);
+assert.equal(decodeWebviewToHostMessage({ type: 'getPreviewFonts', requestId: '', refresh: false }), null);
+assert.equal(decodeWebviewToHostMessage({ type: 'getPreviewFonts', requestId: 'fonts', refresh: 'yes' }), null);
+assert.equal(decodeHostToWebviewMessage({ type: 'previewFontsResult', requestId: 'fonts', result: { ok: true, value: [{ family: 'Bad; name', aliases: [] }] } }), null);
+assert.equal(decodeEditorStyleEnvironment({ previewFontFamily: '', previewCodeFontFamily: 'Bad; name' }), null);
+assert.equal(decodeWebviewToHostMessage({ type: 'setPreviewCodeFontFamily', fontFamily: 'Bad; name' }), null);
+assert.deepEqual(decodeWebviewToHostMessage({ type: 'setPreviewCodeFontFamily', fontFamily: ' Consolas ' }), { type: 'setPreviewCodeFontFamily', fontFamily: 'Consolas' });
+assert.equal(decodePreviewPresetPreferences({ whitey: { appearance: 'auto', contentWidth: 'responsive', codeFontFamily: 'Bad; name' } }), null);
+
+let calls = 0;
+let fail = false;
+const catalog = createPreviewFonts(async () => { calls++; if (fail) throw new Error('Unavailable'); return fonts; });
+const [first, second] = await Promise.all([catalog.read(), catalog.read(true)]);
+assert.deepEqual(first, second); assert.equal(calls, 1, 'Concurrent panels share one query');
+await catalog.read(); assert.equal(calls, 1, 'New documents reuse the session catalog');
+fail = true; await assert.rejects(catalog.read(true));
+assert.deepEqual(await catalog.read(), first, 'A failed refresh retains the previous catalog');
+fail = false; await catalog.read(true); assert.equal(calls, 3, 'Explicit refresh retries');
+const requests: any[] = [];
+const transport = createPreviewFontsTransport(request => requests.push(request));
+const pending = transport.request(false);
+transport.accept({ type: 'previewFontsResult', requestId: 'stale', result: { ok: true, value: [] } });
+transport.accept({ type: 'previewFontsResult', requestId: requests[0].requestId, result: { ok: true, value: first } });
+assert.deepEqual(await pending, first);
+const disposed = transport.request(true); transport.dispose(); assert.equal(await disposed, null);
+assert.equal(await transport.request(false), null);
+
+const configuration = new Map<string, unknown>();
+const legacyState = new Map<string, unknown>();
+const settingsStore = {
+  readConfiguration: (key: string) => ({ value: configuration.get(key), explicit: configuration.has(key), globalValue: configuration.get(key) }),
+  updateConfiguration: async (key: string, value: unknown) => { configuration.set(key, value); },
+  readLegacy: (key: string) => legacyState.get(key),
+  updateLegacy: async (key: string, value: unknown) => { legacyState.set(key, value); }
+};
+const appearance = await createAppearanceSettingsOwner(settingsStore);
+assert.equal(appearance.getPreviewCodeFontFamily(), '');
+await appearance.setPreviewCodeFontFamily('Consolas');
+assert.equal((await createAppearanceSettingsOwner(settingsStore)).getPreviewCodeFontFamily(), 'Consolas', 'Default code font survives owner restart');
+await appearance.setPreviewCodeFontFamily('Bad; name');
+assert.equal(appearance.getPreviewCodeFontFamily(), 'Consolas');
+
+let preferences: any;
+const owner = () => createPreviewPresetPreferences({ readStored: () => preferences, writeStored: async value => { preferences = value; }, getPreset: getPreviewPreset });
+const initial = { appearance: 'auto' as const, contentWidth: 'responsive' as const, fontFamily: 'Arial', codeFontFamily: '' };
+const currentOwner = owner();
+await Promise.all([currentOwner.update('whitey', { codeFontFamily: 'Consolas' }, initial), currentOwner.update('whitey', { fontFamily: 'Georgia' }, initial)]);
+assert.equal((await owner().read())?.whitey?.fontFamily, 'Georgia');
+assert.equal((await owner().read())?.whitey?.codeFontFamily, 'Consolas');
+await owner().update('github-readme', { fontFamily: 'Arial', codeFontFamily: 'Consolas' }, initial);
+assert.equal((await owner().read())?.['github-readme'], undefined, 'GitHub restoration rejects both font overrides');
+
+for (const preset of ['default', 'newsprint', 'whitey', 'obsidian-minimal'] as const) {
+  const css = buildPresetPreviewStyles(preset, { previewFontFamily: 'Georgia', previewCodeFontFamily: 'Consolas' }, 'light');
+  assert.ok(css.includes('"Georgia"') && css.includes('"Consolas"'), `${preset} receives separate body and code families`);
+  assert.ok(css.includes('code:not(pre code)'), `${preset} retains separate inline code typography`);
+}
+const github = buildPresetPreviewStyles('github-readme', { previewFontFamily: 'MEO Body Override', previewCodeFontFamily: 'MEO Code Override' }, 'light');
+assert.ok(!github.includes('MEO Body Override') && !github.includes('MEO Code Override'));
+console.log('Preview font catalog, protocol, caching, persistence and typography contracts passed.');

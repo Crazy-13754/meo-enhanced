@@ -23,6 +23,7 @@ export type ReadingSnapshot = {
   readonly presetRevision?: string;
   /** Independent body font for HTML/PDF; environment keeps Default's font for Word. */
   readonly presetFontFamily?: string;
+  readonly presetCodeFontFamily?: string;
 };
 
 export type ExportSnapshotValue = ReadingSnapshot;
@@ -61,7 +62,8 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
         if (candidate.preset !== undefined && !isPreviewPresetId(candidate.preset)) return null;
         if (candidate.presetRevision !== undefined && (typeof candidate.presetRevision !== 'string' || !/^[a-f0-9]{64}$/.test(candidate.presetRevision))) return null;
         const presetFontFamily = candidate.presetFontFamily === undefined ? undefined : normalizePreviewFontFamily(candidate.presetFontFamily);
-        if (presetFontFamily === null) return null;
+        const presetCodeFontFamily = candidate.presetCodeFontFamily === undefined ? undefined : normalizePreviewFontFamily(candidate.presetCodeFontFamily);
+        if (presetFontFamily === null || presetCodeFontFamily === null) return null;
         const codeTheme = decodeCodeTheme(candidate.codeTheme);
         if (codeTheme === false || codeTheme === null) return null;
         return {
@@ -73,6 +75,7 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
           ...(candidate.preset ? { preset: candidate.preset } : {}),
           ...(candidate.presetRevision ? { presetRevision: candidate.presetRevision } : {}),
           ...(presetFontFamily !== undefined ? { presetFontFamily } : {}),
+          ...(presetCodeFontFamily !== undefined ? { presetCodeFontFamily } : {}),
           ...(codeTheme ? { codeTheme } : {})
         };
       })

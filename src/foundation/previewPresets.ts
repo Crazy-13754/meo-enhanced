@@ -98,12 +98,14 @@ export function resolvePresetAppearance(preset: PreviewPresetDefinition, prefere
 /** Fixed preset values never overwrite the user's settings for the Default preset. */
 export function resolvePreviewPresetSettings(id: PreviewPresetId, settings: {
   readonly previewFontFamily: string;
+  readonly previewCodeFontFamily?: string;
   readonly previewSourceColoring?: boolean;
   readonly previewShowComments?: boolean;
 }, definition = getPreviewPreset(id)) {
   const { controls } = definition;
   return {
     previewFontFamily: controls.fontFamily.mode === 'editable' ? settings.previewFontFamily : '',
+    ...(settings.previewCodeFontFamily === undefined ? {} : { previewCodeFontFamily: controls.fontFamily.mode === 'editable' ? settings.previewCodeFontFamily : '' }),
     previewSourceColoring: controls.codeColoring.mode === 'editable' ? settings.previewSourceColoring !== false : controls.codeColoring.mode === 'fixed' && controls.codeColoring.value === true,
     previewShowComments: controls.htmlComments.mode === 'editable' ? settings.previewShowComments === true : controls.htmlComments.mode === 'fixed' && controls.htmlComments.value === true
   };
@@ -113,6 +115,7 @@ export type PreviewPresetPreference = {
   appearance: 'auto' | 'light' | 'dark';
   contentWidth: PreviewContentWidth;
   fontFamily?: string;
+  codeFontFamily?: string;
   sourceColoring?: boolean;
   showComments?: boolean;
 };
@@ -122,14 +125,15 @@ export type PreviewPresetPreferences = Partial<Record<PreviewPresetId, PreviewPr
 export function decodePreviewPresetPreferencePatch(value: unknown): PreviewPresetPreferencePatch | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const preference = value as Record<string, unknown>;
-  if (!Object.values(preference).some(value => value !== undefined) || Object.keys(preference).some(key => !['appearance', 'contentWidth', 'fontFamily', 'sourceColoring', 'showComments'].includes(key))) return null;
+  if (!Object.values(preference).some(value => value !== undefined) || Object.keys(preference).some(key => !['appearance', 'contentWidth', 'fontFamily', 'codeFontFamily', 'sourceColoring', 'showComments'].includes(key))) return null;
   if (preference.appearance !== undefined && !['auto', 'light', 'dark'].includes(preference.appearance as string)
     || preference.contentWidth !== undefined && !['responsive', 'reference'].includes(preference.contentWidth as string)
     || preference.sourceColoring !== undefined && typeof preference.sourceColoring !== 'boolean'
     || preference.showComments !== undefined && typeof preference.showComments !== 'boolean') return null;
   const fontFamily = preference.fontFamily === undefined ? undefined : normalizePreviewFontFamily(preference.fontFamily);
-  if (fontFamily === null) return null;
-  return { ...preference, ...(fontFamily === undefined ? {} : { fontFamily }) } as PreviewPresetPreferencePatch;
+  const codeFontFamily = preference.codeFontFamily === undefined ? undefined : normalizePreviewFontFamily(preference.codeFontFamily);
+  if (fontFamily === null || codeFontFamily === null) return null;
+  return { ...preference, ...(fontFamily === undefined ? {} : { fontFamily }), ...(codeFontFamily === undefined ? {} : { codeFontFamily }) } as PreviewPresetPreferencePatch;
 }
 
 export function decodePreviewPresetPreference(value: unknown): PreviewPresetPreference | null {
@@ -156,6 +160,7 @@ export function editablePreviewPresetPreference(preset: PreviewPresetDefinition,
     ...(controls.appearance.mode === 'editable' && preference.appearance !== undefined && controls.appearance.options?.includes(preference.appearance) ? { appearance: preference.appearance } : {}),
     ...(controls.contentWidth.mode === 'editable' && preference.contentWidth !== undefined && controls.contentWidth.options?.includes(preference.contentWidth) ? { contentWidth: preference.contentWidth } : {}),
     ...(controls.fontFamily.mode === 'editable' && preference.fontFamily !== undefined ? { fontFamily: preference.fontFamily } : {}),
+    ...(controls.fontFamily.mode === 'editable' && preference.codeFontFamily !== undefined ? { codeFontFamily: preference.codeFontFamily } : {}),
     ...(controls.codeColoring.mode === 'editable' && preference.sourceColoring !== undefined ? { sourceColoring: preference.sourceColoring } : {}),
     ...(controls.htmlComments.mode === 'editable' && preference.showComments !== undefined ? { showComments: preference.showComments } : {})
   };

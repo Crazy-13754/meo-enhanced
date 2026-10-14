@@ -12,6 +12,7 @@ export type PreviewSurface = {
   setSourceColoring(enabled: boolean): void;
   setShowComments(enabled: boolean): void;
   setFontFamily(fontFamily: string): void;
+  setCodeFontFamily?(fontFamily: string): void;
   restorePresetState?(state: unknown): void;
   updateCustomPresets?(presets: readonly PreviewPresetDefinition[], selected?: PreviewPresetId, initial?: boolean, diagnostics?: readonly PreviewPresetDiagnostic[], options?: { render?: boolean; disabled?: readonly PreviewPresetId[] }): void;
   invalidateRender?(): void;
@@ -29,7 +30,7 @@ export type PreviewSurface = {
 };
 
 export type PreviewWebviewAdapter = {
-  start(input: { text: string; appearance: PreviewAppearance; fontFamily: string; sourceColoring: boolean; showComments: boolean; active: boolean; presetState?: unknown; customPreviewPresets?: readonly PreviewPresetDefinition[]; previewPresetDiagnostics?: readonly PreviewPresetDiagnostic[]; disabledPreviewPresets?: readonly PreviewPresetId[] }): void;
+  start(input: { text: string; appearance: PreviewAppearance; fontFamily: string; codeFontFamily?: string; sourceColoring: boolean; showComments: boolean; active: boolean; presetState?: unknown; customPreviewPresets?: readonly PreviewPresetDefinition[]; previewPresetDiagnostics?: readonly PreviewPresetDiagnostic[]; disabledPreviewPresets?: readonly PreviewPresetId[] }): void;
   setActive(input: {
     active: boolean;
     text: string;
@@ -133,6 +134,7 @@ export function createPreviewWebviewAdapter(
       surface.setSourceColoring(input.sourceColoring);
       surface.setShowComments(input.showComments);
       surface.setFontFamily(input.fontFamily);
+      surface.setCodeFontFamily?.(input.codeFontFamily ?? '');
       if (input.presetState !== undefined) surface.restorePresetState?.(input.presetState);
       if (!input.active) trackBackgroundRender(surface.preload(input.text));
     },

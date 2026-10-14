@@ -53,6 +53,12 @@ export type UiStrings = Readonly<{
   previewCodeColorsOn: string;
   previewCodeColorsOff: string;
   previewFontFamily: string;
+  previewCodeFontFamily: string;
+  previewFontSearch: string;
+  previewFontEmpty: string;
+  previewFontRefresh: string;
+  previewFontMissing: string;
+  previewFontLoading: string;
   previewPresetFont: string;
   previewCodeTypographyFallback: string;
   previewFontPlaceholder: string;
@@ -359,11 +365,17 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewFixedCodeColorsOn: 'This preset keeps code coloring on', previewFixedCodeColorsOff: 'This preset keeps code coloring off',
     previewFixedCommentsShow: 'This preset always shows HTML comments', previewFixedCommentsHide: 'This preset always hides HTML comments',
     exportStyleNote: 'HTML and PDF use the current preview style.\nWord uses a fixed export style.',
-    previewFontFamily: 'Font',
-    previewPresetFont: 'Preset font',
+    previewFontFamily: 'Body font',
+    previewCodeFontFamily: 'Code font',
+    previewFontSearch: 'Search fonts',
+    previewFontEmpty: 'No matching fonts',
+    previewFontRefresh: 'Refresh font list',
+    previewFontMissing: 'Not found in the font list',
+    previewFontLoading: 'Loading system fonts…',
+    previewPresetFont: 'Use preset font',
     previewCodeTypographyFallback: 'Invalid code font size or line height; readable defaults applied.',
-    previewFontPlaceholder: 'VS Code editor font',
-    previewFontUnavailable: 'Local font list unavailable; type a family name',
+    previewFontPlaceholder: 'Use default font',
+    previewFontUnavailable: 'System font list unavailable; keeping current choices',
     previewGenerating: 'Generating preview…',
     previewFailed: 'Preview generation failed', previewTools: 'Preview tools', exportDocument: 'Export',
     exportHtml: 'Export as HTML', exportPdf: 'Export as PDF', exportDocx: 'Export as Word', exportAsHtml: 'Export as HTML',
@@ -561,11 +573,17 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewFixedCodeColorsOn: '此预设固定开启代码着色', previewFixedCodeColorsOff: '此预设固定关闭代码着色',
     previewFixedCommentsShow: '此预设固定显示 HTML 注释', previewFixedCommentsHide: '此预设固定隐藏 HTML 注释',
     exportStyleNote: 'HTML、PDF 沿用当前预览样式。\nWord 使用固定导出样式。',
-    previewFontFamily: '预览字体',
-    previewPresetFont: '预设字体',
+    previewFontFamily: '正文字体',
+    previewCodeFontFamily: '代码字体',
+    previewFontSearch: '搜索字体',
+    previewFontEmpty: '未找到匹配字体',
+    previewFontRefresh: '刷新字体列表',
+    previewFontMissing: '列表中未找到',
+    previewFontLoading: '正在读取系统字体…',
+    previewPresetFont: '使用预设字体',
     previewCodeTypographyFallback: '代码字号或行高无效，已恢复可读的默认值。',
-    previewFontPlaceholder: 'VS Code 编辑器字体',
-    previewFontUnavailable: '无法获取本地字体列表；请手动输入字体名称',
+    previewFontPlaceholder: '使用默认字体',
+    previewFontUnavailable: '无法读取系统字体列表，保留当前候选',
     previewGenerating: '正在生成预览…',
     previewFailed: '预览生成失败', previewTools: '预览工具', exportDocument: '导出', exportHtml: '导出为 HTML',
     exportPdf: '导出为 PDF', exportDocx: '导出为 Word', exportAsHtml: '导出为 HTML', exportAsPdf: '导出为 PDF',

@@ -8,13 +8,16 @@ import { createCustomPreviewPreset, parseCustomPreviewPresetManifest } from '../
 const build = await Bun.build({ entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'], target: 'browser', format: 'iife' });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const bundle = await build.outputs[0]!.text();
-const text = '# Preset memory\n\n```typescript\nconst value = 42;\n```\n\n<!-- memory comment -->';
+const text = '# Preset memory\n\nInline `npm install` and 中文 `路径`\n\n```typescript\nconst value = 42;\n```\n\n<!-- memory comment -->';
+let fontRequests = 0;
+let fontFailure = false;
+const fonts = [{ family: 'Arial', aliases: [] }, { family: 'Georgia', aliases: [] }, { family: 'Consolas', aliases: [] }, ...Array.from({ length: 220 }, (_, index) => ({ family: `Example Font ${String(index).padStart(3, '0')}`, aliases: index === 50 ? ['示例字体'] : [] }))];
 let selected: string | undefined;
 let preferences: Record<string, any> | undefined;
 const custom = createCustomPreviewPreset(parseCustomPreviewPresetManifest({ schemaVersion: 1, id: 'memory', name: 'Memory', description: 'Memory fixture', base: 'default', controls: { fontFamily: { mode: 'editable' } }, themes: { light: { css: 'light.css' }, dark: { css: 'dark.css' } } }), { light: ':root { --meo-bg: #fafafa; }', dark: ':root { --meo-bg: #222222; }' }, 'a'.repeat(64));
 const createOwner = () => createPreviewPresetPreferences({ readStored: () => preferences, writeStored: async value => { preferences = structuredClone(value); }, getPreset: id => id === custom.id ? custom : getPreviewPreset(id) });
 let owner = createOwner();
-const defaults = { previewAppearance: 'auto', previewFontFamily: 'Georgia', previewSourceColoring: true, previewShowComments: false };
+const defaults = { previewAppearance: 'auto', previewFontFamily: 'Georgia', previewCodeFontFamily: '', previewSourceColoring: true, previewShowComments: false };
 const browser = await launchTestBrowser();
 try {
   const open = async (state: unknown = {}, editorAppearance = 'dark') => {
@@ -23,6 +26,7 @@ try {
     await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
     await page.addStyleTag({ path: 'webview/src/styles.css' });
     await page.exposeFunction('__sendHostMessage', async (message: any) => {
+      if (message.type === 'getPreviewFonts') { fontRequests++; return { type: 'previewFontsResult', requestId: message.requestId, result: fontFailure ? { ok: false, error: { code: 'operation-failed', message: 'Unavailable' } } : { ok: true, value: fonts } }; }
       if (message.type === 'setPreviewPreset') selected = message.preset;
       if (message.type === 'setPreviewPresetPreference') {
         await owner.update(message.preset, message.preference, message.initialPreference, message.onlyIfMissing);
@@ -82,6 +86,104 @@ try {
     const root = doc?.querySelector('.meo-export-doc');
     return root && doc!.defaultView!.getComputedStyle(root).backgroundColor === (appearance === 'dark' ? 'rgb(30, 34, 42)' : 'rgb(254, 254, 254)');
   }, {}, appearance);
+  const verifyFontPicker = async () => {
+    selected = 'whitey';
+    preferences!.whitey.fontFamily = 'Missing Font';
+    owner = createOwner();
+    const fontPage = await open();
+    assert.equal(fontRequests, 0, 'Opening documents never enumerates fonts');
+    await fontPage.click('.preview-options-trigger');
+    await fontPage.click('.preview-font-family-dropdown');
+    await fontPage.waitForFunction(() => document.querySelector<HTMLSelectElement>('.preview-font-family-select')!.options.length > 200);
+    assert.equal(fontRequests, 1);
+    const popup = '.preview-font-family-dropdown-panel';
+    const search = `${popup} input`;
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-default button`, el => el.textContent?.includes('Use preset font')), true);
+    assert.equal(await fontPage.$eval(`${popup} [data-value="Missing Font"] .preview-font-missing`, el => el.textContent), 'Not found in the font list');
+    await fontPage.type(search, '不存在的字体');
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-default button`, el => (el as HTMLElement).offsetHeight > 0), true);
+    assert.equal(await fontPage.$$eval(`${popup} .preview-font-results button`, els => els.length), 0);
+    const before = await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value);
+    await fontPage.keyboard.press('Enter');
+    assert.equal(await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value), before, 'No results does not submit the search text or reset to default');
+    await fontPage.click(search, { clickCount: 3 }); await fontPage.keyboard.press('Backspace');
+    await fontPage.type(search, '示例字体');
+    assert.equal(await fontPage.$$eval(`${popup} .preview-font-results button`, els => els.length), 1, 'Localized aliases are searchable');
+    await fontPage.$eval(search, element => {
+      (element as HTMLInputElement).setSelectionRange(1, 3, 'backward');
+      window.dispatchEvent(new Event('blur'));
+      (element as HTMLElement).blur();
+      window.dispatchEvent(new Event('focus'));
+    });
+    await fontPage.waitForFunction(selector => document.activeElement === document.querySelector(selector), {}, search);
+    assert.deepEqual(await fontPage.$eval(search, element => {
+      const input = element as HTMLInputElement; return [input.selectionStart, input.selectionEnd, input.selectionDirection];
+    }), [1, 3, 'backward'], 'Font search restores its own selection on window return');
+    assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false);
+
+    await fontPage.$eval(search, el => el.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })));
+    await fontPage.keyboard.press('Enter');
+    assert.equal(await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value), before, 'IME confirmation never selects a font');
+    await fontPage.$eval(search, el => el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })));
+    await fontPage.click(search, { clickCount: 3 }); await fontPage.keyboard.press('Backspace');
+    const pinnedTop = await fontPage.$eval(`${popup} .preview-font-default`, el => el.getBoundingClientRect().top);
+    await fontPage.$eval(`${popup} .preview-font-results`, el => { el.scrollTop = el.scrollHeight; });
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-default`, el => el.getBoundingClientRect().top), pinnedTop, 'Default stays visible while results scroll');
+    await fontPage.screenshot({ path: 'tmp/preview-font-picker-large.png' });
+    await fontPage.type(search, 'Arial'); await fontPage.keyboard.press('Enter');
+    assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false);
+    await fontPage.click('.preview-code-font-family-dropdown');
+    assert.equal(fontRequests, 1, 'Both font pickers share the catalog');
+    await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
+    await fontPage.keyboard.press('Enter'); await settle(fontPage);
+    const readTypography = () => fontPage.evaluate(() => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      const style = (selector: string) => doc.defaultView!.getComputedStyle(doc.querySelector(selector)!);
+      return { inline: style('p code').fontSize, block: style('pre code').fontSize, inlineHeight: style('p code').lineHeight, paragraphHeight: style('p').lineHeight };
+    });
+    for (const preset of ['default', 'newsprint', 'whitey', 'obsidian-minimal', custom.id]) {
+      await select(fontPage, preset);
+      await fontPage.select('.preview-font-family-select', 'Arial');
+      const beforeTypography = await readTypography();
+      await fontPage.select('.preview-code-font-family-select', 'Consolas');
+      await fontPage.waitForFunction(() => {
+        const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+        const styles = (el: Element) => doc.defaultView!.getComputedStyle(el);
+        return styles(doc.querySelector('.meo-export-doc')!).fontFamily.startsWith('Arial')
+          && [...doc.querySelectorAll('code')].every(code => styles(code).fontFamily.startsWith('Consolas'));
+      });
+      const typography = await readTypography();
+      assert.equal(typography.inlineHeight, typography.paragraphHeight, `${preset} inline code stays in paragraph line flow`);
+      assert.deepEqual(typography, beforeTypography, `${preset} font changes preserve each code surface's typography`);
+    }
+    await select(fontPage, 'github-readme');
+    assert.equal(await fontPage.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), true);
+    assert.equal(await fontPage.$eval('.preview-code-font-family-control', el => (el as HTMLElement).hidden), true);
+    await select(fontPage, 'whitey');
+    if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.preview-options-trigger');
+    await fontPage.click('.preview-font-family-dropdown');
+    fontFailure = true; await fontPage.click(`${popup} .preview-dropdown-footer`);
+    await settle(fontPage);
+    assert.ok(await fontPage.$eval(`${popup} [role="status"]`, el => el.textContent?.includes('unavailable')));
+    assert.ok(await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).options.length > 200), 'Failed refresh preserves a successful list');
+    fontFailure = false;
+    await fontPage.keyboard.press('Escape');
+    assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false);
+    await fontPage.keyboard.press('Escape');
+    assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), true);
+    await fontPage.click('button[data-mode="source"]'); await fontPage.click('.source-preview-button');
+    await fontPage.click('.source-preview-more-button'); await fontPage.click('.preview-code-font-family-dropdown');
+    await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
+    await fontPage.mouse.move(2, 400);
+    assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false, 'Split Preview keeps the search open after pointer exit');
+    await fontPage.setViewport({ width: 420, height: 700 });
+    if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.source-preview-more-button');
+    if (await fontPage.$eval('.preview-code-font-family-dropdown-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.preview-code-font-family-dropdown');
+    await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
+    assert.equal(await fontPage.$eval('.preview-code-font-family-dropdown-panel', el => (el as HTMLElement).hidden), false);
+    await fontPage.screenshot({ path: 'tmp/preview-font-picker-narrow.png' });
+    await fontPage.close();
+  };
   const page = await open();
   for (const id of ['default', 'github-readme', 'newsprint', 'obsidian-minimal', custom.id, 'whitey']) {
     await select(page, id);
@@ -91,6 +193,7 @@ try {
   const staleState = await page.evaluate(() => (window as any).__presetState);
   await page.click('[data-preview-appearance-choice="dark"]');
   await page.select('.preview-font-family-control select', 'Arial');
+  await page.select('.preview-code-font-family-control select', 'Georgia');
   await booleans(page, false, true);
   const whitey = { appearance: 'dark', fontFamily: 'Arial', sourceColoring: false, showComments: true };
   assert.deepEqual(await controls(page), whitey);
@@ -124,6 +227,7 @@ try {
   assert.equal(await reopened.$eval('.preview-font-family-control select', el => (el as HTMLSelectElement).value), 'Arial');
   assert.equal(await reopened.$eval('.preview-source-coloring-select', el => (el as HTMLSelectElement).value), 'false');
   assert.deepEqual(await controls(reopened), whitey);
+  assert.equal(await reopened.$eval('.preview-code-font-family-control select', el => (el as HTMLSelectElement).value), 'Georgia', 'Code font survives new documents independently of body font');
   await select(reopened, custom.id);
   assert.deepEqual(await controls(reopened), { ...whitey, appearance: 'light' }, 'Custom preset settings also survive a new document');
   await select(reopened, 'obsidian-minimal');
@@ -169,6 +273,7 @@ try {
   assert.equal((await controls(otherMigrated)).fontFamily, 'Georgia', 'Legacy migration fills missing presets even when Host remembers another preset');
   assert.deepEqual(await controls(otherMigrated), { appearance: 'light', fontFamily: 'Georgia', sourceColoring: true, showComments: false }, 'Legacy migration snapshots shared switches before later Default changes');
   await otherMigrated.close();
+  await verifyFontPicker();
   console.log('Preview preset preferences: built-in/custom defaults, switches, new documents, stale caches, Auto and legacy migration passed.');
 } finally {
   await browser.close();

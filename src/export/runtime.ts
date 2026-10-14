@@ -41,7 +41,7 @@ async function renderExportHtmlDocument(
   const githubStyle = definition.custom?.base === 'github-readme' || definition.renderer === 'github-readme';
   const exportAppearance = options.target === 'docx' ? 'light' : resolvePresetAppearance(definition, snapshot.appearance, snapshot.appearance);
   const styleEnvironment = options.target === 'docx' ? snapshot.environment
-    : { ...snapshot.environment, previewFontFamily: snapshot.presetFontFamily ?? snapshot.environment.previewFontFamily };
+    : { ...snapshot.environment, previewFontFamily: snapshot.presetFontFamily ?? snapshot.environment.previewFontFamily, previewCodeFontFamily: snapshot.presetCodeFontFamily ?? snapshot.environment.previewCodeFontFamily };
   const environment = options.target === 'docx' ? styleEnvironment
     : { ...styleEnvironment, ...resolvePreviewPresetSettings(preset, styleEnvironment, definition) };
   const namedTheme = getPreviewPresetCodeTheme(definition, exportAppearance);

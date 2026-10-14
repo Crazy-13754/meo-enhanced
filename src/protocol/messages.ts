@@ -1,3 +1,4 @@
+import { decodePreviewFontsRequest, decodePreviewFontsResponse, type PreviewFontsRequest, type PreviewFontsResponse } from './previewFonts';
 import { decodeEditorServiceRequest, decodeEditorServiceResponse, type EditorServiceRequest, type EditorServiceResponse } from './editorServices';
 import { decodeSaveDocumentCopyRequest, decodeDocumentCopyResponse, type SaveDocumentCopyRequest, type DocumentCopyResponse } from './documentCopy';
 import { decodeSaveImageFromClipboardRequest, decodeSavedImagePathResponse, type SaveImageFromClipboardRequest, type SavedImagePathResponse } from './clipboardImageSave';
@@ -24,6 +25,7 @@ import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageSto
 import { decodeUpdateUiColorsRequest, decodeUiColorsResult, type UpdateUiColorsRequest, type UiColorsResult } from './uiColors';
 
 export type WebviewToHostMessage =
+  | PreviewFontsRequest
   | WebviewVisibilityRequest
   | UpdateUiColorsRequest
   | PreviewPresetRequest
@@ -46,6 +48,7 @@ export type WebviewToHostMessage =
   | ExportSnapshotResponse;
 
 export type HostToWebviewMessage =
+  | PreviewFontsResponse
   | WebviewVisibilityResponse
   | UiColorsResult
   | PreviewPresetResponse
@@ -74,7 +77,8 @@ export type HostToWebviewMessage =
   | GitBaselineChangedEvent;
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
-  return decodeWebviewVisibilityRequest(value)
+  return decodePreviewFontsRequest(value)
+    ?? decodeWebviewVisibilityRequest(value)
     ?? decodePreviewPresetRequest(value)
     ?? decodeImageLocationRequest(value)
     ?? decodeUpdateUiColorsRequest(value)
@@ -98,7 +102,8 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
 
 export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage | null {
   if (value && typeof value === 'object' && 'type' in value && value.type === 'openPreviewPresetSettings') return { type: 'openPreviewPresetSettings' };
-  return decodeWebviewVisibilityResponse(value)
+  return decodePreviewFontsResponse(value)
+    ?? decodeWebviewVisibilityResponse(value)
     ?? decodePreviewPresetsChanged(value)
     ?? decodeUiColorsResult(value)
     ?? decodePreviewPresetResponse(value)

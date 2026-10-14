@@ -177,7 +177,8 @@ try {
   assert.equal((await visual()).h1, '30px');
   assert.equal((await visual()).color, 'rgb(226, 229, 231)');
   assert.equal(await page.$eval('.mode-toolbar', el => getComputedStyle(el).backgroundColor), uiBefore, 'Document CSS does not recolor the toolbar');
-  assert.equal(await page.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), false);
+  assert.equal(await page.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), true);
+  assert.equal(await page.$eval('.preview-code-font-family-control', el => (el as HTMLElement).hidden), true, 'Fixed custom presets hide both font overrides');
   assert.equal(await page.$eval('.preview-font-family-dropdown', el => (el as HTMLButtonElement).disabled), true);
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-mermaid.is-rendered'));
   await page.evaluate(async () => { await document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.fonts.ready; });
@@ -214,7 +215,7 @@ try {
   await page.mouse.move(1300, 500);
   assert.equal((await visual()).background, 'rgb(255, 255, 255)');
   await page.click('.preview-preset-dropdown');
-  await page.click('.preview-dropdown-footer');
+  await page.click('.preview-preset-dropdown-panel .preview-dropdown-footer');
   assert.equal(await page.$eval('.settings-tab[data-tab="presets"]', el => el.getAttribute('aria-selected')), 'true');
   assert.equal(await page.$eval('.preview-preset-dropdown-panel', el => (el as HTMLElement).hidden), true);
   assert.equal((await visual()).preset, single.id, 'The management action does not become the selected preset');

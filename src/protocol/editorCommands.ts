@@ -45,6 +45,7 @@ export type EditorCommand =
     }
   | { readonly type: 'setPreviewAppearance'; readonly appearance: EditorAppearance }
   | { readonly type: 'setPreviewFontFamily'; readonly fontFamily: string }
+  | { readonly type: 'setPreviewCodeFontFamily'; readonly fontFamily: string }
   | { readonly type: 'setPreviewPreset'; readonly preset: PreviewPresetId }
   | { readonly type: 'setPreviewPresetPreference'; readonly preset: PreviewPresetId; readonly preference: PreviewPresetPreferencePatch; readonly initialPreference: PreviewPresetPreference; readonly onlyIfMissing?: boolean }
   | { readonly type: 'setPreviewSourceColoring'; readonly enabled: boolean }
@@ -138,7 +139,8 @@ export function decodeEditorCommand(value: unknown): EditorCommand | null {
     case 'setPreviewShowComments':
     case 'setLiveStrongColoring':
       return typeof value.enabled === 'boolean' ? value as EditorCommand : null;
-    case 'setPreviewFontFamily': {
+    case 'setPreviewFontFamily':
+    case 'setPreviewCodeFontFamily': {
       if (typeof value.fontFamily !== 'string') return null;
       const fontFamily = normalizePreviewFontFamily(value.fontFamily);
       return fontFamily === null ? null : { type: value.type, fontFamily };

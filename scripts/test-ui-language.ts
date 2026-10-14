@@ -32,8 +32,8 @@ assert.equal(getReadingUiStrings('en').properties, 'Properties');
 assert.equal(english.exportHtml, 'Export as HTML');
 assert.equal(english.exportDocument, 'Export');
 assert.deepEqual(
-  [english.previewFontFamily, english.previewCodeColors, english.previewAppearance],
-  ['Font', 'Code color', 'Preview theme']
+  [english.previewFontFamily, english.previewCodeFontFamily, english.previewCodeColors, english.previewAppearance],
+  ['Body font', 'Code font', 'Code color', 'Preview theme']
 );
 assert.deepEqual([english.more, english.moreTools], ['Settings', 'Settings']);
 assert.deepEqual([chinese.more, chinese.moreTools], ['设置', '设置']);
@@ -70,7 +70,7 @@ assert.equal(chinese.replacedRemaining(3), '已替换 • 剩余 3 个');
 assert.equal(chinese.outlineNoHeadings, '暂无标题');
 assert.equal(chinese.outlineCollapseTopTwo, '只显示一级标题');
 assert.equal(english.outlineCollapseTopTwo, 'Show top level only');
-assert.equal(chinese.previewFontUnavailable, '无法获取本地字体列表；请手动输入字体名称');
+assert.equal(chinese.previewFontUnavailable, '无法读取系统字体列表，保留当前候选');
 assert.equal(chinese.untitled, '未命名');
 assert.equal(chinese.backToTop, '回到顶部');
 assert.equal(chinese.markTaskComplete, '标记任务为已完成');

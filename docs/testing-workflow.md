@@ -11,6 +11,16 @@ without Webview state, stale-cache precedence, legacy migration, concurrent Host
 writes and persistence failure. Fixed/unsupported controls retain preset policy;
 Default retains its existing configuration owner.
 
+`scripts/test-preview-fonts.ts` covers font catalog decoding, family deduplication,
+correlated queries, shared caching, failed refresh retention, code font persistence
+and the fixed GitHub font policy. The preset preference browser contract also covers
+large searchable catalogs, aliases, a pinned default during filtering and scrolling,
+IME confirmation, separate body/code families, inline/block typography and split Preview.
+The toolbar menu contract verifies click ownership and nested Escape ordering in
+Chinese/English, light/dark and narrow layouts. System enumeration is local-only;
+Windows is smoke checked against the installed font collection. Mac/Linux adapters
+need native platform verification before release; unavailable queries use fallback fonts.
+
 The user-facing inventory is in [testing-feature-coverage.md](testing-feature-coverage.md).
 The Mermaid/formula inner-source matrix and findings are in
 [testing-rendered-block-source.md](testing-rendered-block-source.md). Run

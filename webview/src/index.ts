@@ -10,6 +10,7 @@ import { decodePreviewPresetPreferences, isPreviewPresetEnabled, isPreviewPreset
 import { createPreviewPresetTransport } from './adapters/previewPresetTransport';
 import { bindTooltips, createTooltip } from './adapters/tooltip';
 import { createEditingPreferencesTransport } from './adapters/editingPreferencesTransport';
+import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
 import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
@@ -1007,6 +1008,7 @@ const previewAppearanceSlot = document.createElement('span');
 const previewPresetSlot = document.createElement('span');
 const previewWidthSlot = document.createElement('span');
 const previewFontFamilySlot = document.createElement('span');
+const previewCodeFontFamilySlot = document.createElement('span');
 const previewSourceColoringSlot = document.createElement('span');
 const previewShowCommentsSlot = document.createElement('span');
 const previewOptionsControl = document.createElement('div');
@@ -1021,10 +1023,10 @@ previewOptionsLabel.textContent = activeUiStrings.sidePreviewMore;
 previewOptionsButton.append(createElement(Settings2, { width: 16, height: 16, 'aria-hidden': 'true', 'data-icon': 'settings-2' }), previewOptionsLabel);
 previewOptionsControl.append(previewOptionsButton);
 const previewOptionsMenu = createPreviewOptionsMenu(activeUiStrings.sidePreviewMore, [
-  previewFontFamilySlot, previewWidthSlot, previewSourceColoringSlot, previewShowCommentsSlot
+  previewFontFamilySlot, previewCodeFontFamilySlot, previewWidthSlot, previewSourceColoringSlot, previewShowCommentsSlot
 ], () => previewController.closeToolbarDropdowns());
 const previewOptionsPanel = previewOptionsMenu.panel;
-previewOptionsMenu.bindTrigger(previewOptionsButton, true);
+previewOptionsMenu.bindTrigger(previewOptionsButton);
 const previewFormatGroup = document.createElement('div');
 previewFormatGroup.className = 'preview-format-group';
 previewFormatGroup.setAttribute('role', 'group');
@@ -1665,7 +1667,9 @@ const waitForInitialPreviewPaint = (): Promise<void> => {
   });
 };
 let previewViewportInteractionGeneration = 0;
+const previewFontsTransport = createPreviewFontsTransport(request => vscode.postMessage(request));
 const previewController = createPreviewController({
+  requestFonts: previewFontsTransport.request,
   vscode,
   optionsMenu: previewOptionsPanel,
   uiLanguage: activeUiLanguage,
@@ -1754,6 +1758,7 @@ const previewController = createPreviewController({
 const previewAdapter = createPreviewWebviewAdapter(previewController);
 previewAppearanceSlot.replaceWith(previewController.appearanceControl);
 previewFontFamilySlot.replaceWith(previewController.fontFamilyControl);
+previewCodeFontFamilySlot.replaceWith(previewController.codeFontFamilyControl);
 previewPresetSlot.replaceWith(previewController.presetControl);
 previewWidthSlot.replaceWith(previewController.widthControl);
 previewSourceColoringSlot.replaceWith(previewController.sourceColoringControl);
@@ -1844,6 +1849,7 @@ const editorFocusController = createEditorFocusController({
 // These inputs share the Webview lifetime; disposal clears their registrations.
 editorFocusController.registerInput(findPanelElements.findInput);
 editorFocusController.registerInput(findPanelElements.replaceInput);
+for (const input of previewController.fontSearchInputs) editorFocusController.registerInput(input);
 const isSidePreviewVisible = (): boolean => (
   sourcePreviewEnabled && getActiveEditorMode() === 'source'
 );
@@ -3182,7 +3188,8 @@ const exportAdapter = createExportWebviewAdapter({
   getCodeTheme: () => themeAdapter.getCodePalette(previewController.getAppearance()).sourceTheme,
   getPreset: () => previewController.getPresetState().preset,
   getPresetRevision: () => previewController.getPresetRevision(),
-  getPresetFontFamily: () => previewController.getPresetFontFamily()
+  getPresetFontFamily: () => previewController.getPresetFontFamily(),
+  getPresetCodeFontFamily: () => previewController.getPresetCodeFontFamily()
 });
 
 const themeAdapter = createAppearanceWebviewAdapter({
@@ -3324,6 +3331,7 @@ window.addEventListener('message', (event) => {
   if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
   if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
   if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }
+  if (message.type === 'previewFontsResult') { previewFontsTransport.accept(message); return; }
   if (message.type === 'previewPresetResult') { previewPresetTransport.accept(message); return; }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
   if (message.type === 'imageStorageChanged') { if (settingsWindow?.isOpen()) void imageLocationSettings.refresh(); return; }
@@ -3366,6 +3374,7 @@ window.addEventListener('message', (event) => {
         disabledPreviewPresets: message.disabledPreviewPresets,
         appearance: message.previewAppearance,
         fontFamily: message.previewFontFamily,
+        codeFontFamily: message.previewCodeFontFamily,
         sourceColoring: message.previewSourceColoring,
         showComments: message.previewShowComments,
         presetState: { preset: message.previewPreset ?? (isPreviewPresetId(restoredPresetState?.preset) ? restoredPresetState.preset : 'default'), preferences: { ...restoredPreferences, ...message.previewPresetPreferences } },
@@ -3670,6 +3679,7 @@ window.addEventListener('focus', () => {
 
 window.addEventListener('beforeunload', () => {
   readingLayout.dispose();
+  previewFontsTransport.dispose();
   settingsWindow?.dispose();
   largeDocumentTooltip?.dispose();
   tooltipBinding.dispose();

@@ -54,6 +54,7 @@ export function createToolbarDropdown(
 
   const panel = document.createElement('div');
   panel.className = `preview-dropdown-panel ${dropdownClassFor(controlClassName)}-panel`;
+  panel.dataset.previewControl = controlClassName;
   panel.dataset.previewAppearance = 'dark';
   panel.setAttribute('role', 'listbox');
   panel.hidden = true;

@@ -3,6 +3,7 @@ export { MAX_PREVIEW_FONT_FAMILY_LENGTH, normalizePreviewFontFamily } from '../f
 
 export type EditorStyleEnvironment = {
   readonly previewFontFamily: string;
+  readonly previewCodeFontFamily?: string;
   readonly editorFontFamily?: string;
   readonly editorFontSizePx?: number;
   readonly editorFontWeight?: string;
@@ -72,7 +73,8 @@ export function decodeEditorStyleEnvironment(value: unknown): EditorStyleEnviron
   if (!Object.prototype.hasOwnProperty.call(value, 'previewFontFamily')
     || typeof value.previewFontFamily !== 'string') return null;
   const previewFontFamily = normalizePreviewFontFamily(value.previewFontFamily);
-  if (previewFontFamily === null) return null;
+  const previewCodeFontFamily = value.previewCodeFontFamily === undefined ? undefined : normalizePreviewFontFamily(value.previewCodeFontFamily);
+  if (previewFontFamily === null || previewCodeFontFamily === null) return null;
   for (const key of stringKeys) {
     if (value[key] !== undefined && typeof value[key] !== 'string') return null;
   }
@@ -97,5 +99,5 @@ export function decodeEditorStyleEnvironment(value: unknown): EditorStyleEnviron
         .some((key) => palette[key] !== undefined && typeof palette[key] !== 'string')) return null;
     }
   }
-  return { ...value, previewFontFamily } as EditorStyleEnvironment;
+  return { ...value, previewFontFamily, ...(previewCodeFontFamily === undefined ? {} : { previewCodeFontFamily }) } as EditorStyleEnvironment;
 }

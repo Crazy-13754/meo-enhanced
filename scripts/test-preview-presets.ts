@@ -134,7 +134,7 @@ for (const id of ['newsprint', 'obsidian-minimal', 'whitey'] as const) {
   assert.equal(preview.html, defaultReading.html, `${id} keeps MEO rendering, comments and extensions`);
   for (const css of Object.values(preview.styles)) {
     assert.ok(css.includes('--meo-preset-font-body:') && css.includes('"Comic Sans MS"'));
-    assert.ok(css.includes('--meo-font-code: ui-monospace'), `${id} has an independent code font`);
+    assert.ok(css.includes('--meo-preset-font-code: ui-monospace') && css.includes('--meo-font-code: var(--meo-preset-font-code)'), `${id} has an independent code font`);
   }
   assert.equal(resolvePresetAppearance(preset, 'dark', 'dark'), id === 'newsprint' ? 'light' : 'dark');
   const withoutOverride = exportRuntime.renderPreviewDocument({ markdownText: readingText, sourceDocumentPath: 'C:/tmp/preset.md', uiLanguage: 'en', preset: id, styleEnvironment: { previewFontFamily: '' } });

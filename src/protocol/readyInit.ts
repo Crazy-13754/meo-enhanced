@@ -56,6 +56,7 @@ export type InitMessage = {
   readonly editingPreferencesRevision?: number;
   readonly previewAppearance: PreviewAppearance;
   readonly previewFontFamily: string;
+  readonly previewCodeFontFamily?: string;
   readonly previewSourceColoring: boolean;
   readonly previewShowComments: boolean;
   readonly liveStrongColoring: boolean;
@@ -172,6 +173,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     || !isSourceLineNumberMode(value.sourceLineNumbers)
     || !isPreviewAppearance(value.previewAppearance)
     || previewFontFamily === null
+    || value.previewCodeFontFamily !== undefined && normalizePreviewFontFamily(value.previewCodeFontFamily) === null
     || typeof value.previewSourceColoring !== 'boolean'
     || (value.previewShowComments !== undefined && typeof value.previewShowComments !== 'boolean')
     || liveStrongColoring === null
@@ -226,6 +228,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     editingPreferences: value.editingPreferences ?? { input: { ...defaultInputAssistance }, shortcuts: {} },
     automaticUiLanguage: value.automaticUiLanguage ?? value.uiLanguage,
     previewFontFamily,
+    ...(value.previewCodeFontFamily === undefined ? {} : { previewCodeFontFamily: normalizePreviewFontFamily(value.previewCodeFontFamily)! }),
     previewShowComments: value.previewShowComments ?? false,
     liveStrongColoring,
     editorFontSizeMode,

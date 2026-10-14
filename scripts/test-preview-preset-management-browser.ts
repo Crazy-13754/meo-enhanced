@@ -71,12 +71,12 @@ try {
   assert.equal(await page.$eval('.preview-frame', el => (el as HTMLIFrameElement).contentDocument!.documentElement.dataset.meoPreviewPreset), preset.id, 'Viewing another preset does not select it');
   await page.hover(`.preview-preset-dropdown-panel [data-value="${preset.id}"]`);
   await page.waitForFunction(description => [...document.querySelectorAll<HTMLElement>('.meo-tooltip.is-visible')].some(el => getComputedStyle(el).opacity === '1' && el.textContent?.includes(description)), {}, preset.description['zh-CN']);
-  await page.hover('.preview-dropdown-footer');
+  await page.hover('.preview-preset-dropdown-panel .preview-dropdown-footer');
   assert.equal(await page.$('.meo-tooltip.is-visible'), null, 'Leaving the preset row hides its information');
   await page.focus('.preview-preset-dropdown-panel [data-value="default"]');
   await page.keyboard.press('ArrowDown');
   assert.equal(await page.evaluate(() => (document.activeElement as HTMLElement).dataset.value), 'github-readme', 'Arrow navigation follows preset rows');
-  await page.click('.preview-dropdown-footer');
+  await page.click('.preview-preset-dropdown-panel .preview-dropdown-footer');
   assert.equal(await page.$eval('.settings-tab[data-tab="presets"]', el => el.getAttribute('aria-selected')), 'true');
   assert.deepEqual(await page.$$eval('.settings-tab', els => els.map(el => (el as HTMLElement).dataset.tab)), ['general', 'appearance', 'typing', 'presets', 'shortcuts']);
   assert.equal(await page.$eval('.preview-preset-dropdown-panel', el => (el as HTMLElement).hidden), true);

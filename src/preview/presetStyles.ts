@@ -20,6 +20,7 @@ export function buildPresetPreviewStyles(
   // Non-default presets own document colors; only typography and switches inherit.
   const baseEnvironment: ExportStyleEnvironment = {
     previewFontFamily: '',
+    previewCodeFontFamily: '',
     editorFontFamily: environment.editorFontFamily,
     editorFontSizePx: environment.editorFontSizePx,
     editorFontWeight: environment.editorFontWeight,
@@ -32,8 +33,11 @@ export function buildPresetPreviewStyles(
     previewThemeIsolation: true
   };
   const fontFamily = definition.controls.fontFamily.mode === 'editable' ? normalizePreviewFontFamily(environment.previewFontFamily) : null;
-  // Apply the selected body font after preset CSS, leaving its code font untouched.
+  const codeFontFamily = definition.controls.fontFamily.mode === 'editable' ? normalizePreviewFontFamily(environment.previewCodeFontFamily ?? '') : null;
+  // Override family names only; inline and block code retain their separate typography.
   const fontOverride = fontFamily ? `.meo-export-doc { --meo-font-body: "${fontFamily}", var(--meo-preset-font-body, var(--meo-font-system-sans)); font-family: var(--meo-font-body); }` : '';
+  const codeFontOverride = codeFontFamily ? `.meo-export-doc { --meo-font-code: "${codeFontFamily}", var(--meo-preset-font-code, var(--meo-font-system-mono)); }
+.meo-export-doc :is(code, pre, .meo-export-code-language-label, .meo-export-code-line-source) { font-family: var(--meo-font-code); }` : '';
   if (definition.custom) {
     const custom = definition.custom;
     const effective = resolvePresetAppearance(definition, appearance, appearance);
@@ -45,6 +49,7 @@ html::-webkit-scrollbar-track, body::-webkit-scrollbar-track { background: var(-
 ${custom.css.common ?? ''}
 ${custom.css[effective] ?? ''}
 ${fontOverride}
+${codeFontOverride}
 ${fontSizeStyles}
 html[data-meo-export-target='pdf'] .meo-export-doc { box-sizing: border-box; width: 100%; max-width: none; }
 `;
@@ -52,7 +57,7 @@ html[data-meo-export-target='pdf'] .meo-export-doc { box-sizing: border-box; wid
   if (definition.renderer === 'meo') {
     if (preset === 'default') return `${buildPreviewStyles(environment, appearance)}\n${fontSizeStyles}`;
     const effective = resolvePresetAppearance(definition, appearance, appearance);
-    return `${buildPreviewStyles(baseEnvironment, effective)}\n${getReadingPresetStyles(preset, effective)}\n${fontOverride}\n${fontSizeStyles}`;
+    return `${buildPreviewStyles(baseEnvironment, effective)}\n${getReadingPresetStyles(preset, effective)}\n${fontOverride}\n${codeFontOverride}\n${fontSizeStyles}`;
   }
   const background = appearance === 'light' ? '#ffffff' : '#0d1117';
   const foreground = appearance === 'light' ? '#1f2328' : '#f0f6fc';

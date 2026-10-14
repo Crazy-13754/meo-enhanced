@@ -30,6 +30,8 @@ import {
 } from './previewCodeHighlight';
 import { activateShikiCodeHighlighting, subscribeShikiRefresh, setShikiTheme, type RawVscodeTheme } from './shikiHighlighter';
 import { createToolbarDropdown } from './toolbarDropdown';
+import { createPreviewFontPicker } from '../adapters/previewFontPicker';
+import { fallbackPreviewFonts, type PreviewFont } from '../../../src/foundation/previewFonts';
 import { createSegmentedControl } from '../adapters/segmentedControl';
 import { createPreviewPresetInfo } from '../adapters/previewPresetInfo';
 import type { PreviewPresetDiagnostic } from '../../../src/foundation/previewPresets';
@@ -52,6 +54,7 @@ type PreviewControllerOptions = {
   onManagePresets?: () => void;
   /** The shared menu is portaled outside the preview and needs its resolved palette. */
   optionsMenu?: HTMLElement;
+  requestFonts?: (refresh: boolean) => Promise<readonly PreviewFont[] | null>;
   onRendered?: (options?: { readonly skipLinkedViewportProjection?: boolean }) => void;
   onPaintReady?: () => void;
   /** Return true for a handled global command; other command keys continue to VS Code. */
@@ -598,16 +601,6 @@ table.meo-preview-table-compressed :is(th, td) :is(ul, ol, li) {
 }
 `;
 
-const previewFontFamilies = [
-  'Microsoft YaHei',
-  'Segoe UI',
-  'Noto Sans CJK SC',
-  'Source Han Sans SC',
-  'SimSun',
-  'Arial',
-  'Georgia'
-] as const;
-
 const previewSourcePositionMarkerStyles = `
 .meo-preview-source-position-marker {
   position: absolute;
@@ -819,6 +812,7 @@ export function createPreviewController({
   onPresetPreferencesChanged,
   onManagePresets,
   optionsMenu,
+  requestFonts,
   onRendered,
   onPaintReady,
   onShortcut,
@@ -919,7 +913,11 @@ export function createPreviewController({
     ]
   });
   showCommentsControl.append(showCommentsLabel, showCommentsSegments.element);
-  const fontFamilySelectControl = createToolbarDropdown('preview-font-family-control', uiStrings.previewFontFamily);
+  const fontFamilySelectControl = createPreviewFontPicker('preview-font-family-control', uiStrings.previewFontFamily, refresh => { void loadFonts(refresh); });
+  const codeFontFamilySelectControl = createPreviewFontPicker('preview-code-font-family-control', uiStrings.previewCodeFontFamily, refresh => { void loadFonts(refresh); });
+  const codeFontFamilyControl = codeFontFamilySelectControl.element;
+  const codeFontFamilySelect = codeFontFamilySelectControl.select;
+  codeFontFamilySelect.classList.add('preview-code-font-family-select');
   const fontFamilyControl = fontFamilySelectControl.element;
   const presetSelectControl = createToolbarDropdown('preview-preset-control', uiStrings.previewPreset);
   const presetControl = presetSelectControl.element;
@@ -1005,19 +1003,53 @@ export function createPreviewController({
   };
   refreshPresetOptions();
   widthSelectControl.refreshOptions();
-  const fontFamilyLabel = fontFamilySelectControl.label;
   const fontFamilySelect = fontFamilySelectControl.select;
   fontFamilySelect.classList.add('preview-font-family-select');
   const defaultFontOption = document.createElement('option');
   defaultFontOption.value = '';
   defaultFontOption.textContent = uiStrings.previewFontPlaceholder;
   fontFamilySelect.append(defaultFontOption);
-  for (const family of previewFontFamilies) {
-    const option = document.createElement('option');
-    option.value = family;
-    option.textContent = family;
-    fontFamilySelect.append(option);
-  }
+  const defaultCodeFontOption = defaultFontOption.cloneNode(true) as HTMLOptionElement;
+  codeFontFamilySelect.append(defaultCodeFontOption);
+  let fontCatalog: readonly PreviewFont[] = fallbackPreviewFonts;
+  let fontCatalogLoaded = false;
+  let fontCatalogAvailable = false;
+  let fontCatalogError = false;
+  let fontLoad: Promise<void> | undefined;
+  const fontPickers = [fontFamilySelectControl, codeFontFamilySelectControl];
+  const updateFontPickerLabels = () => {
+    for (const picker of fontPickers) {
+      picker.setLabels({ search: uiStrings.previewFontSearch, empty: uiStrings.previewFontEmpty, refresh: uiStrings.previewFontRefresh, missing: uiStrings.previewFontMissing });
+      picker.setStatus(fontLoad ? uiStrings.previewFontLoading : fontCatalogError ? uiStrings.previewFontUnavailable : '', Boolean(fontLoad));
+    }
+  };
+  const rebuildFontOptions = () => {
+    for (const [index, picker] of fontPickers.entries()) {
+      const current = index === 0 ? fontFamilyPreference : codeFontFamilyPreference;
+      const defaultOption = index === 0 ? defaultFontOption : defaultCodeFontOption;
+      const options = fontCatalog.map(font => {
+        const option = document.createElement('option'); option.value = font.family; option.textContent = font.family; option.dataset.aliases = font.aliases.join(' '); return option;
+      });
+      if (current && !options.some(option => option.value === current)) {
+        const option = document.createElement('option'); option.value = current; option.textContent = current; if (fontCatalogAvailable && !fontCatalog.some(font => [font.family, ...font.aliases].some(name => name.toLocaleLowerCase() === current.toLocaleLowerCase()))) option.dataset.missing = 'true'; options.unshift(option);
+      }
+      picker.select.replaceChildren(defaultOption, ...options); picker.select.value = current; picker.refreshOptions();
+    }
+  };
+  const loadFonts = (refresh: boolean): Promise<void> => {
+    if (fontLoad) return fontLoad;
+    if (fontCatalogLoaded && !refresh) return Promise.resolve();
+    for (const picker of fontPickers) picker.setStatus(uiStrings.previewFontLoading, true);
+    fontLoad = Promise.resolve().then(() => requestFonts?.(refresh) ?? null).catch(() => null).then(fonts => {
+      if (disposed) return;
+      fontCatalogLoaded = true;
+      fontCatalogError = !fonts?.length;
+      if (fonts?.length) { fontCatalog = fonts; fontCatalogAvailable = true; }
+      for (const picker of fontPickers) picker.setStatus(fonts?.length ? '' : uiStrings.previewFontUnavailable);
+      rebuildFontOptions();
+    }).finally(() => { fontLoad = undefined; });
+    return fontLoad;
+  };
   fontFamilySelectControl.refreshOptions();
 
   const status = document.createElement('div');
@@ -1050,6 +1082,8 @@ export function createPreviewController({
     showCommentsSegments.element.setAttribute('aria-label', uiStrings.showComments);
     showCommentsSegments.setLabels({ true: uiStrings.previewCommentsShow, false: uiStrings.previewCommentsHide });
     fontFamilySelectControl.setLabel(uiStrings.previewFontFamily);
+    codeFontFamilySelectControl.setLabel(uiStrings.previewCodeFontFamily);
+    updateFontPickerLabels();
     defaultFontOption.textContent = presetPreference === 'default' ? uiStrings.previewFontPlaceholder : uiStrings.previewPresetFont;
     fontFamilySelectControl.refreshOptions();
     updatePresetControls();
@@ -1074,6 +1108,8 @@ export function createPreviewController({
   let showComments = false;
   let fontFamilyPreference = '';
   let defaultFontFamilyPreference = '';
+  let codeFontFamilyPreference = '';
+  let defaultCodeFontFamilyPreference = '';
   let defaultAppearancePreference: PreviewAppearance = 'auto';
   let defaultSourceColoring = true;
   let defaultShowComments = false;
@@ -1083,7 +1119,7 @@ export function createPreviewController({
   const currentPresetPreference = () => ({
     appearance: appearancePreference,
     contentWidth: contentWidthPreference,
-    ...(getPreviewPreset(presetPreference).controls.fontFamily.mode === 'editable' ? { fontFamily: fontFamilyPreference } : {}),
+    ...(getPreviewPreset(presetPreference).controls.fontFamily.mode === 'editable' ? { fontFamily: fontFamilyPreference, codeFontFamily: codeFontFamilyPreference } : {}),
     ...(getPreviewPreset(presetPreference).controls.codeColoring.mode === 'editable' ? { sourceColoring } : {}),
     ...(getPreviewPreset(presetPreference).controls.htmlComments.mode === 'editable' ? { showComments } : {})
   });
@@ -1145,22 +1181,15 @@ export function createPreviewController({
     defaultFontOption.textContent = policy.mode === 'fixed' ? uiStrings.previewControlStyles
       : policy.mode === 'unsupported' ? uiStrings.previewControlUnsupported
         : presetPreference === 'default' ? uiStrings.previewFontPlaceholder : uiStrings.previewPresetFont;
-    if (!fixed && fontFamilyPreference && !Array.from(fontFamilySelect.options).some(option => option.value === fontFamilyPreference)) {
-      const option = document.createElement('option');
-      option.value = fontFamilyPreference;
-      option.textContent = fontFamilyPreference;
-      fontFamilySelect.append(option);
-    }
-    fontFamilySelect.disabled = fixed;
-    fontFamilySelect.value = fixed ? '' : fontFamilyPreference;
+    defaultCodeFontOption.textContent = defaultFontOption.textContent;
     const reason = policy.mode === 'fixed' ? uiStrings.previewFixedFontFamily
       : policy.mode === 'unsupported' ? uiStrings.previewUnsupportedOption : '';
-    fontFamilyControl.dataset.tooltip = reason;
-    fontFamilyControl.dataset.tooltipPositioning = 'pointer';
-    fontFamilyControl.setAttribute('aria-description', reason);
-    fontFamilyControl.setAttribute('aria-disabled', String(fixed));
-    fontFamilySelectControl.refreshOptions();
-    fontFamilySelectControl.syncFromSelect();
+    for (const picker of fontPickers) {
+      picker.select.disabled = fixed; picker.element.hidden = fixed;
+      picker.element.dataset.tooltip = reason; picker.element.dataset.tooltipPositioning = 'pointer';
+      picker.element.setAttribute('aria-description', reason); picker.element.setAttribute('aria-disabled', String(fixed));
+    }
+    rebuildFontOptions();
   };
   const updatePresetControls = () => {
     const preset = getPreviewPreset(presetPreference);
@@ -1551,9 +1580,10 @@ export function createPreviewController({
       control.dataset.previewAppearance = toolbarAppearance;
     }
     fontFamilySelectControl.setAppearance(toolbarAppearance);
+    codeFontFamilySelectControl.setAppearance(toolbarAppearance);
     presetSelectControl.setAppearance(toolbarAppearance);
     widthSelectControl.setAppearance(toolbarAppearance);
-    for (const control of [fontFamilySelectControl, presetSelectControl, widthSelectControl]) {
+    for (const control of [fontFamilySelectControl, codeFontFamilySelectControl, presetSelectControl, widthSelectControl]) {
       control.panel.toggleAttribute('data-source-preview-theme', sourcePreviewControls);
       control.panel.style.colorScheme = toolbarAppearance;
     }
@@ -1584,7 +1614,7 @@ export function createPreviewController({
       optionsMenu?.style.setProperty('--meo-preview-foreground', foreground);
       optionsMenu?.style.setProperty('--meo-preview-background', background);
       // Dropdowns are portaled to body, so they cannot inherit the Source preview palette.
-      for (const control of [fontFamilySelectControl, presetSelectControl, widthSelectControl]) {
+      for (const control of [fontFamilySelectControl, codeFontFamilySelectControl, presetSelectControl, widthSelectControl]) {
         control.panel.style.setProperty('--meo-preview-foreground', foreground);
         control.panel.style.setProperty('--meo-preview-background', background);
       }
@@ -2095,6 +2125,7 @@ export function createPreviewController({
   const getStyleEnvironment = () => getExportStyleEnvironment({
     captureDocumentSurfaces: presetPreference === 'default' && appearance === getEditorAppearance(),
     previewFontFamily: fontFamilyPreference,
+    previewCodeFontFamily: codeFontFamilyPreference,
     previewSourceColoring: sourceColoring,
     previewShowComments: showComments,
     previewCodePalettes: {
@@ -2240,42 +2271,31 @@ export function createPreviewController({
     }
   };
 
-  const setFontFamily = (
-    value: string,
-    { post = false }: { readonly post?: boolean } = {}
-  ): void => {
+  const setFontPreference = (value: string, post = false, code = false) => {
     if (post && getPreviewPreset(presetPreference).controls.fontFamily.mode !== 'editable') return;
-    const nextFontFamily = normalizePreviewFontFamily(value);
-    if (disposed || nextFontFamily === null) {
-      fontFamilySelect.value = fontFamilyPreference;
-      return;
-    }
-    // Host font updates belong to Default, even while another preset is selected.
+    const normalized = normalizePreviewFontFamily(value);
+    if (normalized === null) return;
     if (!post) {
-      defaultFontFamilyPreference = nextFontFamily;
+      if (code) defaultCodeFontFamilyPreference = normalized; else defaultFontFamilyPreference = normalized;
       if (presetPreference !== 'default') return;
     }
-    const changed = fontFamilyPreference !== nextFontFamily;
-    fontFamilyPreference = nextFontFamily;
+    const changed = (code ? codeFontFamilyPreference : fontFamilyPreference) !== normalized;
+    if (code) codeFontFamilyPreference = normalized; else fontFamilyPreference = normalized;
     updateFontFamilyControl();
     if (changed && (latestPayload || hasPendingRequest)) {
       const text = hasPendingRequest ? pendingText : latestAcceptedText;
-      if (text !== null) {
-        requestRender(text, {
-          force: true,
-          preserveViewport: true,
-          preserveFrame: true
-        });
-      }
+      if (text !== null) void requestRender(text, { force: true, preserveViewport: true, preserveFrame: true });
     }
     if (changed && post) {
       if (presetPreference === 'default') {
-        defaultFontFamilyPreference = nextFontFamily;
-        vscode.postMessage({ type: 'setPreviewFontFamily', fontFamily: nextFontFamily });
+        if (code) defaultCodeFontFamilyPreference = normalized; else defaultFontFamilyPreference = normalized;
+        vscode.postMessage({ type: code ? 'setPreviewCodeFontFamily' : 'setPreviewFontFamily', fontFamily: normalized });
       }
-      persistPresetPreference({ fontFamily: nextFontFamily });
+      persistPresetPreference(code ? { codeFontFamily: normalized } : { fontFamily: normalized });
     }
   };
+  const setFontFamily = (value: string, options: { readonly post?: boolean } = {}) => setFontPreference(value, options.post);
+  const setCodeFontFamily = (value: string, options: { readonly post?: boolean } = {}) => setFontPreference(value, options.post, true);
 
   const handleAppearanceControlChange = () => {
     const nextAppearance = appearanceSelect.value;
@@ -2299,6 +2319,8 @@ export function createPreviewController({
   sourceColoringSegments.element.addEventListener('click', handleSourceColoringSegmentClick);
   const handleFontFamilyChange = () => setFontFamily(fontFamilySelect.value, { post: true });
   fontFamilySelect.addEventListener('change', handleFontFamilyChange);
+  const handleCodeFontFamilyChange = () => setCodeFontFamily(codeFontFamilySelect.value, { post: true });
+  codeFontFamilySelect.addEventListener('change', handleCodeFontFamilyChange);
   updateThemeToggle();
   updateSourceColoringControl();
 
@@ -2370,6 +2392,8 @@ export function createPreviewController({
     const preference = presetPreferences[preset] ?? { appearance: getPresetInitialAppearance(definition), contentWidth: definition.defaults.contentWidth };
     fontFamilyPreference = preset === 'default' ? defaultFontFamilyPreference
       : getPreviewPreset(preset).controls.fontFamily.mode === 'editable' ? presetPreferences[preset]?.fontFamily ?? '' : '';
+    codeFontFamilyPreference = preset === 'default' ? defaultCodeFontFamilyPreference
+      : getPreviewPreset(preset).controls.fontFamily.mode === 'editable' ? presetPreferences[preset]?.codeFontFamily ?? '' : '';
     updateFontFamilyControl();
     appearancePreference = normalizePresetAppearance(getPreviewPreset(preset), preference.appearance);
     contentWidthPreference = preference.contentWidth;
@@ -2389,7 +2413,7 @@ export function createPreviewController({
   const restorePresetState = (value: unknown) => {
     const state = decodePreviewPresetState(value);
     if (!state) return;
-    presetPreferences = { ...state.preferences, default: { appearance: defaultAppearancePreference, contentWidth: 'responsive', fontFamily: defaultFontFamilyPreference, sourceColoring: defaultSourceColoring, showComments: defaultShowComments } };
+    presetPreferences = { ...state.preferences, default: { appearance: defaultAppearancePreference, contentWidth: 'responsive', fontFamily: defaultFontFamilyPreference, codeFontFamily: defaultCodeFontFamilyPreference, sourceColoring: defaultSourceColoring, showComments: defaultShowComments } };
     setPreset(state.preset, { persist: false });
   };
   const handlePresetChange = () => {
@@ -2418,6 +2442,7 @@ export function createPreviewController({
   presetSelect.addEventListener('change', handlePresetChange);
   widthSelect.addEventListener('change', handleWidthChange);
   updatePresetControls();
+  updateFontPickerLabels();
   const getVisualSourceMap = (): PreviewSourceMapEntry[] => {
     getSourceMap();
     return visualSourceMap;
@@ -3096,11 +3121,14 @@ export function createPreviewController({
     getPresetRevision: () => getPreviewPreset(presetPreference).custom?.revision,
     appearanceControl,
     fontFamilyControl,
+    codeFontFamilyControl,
+    fontSearchInputs: fontPickers.map(picker => picker.searchInput),
     sourceColoringControl,
     showCommentsControl,
     closeToolbarDropdowns: () => {
       presetSelectControl.close();
       fontFamilySelectControl.close();
+      codeFontFamilySelectControl.close();
       widthSelectControl.close();
     },
     requestRender,
@@ -3117,6 +3145,7 @@ export function createPreviewController({
     setSourceColoring,
     setShowComments,
     setFontFamily,
+    setCodeFontFamily,
     setUiLanguage: applyUiLanguage,
     setSourcePositionMarker: (
       state: PreviewSourcePositionMarkerState,
@@ -3166,8 +3195,9 @@ export function createPreviewController({
     },
     getAppearance: () => appearance,
     getSourceColoring: isSourceColoringEnabled,
-    getStyleEnvironment: () => ({ ...getStyleEnvironment(), previewFontFamily: defaultFontFamilyPreference }),
+    getStyleEnvironment: () => ({ ...getStyleEnvironment(), previewFontFamily: defaultFontFamilyPreference, previewCodeFontFamily: defaultCodeFontFamilyPreference }),
     getPresetFontFamily: () => presetPreference !== 'default' && getPreviewPreset(presetPreference).controls.fontFamily.mode === 'editable' ? fontFamilyPreference : undefined,
+    getPresetCodeFontFamily: () => presetPreference !== 'default' && getPreviewPreset(presetPreference).controls.fontFamily.mode === 'editable' ? codeFontFamilyPreference : undefined,
     setVisible: (visible: boolean) => {
       host.hidden = !visible;
       host.inert = !visible;
@@ -3274,6 +3304,8 @@ export function createPreviewController({
       showCommentsSegments.element.removeEventListener('click', handleShowCommentsSegmentClick);
       fontFamilySelect.removeEventListener('change', handleFontFamilyChange);
       fontFamilySelectControl.dispose();
+      codeFontFamilySelect.removeEventListener('change', handleCodeFontFamilyChange);
+      codeFontFamilySelectControl.dispose();
       presetSelect.removeEventListener('change', handlePresetChange);
       widthSelect.removeEventListener('change', handleWidthChange);
       presetSelectControl.dispose();

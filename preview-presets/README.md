@@ -66,7 +66,7 @@ The two floating buttons, options panel, and dropdown lists in Source's side pre
 | `description` | Required explanation, including relevant differences. Accepts a string or an object with `en` / `zh-CN`, up to 500 characters per language. Follows the UI language and falls back to the available translation; a string appears unchanged in both languages. |
 | `base` | Optional: `default` or `github-readme`. Inherits fixed document styles and light/dark base palettes, without editor colors. Defaults to `default`. |
 | `controls.htmlComments` / `controls.codeColoring` | Optional independent policies for HTML comments and code coloring. Omitted controls are editable. |
-| `controls.fontFamily` | Optional `{ "mode": "editable" }` or `{ "mode": "fixed" }`. Omitted means fixed for compatibility. Editable presets remember their own body font; the empty choice restores preset CSS. |
+| `controls.fontFamily` | Optional `{ "mode": "editable" }` or `{ "mode": "fixed" }`. Omitted means fixed for compatibility. Editable presets remember separate body and code fonts; the pinned empty choice restores preset CSS. Code font applies to inline code and fenced blocks without changing their typography. |
 | `styles.common` | Optional CSS shared by both themes. |
 | `themes.light` / `themes.dark` | Provide at least one. Each theme requires `css`. The entries determine which themes are supported. |
 | `codeTheme` | Optional: `light-plus`, `dark-plus`, `github-light-default`, or `github-dark-default`. When omitted, the Default base uses fixed Light+/Dark+ palettes, and the GitHub base uses fixed GitHub light/dark palettes. Applies only when coloring is enabled; it does not enable or lock coloring. |

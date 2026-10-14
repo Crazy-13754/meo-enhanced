@@ -1,7 +1,8 @@
 /* These reading styles adapt MEO's document DOM and use local font fallbacks. */
 :root {
   --meo-font-body: var(--meo-preset-font-body);
-  --meo-font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --meo-preset-font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --meo-font-code: var(--meo-preset-font-code);
   --meo-font-weight-body: 400;
   --meo-font-weight-code: 400;
   /* Code lines sit inside a zero-size wrapper, so derive from body pixels. */

@@ -12,6 +12,7 @@ import {
 const EDITOR_APPEARANCE_STATE_KEY = 'editorAppearance';
 const PREVIEW_APPEARANCE_STATE_KEY = 'previewAppearance';
 const PREVIEW_FONT_FAMILY_STATE_KEY = 'previewFontFamily';
+const PREVIEW_CODE_FONT_FAMILY_STATE_KEY = 'previewCodeFontFamily';
 const PREVIEW_SOURCE_COLORING_STATE_KEY = 'previewSourceColoring';
 const EDITOR_FONT_SIZE_MODE_STATE_KEY = 'editorFontSizeMode';
 const EDITOR_FONT_SIZE_STATE_KEY = 'editorFontSize';
@@ -30,6 +31,7 @@ export const EDITOR_APPEARANCE_SETTING_KEY = 'appearance.editor';
 export const UI_COLORS_SETTING_KEY = 'appearance.colors';
 export const PREVIEW_APPEARANCE_SETTING_KEY = 'appearance.preview';
 export const PREVIEW_FONT_FAMILY_SETTING_KEY = 'preview.fontFamily';
+export const PREVIEW_CODE_FONT_FAMILY_SETTING_KEY = 'preview.codeFontFamily';
 export const PREVIEW_SOURCE_COLORING_SETTING_KEY = 'preview.sourceColoring';
 export const LIVE_STRONG_COLORING_SETTING_KEY = 'appearance.strongColoring';
 export const EDITOR_FONT_SIZE_MODE_SETTING_KEY = 'appearance.fontSizeMode';
@@ -40,6 +42,7 @@ export type AppearanceSettings = {
   editorAppearance: EditorAppearance;
   previewAppearance: PreviewAppearance;
   previewFontFamily: string;
+  previewCodeFontFamily: string;
   previewSourceColoring: boolean;
   liveStrongColoring: boolean;
   editorFontSizeMode: EditorFontSizeMode;
@@ -67,6 +70,8 @@ export type AppearanceSettingsOwner = {
   getPreviewAppearance: () => PreviewAppearance;
   setPreviewAppearance: (appearance: PreviewAppearance) => Promise<void>;
   getPreviewFontFamily: () => string;
+  getPreviewCodeFontFamily: () => string;
+  setPreviewCodeFontFamily: (fontFamily: string) => Promise<void>;
   setPreviewFontFamily: (fontFamily: string) => Promise<void>;
   getPreviewSourceColoring: () => boolean;
   setPreviewSourceColoring: (enabled: boolean) => Promise<void>;
@@ -122,6 +127,12 @@ const descriptors: readonly Descriptor[] = [
     normalizeLegacy: normalizeStoredPreviewFontFamily
   },
   {
+    settingKey: PREVIEW_CODE_FONT_FAMILY_SETTING_KEY,
+    legacyKey: PREVIEW_CODE_FONT_FAMILY_STATE_KEY,
+    read: settings => settings.previewCodeFontFamily,
+    normalizeLegacy: normalizeStoredPreviewFontFamily
+  },
+  {
     settingKey: PREVIEW_SOURCE_COLORING_SETTING_KEY,
     legacyKey: PREVIEW_SOURCE_COLORING_STATE_KEY,
     read: (settings) => settings.previewSourceColoring,
@@ -140,6 +151,7 @@ const resolveSettings = (store: AppearanceSettingsStore, preferLegacy: boolean):
     editorAppearance: normalizeEditorAppearance(resolve(EDITOR_APPEARANCE_SETTING_KEY, EDITOR_APPEARANCE_STATE_KEY)),
     previewAppearance: normalizePreviewAppearance(resolve(PREVIEW_APPEARANCE_SETTING_KEY, PREVIEW_APPEARANCE_STATE_KEY)),
     previewFontFamily: normalizeStoredPreviewFontFamily(resolve(PREVIEW_FONT_FAMILY_SETTING_KEY, PREVIEW_FONT_FAMILY_STATE_KEY)),
+    previewCodeFontFamily: normalizeStoredPreviewFontFamily(resolve(PREVIEW_CODE_FONT_FAMILY_SETTING_KEY, PREVIEW_CODE_FONT_FAMILY_STATE_KEY)),
     previewSourceColoring: normalizeSourceColoring(resolve(PREVIEW_SOURCE_COLORING_SETTING_KEY, PREVIEW_SOURCE_COLORING_STATE_KEY)),
     liveStrongColoring: store.readConfiguration(LIVE_STRONG_COLORING_SETTING_KEY).value === true,
     editorFontSizeMode: normalizeEditorFontSizeMode(resolve(EDITOR_FONT_SIZE_MODE_SETTING_KEY, EDITOR_FONT_SIZE_MODE_STATE_KEY)),
@@ -349,6 +361,11 @@ export async function createAppearanceSettingsOwner(
       if (normalized !== null) {
         await write('previewFontFamily', PREVIEW_FONT_FAMILY_SETTING_KEY, normalized);
       }
+    },
+    getPreviewCodeFontFamily: () => readSettings().previewCodeFontFamily,
+    setPreviewCodeFontFamily: async fontFamily => {
+      const normalized = normalizePreviewFontFamily(fontFamily);
+      if (normalized !== null) await write('previewCodeFontFamily', PREVIEW_CODE_FONT_FAMILY_SETTING_KEY, normalized);
     },
     getPreviewSourceColoring: () => readSettings().previewSourceColoring,
     setPreviewSourceColoring: (enabled) => write(

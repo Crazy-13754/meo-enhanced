@@ -66,7 +66,7 @@ Source 分栏预览中的两个浮动按钮、选项菜单和下拉列表随预�
 | `description` | 必填，内容说明与相关差异。可填字符串，或含 `en` / `zh-CN` 的对象；每种语言最多 500 字符。按界面语言显示，缺少翻译时使用已有版本；字符串在两种界面语言中原样显示。 |
 | `base` | 可选，`default` 或 `github-readme`；继承固定的正文样式和浅／深色基础配色，不继承编辑器颜色，省略时使用 `default`。 |
 | `controls.htmlComments` / `controls.codeColoring` | 可选，分别控制 HTML 注释和代码着色；省略时为可切换。 |
-| `controls.fontFamily` | 可选，`{ "mode": "editable" }` 或 `{ "mode": "fixed" }`；省略时保持固定字体。开放后按预设记忆正文选择，空值恢复预设 CSS 字体。 |
+| `controls.fontFamily` | 可选，`{ "mode": "editable" }` 或 `{ "mode": "fixed" }`；省略时保持固定字体。开放后按预设分别记忆正文与代码字体；置顶的默认项恢复预设 CSS 字体。代码字体用于行内代码及代码块，保留各自排版。 |
 | `styles.common` | 可选，两个主题共用的正文 CSS。 |
 | `themes.light` / `themes.dark` | 至少提供一个；每个主题必须有 `css`。支持范围由实际条目决定。 |
 | `codeTheme` | 可选，`light-plus`、`dark-plus`、`github-light-default`、`github-dark-default`；省略时，`default` 基础固定使用 Light+／Dark+，GitHub 基础固定使用 GitHub 浅／深色。只在代码着色开启时生效，不会自动开启或锁定着色。 |

@@ -133,7 +133,8 @@ function buildReadingStyles(
   const liveFont = selectedFontFamily
     ? `${quoteCssFontFamily(selectedFontFamily)}, ${editorFontFamily || 'var(--meo-font-system-sans)'}`
     : editorFontFamily || 'var(--meo-font-system-sans)';
-  const sourceFont = editorFontFamily || 'var(--meo-font-system-mono)';
+  const selectedCodeFont = normalizePreviewFontFamily(environment.previewCodeFontFamily);
+  const sourceFont = `${selectedCodeFont ? `${quoteCssFontFamily(selectedCodeFont)}, ` : ''}${editorFontFamily || 'var(--meo-font-system-mono)'}`;
   const liveFontWeight = resolveThemeFontChoice(
     sanitizeFontWeight(environment.liveFontWeight, editorFontWeight),
     sanitizeFontWeight(fonts.liveFontWeight, editorFontWeight),

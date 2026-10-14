@@ -15,6 +15,7 @@ export interface ExportStyleEnvironment extends Record<string, unknown> {
   editorFontWeight: string;
   editorFontSizePx: number | undefined;
   previewFontFamily: string;
+  previewCodeFontFamily: string;
   liveFontWeight: string;
   sourceFontWeight: string;
   liveLineHeight: number | undefined;
@@ -28,6 +29,7 @@ export interface ExportStyleEnvironment extends Record<string, unknown> {
 
 export const getExportStyleEnvironment = (code: {
   readonly previewFontFamily: string;
+  readonly previewCodeFontFamily?: string;
   readonly previewSourceColoring: boolean;
   readonly previewShowComments: boolean;
   readonly previewCodePalettes: Readonly<Record<'light' | 'dark', PreviewCodePalette>>;
@@ -102,6 +104,7 @@ export const getExportStyleEnvironment = (code: {
     editorFontWeight: editorFontWeightRaw || 'normal',
     editorFontSizePx: Number.isFinite(parsedFontSize) ? parsedFontSize : undefined,
     previewFontFamily: code.previewFontFamily,
+    previewCodeFontFamily: code.previewCodeFontFamily ?? '',
     liveFontWeight: colorVar('--meo-font-live-weight', ''),
     sourceFontWeight: colorVar('--meo-font-source-weight', ''),
     liveLineHeight: Number.isFinite(parsedLiveLineHeight) ? parsedLiveLineHeight : undefined,

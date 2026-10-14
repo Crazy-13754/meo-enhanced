@@ -14,6 +14,9 @@ const { createPendingDraftRecovery } = await import('../src/application/pendingD
 const messages: any[] = [];
 let receiveMessage: ((message: unknown) => void) | undefined;
 const stored = new Map<string, unknown>();
+let defaultCodeFont = 'Consolas';
+let failFonts = false;
+const fontRequests: boolean[] = [];
 const preferences = createPreviewPresetPreferences({
   readStored: () => stored.get(PREVIEW_PRESET_PREFERENCES_STATE_KEY),
   writeStored: async value => { stored.set(PREVIEW_PRESET_PREFERENCES_STATE_KEY, structuredClone(value)); },
@@ -29,6 +32,9 @@ const params = createPanelSessionControllerParams({
   pendingDraftRecovery: createPendingDraftRecovery({ readCurrentText: () => document.text, applyDraft: async () => true }),
   readDiskText: () => document.text,
   overrides: {
+    getPreviewFonts: async (refresh: boolean) => { fontRequests.push(refresh); if (failFonts) throw new Error('unavailable'); return [{ family: 'Consolas', aliases: [] }]; },
+    getPreviewCodeFontFamily: () => defaultCodeFont,
+    setPreviewCodeFontFamily: async (font: string) => { defaultCodeFont = font; },
     getPreviewPresetPreferences: preferences.read,
     setPreviewPresetPreference: preferences.update,
     renderPreview: async (options: any) => exportRuntime.renderPreviewDocument(options),
@@ -37,6 +43,14 @@ const params = createPanelSessionControllerParams({
 });
 const controller = createPanelSessionController(params as never);
 try {
+  await controller.handleMessage({ type: 'getPreviewFonts', requestId: 'font-success', refresh: true });
+  assert.deepEqual(fontRequests, [true]);
+  assert.deepEqual(messages.find(message => message.requestId === 'font-success').result, { ok: true, value: [{ family: 'Consolas', aliases: [] }] });
+  failFonts = true;
+  await controller.handleMessage({ type: 'getPreviewFonts', requestId: 'font-failure', refresh: false });
+  assert.equal(messages.find(message => message.requestId === 'font-failure').result.ok, false);
+  await controller.handleMessage({ type: 'setPreviewCodeFontFamily', fontFamily: 'Georgia' });
+  assert.equal(defaultCodeFont, 'Georgia');
   const request = { type: 'requestPreviewRender', requestId: 'github', text: document.text, uiLanguage: 'en', environment: { previewFontFamily: 'Georgia', previewShowComments: true, previewSourceColoring: false }, preset: 'github-readme', contentWidth: 'reference' };
   receiveMessage!(request);
   await Bun.sleep(0);
@@ -56,6 +70,7 @@ try {
   await controller.handleMessage({ type: 'ready' });
   assert.equal(messages.findLast(message => message.type === 'init').previewPreset, undefined, 'An existing Webview can migrate its selection when Host memory is empty');
   assert.equal(messages.findLast(message => message.type === 'init').previewPresetPreferences, undefined);
+  assert.equal(messages.findLast(message => message.type === 'init').previewCodeFontFamily, 'Georgia');
   const initialPreference = { appearance: 'auto', contentWidth: 'responsive', fontFamily: 'Arial', sourceColoring: false, showComments: true };
   await controller.handleMessage({ type: 'setPreviewPresetPreference', preset: 'whitey', preference: { appearance: 'dark' }, initialPreference });
   assert.deepEqual(decodeEditorCommand({ type: 'setPreviewPreset', preset: 'whitey' }), { type: 'setPreviewPreset', preset: 'whitey' });

@@ -71,6 +71,8 @@ try {
   await page.screenshot({ path: 'tmp/preview-toolbar/preset-hover-dark-zh.png' });
   await page.click('.preview-preset-dropdown-panel [data-value="default"]');
   await page.hover('.preview-options-trigger');
+  assert.equal(await page.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), true, 'Hover does not open Preview Options');
+  await page.click('.preview-options-trigger');
   await page.waitForFunction(() => document.querySelector('.preview-options-trigger')?.getAttribute('aria-expanded') === 'true');
   assert.equal(await page.$eval('.preview-options-trigger svg', element => element.getAttribute('data-icon')), 'settings-2');
   const hoverGap = await page.$eval('.preview-options-trigger', element => {
@@ -82,16 +84,18 @@ try {
   await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 160)));
   assert.equal(await page.$eval('.preview-options-panel', element => (element as HTMLElement).hidden), false, 'Moving across the gap into Preview Options keeps it open');
   await page.mouse.move(0, 0);
-  await page.waitForFunction(() => document.querySelector<HTMLElement>('.preview-options-panel')?.hidden);
+  assert.equal(await page.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false, 'Pointer exit keeps options open');
+  await page.click('.preview-options-trigger');
   await page.click('.preview-options-trigger');
   assert.equal(await page.$eval('.preview-options-panel', element => (element as HTMLElement).hidden), false, 'Clicking the already hovered Preview Options keeps it open');
   await page.keyboard.press('Escape');
   assert.equal(await page.$eval('.preview-options-panel', element => (element as HTMLElement).hidden), true, 'Escape stays closed after restoring Preview Options trigger focus');
   await page.mouse.move(0, 0);
   await page.hover('.preview-options-trigger');
+  await page.click('.preview-options-trigger');
   assert.deepEqual(await page.$$eval('.preview-options-panel > .preview-select-control', elements => elements.map(element => ({
     visible: (element as HTMLElement).getBoundingClientRect().height > 0, label: element.querySelector('.preview-select-label')?.textContent
-  }))), ['预览字体', '正文宽度', '代码着色', 'HTML 注释'].map(label => ({ visible: true, label })));
+  }))), ['正文字体', '代码字体', '正文宽度', '代码着色', 'HTML 注释'].map(label => ({ visible: true, label })));
   assert.equal(await page.$eval('.preview-width-dropdown', button => (button as HTMLButtonElement).disabled), true);
   await page.hover('.preview-width-dropdown');
   await page.waitForFunction(() => document.querySelector('.meo-tooltip.is-visible .meo-tooltip-label')?.textContent === '此预设不支持此选项');
@@ -134,6 +138,8 @@ try {
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true, 'Export dismisses the options menu');
   assert.equal(await page.$eval('.preview-font-family-dropdown-panel', panel => (panel as HTMLElement).hidden), true, 'Dismissing options also closes its nested dropdown');
   await page.hover('.preview-options-trigger');
+  assert.equal(await page.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), true, 'Hover does not open Preview Options');
+  await page.click('.preview-options-trigger');
   await page.waitForFunction(() => document.querySelector('.preview-options-trigger')?.getAttribute('aria-expanded') === 'true');
   await page.keyboard.press('Escape');
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true, 'Escape dismisses Preview Options while its trigger remains hovered');
@@ -314,7 +320,7 @@ try {
   await page.click('.ui-language-button[data-ui-language="en"]');
   await page.click('.editor-appearance-button[data-editor-appearance="dark"]');
   await page.click('.preview-options-trigger');
-  assert.deepEqual(await page.$$eval('.preview-options-panel .preview-select-label', labels => labels.map(label => label.textContent)), ['Font', 'Width', 'Code color', 'HTML comments']);
+  assert.deepEqual(await page.$$eval('.preview-options-panel .preview-select-label', labels => labels.map(label => label.textContent)), ['Body font', 'Code font', 'Width', 'Code color', 'HTML comments']);
   for (const scale of [1, 1.2, 2]) {
     await page.setViewport({ width: 1400, height: 700, deviceScaleFactor: scale });
     await assertSegmentedLabelAlignment();
@@ -328,7 +334,7 @@ try {
   await page.click('.preview-options-trigger');
   await page.click('.preview-font-family-dropdown');
   assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), false, 'Nested option controls keep the overflow menu open');
-  await page.click('.preview-font-family-dropdown-panel [role="option"]:nth-child(2)');
+  await page.click('.preview-font-family-dropdown-panel .preview-font-results [role="option"]:first-child');
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false);
   const optionsBounds = await page.$eval('.preview-options-panel', panel => {
     const bounds = panel.getBoundingClientRect();

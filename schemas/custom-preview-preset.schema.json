@@ -26,7 +26,7 @@
     "controls": {
       "type": "object", "additionalProperties": false,
       "properties": { "fontFamily": { "$ref": "#/definitions/fontControl" }, "htmlComments": { "$ref": "#/definitions/control" }, "codeColoring": { "$ref": "#/definitions/control" } },
-      "description": "Font defaults to fixed for compatibility; editable allows a per-preset body font override. Other omitted controls are editable and use the user's current settings. Fixed controls are hidden."
+      "description": "Font defaults to fixed for compatibility; editable allows separate per-preset body and code font overrides. Other omitted controls are editable and use the user's current settings. Fixed controls are hidden."
     },
     "styles": {
       "type": "object", "additionalProperties": false,
