@@ -1082,8 +1082,8 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 .preview-font-results {
   flex: 1 1 auto;
   min-height: 0;
-  /* Eight normal rows; the popup's viewport limit can shrink this further. */
-  max-height: calc(8 * var(--preview-font-row-height) + 14px);
+  /* Fourteen normal rows; the popup's viewport limit can shrink this further. */
+  max-height: calc(14 * var(--preview-font-row-height) + 26px);
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
