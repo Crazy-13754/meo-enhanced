@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import MarkdownIt from 'markdown-it';
-import { encodeMarkdownPath, formatLinkDestination } from '../src/foundation/linkDestination';
+import { encodeMarkdownPath, formatLinkDestination, normalizeLinkDestination, isLocalFileLinkDestination } from '../src/foundation/linkDestination';
+import exportRuntime from '../src/export/runtime';
 
 const markdown = new MarkdownIt();
 for (const [raw, destination] of [
@@ -35,5 +36,26 @@ for (const [destination, display] of [
   ['%25E4%25B8%25AD.png', '%E4%B8%AD.png'],
   ['https://example.test/%E4%B8%AD%E6%96%87?q=%23%2F#%E6%A0%87%E9%A2%98', 'https://example.test/中文?q=%23%2F#标题']
 ]) assert.equal(formatLinkDestination(destination), display);
+
+for (const destination of ['D:/notes/link target.md', 'D:\\notes\\link target.md', 'D:%5Cnotes%5Clink%20target.md']) {
+  for (const preset of ['default', 'github-readme', 'whitey', 'newsprint', 'obsidian-minimal'] as const) {
+    const rendered = exportRuntime.renderPreviewDocument({
+      markdownText: `[Local](<${destination}>)`, sourceDocumentPath: 'C:/notes/current.md', uiLanguage: 'en', preset
+    });
+    assert.match(rendered.html, /href="file:\/\/\/D:\/notes\/link%20target\.md"/,
+      `${preset}: absolute local paths retain the same navigable destination`);
+  }
+}
+
+assert.equal(normalizeLinkDestination('<D:\\notes\\字面%25.md#标题%2F片段>'), 'file:///D:/notes/字面%25.md#标题%2F片段');
+assert.equal(normalizeLinkDestination('D:%2Fnotes%2Fguide.md'), 'file:///D:/notes/guide.md');
+for (const destination of ['javascript:alert(1)', 'vbscript:msgbox(1)', 'data:text/html;base64,SGVsbG8=', 'D:relative.md']) {
+  assert.equal(isLocalFileLinkDestination(destination), false, 'only absolute filesystem destinations are local file links');
+}
+for (const preset of ['default', 'github-readme'] as const) {
+  const rendered = exportRuntime.renderPreviewDocument({ markdownText: '<a href="javascript:alert(1)">unsafe</a>',
+    sourceDocumentPath: 'C:/notes/current.md', uiLanguage: 'en', preset });
+  assert.ok(!rendered.html.includes('href="javascript:'), 'local links must not widen executable URL schemes');
+}
 
 console.log('Markdown destination filename identity and readable display checks passed');

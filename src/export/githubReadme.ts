@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it';
 import sanitizeHtml from 'sanitize-html';
 import { Parser, parseDocument } from 'htmlparser2';
 import emoji from '../preview/presets/github-readme/emoji.json';
+import { normalizeLinkDestination, isLocalFileLinkDestination } from '../foundation/linkDestination';
 
 // Calibrated against GitHub's README Preview, rather than html-pipeline's
 // public default configuration (which permits a different set of elements).
@@ -27,14 +28,15 @@ export function isGithubImageSource(source: string): boolean {
   return !value.startsWith('//') && (!/^[a-z][a-z\d+.-]*:/i.test(value) || /^https?:/i.test(value));
 }
 
-export function isGithubLink(href: string): boolean {
-  const value = href.trim().replace(/[\u0000-\u0020\u007f]/g, '');
+export function isGithubLink(href: string, allowLocalLinks = false): boolean {
+  const value = normalizeLinkDestination(href).replace(/[\u0000-\u0020\u007f]/g, '');
+  if (allowLocalLinks && isLocalFileLinkDestination(value)) return true;
   return !/^[a-z][a-z\d+.-]*:/i.test(value) || /^(?:https?|mailto):/i.test(value);
 }
 
 export type GithubImageRewrite = (source: string) => { src: string; deferredSrc?: string };
 
-export function createGithubHtmlSanitizer(rewriteImage: GithubImageRewrite): {
+export function createGithubHtmlSanitizer(rewriteImage: GithubImageRewrite, allowLocalLinks = false): {
   anchors: Set<string>;
   sanitize: (source: string) => string;
 } {
@@ -43,7 +45,7 @@ export function createGithubHtmlSanitizer(rewriteImage: GithubImageRewrite): {
   const options: NonNullable<Parameters<typeof sanitizeHtml>[1]> = {
     allowedTags: githubHtmlTags,
     allowedAttributes: githubHtmlAttributes,
-    allowedSchemes: ['http', 'https', 'mailto'],
+    allowedSchemes: ['http', 'https', 'mailto', ...(allowLocalLinks ? ['file'] : [])],
     allowedSchemesByTag: { img: ['http', 'https', 'file', 'data'], srcset: ['http', 'https', 'file', 'data'] },
     allowProtocolRelative: true,
     transformTags: {
@@ -56,7 +58,10 @@ export function createGithubHtmlSanitizer(rewriteImage: GithubImageRewrite): {
           anchors.add(attribs[attribute]);
           attribs[attribute] = `user-content-${attribs[attribute]}`;
         }
-        if (tagName === 'a' && attribs.href && !isGithubLink(attribs.href)) delete attribs.href;
+        if (tagName === 'a' && attribs.href) {
+          attribs.href = normalizeLinkDestination(attribs.href);
+          if (!isGithubLink(attribs.href, allowLocalLinks)) delete attribs.href;
+        }
         if (tagName === 'img' && attribs.src) {
           const rewritten = rewriteImage(attribs.src);
           attribs.src = rewritten.src;

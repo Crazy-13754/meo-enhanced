@@ -2,6 +2,7 @@ import { AlertCircle, createElement } from 'lucide';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { createLocalLinkResolutionTransport, type LocalLinkResolutionTransport } from '../adapters/localLinkResolutionTransport';
 import type { ResolvedLocalLinksResponse } from '../../../src/protocol/localLinkResolution';
+import { normalizeLinkDestination } from '../../../src/foundation/linkDestination';
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const HOSTNAME_RE = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
@@ -117,14 +118,7 @@ export function createMissingLocalLinkIndicator(language: UiLanguage = 'en'): HT
 }
 
 export function normalizeLocalLinkTarget(rawTarget: string): string {
-  let target = `${rawTarget ?? ''}`.trim();
-  if (!target) {
-    return '';
-  }
-  if (target.startsWith('<') && target.endsWith('>')) {
-    target = target.slice(1, -1).trim();
-  }
-  return target;
+  return normalizeLinkDestination(`${rawTarget ?? ''}`);
 }
 
 export function isLikelyLocalLinkTarget(rawTarget: string): boolean {

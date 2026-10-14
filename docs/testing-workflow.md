@@ -188,6 +188,14 @@ It exercises the production Preview-to-Host seam and the HTML/PDF/Word export
 HTML builders for Markdown and HTML images. It runs in the image-storage and
 unit gates; final PDF/DOCX generation is separate evidence.
 
+`scripts/test-link-destinations.ts`, `scripts/test-link-cursor-production.ts`,
+`scripts/test-preview-links.ts` and `scripts/test-document-links.ts` exercise the
+shared link-destination rules through Live/Source, actual Preview rendering and
+Host file navigation. Windows drive paths use file URIs before URL filtering;
+check both separators, escaped filenames and fragments. Preview links must keep
+their pointer, hover hint and click routing in every built-in preset, while
+executable URL schemes and standalone GitHub export filtering retain their existing boundaries.
+
 `test:mermaid-compatibility` uses the shipped offline runtime to check Live and
 Preview, real Source split typing, stale-render rejection, focus, reading-anchor
 retention, linked editing and light/dark switches. Its export checks cover seven

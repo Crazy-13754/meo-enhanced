@@ -9,6 +9,8 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-link-cursor-'));
 const fixtures = [
   { label: 'external', source: '[external](https://example.com)', href: 'https://example.com' },
   { label: 'document', source: '[document](./guide.md)', href: './guide.md' },
+  { label: 'absolute path', source: '[absolute](<D:/notes/guide.md>)', href: 'file:///D:/notes/guide.md' },
+  { label: 'absolute backslash path', source: '[absolute](<D:\\notes\\guide.md>)', href: 'file:///D:/notes/guide.md' },
   { label: 'fragment', source: '[fragment](#target)', href: '#target' },
   { label: 'wiki', source: '[[guide|wiki]]', href: 'meo-wiki:guide' },
   { label: 'reference', source: '[reference][ref]\n\n[ref]: https://example.com/ref', href: 'https://example.com/ref' },

@@ -2,14 +2,22 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { launchTestBrowser } from './browser-test-helpers';
+import exportRuntime from '../src/export/runtime';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-preview-links-'));
+const entryPath = path.join(tempDir, 'entry.ts');
+fs.writeFileSync(entryPath, `
+import ${JSON.stringify(path.join(repoRoot, 'scripts', 'test-preview-mermaid-runtime-entry.ts'))};
+import { bindTooltips } from ${JSON.stringify(path.join(repoRoot, 'webview', 'src', 'adapters', 'tooltip.ts'))};
+bindTooltips(document.body);
+`);
 const build = await Bun.build({
-  entrypoints: [path.join(repoRoot, 'scripts', 'test-preview-mermaid-runtime-entry.ts')],
+  entrypoints: [entryPath],
   outdir: tempDir,
   target: 'browser',
   format: 'iife',
+  naming: 'bundle.js',
   external: ['mermaid']
 });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
@@ -19,7 +27,7 @@ try {
   const page = await browser.newPage();
   await page.setContent('<!doctype html><style>html,body{height:100%;margin:0}body{display:flex;flex-direction:column}.preview-host{flex:1;min-height:0}</style><body></body>');
   await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
-  await page.addScriptTag({ path: path.join(tempDir, 'test-preview-mermaid-runtime-entry.js') });
+  await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
   const stalePreload = await page.evaluate(async () => {
     const controller = (window as any).__previewController;
     (window as any).__previewCurrentText = 'edited text';
@@ -43,6 +51,60 @@ try {
   });
   if (stalePreload.srcdoc) throw new Error('Obsolete background preload must not start iframe layout');
   if (!stalePreload.promoted) throw new Error('Promoted preload must complete after Preview becomes visible');
+  // Use the actual Host renderer: hand-written <a href> fixtures miss paths
+  // removed by Markdown parsing or sanitization before iframe binding.
+  for (const preset of ['default', 'github-readme', 'whitey', 'newsprint', 'obsidian-minimal'] as const) {
+    const payload = exportRuntime.renderPreviewDocument({
+      markdownText: '[Absolute file](<D:\\notes\\link target.md>)',
+      sourceDocumentPath: 'C:/notes/current.md', uiLanguage: 'en', preset
+    });
+    await page.evaluate(({ preset, payload }) => {
+      const controller = (window as any).__previewController;
+      controller.setPreset(preset);
+      controller.requestRender('absolute file fixture');
+      const requestId = (window as any).__previewMessages.findLast((message: any) => message.type === 'requestPreviewRender').requestId;
+      controller.acceptRenderResponse({ type: 'previewRenderResult', requestId, result: { ok: true, value: payload } });
+      controller.setVisible(true);
+    }, { preset, payload });
+    await page.waitForFunction(preset => {
+      const frame = document.querySelector<HTMLIFrameElement>('.preview-frame');
+      return frame?.contentDocument?.documentElement.dataset.meoPreviewPreset === preset
+        && frame.contentDocument.querySelector('a[data-meo-preview-href]')?.textContent === 'Absolute file';
+    }, {}, preset);
+    const point = await page.evaluate(() => {
+      const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!, doc = frame.contentDocument!;
+      const link = doc.querySelector<HTMLAnchorElement>('a[data-meo-preview-href]')!, box = link.getBoundingClientRect(), frameBox = frame.getBoundingClientRect();
+      (window as any).__previewMessages.length = 0;
+      return { x: frameBox.left + box.left + box.width / 2, y: frameBox.top + box.top + box.height / 2,
+        cursor: doc.defaultView!.getComputedStyle(link).cursor };
+    });
+    if (point.cursor !== 'pointer') throw new Error(`${preset}: absolute file link has no pointer`);
+    await page.mouse.move(0, 0);
+    await page.mouse.move(point.x, point.y);
+    try {
+      await page.waitForFunction(() => {
+        const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+        return doc?.querySelector('.meo-tooltip.is-visible .meo-tooltip-label')?.textContent === 'Go to: file:///D:/notes/link target.md';
+      }, { timeout: 5000 });
+    } catch (error) {
+      const hint = await page.evaluate(() => {
+        const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+        return { text: doc.querySelector('.meo-tooltip-label')?.textContent,
+          classes: doc.querySelector('.meo-tooltip')?.className,
+          hovered: doc.querySelector('a')?.matches(':hover'), styles: doc.querySelectorAll('[data-meo-tooltip-style]').length };
+      });
+      throw new Error(`${preset}: absolute file hover hint missing: ${JSON.stringify(hint)}`, { cause: error });
+    }
+    await page.mouse.click(point.x, point.y);
+    const opened = await page.evaluate(() => (window as any).__previewMessages.filter((message: any) => message.type === 'openLink'));
+    if (opened.length !== 1 || opened[0].href !== 'file:///D:/notes/link%20target.md' || opened[0].source !== 'preview') {
+      throw new Error(`${preset}: absolute file navigation differs from shared normalization: ${JSON.stringify(opened)}`);
+    }
+  }
+  await page.evaluate(() => {
+    const controller = (window as any).__previewController;
+    controller.setVisible(false); controller.setPreset('default');
+  });
   await page.evaluate(() => {
     const controller = (window as any).__previewController;
     document.body.prepend(controller.appearanceControl, controller.fontFamilyControl);

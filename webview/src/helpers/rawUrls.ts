@@ -1,3 +1,5 @@
+import { normalizeLinkDestination } from '../../../src/foundation/linkDestination';
+
 export const linkSchemeRe = /^[a-z][a-z0-9+.-]*:/i;
 const sourceRawUrlRe = /(?:https?:\/\/|mailto:|file:|www\.)[^\s<>"'`]+/gi;
 
@@ -41,7 +43,7 @@ function trimMatchingUrlQuotes(value: string): string {
 }
 
 export function normalizeSourceHref(value: string): string {
-  const trimmed = trimMatchingUrlQuotes(trimTrailingUrlPunctuation((value ?? '').trim()));
+  const trimmed = normalizeLinkDestination(trimMatchingUrlQuotes(trimTrailingUrlPunctuation((value ?? '').trim())));
   if (!trimmed) {
     return '';
   }

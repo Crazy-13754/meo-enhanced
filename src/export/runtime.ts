@@ -122,6 +122,7 @@ function renderPreviewDocument(options: {
     uiLanguage: options.uiLanguage,
     showComments: environment.previewShowComments === true,
     deferImages: true,
+    allowLocalLinks: true,
     preset,
     presetDefinition: definition
   });

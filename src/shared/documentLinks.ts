@@ -7,6 +7,7 @@ import { withMarkdownExtensions } from './extensionConfig';
 import { WIKI_IMAGE_SCHEME, WIKI_LINK_SCHEME, wikiTargetFromImageSrc } from '../foundation/wikiReference';
 import { resolveWikiResource } from '../host/wikiResources';
 import { canResolveImageFromRoot, getImagePathCandidates } from './imagePaths';
+import { normalizeLinkDestination } from '../foundation/linkDestination';
 
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview:|vscode-webview-resource:|vscode-resource:)/i;
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
@@ -77,6 +78,7 @@ export async function openLink(
   documentUri: vscode.Uri,
   { localEditor = 'associated' }: OpenLinkOptions = {}
 ): Promise<void> {
+  rawHref = normalizeLinkDestination(rawHref);
   if (await openWikiLink(rawHref, documentUri)) {
     return;
   }
@@ -197,7 +199,7 @@ export async function resolveWikiLinkTargetUri(target: string, documentUri: vsco
 }
 
 export async function resolveLocalLinkTargetUri(rawHref: string, documentUri: vscode.Uri): Promise<vscode.Uri | null> {
-  const trimmed = rawHref.trim();
+  const trimmed = normalizeLinkDestination(rawHref);
   if (!trimmed || trimmed.startsWith('#')) {
     return null;
   }

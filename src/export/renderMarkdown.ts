@@ -1,4 +1,5 @@
 import { markdownHeadingAnchor } from '../foundation/markdownHeadingAnchor';
+import { normalizeLinkDestination, isLocalFileLinkDestination } from '../foundation/linkDestination';
 import { splitMarkdownTableRow } from '../foundation/markdownTableRow';
 import * as path from 'node:path';
 import MarkdownIt from 'markdown-it';
@@ -65,6 +66,8 @@ export type RenderMarkdownOptions = {
   includeTableOfContents?: boolean;
   /** Preview resolves local and network images after the reading frame is ready. */
   deferImages?: boolean;
+  /** Preview brokers local navigation through Host even with strict GitHub semantics. */
+  allowLocalLinks?: boolean;
   showComments?: boolean;
   /** Standalone exports inject the same Shiki token presentation used by Live and Preview. */
   highlightCode?: (source: string, language: string) => string;
@@ -119,7 +122,11 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     langPrefix: 'language-'
   });
   if (github) installGithubInlineRules(md);
-  const githubHtml = github ? createGithubHtmlSanitizer(deferImageSrc) : undefined;
+  const allowLocalLinks = !github || options.allowLocalLinks === true;
+  const normalizeLink = md.normalizeLink.bind(md), validateLink = md.validateLink.bind(md);
+  md.normalizeLink = href => normalizeLink(normalizeLinkDestination(href));
+  md.validateLink = href => allowLocalLinks && isLocalFileLinkDestination(href) || validateLink(href);
+  const githubHtml = github ? createGithubHtmlSanitizer(deferImageSrc, allowLocalLinks) : undefined;
   // The bundled backtick rule strips bounding spaces even from all-space code.
   // Preserve that CommonMark exception before the regular rule handles other spans.
   md.inline.ruler.before('backticks', 'meo_code_space_literal', (state, silent) => {
@@ -405,8 +412,9 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
         };
       },
       a: (tagName, attribs) => {
+        if (attribs.href) attribs.href = normalizeLinkDestination(attribs.href);
         if (github && attribs.href) {
-          if (!isGithubLink(attribs.href)) delete attribs.href;
+          if (!isGithubLink(attribs.href, allowLocalLinks)) delete attribs.href;
           else if (attribs.href.startsWith('#')) {
             let anchor = attribs.href.slice(1);
             try { anchor = decodeURIComponent(anchor); } catch { /* Preserve malformed fragments. */ }

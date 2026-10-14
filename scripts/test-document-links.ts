@@ -98,4 +98,13 @@ if (commands.length !== 1 || commands[0].command !== 'vscode.open') {
   throw new Error(`Associated editor routing changed outside Preview: ${JSON.stringify(commands)}`);
 }
 
+for (const destination of [documentUri.fsPath, documentUri.fsPath.replace(/\\/g, '%5C'), `<${documentUri.fsPath}>`]) {
+  openedExternal.length = 0;
+  commands.length = 0;
+  await openLink(destination, documentUri as never, { localEditor: 'default' });
+  if (commands.length !== 1 || commands[0].uri !== documentUri.fsPath || openedExternal.length) {
+    throw new Error(`Absolute local destination did not resolve to the same file: ${JSON.stringify(commands)}`);
+  }
+}
+
 console.log('document link routing checks passed');

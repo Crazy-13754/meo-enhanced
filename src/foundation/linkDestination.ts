@@ -1,3 +1,22 @@
+/** Normalize authored link targets without decoding filename escapes or fragments. */
+export function normalizeLinkDestination(destination: string): string {
+  let href = destination.trim();
+  if (href.startsWith('<') && href.endsWith('>')) href = href.slice(1, -1).trim();
+  // Drive letters are filesystem roots, not URL schemes. Both Markdown renderers
+  // and Host navigation consume the same file URI, including encoded separators.
+  if (/^[a-z]:(?:[\\/]|%5c|%2f)/i.test(href)) {
+    const suffixAt = href.search(/[?#]/);
+    const path = suffixAt < 0 ? href : href.slice(0, suffixAt);
+    const suffix = suffixAt < 0 ? '' : href.slice(suffixAt);
+    return 'file:///' + path.replace(/\\|%5c|%2f/gi, '/').replace(/ /g, '%20') + suffix;
+  }
+  return href;
+}
+
+export function isLocalFileLinkDestination(destination: string): boolean {
+  return /^file:/i.test(normalizeLinkDestination(destination));
+}
+
 /**
  * Serialize a raw filesystem path for a Markdown destination. Keep Unicode
  * readable; escape syntax and URI delimiters so filenames retain their identity.
