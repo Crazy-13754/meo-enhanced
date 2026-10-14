@@ -327,7 +327,13 @@ try {
     assert.equal(await page.$eval('.preview-code-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), '宋体');
     await page.close();
     owner = createOwner();
+    const requestsBeforeReopen = fontRequests;
     const reopened = await open({}, 'dark', 'zh-CN');
+    await reopened.waitForFunction(() => document.querySelector('.preview-font-family-dropdown .preview-toolbar-dropdown-value')!.textContent === '微软雅黑'
+      && document.querySelector('.preview-code-font-family-dropdown .preview-toolbar-dropdown-value')!.textContent === '宋体', { timeout: 2000 });
+    assert.equal(await reopened.$eval('.preview-font-family-dropdown-panel', el => (el as HTMLElement).hidden), true, 'Restored localized labels do not require opening either picker');
+    assert.equal(fontRequests, requestsBeforeReopen + 1, 'Both restored font labels share one catalog query');
+    assert.equal(await reopened.evaluate(() => (window as any).__presetMessages.some((message: any) => ['setPreviewFontFamily', 'setPreviewCodeFontFamily', 'setPreviewPresetPreference'].includes(message.type))), false, 'Resolving labels never rewrites saved font identifiers');
     await reopened.click('.preview-options-trigger'); await reopened.click('.preview-font-family-dropdown');
     await reopened.waitForFunction(() => document.querySelector('.preview-font-family-dropdown .preview-toolbar-dropdown-value')!.textContent === '微软雅黑');
     assert.equal(await reopened.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value), 'Microsoft YaHei');
@@ -345,6 +351,15 @@ try {
     assert.equal(await reopened.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false, 'Chinese Source keeps its panel open when the first font change refreshes the toolbar layout');
     assert.equal(await reopened.$eval('.preview-code-font-family-dropdown-panel', el => (el as HTMLElement).hidden), false);
     await reopened.close();
+    const requestsBeforeDefaults = fontRequests;
+    selected = 'whitey'; preferences!.whitey.fontFamily = ''; preferences!.whitey.codeFontFamily = ''; owner = createOwner();
+    const originalFonts = await open({}, 'light', 'zh-CN'); await settle(originalFonts);
+    assert.equal(fontRequests, requestsBeforeDefaults, 'Preset typography without overrides remains lazy');
+    await originalFonts.close();
+    selected = 'github-readme';
+    const fixedFonts = await open({}, 'light', 'zh-CN'); await settle(fixedFonts);
+    assert.equal(fontRequests, requestsBeforeDefaults, 'Fixed fonts do not enumerate the catalog while initialization applies Default settings');
+    await fixedFonts.close();
   };
   const page = await open();
   for (const id of ['default', 'github-readme', 'newsprint', 'obsidian-minimal', custom.id, 'whitey']) {
