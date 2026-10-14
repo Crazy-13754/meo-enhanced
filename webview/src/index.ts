@@ -1661,6 +1661,7 @@ const waitForInitialPreviewPaint = (): Promise<void> => {
       if (!settled && getActiveEditorMode() === 'preview') {
         // A throttled paint callback must not leave the inert Live surface covering Preview.
         editorHost.removeAttribute('data-preview-cover');
+        outlineController?.refreshAppearance();
       }
       finish();
     }, 600);
@@ -1706,6 +1707,7 @@ const previewController = createPreviewController({
     editorHost.removeAttribute('data-preview-cover');
     editorSurface.removeAttribute('data-source-preview-exit-cover');
     markSourcePreviewSurfaceReady();
+    outlineController?.refreshAppearance();
     if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
     if (getActiveEditorMode() === 'preview') findPanelController.refreshForModeChange();
   },
@@ -1773,10 +1775,17 @@ outlineController = createOutlineController({
   additionalOutlineLeftButtons: [previewOutlineLeftBtn],
   getEditor: () => getActiveEditorMode() === 'preview' ? previewController.getOutlineAdapter() : editor,
   getPalette: (position) => {
-    // Layout owns the color source; focus and linked scrolling do not change it.
-    const mode = root.dataset.mode;
-    const usePreview = mode === 'preview'
-      || (mode === 'source' && editorSurface.hasAttribute('data-source-preview') && position === 'right');
+    // Follow the painted surface, including preparation and editor covers,
+    // rather than the requested mode before its viewport is ready.
+    const previewVisible = !previewController.host.hidden && previewController.host.style.visibility !== 'hidden';
+    const editorCover = editorHost.hasAttribute('data-preview-cover');
+    const split = editorSurface.hasAttribute('data-source-preview');
+    const usePreview = previewVisible && (
+      editorSurface.hasAttribute('data-source-preview-preparing')
+      || (editorCover
+        ? editorSurface.hasAttribute('data-source-preview-exit-cover') && position === 'right'
+        : !split || position === 'right')
+    );
     const editorStyles = getComputedStyle(editorHost);
     const content = editorHost.querySelector('.cm-content');
     const foreground = content ? getComputedStyle(content).color : getComputedStyle(document.body).color;
@@ -1934,6 +1943,7 @@ const finishSourcePreviewReveal = (): void => {
     activateSourcePreviewLinkage();
     previewController.host.inert = false;
     previewController.host.style.removeProperty('visibility');
+    outlineController.refreshAppearance();
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
       if (reveal.generation === sourcePreviewRevealGeneration && isSidePreviewVisible()) {
         presentSourcePreviewPosition();
@@ -1973,7 +1983,6 @@ const presentPreviewSurface = (
   if (visible !== !previewController.host.hidden || splitGeometryChanged) previewPaintReady = false;
   editorSurface.removeAttribute('data-source-preview-preparing');
   editorSurface.toggleAttribute('data-source-preview', split);
-  outlineController.refreshAppearance();
   sourcePreviewButton.classList.toggle('is-active', split);
   sourcePreviewButton.setAttribute('aria-pressed', split ? 'true' : 'false');
   presentSourcePreviewControls();
@@ -2002,6 +2011,7 @@ const presentPreviewSurface = (
     previewAdapter.setActive({ active: true, text: getCurrentEditorText() });
     presentSourcePreviewPosition(false, true);
     previewController.host.inert = true;
+    outlineController.refreshAppearance();
     return { split, visible };
   }
   cancelSourcePreviewReveal();
@@ -2013,6 +2023,7 @@ const presentPreviewSurface = (
   }
   else editor?.setLinkedPreviewEnabled?.(false);
   presentSourcePreviewPosition(false, true);
+  outlineController.refreshAppearance();
   return { split, visible };
 };
 const getActiveEditableMode = (): 'live' | 'source' => {
@@ -2996,6 +3007,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
     if (preparingSourceSplit && editor) {
       (editor.view as typeof editor.view & { measure(flush?: boolean): void }).measure(false);
     }
+    outlineController.refreshAppearance();
   },
   presentModeControl(mode) {
     root.dataset.mode = mode;

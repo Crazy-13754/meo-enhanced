@@ -227,6 +227,9 @@ body {
 }
 
 .document-scroll-top {
+  --meo-scroll-top-background: var(--meo-background);
+  --meo-scroll-top-foreground: var(--meo-foreground);
+  --meo-scroll-top-focus: var(--meo-document-focus, var(--meo-ui-focus));
   position: absolute;
   right: 18px;
   bottom: 18px;
@@ -238,10 +241,10 @@ body {
   justify-content: center;
   box-sizing: border-box;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--meo-ui-border-control) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--meo-scroll-top-foreground) 25%, var(--meo-scroll-top-background));
   border-radius: 50%;
-  color: var(--meo-ui-text);
-  background: var(--meo-ui-surface);
+  color: var(--meo-scroll-top-foreground);
+  background: var(--meo-scroll-top-background);
   box-shadow: 0 2px 6px rgb(0 0 0 / 16%);
   cursor: pointer;
 }
@@ -250,17 +253,22 @@ body {
   display: none;
 }
 
+/* Covered or preparing viewports reveal their controls only when interactive. */
+:is(.editor-host, .preview-host)[inert] > .document-scroll-top {
+  display: none;
+}
+
 .document-scroll-top:hover,
 .document-scroll-top:focus-visible {
-  background-color: var(--meo-ui-surface-hover);
+  background-color: color-mix(in srgb, var(--meo-scroll-top-foreground) 8%, var(--meo-scroll-top-background));
 }
 
 .document-scroll-top:focus-visible {
-  border-color: var(--meo-ui-focus);
+  border-color: var(--meo-scroll-top-focus);
 }
 
 .document-scroll-top:active {
-  background-color: var(--meo-ui-surface-pressed);
+  background-color: color-mix(in srgb, var(--meo-scroll-top-foreground) 14%, var(--meo-scroll-top-background));
 }
 
 .document-scroll-top svg {
@@ -269,17 +277,19 @@ body {
   pointer-events: none;
 }
 
-/* Preview's floating action belongs to the reading palette in both layouts. */
+/* Each viewport supplies its document carrier; interaction fills stay shared. */
+.editor-root[data-mode='source'] .editor-host > .document-scroll-top {
+  --meo-scroll-top-foreground: var(--meo-source-foreground, var(--meo-foreground));
+}
+
 .preview-host > .document-scroll-top {
-  color: var(--meo-preview-foreground, var(--meo-ui-text));
-  background: var(--meo-preview-background, var(--meo-ui-surface));
-  border-color: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-ui-text)) 25%, var(--meo-preview-background, var(--meo-ui-surface)));
+  --meo-scroll-top-background: var(--meo-preview-background, var(--meo-background));
+  --meo-scroll-top-foreground: var(--meo-preview-foreground, var(--meo-foreground));
+  --meo-scroll-top-focus: var(--meo-preview-foreground, var(--meo-document-focus, var(--meo-ui-focus)));
 }
-.preview-host > .document-scroll-top:is(:hover, :focus-visible) {
-  background: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-ui-text)) 8%, var(--meo-preview-background, var(--meo-ui-surface)));
-}
-.preview-host > .document-scroll-top:active {
-  background: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-ui-text)) 14%, var(--meo-preview-background, var(--meo-ui-surface)));
+
+html[data-meo-ui-contrast='high'] .document-scroll-top {
+  border-color: var(--meo-scroll-top-foreground);
 }
 
 .editor-root.outline-visible

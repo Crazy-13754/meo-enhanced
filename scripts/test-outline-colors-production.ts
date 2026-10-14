@@ -4,7 +4,16 @@ import path from 'node:path';
 import { launchTestBrowser, closeTestBrowser } from './browser-test-helpers';
 import exportRuntime from '../src/export/runtime';
 
-const build = await Bun.build({ entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'], target: 'browser', format: 'iife' });
+const build = await Bun.build({ entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'], target: 'browser', format: 'iife',
+  plugins: [{ name: 'outline-transition-fixture', setup(builder) {
+    builder.onLoad({ filter: /webview[\\/]src[\\/]index\.ts$/ }, async args => {
+      const contents = await Bun.file(args.path).text();
+      const entry = '  async applyEditorMode(mode, viewport) {';
+      assert.ok(contents.includes(entry), 'fixture reaches the real mode application boundary');
+      return { loader: 'ts', contents: contents.replace(entry, entry + '\n    const gate = (window as any).__outlineTransitionGate;\n    if (gate) await gate(mode);') };
+    });
+  } }]
+});
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const bundle = await build.outputs[0]!.text();
 const text = Array.from({ length: 35 }, (_, index) => `## Section ${index}\n\n${'Reading paragraph. '.repeat(20)}\n`).join('\n');
@@ -13,6 +22,7 @@ const screenshots = process.env.MEO_TEST_SCREENSHOTS;
 if (screenshots) mkdirSync(screenshots, { recursive: true });
 const errors: string[] = [];
 let cases = 0;
+let transitions = 0;
 try {
   for (const editorAppearance of ['dark', 'light'] as const) {
     const page = await browser.newPage();
@@ -125,6 +135,107 @@ try {
         }
       }
     }
+
+    type PaletteSample = { color: string; preparing: boolean; cover: boolean; splitCover: boolean; previewVisible: boolean; editorInert: boolean };
+    // Observe intermediate states so an incorrect palette cannot hide behind a correct final frame.
+    const beginTransition = () => page.evaluate(() => {
+      const w = window as any;
+      const samples: unknown[] = []; let previous = '';
+      const capture = () => {
+        const surface = document.querySelector('.editor-surface')!;
+        const editor = document.querySelector<HTMLElement>('.editor-host')!;
+        const preview = document.querySelector<HTMLElement>('.preview-host')!;
+        const sample = { color: getComputedStyle(document.querySelector('.outline-sidebar')!).backgroundColor,
+          preparing: surface.hasAttribute('data-source-preview-preparing'), cover: editor.hasAttribute('data-preview-cover'),
+          splitCover: surface.hasAttribute('data-source-preview-exit-cover'),
+          previewVisible: !preview.hidden && preview.style.visibility !== 'hidden', editorInert: editor.inert };
+        const key = JSON.stringify(sample);
+        if (key !== previous) { previous = key; samples.push(sample); }
+      };
+      const observer = new MutationObserver(capture);
+      for (const selector of ['.editor-root', '.editor-surface', '.editor-host', '.preview-host', '.outline-sidebar']) {
+        observer.observe(document.querySelector(selector)!, { attributes: true });
+      }
+      capture(); w.__outlinePaletteTrace = { observer, samples };
+    });
+    const endTransition = async (): Promise<PaletteSample[]> => {
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      return page.evaluate(() => {
+        const trace = (window as any).__outlinePaletteTrace; trace.observer.disconnect(); return trace.samples;
+      });
+    };
+    const ready = (mode: 'source' | 'preview') => page.waitForFunction(mode => {
+      const root = document.querySelector<HTMLElement>('.editor-root')!;
+      const editor = document.querySelector<HTMLElement>('.editor-host')!;
+      return root.dataset.mode === mode && (mode === 'preview'
+        ? editor.hidden && !editor.hasAttribute('data-preview-cover')
+        : !editor.hidden && !editor.inert && !document.querySelector('.editor-surface')!.hasAttribute('data-source-preview-preparing'));
+    }, {}, mode);
+    const switchMode = async (mode: 'source' | 'preview') => {
+      await beginTransition(); await page.click(`button[data-mode="${mode}"]`); await ready(mode);
+      transitions += 1; return endTransition();
+    };
+    const expectPalette = (samples: PaletteSample[], expected: string[], position: 'left' | 'right', source: string, preview: string) => {
+      const colors = samples.map(sample => sample.color).filter((color, index, all) => index === 0 || color !== all[index - 1]);
+      assert.deepEqual(colors, expected, `${editorAppearance}/${position}: palette changes once with its visible viewport`);
+      for (const sample of samples) {
+        if (sample.preparing) assert.equal(sample.color, preview, 'full Preview remains the carrier while Source prepares');
+        if (sample.cover && (!sample.splitCover || position === 'left')) {
+          assert.equal(sample.color, source, 'visible editor cover keeps its palette until Preview is painted');
+        }
+      }
+    };
+    const palette = await snapshot();
+    for (const split of [true, false]) {
+      await page.click('button[data-mode="source"]'); await ready('source');
+      if (await page.$eval('.source-preview-button', element => element.getAttribute('aria-pressed') === 'true') !== split) {
+        await page.click('.source-preview-button');
+      }
+      for (const position of ['left', 'right'] as const) {
+        await setOutline(position, 'fixed');
+        const adjacent = split && position === 'right' ? palette.previewBackground : palette.editorBackground;
+        const forward = await switchMode('preview');
+        expectPalette(forward, adjacent === palette.previewBackground ? [adjacent] : [adjacent, palette.previewBackground], position, palette.editorBackground, palette.previewBackground);
+        const backward = await switchMode('source');
+        expectPalette(backward, adjacent === palette.previewBackground ? [adjacent] : [palette.previewBackground, adjacent], position, palette.editorBackground, palette.previewBackground);
+      }
+    }
+    // Cancelled and failed preparations must keep the still-visible Preview and ignore stale completion.
+    await page.click('.source-preview-button');
+    await switchMode('preview');
+    for (const position of ['left', 'right'] as const) {
+      await setOutline(position, 'fixed');
+      await page.evaluate(() => {
+        const w = window as any;
+        w.__outlineTransitionGate = (mode: string) => mode === 'source' ? new Promise(resolve => { w.__releaseOutlineSource = resolve; }) : undefined;
+      });
+      await beginTransition(); await page.click('button[data-mode="source"]');
+      await page.waitForFunction(() => typeof (window as any).__releaseOutlineSource === 'function');
+      assert.equal((await snapshot()).background, palette.previewBackground, 'waiting Source stays behind the Preview palette');
+      await page.click('button[data-mode="preview"]'); await ready('preview');
+      await page.evaluate(() => {
+        const w = window as any; w.__outlineTransitionGate = undefined; w.__releaseOutlineSource(); delete w.__releaseOutlineSource;
+      });
+      expectPalette(await endTransition(), [palette.previewBackground], position, palette.editorBackground, palette.previewBackground);
+      await ready('preview'); transitions += 1;
+
+      await page.evaluate(() => {
+        (window as any).__outlineTransitionGate = (mode: string) => {
+          if (mode === 'source') {
+            (window as any).__outlineTransitionGate = undefined;
+            throw new Error('Expected outline fixture transition failure');
+          }
+        };
+      });
+      await beginTransition(); await page.click('button[data-mode="source"]'); await ready('preview');
+      expectPalette(await endTransition(), [palette.previewBackground], position, palette.editorBackground, palette.previewBackground);
+      transitions += 1;
+    }
+
+    // A successful retry clears the expected failure notice and restores normal interaction.
+    expectPalette(await switchMode('source'), [palette.previewBackground], 'right', palette.editorBackground, palette.previewBackground);
+    expectPalette(await switchMode('preview'), [palette.previewBackground], 'right', palette.editorBackground, palette.previewBackground);
+
     await setOutline('right', 'fixed');
     await page.hover('.outline-header');
     assert.equal(await page.$eval('.outline-content', element => getComputedStyle(element, '::-webkit-scrollbar-thumb').backgroundColor),
@@ -162,7 +273,7 @@ try {
     await page.close();
   }
   assert.deepEqual(errors, [], 'production Webview errors');
-  console.log(`Outline adjacent document palettes passed (${cases} mode/position/preset/contrast cases).`);
+  console.log(`Outline adjacent document palettes passed (${cases} mode/position/preset/contrast cases, ${transitions} transitions including cancellation and rollback).`);
 } finally {
   await closeTestBrowser(browser);
 }
