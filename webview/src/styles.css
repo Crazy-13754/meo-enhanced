@@ -5719,7 +5719,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 .outline-tree-children {
   margin-left: 20px;
   padding-left: 5px;
-  border-left: 1px solid var(--meo-document-separator);
+  border-left: 1px solid var(--meo-outline-border, var(--meo-document-separator));
 }
 
 .outline-node {
