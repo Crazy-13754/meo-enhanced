@@ -1193,6 +1193,11 @@ export function createPreviewController({
       picker.element.setAttribute('aria-description', reason); picker.element.setAttribute('aria-disabled', String(fixed));
     }
     rebuildFontOptions();
+    // Restored CSS family identifiers need the catalog's locale names before the picker opens.
+    // Defer until initialization has applied the active preset, which may fix its fonts.
+    if (uiLanguage === 'zh-CN' && !fontCatalogLoaded) queueMicrotask(() => {
+      if (!disposed && uiLanguage === 'zh-CN' && (fontFamilyPreference || codeFontFamilyPreference)) void loadFonts(false);
+    });
   };
   const updatePresetControls = () => {
     const preset = getPreviewPreset(presetPreference);

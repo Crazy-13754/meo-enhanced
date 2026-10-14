@@ -79,8 +79,16 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
   };
   const setActive = (option: HTMLButtonElement | undefined) => {
     active?.classList.remove('is-active'); active = option; active?.classList.add('is-active');
-    if (active) { searchInput.setAttribute('aria-activedescendant', active.id); if (!panel.hidden && results.contains(active)) active.scrollIntoView({ block: 'nearest' }); }
-    else searchInput.removeAttribute('aria-activedescendant');
+    if (active) {
+      searchInput.setAttribute('aria-activedescendant', active.id);
+      if (!panel.hidden && results.contains(active)) {
+        // scrollIntoView can scroll clipped ancestors or the embedding Webview; only this list owns the scroll.
+        const bounds = active.getBoundingClientRect();
+        const top = results.getBoundingClientRect().top + results.clientTop;
+        if (bounds.top < top) results.scrollTop += bounds.top - top;
+        else if (bounds.bottom > top + results.clientHeight) results.scrollTop += bounds.bottom - top - results.clientHeight;
+      }
+    } else searchInput.removeAttribute('aria-activedescendant');
   };
   const choose = (family: string) => {
     if (select.disabled) return;
@@ -109,9 +117,9 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
     empty.hidden = results.childElementCount > 0;
     syncFromSelect();
     const selected = results.querySelector<HTMLButtonElement>('[aria-selected="true"]') ?? undefined;
+    position();
     results.scrollTop = scrollTop;
     setActive(selected ?? (query ? results.querySelector<HTMLButtonElement>('button') ?? undefined : undefined));
-    position();
   };
   const open = () => {
     if (select.disabled) return;
