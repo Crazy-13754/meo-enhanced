@@ -162,7 +162,7 @@ try {
     await select(fontPage, 'whitey');
     if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.preview-options-trigger');
     await fontPage.click('.preview-font-family-dropdown');
-    fontFailure = true; await fontPage.click(`${popup} .preview-dropdown-footer`);
+    fontFailure = true; await fontPage.click(`${popup} .preview-font-refresh`);
     await settle(fontPage);
     assert.ok(await fontPage.$eval(`${popup} [role="status"]`, el => el.textContent?.includes('unavailable')));
     assert.ok(await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).options.length > 200), 'Failed refresh preserves a successful list');

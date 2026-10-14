@@ -1,3 +1,5 @@
+import { createElement, RefreshCw, Search } from 'lucide';
+
 type FontPickerLabels = { search: string; empty: string; refresh: string; missing: string };
 let nextPickerId = 0;
 let activePickerClose: (() => void) | undefined;
@@ -20,6 +22,7 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
   const panel = document.createElement('div');
   panel.id = `${id}-panel`; panel.className = `preview-dropdown-panel preview-font-picker ${controlClass.replace(/-control$/, '')}-dropdown-panel`;
   panel.dataset.previewControl = controlClass; panel.setAttribute('role', 'dialog'); panel.hidden = true;
+  const searchRow = document.createElement('div'); searchRow.className = 'preview-font-search-row';
   const searchInput = document.createElement('input'); searchInput.type = 'search'; searchInput.className = 'preview-font-search';
   searchInput.setAttribute('role', 'combobox'); searchInput.setAttribute('aria-autocomplete', 'list'); searchInput.setAttribute('aria-controls', id); searchInput.setAttribute('aria-expanded', 'true');
   const list = document.createElement('div'); list.id = id; list.className = 'preview-font-list'; list.setAttribute('role', 'listbox');
@@ -27,8 +30,10 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
   const results = document.createElement('div'); results.className = 'preview-font-results'; results.setAttribute('role', 'presentation');
   const empty = document.createElement('div'); empty.className = 'preview-font-message'; empty.hidden = true;
   const status = document.createElement('div'); status.className = 'preview-font-message'; status.setAttribute('role', 'status'); status.hidden = true;
-  const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'preview-dropdown-option preview-dropdown-footer';
-  list.append(pinned, results); panel.append(searchInput, list, empty, status, refresh); document.body.append(panel);
+  const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'preview-font-refresh';
+  refresh.append(createElement(RefreshCw, { width: 13, height: 13, 'aria-hidden': 'true' }));
+  searchRow.append(createElement(Search, { width: 13, height: 13, 'aria-hidden': 'true' }), searchInput, refresh);
+  list.append(pinned, results); panel.append(searchRow, list, empty, status); document.body.append(panel);
   let labels: FontPickerLabels = { search: '', empty: '', refresh: '', missing: '' };
   let active: HTMLButtonElement | undefined;
   let composing = false;
@@ -78,8 +83,8 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
       const option = document.createElement('button'); option.type = 'button'; option.tabIndex = -1;
       option.id = `${id}-${index}`; option.className = 'preview-dropdown-option'; option.dataset.value = native.value; option.setAttribute('role', 'option');
       const name = document.createElement('span'); name.className = 'preview-font-option-name'; name.textContent = native.textContent;
-      const check = document.createElement('span'); check.className = 'preview-font-option-check'; check.textContent = '✓'; check.setAttribute('aria-hidden', 'true');
-      option.append(name, check);
+      name.dataset.tooltip = native.textContent ?? ''; name.dataset.tooltipKind = 'fulltext';
+      option.append(name);
       if (native.dataset.missing === 'true') { const note = document.createElement('span'); note.className = 'preview-font-missing'; note.textContent = labels.missing; name.append(note); }
       option.addEventListener('click', () => choose(native.value));
       (native.value ? results : pinned).append(option);
@@ -130,7 +135,7 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
     element, label, select, trigger, panel, searchInput, setLabel, close, refreshOptions, syncFromSelect,
     setLabels(next: FontPickerLabels) {
       labels = next; searchInput.placeholder = next.search; searchInput.setAttribute('aria-label', next.search);
-      empty.textContent = next.empty; refresh.textContent = next.refresh; refreshOptions();
+      empty.textContent = next.empty; refresh.setAttribute('aria-label', next.refresh); refresh.dataset.tooltip = next.refresh; refreshOptions();
     },
     setStatus(message: string, loading = false) { status.textContent = message; status.hidden = !message; refresh.disabled = loading; position(); },
     setAppearance(appearance: 'light' | 'dark') { element.dataset.previewAppearance = appearance; panel.dataset.previewAppearance = appearance; },
