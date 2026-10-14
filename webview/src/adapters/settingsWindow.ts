@@ -249,8 +249,18 @@ export function createSettingsWindow(options: {
     clear.hidden = search.value.length === 0; footer.hidden = tab !== 'shortcuts';
     appearanceFooter.hidden = tab !== 'appearance'; appearance.present();
     if (tab === 'presets') { status.textContent = options.previewPresets?.error() ?? ''; status.hidden = !status.textContent; }
-    const signature = JSON.stringify([language, tab, query(), recording?.command, tab === 'shortcuts' ? [options.getPreferences().shortcuts, [...pending]] : null, tab === 'presets' ? options.previewPresets?.signature() : null]);
-    if (renderedSignature === signature) { for (const presentValue of valuePresenters) presentValue(); return; }
+    // Preset data updates rows in place; only a changed section layout rebuilds the page.
+    const signature = JSON.stringify([language, tab, query(), recording?.command, tab === 'shortcuts' ? [options.getPreferences().shortcuts, [...pending]] : null, tab === 'presets' ? [...new Set(visible.presets.map(item => item.section))] : null]);
+    if (renderedSignature === signature) {
+      const oldScroll = content.scrollTop;
+      if (tab === 'presets') {
+        const list = content.querySelector<HTMLDivElement>('.settings-preset-list');
+        if (list) options.previewPresets?.updateList(list, visible.presets.flatMap(item => item.preset ? [item.preset] : []), language);
+      }
+      for (const presentValue of valuePresenters) presentValue();
+      if (tab === 'presets') { options.previewPresets?.present(); content.scrollTop = oldScroll; updateNavigation(); }
+      return;
+    }
     renderedSignature = signature;
     const oldScroll = content.scrollTop;
     const activeRecorder = document.activeElement?.classList.contains('settings-recorder');
@@ -272,7 +282,12 @@ export function createSettingsWindow(options: {
       block.append(element('h3', 'settings-section-title', titleFor(section)));
       if (tab === 'presets' && section === 'presetList' && options.previewPresets) {
         const list = element('div', 'settings-preset-list'); list.setAttribute('role', 'group'); list.setAttribute('aria-label', titleFor(section)); list.append(...items);
-        block.append(element('p', 'settings-description settings-preset-description', options.previewPresets.description(language)), list);
+        const description = element('p', 'settings-description settings-preset-description', options.previewPresets.description(language));
+        valuePresenters.push(() => {
+          const next = options.previewPresets!.description(language);
+          if (description.textContent !== next) description.textContent = next;
+        });
+        block.append(description, list);
       } else block.append(...items);
       content.append(block);
     }

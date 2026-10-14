@@ -3,7 +3,7 @@ import { mock } from 'bun:test';
 import exportRuntime from '../src/export/runtime';
 import { PREVIEW_PRESET_STATE_KEY } from '../src/shared/preview';
 import { decodeEditorCommand } from '../src/protocol/editorCommands';
-import { getPreviewPreset } from '../src/foundation/previewPresets';
+import { getPreviewPreset, type PreviewPresetId } from '../src/foundation/previewPresets';
 import { createPreviewPresetPreferences, PREVIEW_PRESET_PREFERENCES_STATE_KEY } from '../src/host/previewPresetPreferences';
 import { createPanelSessionControllerParams, createPanelSessionTestDocument, createPanelSessionTestUri, createPanelSessionVscodeMock, panelSessionDisposable } from './panel-session-test-helper';
 
@@ -14,6 +14,7 @@ const { createPendingDraftRecovery } = await import('../src/application/pendingD
 const messages: any[] = [];
 let receiveMessage: ((message: unknown) => void) | undefined;
 const stored = new Map<string, unknown>();
+let hiddenPresets: PreviewPresetId[] = [];
 let defaultCodeFont = 'Consolas';
 let failFonts = false;
 const fontRequests: boolean[] = [];
@@ -36,6 +37,7 @@ const params = createPanelSessionControllerParams({
     getPreviewCodeFontFamily: () => defaultCodeFont,
     setPreviewCodeFontFamily: async (font: string) => { defaultCodeFont = font; },
     getPreviewPresetPreferences: preferences.read,
+    getDisabledPreviewPresets: () => hiddenPresets,
     setPreviewPresetPreference: preferences.update,
     renderPreview: async (options: any) => exportRuntime.renderPreviewDocument(options),
     context: { globalState: { get: (key: string) => stored.get(key), update: async (key: string, value: unknown) => { stored.set(key, value); } } }
@@ -90,6 +92,16 @@ try {
     stored.set(PREVIEW_PRESET_STATE_KEY, 'user:removed');
     await restarted.handleMessage({ type: 'ready' });
     assert.equal(messages.findLast(message => message.type === 'init').previewPreset, 'default', 'Removed presets fall back safely at startup');
+    stored.set(PREVIEW_PRESET_STATE_KEY, 'whitey'); hiddenPresets = ['whitey'];
+    await restarted.handleMessage({ type: 'ready' });
+    assert.equal(messages.findLast(message => message.type === 'init').previewPreset, 'default', 'A hidden built-in falls back at startup');
+    assert.deepEqual(messages.findLast(message => message.type === 'init').disabledPreviewPresets, ['whitey']);
+    stored.set(PREVIEW_PRESET_STATE_KEY, 'default');
+    await restarted.handleMessage({ type: 'setPreviewPreset', preset: 'whitey' });
+    assert.equal(stored.get(PREVIEW_PRESET_STATE_KEY), 'default', 'A hidden built-in cannot become the startup selection');
+    hiddenPresets = [];
+    await restarted.handleMessage({ type: 'setPreviewPreset', preset: 'whitey' });
+    assert.equal(stored.get(PREVIEW_PRESET_STATE_KEY), 'whitey', 'Showing a built-in makes it selectable again');
   } finally { restarted.dispose(); }
   console.log('Preview preset Host request forwarding and validation tests passed.');
 } finally {

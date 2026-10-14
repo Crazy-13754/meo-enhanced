@@ -1,5 +1,5 @@
 import { decodeCustomPreviewPresets } from '../foundation/customPreviewPreset';
-import { isPreviewPresetId, type PreviewPresetDefinition, type PreviewPresetDiagnostic, type PreviewPresetId } from '../foundation/previewPresets';
+import { isPreviewPresetId, previewPresets, type PreviewPresetDefinition, type PreviewPresetDiagnostic, type PreviewPresetId } from '../foundation/previewPresets';
 import { isUiLanguage, type UiLanguage } from '../foundation/uiLanguage';
 import { decodeRequestResult, type RequestResult } from './requestResult';
 
@@ -12,9 +12,10 @@ export type PreviewPresetRequest = PreviewPresetAction & { readonly type: 'previ
 export type PreviewPresetResponse = { readonly type: 'previewPresetResult'; readonly requestId: string; readonly result: RequestResult<{ readonly changed: boolean }> };
 export type OpenPreviewPresetSettings = { readonly type: 'openPreviewPresetSettings' };
 
-/** Only custom presets can be hidden, exported or removed. */
+/** Default is always visible; the limit allows the custom catalog plus optional built-ins. */
 export function decodeDisabledPreviewPresets(value: unknown): PreviewPresetId[] | null {
-  return Array.isArray(value) && value.length <= 100 && value.every(id => isPreviewPresetId(id) && id.startsWith('user:'))
+  const limit = 100 + previewPresets.filter(preset => !preset.id.startsWith('user:') && preset.id !== 'default').length;
+  return Array.isArray(value) && value.length <= limit && value.every(id => isPreviewPresetId(id) && id !== 'default')
     ? [...new Set(value)] : null;
 }
 
@@ -24,9 +25,11 @@ export function decodePreviewPresetRequest(value: unknown): PreviewPresetRequest
   if (item.type !== 'previewPresetRequest' || typeof item.requestId !== 'string' || !item.requestId || item.requestId.length > 200 || !isUiLanguage(item.language)) return null;
   const common = { type: item.type, requestId: item.requestId, language: item.language };
   if (item.action === 'import' || item.action === 'guide') return { ...common, action: item.action };
-  if (!('preset' in item) || !isPreviewPresetId(item.preset) || !item.preset.startsWith('user:')) return null;
+  if (!('preset' in item) || !isPreviewPresetId(item.preset)) return null;
+  if (item.action === 'setEnabled') return item.preset !== 'default' && typeof item.enabled === 'boolean' ? { ...common, action: item.action, preset: item.preset, enabled: item.enabled } : null;
+  if (!item.preset.startsWith('user:')) return null;
   if (item.action === 'export' || item.action === 'remove') return { ...common, action: item.action, preset: item.preset };
-  return item.action === 'setEnabled' && typeof item.enabled === 'boolean' ? { ...common, action: item.action, preset: item.preset, enabled: item.enabled } : null;
+  return null;
 }
 
 export function decodePreviewPresetResponse(value: unknown): PreviewPresetResponse | null {
@@ -63,6 +66,6 @@ export function decodePreviewPresetsChanged(value: unknown): PreviewPresetsChang
   const presets = decodeCustomPreviewPresets(candidate.presets);
   const diagnostics = decodePreviewPresetDiagnostics(candidate.diagnostics ?? []);
   const disabled = decodeDisabledPreviewPresets(candidate.disabled ?? []);
-  if (!presets || !diagnostics || !disabled || candidate.selected?.startsWith('user:') && (!presets.some(preset => preset.id === candidate.selected) || disabled.includes(candidate.selected))) return null;
+  if (!presets || !diagnostics || !disabled || candidate.selected && (disabled.includes(candidate.selected) || candidate.selected.startsWith('user:') && !presets.some(preset => preset.id === candidate.selected))) return null;
   return { type: 'previewPresetsChanged', presets, diagnostics, disabled, ...(candidate.selected ? { selected: candidate.selected } : {}) };
 }

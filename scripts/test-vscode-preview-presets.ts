@@ -212,7 +212,17 @@ for (const [language, filename] of [['zh-CN', 'README.zh-CN.md'], ['en', 'README
 assert.equal(writes, beforeCancel, 'Canceled dialogs and localized external guides do not write presets');
 
 await assert.rejects(owner.perform({ action: 'setEnabled', preset: 'default', enabled: false, language: 'en' }), /always enabled/);
-await assert.rejects(owner.perform({ action: 'remove', preset: 'github-readme', language: 'en' }), /always enabled/);
+const hideableBuiltIns = ['github-readme', 'newsprint', 'whitey', 'obsidian-minimal'] as const;
+for (const preset of ['default', ...hideableBuiltIns] as const) await assert.rejects(owner.perform({ action: 'remove', preset, language: 'en' }), /cannot be.*removed/);
+const beforeVisibilityWrites = writes;
+const beforeVisibilityFiles = snapshot(savedDirectory);
+for (const preset of hideableBuiltIns) await owner.perform({ action: 'setEnabled', preset, enabled: false, language: 'en' });
+owner = await createVscodePreviewPresets(context);
+assert.deepEqual(owner.disabled(), [...hideableBuiltIns], 'Every optional built-in stays hidden after restart');
+assert.deepEqual(snapshot(savedDirectory), beforeVisibilityFiles, 'Changing built-in visibility preserves installed preset files');
+for (const preset of hideableBuiltIns) await owner.perform({ action: 'setEnabled', preset, enabled: true, language: 'en' });
+assert.deepEqual(owner.disabled(), []);
+assert.equal(writes, beforeVisibilityWrites, 'Built-in visibility changes only write global state');
 await owner.perform({ action: 'setEnabled', preset: original.id, enabled: false, language: 'en' });
 owner = await createVscodePreviewPresets(context);
 assert.deepEqual(owner.disabled(), [original.id], 'Hidden presets remain installed and survive restart');
