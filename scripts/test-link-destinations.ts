@@ -44,6 +44,11 @@ for (const destination of ['D:/notes/link target.md', 'D:\\notes\\link target.md
     });
     assert.match(rendered.html, /href="file:\/\/\/D:\/notes\/link%20target\.md"/,
       `${preset}: absolute local paths retain the same navigable destination`);
+    const raw = exportRuntime.renderPreviewDocument({
+      markdownText: `<a href="${destination}">Local</a>`, sourceDocumentPath: 'C:/notes/current.md', uiLanguage: 'en', preset
+    });
+    assert.match(raw.html, /href="file:\/\/\/D:\/notes\/link%20target\.md"/,
+      `${preset}: raw HTML links normalize before their early URL filtering`);
   }
 }
 

@@ -66,7 +66,7 @@ export type RenderMarkdownOptions = {
   includeTableOfContents?: boolean;
   /** Preview resolves local and network images after the reading frame is ready. */
   deferImages?: boolean;
-  /** Preview brokers local navigation through Host even with strict GitHub semantics. */
+  /** Permit local file destinations alongside the preset's safe URL schemes. */
   allowLocalLinks?: boolean;
   showComments?: boolean;
   /** Standalone exports inject the same Shiki token presentation used by Live and Preview. */
@@ -260,7 +260,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   bodySourceLines = normalizedBody.sourceLines.map(line => preparedMarkdown.body.sourceLines[line - 1] ?? line);
   headings.length = 0;
   const bodyHtml = md.render(normalizedBody.markdown);
-  const tableOfContentsDocumentHref = options.target === 'html' && options.outputFilePath
+  const documentHref = options.target === 'html' && options.outputFilePath
     ? `./${encodeURIComponent(path.basename(options.outputFilePath))}`
     : '';
   const tableOfContentsHtml = options.includeTableOfContents === true && headings.length > 0
@@ -268,7 +268,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
         headings,
         uiStrings.tableOfContents,
         uiStrings.untitledSection,
-        tableOfContentsDocumentHref
+        documentHref
       )
     : '';
   const rawHtml = [
@@ -425,6 +425,9 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
         }
         const href = `${attribs.href ?? ''}`.trim();
         const next = { ...attribs };
+        // The resource <base> points at a directory. HTML fragments must name
+        // the exported file so authored links stay in the same document too.
+        if (documentHref && href.startsWith('#')) next.href = `${documentHref}${href}`;
         if (/^https?:/i.test(href)) {
           next.target = '_blank';
           next.rel = 'noopener noreferrer';
@@ -520,6 +523,7 @@ function installSafeHtmlTransform(
     },
     allowProtocolRelative: false,
     transformTags: {
+      a: (tagName, attribs) => ({ tagName, attribs: { ...attribs, ...(attribs.href ? { href: normalizeLinkDestination(attribs.href) } : {}) } }),
       img: (tagName, attribs) => {
         const rewritten = attribs.src ? rewriteImageSrc(attribs.src) : null;
         return {

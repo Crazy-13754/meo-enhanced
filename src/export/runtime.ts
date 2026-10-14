@@ -64,6 +64,7 @@ async function renderExportHtmlDocument(
       target: options.target,
       uiLanguage: snapshot.uiLanguage,
       showComments: environment.previewShowComments === true,
+      allowLocalLinks: true,
       preset,
       presetDefinition: definition,
       includeTableOfContents: options.target !== 'docx' && options.includeTableOfContents === true,

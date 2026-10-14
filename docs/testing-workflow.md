@@ -201,8 +201,20 @@ unit gates; final PDF/DOCX generation is separate evidence.
 shared link-destination rules through Live/Source, actual Preview rendering and
 Host file navigation. Windows drive paths use file URIs before URL filtering;
 check both separators, escaped filenames and fragments. Preview links must keep
-their pointer, hover hint and click routing in every built-in preset, while
-executable URL schemes and standalone GitHub export filtering retain their existing boundaries.
+their pointer, hover hint and click routing in every built-in preset. MEO Preview
+and HTML/PDF exports explicitly allow local file links in every preset; executable
+URL schemes remain filtered. The direct GitHub compatibility renderer retains its
+strict defaults. Raw HTML destinations must normalize before early URL filtering.
+
+`scripts/test-export-links.ts` and `scripts/test-export-links-browser.ts` run in
+quick, targeted appearance and release gates. They cover all built-in presets and
+a custom preset with the GitHub base, both path separators, encoded filenames,
+local URI fragments, web/mail links, authored/raw HTML anchors, contents and
+footnotes. Trusted HTML clicks must stay in the exported file despite its resource
+`base`, including Unicode IDs and filenames containing spaces, percent and hash
+characters. Final PDFs must contain the matching URI link annotations and internal
+destinations; a PDF header alone is insufficient. This does not prove how each
+desktop PDF viewer handles opening a local file.
 
 `test:mermaid-compatibility` uses the shipped offline runtime to check Live and
 Preview, real Source split typing, stale-render rejection, focus, reading-anchor
