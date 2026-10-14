@@ -1,10 +1,10 @@
 import { createRequestPrefix } from '../adapters/requestIdentity';
-import { EditorSelection, Transaction, type Extension, type TransactionSpec, type EditorState } from '@codemirror/state';
+import { EditorSelection, Transaction, StateEffect, type Extension, type TransactionSpec, type EditorState } from '@codemirror/state';
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import { parser } from '@lezer/markdown';
 import { isolateHistory } from '@codemirror/commands';
 import type { LinkCandidate } from '../../../src/protocol/editorServices';
-import { detectSuggestionContext, emojiSuggestions, type SuggestionContext } from '../application/inputSuggestions';
+import { detectSuggestionContext, emojiSuggestions, isSuggestionAddress, type SuggestionContext } from '../application/inputSuggestions';
 import { inputAssistanceFacet } from './typingAssistance';
 import { isCodeInput } from './pasteAssistance';
 import { uiLanguageFacet } from './uiLanguage';
@@ -15,11 +15,15 @@ import { addAutomaticSymbolPair } from './typingAssistance';
 import { sourceTableAt } from './sourceTableCommands';
 import { blockInsertion, type MarkdownInputContext } from './blockInsertion';
 import { encodeMarkdownPath } from '../../../src/foundation/linkDestination';
+import { candidateMatchPositions } from '../../../src/foundation/candidateText';
+import { createTooltip } from '../adapters/tooltip';
+
+export const refreshInputSuggestions = StateEffect.define<null>();
 
 type Suggestion = LinkCandidate & { readonly caret?: number; readonly slash?: SlashCommand };
 export function createInputSuggestions(options: {
   readonly inputContext: (state: EditorState, position: number) => MarkdownInputContext;
-  readonly requestLinks?: (context: { kind: 'documents' | 'paths' | 'headings'; query: string; target: string }) => Promise<readonly LinkCandidate[]>;
+  readonly requestLinks?: (context: { kind: 'documents' | 'paths' | 'headings'; query: string; target: string; wiki?: boolean }) => Promise<readonly LinkCandidate[]>;
   readonly replaceCell?: (input: HTMLTextAreaElement, value: string, anchor: number, head?: number) => boolean;
   readonly focusTable?: () => void;
   readonly focusMath?: () => boolean;
@@ -36,6 +40,12 @@ export function createInputSuggestions(options: {
     fieldInput: HTMLTextAreaElement | null = null; fieldValue = '';
     selectedCommand = ''; resolvedQuery = '';
     positionFrame: number | null = null; above: boolean | null = null;
+    tooltipFrame: number | null = null;
+    selectedTooltip: ReturnType<typeof createTooltip> | null = null;
+    dismissed = false;
+    selectedCandidate = '';
+    candidateKey(item: Suggestion) { return this.context?.type === 'documents' || this.context?.type === 'paths' ? item.detail || item.insert : item.detail + '#' + (item.anchor ?? item.insert); }
+    readonly windowBlur = () => { this.dismissed = true; this.clear(); };
     readonly nativeEvent = (event: Event) => {
       const input = event.target;
       if (!(input instanceof HTMLTextAreaElement) || !input.closest('.meo-md-html-table-wrap') || !this.view.dom.contains(input)) return;
@@ -45,8 +55,9 @@ export function createInputSuggestions(options: {
       }
       if (event.type === 'compositionstart') { this.composing = true; return; }
       if (event.type === 'compositionend') this.composing = false;
+      if (event.type === 'input' || event.type === 'pointerup') this.dismissed = false;
       if (event.type === 'focusout') {
-        queueMicrotask(() => { if (input !== this.view.dom.ownerDocument.activeElement) { this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); } }); return;
+        queueMicrotask(() => { if (input !== this.view.dom.ownerDocument.activeElement) { this.dismissed = true; this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); } }); return;
       }
       if (event.type === 'input') {
         const typed = event as InputEvent;
@@ -82,11 +93,13 @@ export function createInputSuggestions(options: {
       for (const type of ['input', 'keydown', 'select', 'pointerup', 'compositionstart', 'compositionend', 'focusout']) view.dom.addEventListener(type, this.nativeEvent, type === 'keydown' || type.startsWith('composition'));
       view.dom.ownerDocument.addEventListener('scroll', this.reposition, true);
       view.dom.ownerDocument.defaultView?.addEventListener('resize', this.reposition);
+      view.dom.ownerDocument.defaultView?.addEventListener('blur', this.windowBlur);
       this.popup.addEventListener('pointerdown', event => event.preventDefault());
       // EditorView initializes composition/focus state after constructing plugins.
       queueMicrotask(() => { if (!this.disposed) this.schedule(); });
     }
     update(update: ViewUpdate) {
+      if ((update.docChanged || update.selectionSet) && !update.transactions.some(transaction => transaction.isUserEvent('input.complete'))) this.dismissed = false;
       if (this.slashFrom !== null && update.docChanged) this.slashFrom = update.changes.mapPos(this.slashFrom, -1);
       if (!this.fieldInput && this.fields.length && update.docChanged) {
         this.fields = this.fields.map(field => ({ from: update.changes.mapPos(field.from, -1), to: update.changes.mapPos(field.to, 1) }));
@@ -104,25 +117,34 @@ export function createInputSuggestions(options: {
         const selection = update.state.selection.main, field = this.fields[this.fieldIndex];
         if (!field || selection.from < field.from || selection.to > field.to) this.fields = [];
       }
-      if (update.docChanged || update.selectionSet || update.focusChanged || update.transactions.some(transaction => transaction.reconfigured)) this.schedule();
+      if (update.docChanged || update.selectionSet || update.focusChanged || update.transactions.some(transaction => transaction.reconfigured || transaction.effects.some(effect => effect.is(refreshInputSuggestions)))) this.schedule();
       else if (update.geometryChanged || update.viewportChanged) this.reposition();
     }
     getContext() {
+      if (this.disposed || this.dismissed) return null;
       const selection = this.view.state.selection;
       const active = this.view.dom.ownerDocument.activeElement;
-      if (active instanceof HTMLTextAreaElement && this.cellInput === active && this.cellFrom !== null) {
-        const from = this.cellFrom, value = active.value.slice(from, this.composing ? active.selectionEnd : active.selectionStart), query = readSlashQuery(value), before = active.value.slice(0, from);
-        let node = parser.parse(active.value).resolveInner(from + 1, -1), inCode = false;
+      if (active instanceof HTMLTextAreaElement && active.closest('.meo-md-html-table-wrap') && this.view.dom.contains(active)) {
+        const preferences = this.view.state.facet(inputAssistanceFacet);
+        if (this.view.state.readOnly || active.selectionStart !== active.selectionEnd && !this.composing) return null;
+        this.cellInput = active;
+        const head = this.composing ? active.selectionEnd : active.selectionStart, beforeHead = active.value.slice(0, head);
+        let node = parser.parse(active.value).resolveInner(head, -1), excluded = false;
         for (;;) {
-          if (/^(?:InlineCode|FencedCode|CodeBlock|HTMLBlock|HTMLTag|CommentBlock|ProcessingInstruction|Autolink|URL|LinkTitle)$/.test(node.name)) inCode = true;
-          if (!node.parent) break;
-          node = node.parent;
+          if (/^(?:InlineCode|FencedCode|CodeBlock|HTMLBlock|HTMLTag|CommentBlock|ProcessingInstruction|Autolink|LinkTitle)$/.test(node.name)) excluded = true;
+          if (!node.parent) break; node = node.parent;
         }
-        if (!inCode && !this.disposed && !this.view.state.readOnly && this.view.state.facet(inputAssistanceFacet).slash && (this.composing || active.selectionStart === active.selectionEnd) && query !== null && before.slice(-1) !== '/' &&
+        if (excluded || /\$[^$]*$/.test(beforeHead)) { this.cellFrom = null; return null; }
+        const suggestion = detectSuggestionContext(beforeHead, preferences, this.composing);
+        if (suggestion) { this.cellFrom = null; return suggestion; }
+        if (isSuggestionAddress(beforeHead) || this.cellFrom === null) { this.cellFrom = null; return null; }
+        const from = this.cellFrom, value = active.value.slice(from, this.composing ? active.selectionEnd : active.selectionStart), query = readSlashQuery(value), before = active.value.slice(0, from);
+        if (this.view.state.facet(inputAssistanceFacet).slash && (this.composing || active.selectionStart === active.selectionEnd) && query !== null && before.slice(-1) !== '/' &&
             !/\]\([^)]*$|<[^>]*$|(?:[a-z][a-z0-9+.-]*:\/+|www\.)[^\s]*$|\$[^$]*$/.test(before))
           return { type: 'slash', query, target: '', length: value.length, wiki: false } as SuggestionContext;
         this.cellFrom = null; this.cellInput = null; return null;
       }
+      this.cellInput = null;
       if (this.disposed || this.view.state.readOnly || !selection.main.empty && !this.composing || selection.ranges.length !== 1 || !this.view.hasFocus || active !== this.view.contentDOM) {
         this.slashFrom = null; return null;
       }
@@ -142,6 +164,7 @@ export function createInputSuggestions(options: {
     }
     schedule() {
       if (this.items[this.index]?.slash) this.selectedCommand = this.items[this.index].slash!.id;
+      if (this.items[this.index]) this.selectedCandidate = this.candidateKey(this.items[this.index]);
       const context = this.getContext();
       if (context && context.type === this.context?.type && !this.popup.hidden) {
         if (this.timer !== null) clearTimeout(this.timer); this.timer = null;
@@ -158,6 +181,8 @@ export function createInputSuggestions(options: {
       this.generation++; if (this.timer !== null) clearTimeout(this.timer); this.timer = null;
       if (this.positionFrame !== null) this.view.dom.ownerDocument.defaultView?.cancelAnimationFrame(this.positionFrame);
       this.positionFrame = null;
+      if (this.tooltipFrame !== null) this.view.dom.ownerDocument.defaultView?.cancelAnimationFrame(this.tooltipFrame);
+      this.tooltipFrame = null; this.selectedTooltip?.dispose(); this.selectedTooltip = null;
       this.popup.hidden = true; this.items = []; this.context = null;
       this.ariaInput?.removeAttribute('aria-controls'); this.ariaInput?.removeAttribute('aria-activedescendant'); this.ariaInput = null;
     }
@@ -168,9 +193,10 @@ export function createInputSuggestions(options: {
       else if (context.type === 'slash') {
         const scope = this.cellFrom !== null ? 'inline' : options.inputContext(this.view.state, this.slashFrom! + 1);
         items = scope === 'excluded' ? [] : slashCommandSuggestions(context.query, scope).map(slash => ({ label: slash.label, insert: slash.insert, detail: language === 'zh-CN' ? slash.zh : slash.en, caret: slash.caret, slash }));
-      } else if (context.type === 'headings' && !context.target) items = options.currentHeadings().filter(item => item.label.toLocaleLowerCase().includes(context.query.toLocaleLowerCase())).slice(0, 50);
+      } else if (context.type === 'headings' && !context.target) items = options.currentHeadings().filter(item => candidateMatchPositions(item.label, context.query).length || !context.query).slice(0, 50)
+        .map(item => context.wiki ? { ...item, insert: item.anchor ?? item.insert } : item);
       else {
-        try { items = await options.requestLinks?.({ kind: context.type, query: context.query, target: context.target }) ?? []; }
+        try { items = await options.requestLinks?.({ kind: context.type, query: context.query, target: context.target, wiki: context.wiki }) ?? []; }
         catch { items = []; }
       }
       if (this.disposed || generation !== this.generation || JSON.stringify(context) !== JSON.stringify(this.getContext())) return;
@@ -179,9 +205,9 @@ export function createInputSuggestions(options: {
         JSON.stringify(context) === JSON.stringify(this.context) && JSON.stringify(items) === JSON.stringify(this.items);
       if (this.context?.type !== context.type) this.above = null;
       this.context = context; this.items = items; const exact = context.type === 'slash' ? items.findIndex(item => [item.slash!.id.toLowerCase(), ...item.slash!.aliases].includes(context.query.toLowerCase())) : -1;
-      if (!unchanged) this.index = context.query !== this.resolvedQuery && exact >= 0 ? exact : Math.max(0, items.findIndex(item => item.slash?.id === this.selectedCommand));
+      if (!unchanged) this.index = context.query !== this.resolvedQuery && exact >= 0 ? exact : Math.max(0, items.findIndex(item => item.slash ? item.slash.id === this.selectedCommand : context.query === this.resolvedQuery && this.candidateKey(item) === this.selectedCandidate));
       this.resolvedQuery = context.query;
-      this.head = this.cellInput && this.cellFrom !== null ? this.cellInput.selectionStart : this.composing ? this.view.state.selection.main.to : this.view.state.selection.main.head;
+      this.head = this.cellInput ? this.composing ? this.cellInput.selectionEnd : this.cellInput.selectionStart : this.composing ? this.view.state.selection.main.to : this.view.state.selection.main.head;
       if (unchanged) {
         // Automatic cell commits must not replace a candidate pressed by the pointer.
         this.popup.querySelectorAll<HTMLElement>('[role="option"]').forEach(row => row.setAttribute('aria-disabled', String(!!this.items[Number(row.dataset.suggestionIndex)]?.slash?.disabled || this.composing || this.view.compositionStarted)));
@@ -190,9 +216,10 @@ export function createInputSuggestions(options: {
     }
     render() {
       this.popup.replaceChildren();
-      const slash = this.context?.type === 'slash', links = this.context?.type === 'documents' || this.context?.type === 'paths';
+      const slash = this.context?.type === 'slash', documents = this.context?.type === 'documents', paths = this.context?.type === 'paths';
       this.popup.classList.toggle('meo-slash-suggestions', slash);
-      this.popup.classList.toggle('meo-link-suggestions', links);
+      this.popup.classList.toggle('meo-link-suggestions', documents);
+      this.popup.classList.toggle('meo-path-suggestions', paths);
       this.popup.classList.toggle('meo-narrow-suggestions', this.context?.type === 'emoji');
       this.popup.style.removeProperty('--meo-suggestion-max-height'); this.popup.style.removeProperty('max-width');
       const list = document.createElement('div'); list.className = 'meo-suggestion-list';
@@ -202,10 +229,15 @@ export function createInputSuggestions(options: {
       this.popup.style.setProperty('--meo-suggestion-font', font.fontFamily);
       this.popup.style.setProperty('--meo-suggestion-font-size', font.fontSize);
       const appendMatched = (element: HTMLElement, value: string, query: string) => {
-        const match = query ? value.toLocaleLowerCase().indexOf(query.toLocaleLowerCase()) : -1;
-        if (match < 0) { element.append(value); return; }
-        const matched = document.createElement('span'); matched.className = 'meo-suggestion-match'; matched.textContent = value.slice(match, match + query.length);
-        element.append(value.slice(0, match), matched, value.slice(match + query.length));
+        const positions = new Set(candidateMatchPositions(value, query));
+        let start = 0;
+        while (start < value.length) {
+          const matched = positions.has(start); let end = start + 1;
+          while (end < value.length && positions.has(end) === matched) end++;
+          if (matched) { const span = document.createElement('span'); span.className = 'meo-suggestion-match'; span.textContent = value.slice(start, end); element.append(span); }
+          else element.append(value.slice(start, end));
+          start = end;
+        }
       };
       this.items.forEach((item, index) => {
         const row = document.createElement('button'); row.type = 'button'; row.className = 'meo-input-suggestion'; row.setAttribute('role', 'option');
@@ -232,11 +264,13 @@ export function createInputSuggestions(options: {
           const prefix = document.createElement('span'); prefix.className = 'meo-suggestion-trigger'; prefix.textContent = ':'; label.append(prefix);
           appendMatched(label, item.label.slice(1), this.context.query);
         } else {
-          appendMatched(label, item.label, this.context?.query ?? ''); label.dataset.tooltip = item.label; label.dataset.tooltipKind = 'fulltext';
+          const query = this.context?.query ?? '';
+          appendMatched(label, item.label, this.context?.type === 'paths' ? query.slice(Math.max(query.lastIndexOf('/'), query.lastIndexOf('\\')) + 1) : query);
+          label.dataset.tooltip = item.label; label.dataset.tooltipKind = 'fulltext';
         }
         row.append(label);
-        const detailValue = this.context?.type === 'headings' && item.anchor ? '#' + item.anchor : links ? item.detail || item.insert : item.detail;
-        if (links || (detailValue && (item.slash || detailValue !== item.label))) {
+        const detailValue = this.context?.type === 'headings' && item.anchor ? '#' + item.anchor : documents ? item.detail || item.insert : item.detail;
+        if (!paths && (documents || (detailValue && (item.slash || detailValue !== item.label)))) {
           const detail = document.createElement('span'); detail.className = 'meo-input-suggestion-detail';
           if (item.slash) detail.textContent = detailValue;
           else { appendMatched(detail, detailValue, this.context?.query ?? ''); detail.dataset.tooltip = [item.detail, detailValue].filter((value, index, values) => value && values.indexOf(value) === index).join(' · '); detail.dataset.tooltipKind = 'fulltext'; }
@@ -257,10 +291,27 @@ export function createInputSuggestions(options: {
     select(index: number, scroll: boolean) {
       this.index = index;
       if (this.items[index]?.slash) this.selectedCommand = this.items[index].slash!.id;
+      if (this.items[index]) this.selectedCandidate = this.candidateKey(this.items[index]);
       this.popup.querySelectorAll<HTMLElement>('[role="option"]').forEach(row => row.setAttribute('aria-selected', String(Number(row.dataset.suggestionIndex) === index)));
       this.ariaInput?.setAttribute('aria-activedescendant', this.popup.id + '-' + index);
       if (scroll) this.scrollSelection();
       this.position();
+    }
+    updateSelectedTooltip() {
+      if (this.tooltipFrame !== null) return;
+      const window = this.view.dom.ownerDocument.defaultView!;
+      this.tooltipFrame = window.requestAnimationFrame(() => {
+        this.tooltipFrame = null;
+        if (this.disposed || this.popup.hidden) return;
+        const row = this.popup.querySelector<HTMLElement>('[aria-selected="true"]');
+        const fields = row ? [...row.querySelectorAll<HTMLElement>('.meo-suggestion-label, .meo-input-suggestion-detail')]
+          .filter(field => field.scrollWidth > field.clientWidth + 1 || field.scrollHeight > field.clientHeight + 1) : [];
+        const text = fields.map(field => field.textContent?.trim() ?? '').filter(Boolean).join('\n');
+        if (!row || !text) { this.selectedTooltip?.dispose(); this.selectedTooltip = null; return; }
+        if (!this.selectedTooltip) this.selectedTooltip = createTooltip(row, { content: { text, kind: 'fulltext' }, immediate: true, manual: true });
+        else { this.selectedTooltip.setAnchor(row); this.selectedTooltip.setContent({ text, kind: 'fulltext' }); }
+        this.selectedTooltip.show();
+      });
     }
     scrollSelection() {
       const list = this.popup.querySelector<HTMLElement>('.meo-suggestion-list')!;
@@ -274,10 +325,11 @@ export function createInputSuggestions(options: {
     position() {
       const slash = this.context?.type === 'slash', document = this.view.dom.ownerDocument;
       const close = () => {
+        this.dismissed = true;
         if (slash) { this.slashFrom = null; this.cellFrom = null; this.cellInput = null; }
         this.clear();
       };
-      const native = this.cellInput && this.cellFrom !== null ? options.cellCoords?.(this.cellInput, this.cellFrom) : null;
+      const native = this.cellInput ? options.cellCoords?.(this.cellInput, slash ? this.cellFrom! : this.head) : null;
       const coords = native ? {
         left: native.left - this.cellInput!.scrollLeft,
         right: native.left - this.cellInput!.scrollLeft + this.view.defaultCharacterWidth,
@@ -349,12 +401,13 @@ export function createInputSuggestions(options: {
         this.popup.style.setProperty('--meo-suggestion-selected-top', offset + 'px');
         this.popup.style.setProperty('--meo-suggestion-selected-bottom', offset + row.height + 'px');
       }
+      this.updateSelectedTooltip();
     }
     choose(index: number) {
       if (this.composing || this.view.compositionStarted) return;
       const context = this.context, item = this.items[index];
       if (item?.slash?.disabled) return;
-      if (!context || !item || this.head !== (this.cellInput && this.cellFrom !== null ? this.cellInput.selectionStart : this.view.state.selection.main.head) || JSON.stringify(context) !== JSON.stringify(this.getContext())) { this.clear(); return; }
+      if (!context || !item || this.head !== (this.cellInput ? this.cellInput.selectionStart : this.view.state.selection.main.head) || JSON.stringify(context) !== JSON.stringify(this.getContext())) { this.clear(); return; }
       if (this.cellInput && this.cellFrom !== null && item.slash) {
         const input = this.cellInput, from = this.cellFrom, command = item.slash;
         const insert = command.id === 'lineBreak' ? '<br>\n' : command.insert;
@@ -372,15 +425,37 @@ export function createInputSuggestions(options: {
       }
       const tableBreak = item.slash?.id === 'lineBreak' && !!sourceTableAt(this.view.state, this.head);
       let insert = tableBreak ? '<br>' : item.insert;
-      if (context.type === 'documents') insert = insert.replace(/\.(?:md|markdown|mdx|mdc)$/i, '');
-      if (context.type === 'paths') insert = encodeMarkdownPath(insert);
+      if (context.type === 'paths' && !context.wiki) insert = encodeMarkdownPath(insert);
       if (context.type === 'headings' && !context.wiki) insert = item.anchor ?? insert;
       const from = this.head - context.length;
-      const caret = from + (tableBreak ? insert.length : item.caret ?? insert.length);
+      const alias = context.type === 'documents' ? insert.indexOf('|') : -1;
+      const caret = from + (tableBreak ? insert.length : item.caret ?? (alias < 0 ? insert.length : alias));
+      if (context.wiki && (this.cellInput || sourceTableAt(this.view.state, this.head))) insert = insert.replaceAll('|', '\\|');
+      let to = this.head;
+      const text = this.cellInput?.value ?? this.view.state.doc.toString();
+      if (context.type !== 'slash' && context.type !== 'emoji') {
+        const stop = context.wiki ? /[\r\n\]|#]/ : context.type === 'paths' ? /[\/\\)#?<>\s]/ : /[)#?<>\s]/;
+        while (to < text.length && !stop.test(text[to]) && !(context.wiki && text[to] === '\\' && text[to + 1] === '|')) to++;
+      }
+      if (this.cellInput) {
+        // Cell drafts retain Markdown escapes; an alias separator must not create a new column.
+        const nativeInsert = insert;
+        const input = this.cellInput, value = input.value.slice(0, from) + nativeInsert + input.value.slice(to);
+        const delta = nativeInsert.length - (to - from), map = (position: number, right: boolean) => position < from ? position : position > to ? position + delta : right ? from + nativeInsert.length : from;
+        this.fields = this.fields.map(field => ({ from: map(field.from, false), to: map(field.to, true) })); this.templateEnd = map(this.templateEnd, true);
+        this.clear(); this.cellFrom = null; this.dismissed = item.kind !== 'directory';
+        if (options.replaceCell?.(input, value, caret)) {
+          const active = this.view.dom.ownerDocument.activeElement;
+          if (active instanceof HTMLTextAreaElement) { this.cellInput = active; if (this.fields.length) { this.fieldInput = active; this.fieldValue = value; } }
+          if (item.kind === 'directory') this.schedule();
+          else { this.dismissed = true; this.clear(); }
+        }
+        return;
+      }
       const command = item.slash;
       let fields = command?.fields?.map(([start, end]) => ({ from: from + start, to: from + end }));
       let templateEnd = from + insert.length;
-      let transaction: TransactionSpec = { changes: { from, to: this.head, insert }, selection: EditorSelection.cursor(caret) };
+      let transaction: TransactionSpec = { changes: { from, to, insert }, selection: EditorSelection.cursor(caret) };
       if (item.slash?.scope === 'block') {
         const plan = blockInsertion(this.view.state, from, this.head, insert, item.caret!, options.inputContext(this.view.state, from));
         if (!plan) { this.slashFrom = null; this.clear(); return; }
@@ -389,6 +464,7 @@ export function createInputSuggestions(options: {
         templateEnd = plan.positionAt(insert.length);
       }
       this.slashFrom = null; this.clear();
+      this.dismissed = item.kind !== 'directory';
       this.view.dispatch({ ...transaction, effects: command?.id === 'comment' ? [beginHtmlCommentTemplate.of({ from: caret, to: caret, end: templateEnd }), addAutomaticSymbolPair.of({ from, to: templateEnd, open: '<!--', close: '-->' })] : transaction.effects, annotations: [Transaction.userEvent.of('input.complete'), isolateHistory.of('full')] });
       if (fields) {
         this.fieldInput = null;
@@ -396,12 +472,13 @@ export function createInputSuggestions(options: {
         const field = this.fields[0]; this.view.dispatch({ selection: EditorSelection.range(field.from, field.to) });
       }
       this.view.focus();
+      if (item.kind === 'directory') this.schedule();
       if (command?.id === 'blockMath') options.focusMath?.();
       if (command?.id === 'table') options.focusTable?.();
     }
     keydown(event: KeyboardEvent) {
       if (event.isComposing || this.composing || this.view.compositionStarted || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey) return false;
-      if (event.key === 'Tab' && this.fields.length) {
+      if (event.key === 'Tab' && this.fields.length && this.popup.hidden) {
         event.preventDefault();
         const index = this.fieldIndex + (event.shiftKey ? -1 : 1), field = this.fields[index];
         if (field) {
@@ -415,9 +492,9 @@ export function createInputSuggestions(options: {
         }
         return true;
       }
-      if (event.key === 'Escape' && (this.slashFrom !== null || this.cellFrom !== null || !this.popup.hidden || this.fields.length)) { event.preventDefault(); this.slashFrom = null; this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); return true; }
+      if (event.key === 'Escape' && (this.slashFrom !== null || this.cellFrom !== null || !this.popup.hidden || this.fields.length)) { event.preventDefault(); this.dismissed = true; this.slashFrom = null; this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); return true; }
       if (this.popup.hidden) return false;
-      if (event.key === 'Escape') { event.preventDefault(); this.slashFrom = null; this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); return true; }
+      if (event.key === 'Escape') { event.preventDefault(); this.dismissed = true; this.slashFrom = null; this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); return true; }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
         const direction = event.key === 'ArrowDown' ? 1 : -1;
@@ -435,10 +512,11 @@ export function createInputSuggestions(options: {
       for (const type of ['input', 'keydown', 'select', 'pointerup', 'compositionstart', 'compositionend', 'focusout']) this.view.dom.removeEventListener(type, this.nativeEvent, type === 'keydown' || type.startsWith('composition'));
       this.view.dom.ownerDocument.removeEventListener('scroll', this.reposition, true);
       this.view.dom.ownerDocument.defaultView?.removeEventListener('resize', this.reposition);
+      this.view.dom.ownerDocument.defaultView?.removeEventListener('blur', this.windowBlur);
     }
   }, { eventHandlers: {
     keydown(event) { return this.keydown(event); },
-    blur() { this.slashFrom = null; this.fields = []; this.clear(); return false; },
+    blur() { this.dismissed = true; this.slashFrom = null; this.fields = []; this.clear(); return false; },
     compositionstart() { this.composing = true; return false; },
     compositionend() { this.composing = false; this.schedule(); return false; }
   } });

@@ -3560,8 +3560,13 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'wikiCandidatesChanged') {
+    editor?.refreshInputSuggestions();
+    return;
+  }
   if (message.type === 'wikiResourcesChanged') {
     if (!editor) return;
+    editor.refreshInputSuggestions();
     requestWikiLinkStatuses(editor.getText());
     refreshWikiImagePresentations();
     editor.refreshDecorations();

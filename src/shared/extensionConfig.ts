@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getActiveVscodeRawTheme, type RawVscodeTheme } from './vscodeTheme';
 import { DEFAULT_OUTLINE_WIDTH, normalizeOutlineWidth } from './outlineWidth';
+import { markdownFileExtensions } from '../foundation/markdownFileExtensions';
 export { normalizeOutlineWidth } from './outlineWidth';
 
 export const EXTENSION_CONFIG_SECTION = 'meoEnhanced';
@@ -20,7 +21,7 @@ export const GIT_CHANGES_GUTTER_KEY = 'gitChangesGutterEnabled';
 export const OUTLINE_VISIBLE_KEY = 'outlineVisible';
 export const OUTLINE_WIDTH_KEY = 'outlineWidth';
 export const CONTENT_MAX_WIDTH_ENABLED_KEY = 'contentMaxWidthEnabled';
-export const MARKDOWN_FILE_EXTENSIONS = ['.md', '.markdown', '.mdx', '.mdc'] as const;
+export const MARKDOWN_FILE_EXTENSIONS = markdownFileExtensions;
 
 export type OutlinePosition = 'left' | 'right';
 export type DiffBaselineMode = 'current-edit' | 'recent-save' | 'git-head';

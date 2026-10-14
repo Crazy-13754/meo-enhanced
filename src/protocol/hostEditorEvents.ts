@@ -2,6 +2,7 @@ import type { DiffBaselineMode, OutlinePosition } from './editorCommands';
 
 export type HostEditorEvent =
   | { readonly type: 'wikiResourcesChanged' }
+  | { readonly type: 'wikiCandidatesChanged' }
   | { readonly type: 'focusEditor' }
   | { readonly type: 'webviewVisibilityChanged'; readonly visible: boolean }
   | {
@@ -32,6 +33,8 @@ export function decodeHostEditorEvent(value: unknown): HostEditorEvent | null {
   switch (value.type) {
     case 'wikiResourcesChanged':
       return { type: 'wikiResourcesChanged' };
+    case 'wikiCandidatesChanged':
+      return { type: 'wikiCandidatesChanged' };
     case 'focusEditor':
       return { type: 'focusEditor' };
     case 'externalFileStatusChanged':

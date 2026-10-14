@@ -19,7 +19,7 @@ let nextTooltipId = 0;
 let activeTooltip: { hide(reason?: Dismissal): void; reposition(): void; pointerDown(event: PointerEvent): void } | undefined;
 // One module clock keeps parent and Preview frame time origins out of the sequence.
 let hoverReadyUntil = 0;
-const ownedAnchors = new WeakSet<HTMLElement>();
+const ownedAnchors = new WeakMap<HTMLElement, 'automatic' | 'manual'>();
 const textMeasurementContexts = new WeakMap<Document, CanvasRenderingContext2D | null>();
 const menuSelector = '.heading-dropdown, .table-dropdown, .preview-dropdown-panel, .preview-options-panel, .source-preview-more-panel, [role="menu"], .changes-review-popover, .meo-md-html-table-context-menu';
 const modalSelector = 'dialog[open], .meo-md-image-fullscreen-scrim, .meo-mermaid-fullscreen-scrim, .meo-latex-math-fullscreen-scrim';
@@ -128,9 +128,11 @@ export function createTooltip(anchor: HTMLElement, options: {
   readonly positioning?: TooltipPositioning;
   readonly liveUpdate?: boolean;
   readonly immediate?: boolean;
+  /** The owner drives selection and dismissal; pointer/focus listeners are not installed. */
+  readonly manual?: boolean;
 }) {
   const doc = anchor.ownerDocument, view = doc.defaultView!;
-  const focusTarget = options.focusTarget ?? anchor;
+  let focusTarget = options.focusTarget ?? anchor;
   const tooltip = doc.createElement('span');
   tooltip.id = options.id ?? 'meo-tooltip-' + ++nextTooltipId;
   tooltip.className = 'meo-tooltip';
@@ -160,7 +162,7 @@ export function createTooltip(anchor: HTMLElement, options: {
   anchor.removeAttribute('title'); focusTarget.removeAttribute('title');
   const descriptions = (focusTarget.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
   focusTarget.setAttribute('aria-describedby', [...descriptions, tooltip.id].join(' '));
-  ownedAnchors.add(anchor);
+  ownedAnchors.set(anchor, options.manual ? 'manual' : 'automatic');
   const events = new view.AbortController();
   let content = options.content;
   let hovering = anchor.matches(':hover'), visible = false, disposed = false;
@@ -443,18 +445,31 @@ export function createTooltip(anchor: HTMLElement, options: {
     } else if (changed || !pointerPositioning()) position();
   }
 
-  anchor.addEventListener('mouseenter', event => { hovering = true; show({ x: event.clientX, y: event.clientY }); }, { signal: events.signal });
-  anchor.addEventListener('pointermove', event => {
-    if (event.pointerType !== 'touch') setPointerPosition({ x: event.clientX, y: event.clientY });
-  }, { signal: events.signal });
-  anchor.addEventListener('mouseleave', () => { hovering = false; if (!focusTarget.matches(':focus-visible')) hide('leave'); else setPointerPosition(); }, { signal: events.signal });
-  focusTarget.addEventListener('focus', () => { if (focusTarget.matches(':focus-visible')) show(); }, { signal: events.signal });
-  focusTarget.addEventListener('blur', () => { if (!hovering) hide(); }, { signal: events.signal });
-  focusTarget.addEventListener('pointerdown', pointerDown, { signal: events.signal });
-  focusTarget.addEventListener('keydown', event => { if (event.key === 'Escape' || event.key === 'Tab') hide(); }, { signal: events.signal });
+  if (!options.manual) {
+    anchor.addEventListener('mouseenter', event => { hovering = true; show({ x: event.clientX, y: event.clientY }); }, { signal: events.signal });
+    anchor.addEventListener('pointermove', event => {
+      if (event.pointerType !== 'touch') setPointerPosition({ x: event.clientX, y: event.clientY });
+    }, { signal: events.signal });
+    anchor.addEventListener('mouseleave', () => { hovering = false; if (!focusTarget.matches(':focus-visible')) hide('leave'); else setPointerPosition(); }, { signal: events.signal });
+    focusTarget.addEventListener('focus', () => { if (focusTarget.matches(':focus-visible')) show(); }, { signal: events.signal });
+    focusTarget.addEventListener('blur', () => { if (!hovering) hide(); }, { signal: events.signal });
+    focusTarget.addEventListener('pointerdown', pointerDown, { signal: events.signal });
+    focusTarget.addEventListener('keydown', event => { if (event.key === 'Escape' || event.key === 'Tab') hide(); }, { signal: events.signal });
+  }
+  view.addEventListener('blur', () => hide(), { signal: events.signal });
   setContent(content);
   return {
     show, hide, setContent, setPointerPosition,
+    /** Moving a manually owned tooltip retains its content surface and reveal state. */
+    setAnchor(next: HTMLElement) {
+      if (!options.manual || disposed || next === anchor) return;
+      const remaining = (focusTarget.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(id => id && id !== tooltip.id);
+      if (remaining.length) focusTarget.setAttribute('aria-describedby', remaining.join(' ')); else focusTarget.removeAttribute('aria-describedby');
+      ownedAnchors.delete(anchor); anchor = next; ownedAnchors.set(anchor, 'manual');
+      focusTarget = options.focusTarget ?? anchor;
+      const ids = (focusTarget.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
+      focusTarget.setAttribute('aria-describedby', [...ids, tooltip.id].join(' '));
+    },
     isHovered: () => hovering,
     dispose(reason: Dismissal = 'dismiss') {
       if (disposed) return;
@@ -526,6 +541,9 @@ export function bindTooltips(root: HTMLElement, options: {
     if (target.closest('.meo-md-link-marker, .meo-md-link-marker-active, .meo-md-link-label-bracket, .meo-md-link-label-bracket-active')) return null;
     if (target.closest('.meo-md-html-table-sticky-header .meo-md-html-table-column-resize-handle')) return null;
     let element = target.closest<HTMLElement>('[data-tooltip], [title], [data-meo-link-href], [data-meo-preview-href], a[href]');
+    for (let parent = element?.parentElement; parent; parent = parent.parentElement) {
+      if (ownedAnchors.get(parent) === 'manual') return null;
+    }
     if (!element && editableHref && target.closest('.cm-editor.meo-mode-live')) {
       element = target.closest<HTMLElement>('textarea, .cm-line');
     }

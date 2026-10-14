@@ -7988,6 +7988,7 @@ html[data-editor-appearance='dark'] :is(.settings-warning, .settings-shortcut-co
   font-family: var(--meo-suggestion-font, var(--meo-active-editor-font));
   font-size: var(--meo-suggestion-font-size, 13px);
 }
+.meo-path-suggestions { width: min(clamp(260px, 20em, 300px), calc(100vw - 16px)); }
 .meo-narrow-suggestions { width: min(240px, calc(100vw - 16px)); }
 .meo-input-suggestions[hidden] { display: none; }
 html[data-editor-appearance='dark'] .meo-input-suggestions {

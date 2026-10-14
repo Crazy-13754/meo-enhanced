@@ -13,6 +13,7 @@ tests/
 assets/
 /tmp/
 /docs/research/
+/artifacts/link-candidates/
 
 # Local-only workspace material; never commit.
 /.local/

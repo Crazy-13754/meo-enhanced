@@ -29,6 +29,7 @@ export type RewriteExportImageSrcOptions = {
   outputFilePath?: string;
   embeddedImageDataUrlCache?: Map<string, string | null>;
   imageSearchRoots?: readonly string[];
+  workspaceRootPath?: string;
 };
 
 export function isLocalImageSrc(rawSrc: string): boolean {
@@ -62,7 +63,7 @@ export function rewriteExportImageSrc(rawSrc: string, options: RewriteExportImag
     return input;
   }
 
-  const filePath = resolveLocalLikePath(pathPart, options.markdownFilePath, options.imageSearchRoots);
+  const filePath = resolveLocalLikePath(pathPart, options.markdownFilePath, options.imageSearchRoots, options.workspaceRootPath);
   if (!filePath) {
     return input;
   }
@@ -90,7 +91,7 @@ export function toFileUrlString(filePath: string): string {
   return pathToFileURL(filePath).toString();
 }
 
-function resolveLocalLikePath(rawPath: string, markdownFilePath: string, imageSearchRoots: readonly string[] = []): string | null {
+function resolveLocalLikePath(rawPath: string, markdownFilePath: string, imageSearchRoots: readonly string[] = [], workspaceRootPath?: string): string | null {
   if (/^file:/i.test(rawPath)) {
     try {
       return fileURLToPath(rawPath);
@@ -104,7 +105,7 @@ function resolveLocalLikePath(rawPath: string, markdownFilePath: string, imageSe
     return null;
   }
 
-  const candidates = getImagePathCandidates(decoded, markdownFilePath, imageSearchRoots);
+  const candidates = getImagePathCandidates(decoded, markdownFilePath, imageSearchRoots, path, workspaceRootPath);
   return candidates.find(candidate => fs.existsSync(candidate)) ?? candidates[0];
 }
 

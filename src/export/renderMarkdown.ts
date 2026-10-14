@@ -59,6 +59,7 @@ export type RenderMarkdownOptions = {
   markdownText: string;
   markdownFilePath: string;
   imageSearchRoots?: readonly string[];
+  workspaceRootPath?: string;
   outputFilePath?: string;
   target: RenderMarkdownTarget;
   uiLanguage?: UiLanguage;
@@ -99,6 +100,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     outputFilePath: options.outputFilePath,
     target: options.target,
     imageSearchRoots: options.imageSearchRoots,
+    workspaceRootPath: options.workspaceRootPath,
     embeddedImageDataUrlCache
   });
   const deferImageSrc = (rawSrc: string): { src: string; deferredSrc?: string } => (

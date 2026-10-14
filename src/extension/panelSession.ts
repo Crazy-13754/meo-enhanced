@@ -1145,10 +1145,13 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   scheduleSavedRevisionRefresh(0);
   runBackground(viewNavigation.revealCurrentEditorSelection(), 'viewNavigation.startup');
 
-  const wikiResourcesSubscription = onDidChangeWikiResources(() => {
-    if (!disposed && collectWikiReferences(document.getText()).length) {
-      void panel.webview.postMessage({ type: 'wikiResourcesChanged' } satisfies HostEditorEvent);
+  const wikiResourcesSubscription = onDidChangeWikiResources((candidatesOnly) => {
+    if (disposed) return;
+    if (candidatesOnly || !collectWikiReferences(document.getText()).length) {
+      void panel.webview.postMessage({ type: 'wikiCandidatesChanged' } satisfies HostEditorEvent);
+      return;
     }
+    void panel.webview.postMessage({ type: 'wikiResourcesChanged' } satisfies HostEditorEvent);
   });
 
   const dispose = (): void => {
