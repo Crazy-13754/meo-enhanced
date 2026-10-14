@@ -17,7 +17,7 @@ import { attachLatexMathViewport, type LatexMathViewportController } from './lat
 import type { MermaidDiagramRenderResources } from '../application/mermaidDiagramRenderResources';
 import type { PreviewCodePalette } from '../application/finalCodePalette';
 import { normalizePreviewFontFamily } from '../../../src/shared/preview';
-import { decodePreviewPresetState, getPreviewPreset, getPreviewPresetCodeTheme, isPreviewPresetId, isPreviewPresetEnabled, previewPresets, replaceCustomPreviewPresets, normalizePresetAppearance, resolvePresetAppearance, type PreviewPresetDefinition, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetState } from '../../../src/foundation/previewPresets';
+import { decodePreviewPresetState, getPresetInitialAppearance, getPreviewPreset, getPreviewPresetCodeTheme, isPreviewPresetId, isPreviewPresetEnabled, previewPresets, replaceCustomPreviewPresets, normalizePresetAppearance, resolvePresetAppearance, type PreviewPresetDefinition, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetState, type PreviewPresetPreferencePatch } from '../../../src/foundation/previewPresets';
 import githubLightTheme from '@shikijs/themes/github-light-default';
 import githubDarkTheme from '@shikijs/themes/github-dark-default';
 import lightPlusTheme from '@shikijs/themes/light-plus';
@@ -1074,14 +1074,25 @@ export function createPreviewController({
   let showComments = false;
   let fontFamilyPreference = '';
   let defaultFontFamilyPreference = '';
+  let defaultAppearancePreference: PreviewAppearance = 'auto';
+  let defaultSourceColoring = true;
+  let defaultShowComments = false;
   let presetPreference: PreviewPresetId = 'default';
   let contentWidthPreference: PreviewContentWidth = 'responsive';
   let presetPreferences: PreviewPresetState['preferences'] = {};
   const currentPresetPreference = () => ({
     appearance: appearancePreference,
     contentWidth: contentWidthPreference,
-    ...(presetPreference !== 'default' && getPreviewPreset(presetPreference).controls.fontFamily.mode === 'editable' ? { fontFamily: fontFamilyPreference } : {})
+    ...(getPreviewPreset(presetPreference).controls.fontFamily.mode === 'editable' ? { fontFamily: fontFamilyPreference } : {}),
+    ...(getPreviewPreset(presetPreference).controls.codeColoring.mode === 'editable' ? { sourceColoring } : {}),
+    ...(getPreviewPreset(presetPreference).controls.htmlComments.mode === 'editable' ? { showComments } : {})
   });
+  const persistPresetPreference = (preference: PreviewPresetPreferencePatch) => {
+    const initialPreference = currentPresetPreference();
+    presetPreferences[presetPreference] = initialPreference;
+    if (presetPreference !== 'default') vscode.postMessage({ type: 'setPreviewPresetPreference', preset: presetPreference, preference, initialPreference });
+    onPresetPreferencesChanged?.();
+  };
   let presetDiagnostics: readonly PreviewPresetDiagnostic[] = [];
   const presetRenderErrors = new Map<PreviewPresetId, string>();
   const presetCodeFallbacks = new Set<PreviewPresetId>();
@@ -1162,8 +1173,8 @@ export function createPreviewController({
     const appearances = preset.controls.appearance.options ?? [];
     const fixedAppearance = preset.controls.appearance.mode !== 'editable';
     const reason = preset.controls.appearance.mode === 'unsupported' ? uiStrings.previewUnsupportedOption
-      : fixedAppearance ? preset.defaults.appearance === 'light' ? uiStrings.previewOnlyLight
-        : preset.defaults.appearance === 'dark' ? uiStrings.previewOnlyDark : uiStrings.previewFixedAppearance : '';
+      : fixedAppearance ? getPresetInitialAppearance(preset) === 'light' ? uiStrings.previewOnlyLight
+        : getPresetInitialAppearance(preset) === 'dark' ? uiStrings.previewOnlyDark : uiStrings.previewFixedAppearance : '';
     appearanceSegments.element.dataset.tooltip = reason;
     appearanceSegments.element.dataset.tooltipPositioning = 'pointer';
     appearanceSegments.element.setAttribute('aria-disabled', String(fixedAppearance));
@@ -2069,16 +2080,15 @@ export function createPreviewController({
     if (changed) capturePresentationScroll();
     appearancePreference = nextAppearance;
     appearance = resolvedAppearance;
-    if (presetPreference === 'default') presetPreferences.default = { appearance: nextAppearance, contentWidth: 'responsive' };
+    if (presetPreference === 'default') defaultAppearancePreference = nextAppearance;
     applyPreviewCodeTheme(resolvedAppearance);
     updateThemeToggle();
     if (changed && activeFrameDocument) {
       applyAppearanceToFrame();
     }
     if (post) {
-      presetPreferences[presetPreference] = currentPresetPreference();
       if (presetPreference === 'default') vscode.postMessage({ type: 'setPreviewAppearance', appearance: appearancePreference });
-      onPresetPreferencesChanged?.();
+      persistPresetPreference({ appearance: appearancePreference });
     }
   };
 
@@ -2212,6 +2222,8 @@ export function createPreviewController({
     { post = false }: { readonly post?: boolean } = {}
   ): void => {
     if (post && getPreviewPreset(presetPreference).controls.codeColoring.mode !== 'editable') return;
+    if (!post || presetPreference === 'default') defaultSourceColoring = enabled;
+    if (!post && presetPreference !== 'default') return;
     if (sourceColoring === enabled) {
       updateSourceColoringControl();
       return;
@@ -2222,7 +2234,10 @@ export function createPreviewController({
     if (text !== null) {
         requestRender(text, { force: true, preserveViewport: true, preserveFrame: true });
     }
-    if (post) vscode.postMessage({ type: 'setPreviewSourceColoring', enabled });
+    if (post) {
+      if (presetPreference === 'default') vscode.postMessage({ type: 'setPreviewSourceColoring', enabled });
+      persistPresetPreference({ sourceColoring: enabled });
+    }
   };
 
   const setFontFamily = (
@@ -2257,10 +2272,8 @@ export function createPreviewController({
       if (presetPreference === 'default') {
         defaultFontFamilyPreference = nextFontFamily;
         vscode.postMessage({ type: 'setPreviewFontFamily', fontFamily: nextFontFamily });
-      } else {
-        presetPreferences[presetPreference] = currentPresetPreference();
-        onPresetPreferencesChanged?.();
       }
+      persistPresetPreference({ fontFamily: nextFontFamily });
     }
   };
 
@@ -2324,12 +2337,17 @@ export function createPreviewController({
 
   const setShowComments = (enabled: boolean, { post = false }: { readonly post?: boolean } = {}): void => {
     if (post && getPreviewPreset(presetPreference).controls.htmlComments.mode !== 'editable') return;
+    if (!post || presetPreference === 'default') defaultShowComments = enabled;
+    if (!post && presetPreference !== 'default') return;
     const changed = showComments !== enabled;
     showComments = enabled;
     updateBooleanPresetControls();
     const text = hasPendingRequest ? pendingText : latestAcceptedText;
     if (changed && text !== null) requestRender(text, { force: true, preserveViewport: true });
-    if (changed && post) vscode.postMessage({ type: 'setPreviewShowComments', enabled });
+    if (changed && post) {
+      if (presetPreference === 'default') vscode.postMessage({ type: 'setPreviewShowComments', enabled });
+      persistPresetPreference({ showComments: enabled });
+    }
   };
   const handleShowCommentsSegmentClick = (event: MouseEvent) => {
     const value = (event.target as Element).closest<HTMLButtonElement>('[data-preview-comments]')?.dataset.previewComments;
@@ -2348,12 +2366,15 @@ export function createPreviewController({
     }
     capturePresentationScroll();
     presetPreference = preset;
-    const preference = presetPreferences[preset] ?? getPreviewPreset(preset).defaults;
+    const definition = getPreviewPreset(preset);
+    const preference = presetPreferences[preset] ?? { appearance: getPresetInitialAppearance(definition), contentWidth: definition.defaults.contentWidth };
     fontFamilyPreference = preset === 'default' ? defaultFontFamilyPreference
       : getPreviewPreset(preset).controls.fontFamily.mode === 'editable' ? presetPreferences[preset]?.fontFamily ?? '' : '';
     updateFontFamilyControl();
     appearancePreference = normalizePresetAppearance(getPreviewPreset(preset), preference.appearance);
     contentWidthPreference = preference.contentWidth;
+    sourceColoring = preset === 'default' ? defaultSourceColoring : preference.sourceColoring ?? defaultSourceColoring;
+    showComments = preset === 'default' ? defaultShowComments : preference.showComments ?? defaultShowComments;
     appearance = resolvePresetAppearance(getPreviewPreset(preset), appearancePreference, getEditorAppearance());
     applyPreviewCodeTheme(appearance);
     updateThemeToggle();
@@ -2368,7 +2389,7 @@ export function createPreviewController({
   const restorePresetState = (value: unknown) => {
     const state = decodePreviewPresetState(value);
     if (!state) return;
-    presetPreferences = { ...state.preferences, default: { appearance: appearancePreference, contentWidth: 'responsive' } };
+    presetPreferences = { ...state.preferences, default: { appearance: defaultAppearancePreference, contentWidth: 'responsive', fontFamily: defaultFontFamilyPreference, sourceColoring: defaultSourceColoring, showComments: defaultShowComments } };
     setPreset(state.preset, { persist: false });
   };
   const handlePresetChange = () => {
@@ -2392,7 +2413,7 @@ export function createPreviewController({
     contentWidthPreference = width;
     const text = hasPendingRequest ? pendingText : latestAcceptedText;
     if (text !== null) void requestRender(text, { force: true, preserveViewport: true, preserveFrame: true });
-    onPresetPreferencesChanged?.();
+    persistPresetPreference({ contentWidth: width });
   };
   presetSelect.addEventListener('change', handlePresetChange);
   widthSelect.addEventListener('change', handleWidthChange);
@@ -3087,7 +3108,8 @@ export function createPreviewController({
     acceptRenderResponse,
     setAppearance: (nextAppearance: PreviewAppearance, options?: { readonly post?: boolean }) => {
       if (!options?.post && presetPreference !== 'default') {
-        presetPreferences.default = { appearance: nextAppearance, contentWidth: 'responsive' };
+        defaultAppearancePreference = nextAppearance;
+        presetPreferences.default = { ...presetPreferences.default, appearance: nextAppearance, contentWidth: 'responsive' };
         return;
       }
       setAppearance(nextAppearance, options);

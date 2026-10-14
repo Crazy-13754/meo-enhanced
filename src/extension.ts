@@ -92,6 +92,7 @@ import { EDITING_PREFERENCES_SETTING } from './host/editingPreferences';
 import type { EditingPreferencesChangedEvent } from './protocol/editingPreferences';
 import { createVscodePreviewPresets } from './host/vscodePreviewPresets';
 import { getPreviewPreset, type PreviewPresetDefinition, type PreviewPresetId } from './foundation/previewPresets';
+import { createPreviewPresetPreferences, PREVIEW_PRESET_PREFERENCES_STATE_KEY } from './host/previewPresetPreferences';
 import type { PreviewPresetsChanged, PreviewPresetRequest, PreviewPresetResponse } from './protocol/previewPresets';
 
 const VIEW_TYPE = 'meoEnhanced.editor';
@@ -378,6 +379,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
+  private readonly previewPresetPreferences: ReturnType<typeof createPreviewPresetPreferences>;
   private readonly activePanels = new Set<vscode.WebviewPanel>();
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
   private lastActivePanel: vscode.WebviewPanel | null = null;
@@ -389,7 +391,14 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     private readonly editingPreferences: Awaited<ReturnType<typeof createVscodeEditingPreferences>>,
     private readonly imageStorage: ReturnType<typeof createVscodeImageStorage>,
     private readonly customPreviewPresets: Awaited<ReturnType<typeof createVscodePreviewPresets>>
-  ) {}
+  ) {
+    this.previewPresetPreferences = createPreviewPresetPreferences({
+      readStored: () => context.globalState.get(PREVIEW_PRESET_PREFERENCES_STATE_KEY),
+      writeStored: preferences => context.globalState.update(PREVIEW_PRESET_PREFERENCES_STATE_KEY, preferences),
+      getPreset: id => customPreviewPresets.disabled().includes(id) ? undefined
+        : id.startsWith('user:') ? customPreviewPresets.list().find(preset => preset.id === id) : getPreviewPreset(id)
+    });
+  }
 
   async managePreviewPresets(panel = this.getActiveSession()?.panel): Promise<void> {
     if (panel) await panel.webview.postMessage({ type: 'openPreviewPresetSettings' });
@@ -611,6 +620,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       editingPreferences: this.editingPreferences,
       imageStorage: this.imageStorage,
       getCustomPreviewPresets: () => this.customPreviewPresets.list(),
+      getPreviewPresetPreferences: this.previewPresetPreferences.read,
+      setPreviewPresetPreference: this.previewPresetPreferences.update,
       getPreviewPresetDiagnostics: () => this.customPreviewPresets.diagnostics(),
       managePreviewPresets: () => this.managePreviewPresets(panel),
       getDisabledPreviewPresets: () => this.customPreviewPresets.disabled(),

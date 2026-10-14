@@ -36,7 +36,7 @@ export function buildPresetPreviewStyles(
   const fontOverride = fontFamily ? `.meo-export-doc { --meo-font-body: "${fontFamily}", var(--meo-preset-font-body, var(--meo-font-system-sans)); font-family: var(--meo-font-body); }` : '';
   if (definition.custom) {
     const custom = definition.custom;
-    const effective = custom.css[appearance] === undefined ? definition.defaults.appearance as 'light' | 'dark' : appearance;
+    const effective = resolvePresetAppearance(definition, appearance, appearance);
     return `${buildPresetPreviewStyles(custom.base, baseEnvironment, effective, _contentWidth)}
 body, .meo-export-page, .meo-export-doc { background: var(--meo-bg); }
 .meo-export-doc { color: var(--meo-fg); }

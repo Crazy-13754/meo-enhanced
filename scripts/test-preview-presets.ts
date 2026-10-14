@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import postcss from 'postcss';
 import exportRuntime from '../src/export/runtime';
 import { decodePreviewRenderRequest, decodePreviewRenderResponse } from '../src/protocol/previewRender';
-import { decodePreviewPresetState, getPreviewPreset, isPreviewPresetId, previewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
+import { decodePreviewPresetState, getPresetInitialAppearance, getPreviewPreset, isPreviewPresetId, previewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
 import { decodeExportSnapshotResponse } from '../src/protocol/exportSnapshot';
 
 const environment = { previewFontFamily: 'Comic Sans MS', previewSourceColoring: false, previewShowComments: true };
@@ -154,7 +154,7 @@ for (const id of ['newsprint', 'obsidian-minimal', 'whitey'] as const) {
   }
 }
 const whitey = getPreviewPreset('whitey');
-assert.equal(whitey.defaults.appearance, 'light', 'Existing Whitey documents keep their light default');
+assert.equal(getPresetInitialAppearance(whitey), 'auto', 'Dual-theme presets initially follow the editor');
 assert.equal(resolvePresetAppearance(whitey, 'auto', 'dark'), 'dark');
 assert.equal(resolvePresetAppearance(whitey, 'auto', 'light'), 'light');
 for (const appearance of ['auto', 'light', 'dark'] as const) {

@@ -11,7 +11,7 @@
   "author": "MEO Enhanced contributors",
   "version": "1.0.0",
   "license": "MIT",
-  "defaults": { "appearance": "auto", "contentWidth": "responsive" },
+  "defaults": { "contentWidth": "responsive" },
   "controls": {
     "fontFamily": { "mode": "editable" },
     "appearance": { "mode": "editable", "options": ["auto", "light", "dark"] },

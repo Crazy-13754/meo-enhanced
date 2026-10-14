@@ -3,6 +3,8 @@ import { mock } from 'bun:test';
 import exportRuntime from '../src/export/runtime';
 import { PREVIEW_PRESET_STATE_KEY } from '../src/shared/preview';
 import { decodeEditorCommand } from '../src/protocol/editorCommands';
+import { getPreviewPreset } from '../src/foundation/previewPresets';
+import { createPreviewPresetPreferences, PREVIEW_PRESET_PREFERENCES_STATE_KEY } from '../src/host/previewPresetPreferences';
 import { createPanelSessionControllerParams, createPanelSessionTestDocument, createPanelSessionTestUri, createPanelSessionVscodeMock, panelSessionDisposable } from './panel-session-test-helper';
 
 const document = createPanelSessionTestDocument(createPanelSessionTestUri('C:/tmp/preset-host.md'), 'first\nsecond');
@@ -12,6 +14,11 @@ const { createPendingDraftRecovery } = await import('../src/application/pendingD
 const messages: any[] = [];
 let receiveMessage: ((message: unknown) => void) | undefined;
 const stored = new Map<string, unknown>();
+const preferences = createPreviewPresetPreferences({
+  readStored: () => stored.get(PREVIEW_PRESET_PREFERENCES_STATE_KEY),
+  writeStored: async value => { stored.set(PREVIEW_PRESET_PREFERENCES_STATE_KEY, structuredClone(value)); },
+  getPreset: id => id.startsWith('user:') ? undefined : getPreviewPreset(id)
+});
 const params = createPanelSessionControllerParams({
   panel: {
     active: true,
@@ -22,6 +29,8 @@ const params = createPanelSessionControllerParams({
   pendingDraftRecovery: createPendingDraftRecovery({ readCurrentText: () => document.text, applyDraft: async () => true }),
   readDiskText: () => document.text,
   overrides: {
+    getPreviewPresetPreferences: preferences.read,
+    setPreviewPresetPreference: preferences.update,
     renderPreview: async (options: any) => exportRuntime.renderPreviewDocument(options),
     context: { globalState: { get: (key: string) => stored.get(key), update: async (key: string, value: unknown) => { stored.set(key, value); } } }
   }
@@ -46,6 +55,9 @@ try {
   assert.equal(messages.length, count);
   await controller.handleMessage({ type: 'ready' });
   assert.equal(messages.findLast(message => message.type === 'init').previewPreset, undefined, 'An existing Webview can migrate its selection when Host memory is empty');
+  assert.equal(messages.findLast(message => message.type === 'init').previewPresetPreferences, undefined);
+  const initialPreference = { appearance: 'auto', contentWidth: 'responsive', fontFamily: 'Arial', sourceColoring: false, showComments: true };
+  await controller.handleMessage({ type: 'setPreviewPresetPreference', preset: 'whitey', preference: { appearance: 'dark' }, initialPreference });
   assert.deepEqual(decodeEditorCommand({ type: 'setPreviewPreset', preset: 'whitey' }), { type: 'setPreviewPreset', preset: 'whitey' });
   assert.equal(decodeEditorCommand({ type: 'setPreviewPreset', preset: 'invalid' }), null);
   await controller.handleMessage({ type: 'setPreviewPreset', preset: 'newsprint' });
@@ -56,6 +68,10 @@ try {
   try {
     await restarted.handleMessage({ type: 'ready' });
     assert.equal(messages.findLast(message => message.type === 'init').previewPreset, 'newsprint', 'A new Host session restores the last selection');
+    assert.deepEqual(messages.findLast(message => message.type === 'init').previewPresetPreferences.whitey, { ...initialPreference, appearance: 'dark' }, 'Init transmits every preset preference to a new document');
+    await restarted.handleMessage({ type: 'setPreviewPresetPreference', preset: 'whitey', preference: { showComments: false }, initialPreference });
+    await controller.handleMessage({ type: 'ready' });
+    assert.equal(messages.findLast(message => message.type === 'init').previewPresetPreferences.whitey.showComments, false);
     stored.set(PREVIEW_PRESET_STATE_KEY, 'user:removed');
     await restarted.handleMessage({ type: 'ready' });
     assert.equal(messages.findLast(message => message.type === 'init').previewPreset, 'default', 'Removed presets fall back safely at startup');

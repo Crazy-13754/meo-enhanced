@@ -20,7 +20,7 @@
     "version": "5.9.0",
     "commit": "265b22aa79815418195f453352456d5784bb7580"
   },
-  "defaults": { "appearance": "auto", "contentWidth": "responsive" },
+  "defaults": { "contentWidth": "responsive" },
   "controls": {
     "fontFamily": { "mode": "fixed" },
     "appearance": { "mode": "editable", "options": ["auto", "light", "dark"] },

@@ -13,7 +13,7 @@
   "version": "1.0.0",
   "source": { "url": "https://github.com/typora/typora-default-themes/blob/master/themes/newsprint.css" },
   "license": "MIT",
-  "defaults": { "appearance": "light", "contentWidth": "responsive" },
+  "defaults": { "contentWidth": "responsive" },
   "controls": {
     "fontFamily": { "mode": "editable" },
     "appearance": { "mode": "fixed", "options": ["light"] },

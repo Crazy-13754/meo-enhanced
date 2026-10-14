@@ -1,5 +1,5 @@
 import { normalizePreviewFontFamily } from './editorStyleEnvironment';
-import { isPreviewPresetId, type PreviewPresetId } from '../foundation/previewPresets';
+import { decodePreviewPresetPreference, decodePreviewPresetPreferencePatch, isPreviewPresetId, type PreviewPresetId, type PreviewPresetPreference, type PreviewPresetPreferencePatch } from '../foundation/previewPresets';
 import { isUiLanguagePreference, type UiLanguagePreference } from '../foundation/uiLanguage';
 import type { SourceLineNumberMode } from './readyInit';
 import {
@@ -46,6 +46,7 @@ export type EditorCommand =
   | { readonly type: 'setPreviewAppearance'; readonly appearance: EditorAppearance }
   | { readonly type: 'setPreviewFontFamily'; readonly fontFamily: string }
   | { readonly type: 'setPreviewPreset'; readonly preset: PreviewPresetId }
+  | { readonly type: 'setPreviewPresetPreference'; readonly preset: PreviewPresetId; readonly preference: PreviewPresetPreferencePatch; readonly initialPreference: PreviewPresetPreference; readonly onlyIfMissing?: boolean }
   | { readonly type: 'setPreviewSourceColoring'; readonly enabled: boolean }
   | { readonly type: 'setPreviewShowComments'; readonly enabled: boolean }
   | { readonly type: 'setLiveStrongColoring'; readonly enabled: boolean }
@@ -144,6 +145,12 @@ export function decodeEditorCommand(value: unknown): EditorCommand | null {
     }
     case 'setPreviewPreset':
       return isPreviewPresetId(value.preset) ? { type: value.type, preset: value.preset } : null;
+    case 'setPreviewPresetPreference': {
+      const preference = decodePreviewPresetPreferencePatch(value.preference);
+      const initialPreference = decodePreviewPresetPreference(value.initialPreference);
+      return isPreviewPresetId(value.preset) && preference && initialPreference && (value.onlyIfMissing === undefined || typeof value.onlyIfMissing === 'boolean')
+        ? { type: value.type, preset: value.preset, preference, initialPreference, ...(value.onlyIfMissing === undefined ? {} : { onlyIfMissing: value.onlyIfMissing }) } : null;
+    }
     case 'setUiLanguagePreference':
       return isUiLanguagePreference(value.language) ? value as EditorCommand : null;
     case 'setSourceLineNumbers':

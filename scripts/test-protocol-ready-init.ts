@@ -82,6 +82,11 @@ assert.equal(decodeInitMessage({ ...completeInit, editingPreferences: { input: {
 const init = decodeInitMessage(completeInit);
 assert.equal(decodeInitMessage({ ...completeInit, previewPreset: 'newsprint' })?.previewPreset, 'newsprint');
 assert.equal(decodeInitMessage({ ...completeInit, previewPreset: 'invalid' }), null);
+const presetPreferences = { whitey: { appearance: 'auto', contentWidth: 'responsive', fontFamily: 'Arial', sourceColoring: false, showComments: true } };
+assert.deepEqual(decodeInitMessage({ ...completeInit, previewPresetPreferences: presetPreferences })?.previewPresetPreferences, presetPreferences);
+for (const previewPresetPreferences of [null, [], { unknown: presetPreferences.whitey }, { whitey: { ...presetPreferences.whitey, showComments: 'true' } }]) {
+  assert.equal(decodeInitMessage({ ...completeInit, previewPresetPreferences }), null);
+}
 assert.equal(init?.version, 3);
 if (init === null) throw new Error('Expected decoded init');
 const initializedSession = createDocumentSessionCoordinatorFromInit(init);

@@ -120,7 +120,7 @@ export function createCustomPreviewPreset(manifest: CustomPreviewPresetManifest,
   return {
     schemaVersion: 1, id: `user:${manifest.id}`, renderer: 'meo',
     name: localizedName, description: localizedDescription,
-    defaults: { appearance, contentWidth: 'responsive' }, notes: [],
+    defaults: { contentWidth: 'responsive' }, notes: [],
     controls: { fontFamily: manifest.controls?.fontFamily ?? { mode: 'fixed' }, contentWidth: { mode: 'fixed' },
       appearance: { mode: both ? 'editable' : 'fixed', options: both ? ['auto', 'light', 'dark'] : [appearance] },
       codeColoring: manifest.controls?.codeColoring ?? { mode: 'editable' },

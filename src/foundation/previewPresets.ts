@@ -29,7 +29,7 @@ export type PreviewPresetDefinition = Readonly<{
   author?: string;
   version?: string;
   license?: string;
-  defaults: Readonly<{ appearance: 'auto' | 'light' | 'dark'; contentWidth: PreviewContentWidth }>;
+  defaults: Readonly<{ contentWidth: PreviewContentWidth }>;
   controls: Readonly<Record<'fontFamily' | 'appearance' | 'codeColoring' | 'htmlComments' | 'contentWidth', PreviewControlPolicy>>;
   notes: readonly LocalizedText[];
   custom?: Readonly<{
@@ -80,8 +80,14 @@ export function getPreviewPresetCodeTheme(preset: PreviewPresetDefinition, appea
       : appearance === 'light' ? 'light-plus' : 'dark-plus');
 }
 
+/** A dual-theme preset starts in Auto; a single-theme preset uses its supported theme. */
+export function getPresetInitialAppearance(preset: PreviewPresetDefinition): 'auto' | 'light' | 'dark' {
+  const options = preset.controls.appearance.options ?? [];
+  return options.includes('light') && options.includes('dark') ? 'auto' : options.includes('light') ? 'light' : options.includes('dark') ? 'dark' : 'auto';
+}
+
 export function normalizePresetAppearance(preset: PreviewPresetDefinition, preference: 'auto' | 'light' | 'dark'): 'auto' | 'light' | 'dark' {
-  return preset.controls.appearance.options?.includes(preference) ? preference : preset.defaults.appearance;
+  return preset.controls.appearance.options?.includes(preference) ? preference : getPresetInitialAppearance(preset);
 }
 
 export function resolvePresetAppearance(preset: PreviewPresetDefinition, preference: 'auto' | 'light' | 'dark', editor: 'light' | 'dark'): 'light' | 'dark' {
@@ -103,32 +109,76 @@ export function resolvePreviewPresetSettings(id: PreviewPresetId, settings: {
   };
 }
 
+export type PreviewPresetPreference = {
+  appearance: 'auto' | 'light' | 'dark';
+  contentWidth: PreviewContentWidth;
+  fontFamily?: string;
+  sourceColoring?: boolean;
+  showComments?: boolean;
+};
+export type PreviewPresetPreferencePatch = Partial<PreviewPresetPreference>;
+export type PreviewPresetPreferences = Partial<Record<PreviewPresetId, PreviewPresetPreference>>;
+
+export function decodePreviewPresetPreferencePatch(value: unknown): PreviewPresetPreferencePatch | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const preference = value as Record<string, unknown>;
+  if (!Object.values(preference).some(value => value !== undefined) || Object.keys(preference).some(key => !['appearance', 'contentWidth', 'fontFamily', 'sourceColoring', 'showComments'].includes(key))) return null;
+  if (preference.appearance !== undefined && !['auto', 'light', 'dark'].includes(preference.appearance as string)
+    || preference.contentWidth !== undefined && !['responsive', 'reference'].includes(preference.contentWidth as string)
+    || preference.sourceColoring !== undefined && typeof preference.sourceColoring !== 'boolean'
+    || preference.showComments !== undefined && typeof preference.showComments !== 'boolean') return null;
+  const fontFamily = preference.fontFamily === undefined ? undefined : normalizePreviewFontFamily(preference.fontFamily);
+  if (fontFamily === null) return null;
+  return { ...preference, ...(fontFamily === undefined ? {} : { fontFamily }) } as PreviewPresetPreferencePatch;
+}
+
+export function decodePreviewPresetPreference(value: unknown): PreviewPresetPreference | null {
+  const preference = decodePreviewPresetPreferencePatch(value);
+  return preference?.appearance !== undefined && preference.contentWidth !== undefined ? preference as PreviewPresetPreference : null;
+}
+
+/** Decode without consulting the current catalog so temporarily unavailable custom presets retain their preferences. */
+export function decodePreviewPresetPreferences(value: unknown): PreviewPresetPreferences | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const preferences: PreviewPresetPreferences = {};
+  for (const [id, raw] of Object.entries(value)) {
+    const preference = decodePreviewPresetPreference(raw);
+    if (!isPreviewPresetId(id) || !preference) return null;
+    preferences[id] = preference;
+  }
+  return preferences;
+}
+
+/** Only editable fields can override a preset's policy. Used at both persistence and presentation boundaries. */
+export function editablePreviewPresetPreference(preset: PreviewPresetDefinition, preference: PreviewPresetPreferencePatch): PreviewPresetPreferencePatch {
+  const { controls } = preset;
+  return {
+    ...(controls.appearance.mode === 'editable' && preference.appearance !== undefined && controls.appearance.options?.includes(preference.appearance) ? { appearance: preference.appearance } : {}),
+    ...(controls.contentWidth.mode === 'editable' && preference.contentWidth !== undefined && controls.contentWidth.options?.includes(preference.contentWidth) ? { contentWidth: preference.contentWidth } : {}),
+    ...(controls.fontFamily.mode === 'editable' && preference.fontFamily !== undefined ? { fontFamily: preference.fontFamily } : {}),
+    ...(controls.codeColoring.mode === 'editable' && preference.sourceColoring !== undefined ? { sourceColoring: preference.sourceColoring } : {}),
+    ...(controls.htmlComments.mode === 'editable' && preference.showComments !== undefined ? { showComments: preference.showComments } : {})
+  };
+}
+
 export type PreviewPresetState = {
   readonly preset: PreviewPresetId;
-  readonly preferences: Partial<Record<PreviewPresetId, {
-    appearance: 'auto' | 'light' | 'dark';
-    contentWidth: PreviewContentWidth;
-    fontFamily?: string;
-  }>>;
+  readonly preferences: PreviewPresetPreferences;
 };
 
 export function decodePreviewPresetState(value: unknown): PreviewPresetState | null {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Partial<PreviewPresetState>;
-  if (!isPreviewPresetId(candidate.preset) || typeof candidate.preferences !== 'object' || candidate.preferences === null) return null;
-  const preferences: PreviewPresetState['preferences'] = {};
+  const preferences = decodePreviewPresetPreferences(candidate.preferences);
+  if (!isPreviewPresetId(candidate.preset) || !preferences) return null;
   for (const preset of previewPresets) {
-    const preference = candidate.preferences[preset.id];
+    const preference = preferences[preset.id];
     if (!preference) continue;
-    if (!['auto', 'light', 'dark'].includes(preference.appearance)
-      || !['responsive', 'reference'].includes(preference.contentWidth)) return null;
-    const fontFamily = preference.fontFamily === undefined ? undefined : normalizePreviewFontFamily(preference.fontFamily);
-    if (fontFamily === null) return null;
     preferences[preset.id] = {
+      ...editablePreviewPresetPreference(preset, preference),
       appearance: normalizePresetAppearance(preset, preference.appearance),
-      contentWidth: preset.controls.contentWidth.mode === 'editable' ? preference.contentWidth : preset.defaults.contentWidth,
-      ...(fontFamily !== undefined && preset.controls.fontFamily.mode === 'editable' ? { fontFamily } : {})
+      contentWidth: preset.controls.contentWidth.mode === 'editable' && preset.controls.contentWidth.options?.includes(preference.contentWidth) ? preference.contentWidth : preset.defaults.contentWidth
     };
   }
-  return { preset: previewPresets.some(preset => preset.id === candidate.preset) ? candidate.preset : 'default', preferences };
+  return { preset: previewPresets.some(preset => preset.id === candidate.preset) && isPreviewPresetEnabled(candidate.preset) ? candidate.preset : 'default', preferences };
 }

@@ -13,7 +13,7 @@
   "version": "1.0.0",
   "source": { "url": "https://github.com/kepano/obsidian-minimal" },
   "license": "MIT",
-  "defaults": { "appearance": "auto", "contentWidth": "responsive" },
+  "defaults": { "contentWidth": "responsive" },
   "controls": {
     "fontFamily": { "mode": "editable" },
     "appearance": { "mode": "editable", "options": ["auto", "light", "dark"] },

@@ -398,6 +398,9 @@ try {
       return root && doc?.defaultView?.getComputedStyle(root).backgroundColor === (appearance === 'dark' ? 'rgb(30, 34, 42)' : 'rgb(254, 254, 254)')
         && diagram?.dataset.meoPreviewMermaidPreset === 'whitey' && diagram.dataset.meoPreviewMermaidAppearance === appearance;
     }, {}, appearance);
+    assert.equal(await whiteyPage.$eval('.preview-appearance-select', element => (element as HTMLSelectElement).value), 'auto');
+    await waitWhitey('dark');
+    await whiteyPage.click('[data-preview-appearance-choice="light"]');
     await waitWhitey('light');
     const whiteyTypography = async () => whiteyPage.$eval('.preview-frame', frame => {
       const doc = (frame as HTMLIFrameElement).contentDocument!;

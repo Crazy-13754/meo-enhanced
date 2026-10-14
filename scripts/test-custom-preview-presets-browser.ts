@@ -253,6 +253,7 @@ try {
   await waitBehavior(true, true);
   await choose(dual.id);
   await page.click('.preview-options-trigger');
+  await page.click('[data-preview-comments="true"]');
   await page.click('[data-preview-source-coloring="false"]');
   await waitBehavior(true, false);
   assert.ok((await controlState('.preview-source-coloring')).buttons.every(button => !button.disabled), 'Named palettes remain editable');
@@ -303,7 +304,7 @@ try {
   assert.equal(await showInfo(english), fixedOn.description.en);
   await english.close();
   await choose('default');
-  await waitBehavior(true, false);
+  await waitBehavior(false, true);
   assert.equal((await controlState('.preview-show-comments')).reason, '');
   assert.ok((await controlState('.preview-source-coloring')).buttons.every(button => !button.disabled), 'Switching back restores user settings');
   await choose(single.id);

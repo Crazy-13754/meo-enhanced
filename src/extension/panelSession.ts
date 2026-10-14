@@ -141,6 +141,8 @@ type PanelSessionControllerParams = {
   saveDocument: () => Promise<boolean>;
   onExportDocument: (session: PanelSession, options: ExportOptions) => Promise<void>;
   getCustomPreviewPresets?: () => readonly import('../foundation/previewPresets').PreviewPresetDefinition[];
+  getPreviewPresetPreferences?: () => Promise<import('../foundation/previewPresets').PreviewPresetPreferences | undefined>;
+  setPreviewPresetPreference?: (preset: import('../foundation/previewPresets').PreviewPresetId, preference: import('../foundation/previewPresets').PreviewPresetPreferencePatch, initialPreference: import('../foundation/previewPresets').PreviewPresetPreference, onlyIfMissing?: boolean) => Promise<void>;
   getPreviewPresetDiagnostics?: () => readonly import('../foundation/previewPresets').PreviewPresetDiagnostic[];
   managePreviewPresets?: () => Promise<void>;
   getDisabledPreviewPresets?: () => readonly import('../foundation/previewPresets').PreviewPresetId[];
@@ -454,6 +456,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           && !params.getDisabledPreviewPresets?.().includes(stored) ? stored : stored === undefined ? undefined : 'default';
       })(),
       customPreviewPresets: params.getCustomPreviewPresets?.() ?? [],
+      previewPresetPreferences: await params.getPreviewPresetPreferences?.(),
       previewPresetDiagnostics: params.getPreviewPresetDiagnostics?.() ?? [],
       disabledPreviewPresets: params.getDisabledPreviewPresets?.() ?? [],
       documentId: documentKey,
@@ -802,6 +805,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           && !params.getDisabledPreviewPresets?.().includes(raw.preset)) {
           await context.globalState.update(PREVIEW_PRESET_STATE_KEY, raw.preset);
         }
+        return;
+      case 'setPreviewPresetPreference':
+        await params.setPreviewPresetPreference?.(raw.preset, raw.preference, raw.initialPreference, raw.onlyIfMissing);
         return;
       case 'setPreviewSourceColoring':
         await setPreviewSourceColoring(raw.enabled);

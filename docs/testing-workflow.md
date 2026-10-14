@@ -3,6 +3,14 @@
 This repository separates fast feedback from release confidence. The normal
 repair loop stays narrow; broad and endurance runs are intentional events.
 
+Preview preset memory is covered by `scripts/test-preview-preset-preferences.ts`
+and `scripts/test-preview-preset-preferences-browser.ts` in quick, appearance and
+release gates. They verify built-in/custom initial Auto behavior, independent
+theme/font/Boolean choices, switching away and back, reopening a fresh document
+without Webview state, stale-cache precedence, legacy migration, concurrent Host
+writes and persistence failure. Fixed/unsupported controls retain preset policy;
+Default retains its existing configuration owner.
+
 The user-facing inventory is in [testing-feature-coverage.md](testing-feature-coverage.md).
 The Mermaid/formula inner-source matrix and findings are in
 [testing-rendered-block-source.md](testing-rendered-block-source.md). Run

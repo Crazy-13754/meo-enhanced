@@ -19,7 +19,7 @@ import { decodeReadingPosition, type ReadingPositionDto } from './readingPositio
 import { defaultInputAssistance, isEditingPreferences, type EditingPreferences } from '../foundation/editingPreferences';
 import { decodeUiColors, type UiColors } from '../foundation/uiColors';
 import { decodeCustomPreviewPresets } from '../foundation/customPreviewPreset';
-import { isPreviewPresetId, type PreviewPresetDefinition, type PreviewPresetDiagnostic, type PreviewPresetId } from '../foundation/previewPresets';
+import { decodePreviewPresetPreferences, isPreviewPresetId, type PreviewPresetDefinition, type PreviewPresetDiagnostic, type PreviewPresetId, type PreviewPresetPreferences } from '../foundation/previewPresets';
 import { decodePreviewPresetDiagnostics, decodeDisabledPreviewPresets } from './previewPresets';
 
 export type EditorMode = 'live' | 'source' | 'preview';
@@ -40,6 +40,7 @@ export type InitMessage = {
   readonly previewPresetDiagnostics?: readonly PreviewPresetDiagnostic[];
   readonly disabledPreviewPresets?: readonly import('../foundation/previewPresets').PreviewPresetId[];
   readonly previewPreset?: PreviewPresetId;
+  readonly previewPresetPreferences?: PreviewPresetPreferences;
   readonly type: 'init';
   readonly documentId: string;
   readonly text: string;
@@ -100,6 +101,7 @@ export function decodeReadyMessage(value: unknown): ReadyMessage | null {
 
 export function decodeInitMessage(value: unknown): InitMessage | null {
   if (isRecord(value) && value.previewPreset !== undefined && !isPreviewPresetId(value.previewPreset)) return null;
+  if (isRecord(value) && value.previewPresetPreferences !== undefined && decodePreviewPresetPreferences(value.previewPresetPreferences) === null) return null;
   if (isRecord(value) && value.customPreviewPresets !== undefined && decodeCustomPreviewPresets(value.customPreviewPresets) === null) return null;
   if (isRecord(value) && value.previewPresetDiagnostics !== undefined && decodePreviewPresetDiagnostics(value.previewPresetDiagnostics) === null) return null;
   if (isRecord(value) && value.disabledPreviewPresets !== undefined && decodeDisabledPreviewPresets(value.disabledPreviewPresets) === null) return null;
@@ -214,6 +216,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
   }
   return {
     ...value,
+    ...(value.previewPresetPreferences === undefined ? {} : { previewPresetPreferences: decodePreviewPresetPreferences(value.previewPresetPreferences)! }),
     uiColors: decodeUiColors(value.uiColors) ?? { light: {}, dark: {} },
     ...(value.customPreviewPresets === undefined ? {} : { customPreviewPresets: decodeCustomPreviewPresets(value.customPreviewPresets) ?? [] }),
     previewPresetDiagnostics: decodePreviewPresetDiagnostics(value.previewPresetDiagnostics ?? []) ?? [],

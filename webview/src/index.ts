@@ -6,6 +6,7 @@ import { createSettingsWindow, type GeneralSetting } from './adapters/settingsWi
 import { createUiColorsTransport } from './adapters/uiColorsTransport';
 import type { UiColors } from '../../src/foundation/uiColors';
 import { createPreviewPresetSettings } from './adapters/previewPresetSettings';
+import { decodePreviewPresetPreferences, isPreviewPresetEnabled, isPreviewPresetId, previewPresets, type PreviewPresetId } from '../../src/foundation/previewPresets';
 import { createPreviewPresetTransport } from './adapters/previewPresetTransport';
 import { bindTooltips, createTooltip } from './adapters/tooltip';
 import { createEditingPreferencesTransport } from './adapters/editingPreferencesTransport';
@@ -3346,6 +3347,7 @@ window.addEventListener('message', (event) => {
     initReceived = true;
     acknowledgeReadyHandshake();
     const restoredPresetState = (vscode.getState() as WebviewUiState | undefined)?.previewPresetState;
+    const restoredPreferences = decodePreviewPresetPreferences(restoredPresetState?.preferences) ?? {};
     withMessageErrorBoundary('init handler', () => {
       uiColors = message.uiColors;
       themeAdapter.start({
@@ -3366,14 +3368,22 @@ window.addEventListener('message', (event) => {
         fontFamily: message.previewFontFamily,
         sourceColoring: message.previewSourceColoring,
         showComments: message.previewShowComments,
-        presetState: message.previewPreset !== undefined
-          ? { preset: message.previewPreset, preferences: restoredPresetState?.preferences ?? {} }
-          : restoredPresetState,
+        presetState: { preset: message.previewPreset ?? (isPreviewPresetId(restoredPresetState?.preset) ? restoredPresetState.preset : 'default'), preferences: { ...restoredPreferences, ...message.previewPresetPreferences } },
         active: false
       });
       // Migrate a pre-existing document selection before Host-level memory existed.
       if (message.previewPreset === undefined && restoredPresetState) {
         vscode.postMessage({ type: 'setPreviewPreset', preset: previewController.getPresetState().preset });
+      }
+      // Host entries win over old caches. Migrate only missing presets; the Host
+      // checks again atomically so two documents cannot migrate over newer choices.
+      if (restoredPresetState) {
+        for (const [preset, preference] of Object.entries(previewController.getPresetState().preferences)) {
+          if (preset !== 'default' && preference && message.previewPresetPreferences?.[preset as PreviewPresetId] === undefined && previewPresets.some(item => item.id === preset) && isPreviewPresetEnabled(preset as PreviewPresetId)) {
+            const initialPreference = { sourceColoring: message.previewSourceColoring, showComments: message.previewShowComments, ...preference };
+            vscode.postMessage({ type: 'setPreviewPresetPreference', preset: preset as PreviewPresetId, preference: initialPreference, initialPreference, onlyIfMissing: true });
+          }
+        }
       }
 
       void editorModeRuntime.dispatch({ type: 'initialize', hostMode: message.mode })

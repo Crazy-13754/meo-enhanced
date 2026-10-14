@@ -86,7 +86,7 @@ For a bilingual description, provide either or both translations:
 
 Name the root configuration `preset.jsonc` or `preset.json`. Use `$schema` for completion and validation.
 
-CSS defines the preset's fonts and document width. Font selection is editable only when `controls.fontFamily` is `editable`; fixed fonts and document width remain visible as disabled controls with explanatory tooltips. `themes` determines theme support. Preset selection, theme preferences, and editable font choices are restored for the current document.
+CSS defines the preset's fonts and document width. Font selection is editable only when `controls.fontFamily` is `editable`. Fixed or unsupported controls are hidden, except the disabled theme control for a single-theme preset. `themes` determines theme support: presets with both light and dark start in Auto; single-theme presets use their supported theme. Theme, editable font, code coloring and HTML comment choices are remembered separately for each preset, across preset switches and newly opened documents. Default continues to use the existing VS Code settings.
 
 ### Color ownership
 
