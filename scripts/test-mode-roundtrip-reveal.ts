@@ -25,7 +25,15 @@ const markdown = lines.join('\n');
 
 const build = await Bun.build({
   entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'],
-  target: 'browser', format: 'iife'
+  target: 'browser', format: 'iife',
+  plugins: [{ name: 'mode-reveal-fixture', setup(builder) {
+    builder.onLoad({ filter: /webview[\\/]src[\\/]index\.ts$/ }, async args => {
+      const contents = await Bun.file(args.path).text();
+      const entry = '  async applyEditorMode(mode, viewport) {';
+      assert.ok(contents.includes(entry), 'fixture reaches the real mode application boundary');
+      return { loader: 'ts', contents: contents.replace(entry, entry + '\n    const gate = (window as any).__modeRevealGate;\n    if (gate) await gate(mode);') };
+    });
+  } }]
 });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
@@ -128,7 +136,45 @@ try {
     `Live table expanded after reveal: ${JSON.stringify(revealed.map(sample => sample.height))}`);
   assert.ok(revealed.every(sample => Math.abs((sample.top ?? 0) - (revealed[0]!.top ?? 0)) <= 1),
     'Live table must not jump after reveal');
-  console.log('Preview to Live roundtrip reveals settled table and visible content');
+
+  await page.click('button[data-mode="source"]');
+  await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'source'
+    && !document.querySelector<HTMLElement>('.editor-host')!.inert);
+  if (await page.$eval('.source-preview-button', element => element.getAttribute('aria-pressed') !== 'true')) {
+    await page.click('.source-preview-button');
+  }
+  await page.waitForFunction(() => !document.querySelector<HTMLElement>('.preview-host')!.inert);
+  const sourceButton = '.editor-host > .document-scroll-top';
+  const previewButton = '.preview-host > .document-scroll-top';
+  await page.waitForFunction(selector => !document.querySelector<HTMLElement>(selector)!.hidden, {}, sourceButton);
+  await page.click('button[data-mode="preview"]');
+  await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-host')!.hidden
+    && !document.querySelector('.editor-host')!.hasAttribute('data-preview-cover'));
+  await page.waitForFunction(selector => !document.querySelector<HTMLElement>(selector)!.hidden, {}, previewButton);
+
+  // Hold the real Source preparation boundary to expose any controls painted above the full Preview cover.
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__modeRevealGate = (mode: string) => mode === 'source' ? new Promise(resolve => { w.__releaseSourceReveal = resolve; }) : undefined;
+  });
+  await page.click('button[data-mode="source"]');
+  await page.waitForFunction(() => typeof (window as any).__releaseSourceReveal === 'function');
+  assert.equal(await page.$eval('.editor-surface', element => element.hasAttribute('data-source-preview-preparing')), true,
+    'Source is still preparing behind the full Preview');
+  const buttonVisible = (selector: string) => page.$eval(selector, element => element.checkVisibility({ visibilityProperty: true }));
+  assert.equal(await buttonVisible(sourceButton), false, 'Source back-to-top must wait for its viewport to be revealed');
+  assert.equal(await buttonVisible(previewButton), true, 'the displayed Preview keeps its back-to-top control');
+  await page.evaluate(() => {
+    const w = window as any; w.__modeRevealGate = undefined; w.__releaseSourceReveal(); delete w.__releaseSourceReveal;
+  });
+  await page.waitForFunction(() => !document.querySelector<HTMLElement>('.editor-host')!.inert
+    && document.querySelector('.editor-surface')!.hasAttribute('data-source-preview'));
+  assert.equal(await buttonVisible(sourceButton), true, 'Source back-to-top appears with the ready viewport');
+  assert.equal(await buttonVisible(previewButton), true, 'both ready panes keep their own controls');
+  await page.click(sourceButton);
+  await page.waitForFunction(selector => document.querySelector<HTMLElement>('.cm-scroller')!.scrollTop <= 0.5
+    && document.querySelector<HTMLElement>(selector)!.hidden, {}, sourceButton);
+  console.log('Mode roundtrip reveals settled content and back-to-top controls with their ready viewports');
 } catch (error) {
   primaryError = error;
 } finally {

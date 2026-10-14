@@ -137,6 +137,7 @@ function targetedCommands(
       return [
         packageScript('test:theme-inheritance'),
         script('scripts/test-ui-colors-production.ts'),
+        script('scripts/test-outline-colors-production.ts'),
         script('scripts/test-ui-colors.ts'),
         script('scripts/test-shiki-empty-line-recovery.ts'),
         script('scripts/test-source-syntax-stability.ts'),
@@ -316,6 +317,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-settings-window-production.ts'),
           script('scripts/test-ui-colors.ts'),
           script('scripts/test-ui-colors-production.ts'),
+          script('scripts/test-outline-colors-production.ts'),
           script('scripts/test-preview-preset-management-browser.ts'),
           script('scripts/test-input-focus-return-production.ts'),
           packageScript('test:reading-position'),

@@ -1679,6 +1679,7 @@ const waitForInitialPreviewPaint = (): Promise<void> => {
       if (!settled && getActiveEditorMode() === 'preview') {
         // A throttled paint callback must not leave the inert Live surface covering Preview.
         editorHost.removeAttribute('data-preview-cover');
+        outlineController?.refreshAppearance();
       }
       finish();
     }, 600);
@@ -1700,6 +1701,7 @@ const previewController = createPreviewController({
     persistUiState();
     syncToolbarOverflow();
   },
+  onPaletteChanged: () => outlineController?.refreshAppearance(),
   mermaidRenderResources: mermaidDiagramRenderPool,
   // The side Preview is also read-only, even while Source is the active mode.
   onShortcut: event => handleEditorShortcut(event, { ...shortcutHandlerContext, editorSurfaceActive: false }),
@@ -1723,6 +1725,7 @@ const previewController = createPreviewController({
     editorHost.removeAttribute('data-preview-cover');
     editorSurface.removeAttribute('data-source-preview-exit-cover');
     markSourcePreviewSurfaceReady();
+    outlineController?.refreshAppearance();
     if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
     if (getActiveEditorMode() === 'preview') findPanelController.refreshForModeChange();
   },
@@ -1789,6 +1792,28 @@ outlineController = createOutlineController({
   outlineLeftButton: outlineLeftBtn,
   additionalOutlineLeftButtons: [previewOutlineLeftBtn],
   getEditor: () => getActiveEditorMode() === 'preview' ? previewController.getOutlineAdapter() : editor,
+  getPalette: (position) => {
+    // Follow the painted surface, including preparation and editor covers,
+    // rather than the requested mode before its viewport is ready.
+    const previewVisible = !previewController.host.hidden && previewController.host.style.visibility !== 'hidden';
+    const editorCover = editorHost.hasAttribute('data-preview-cover');
+    const split = editorSurface.hasAttribute('data-source-preview');
+    const usePreview = previewVisible && (
+      editorSurface.hasAttribute('data-source-preview-preparing')
+      || (editorCover
+        ? editorSurface.hasAttribute('data-source-preview-exit-cover') && position === 'right'
+        : !split || position === 'right')
+    );
+    const editorStyles = getComputedStyle(editorHost);
+    const content = editorHost.querySelector('.cm-content');
+    const foreground = content ? getComputedStyle(content).color : getComputedStyle(document.body).color;
+    if (!usePreview) return { background: editorStyles.backgroundColor, foreground };
+    const previewStyles = getComputedStyle(previewController.host);
+    return {
+      background: previewStyles.getPropertyValue('--meo-preview-background').trim() || editorStyles.backgroundColor,
+      foreground: previewStyles.getPropertyValue('--meo-preview-foreground').trim() || foreground
+    };
+  },
   onVisibilityRequest: (visible) => {
     vscode.postMessage({ type: 'setOutlineVisible', visible });
   },
@@ -1936,6 +1961,7 @@ const finishSourcePreviewReveal = (): void => {
     activateSourcePreviewLinkage();
     previewController.host.inert = false;
     previewController.host.style.removeProperty('visibility');
+    outlineController.refreshAppearance();
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
       if (reveal.generation === sourcePreviewRevealGeneration && isSidePreviewVisible()) {
         presentSourcePreviewPosition();
@@ -2003,6 +2029,7 @@ const presentPreviewSurface = (
     previewAdapter.setActive({ active: true, text: getCurrentEditorText() });
     presentSourcePreviewPosition(false, true);
     previewController.host.inert = true;
+    outlineController.refreshAppearance();
     return { split, visible };
   }
   cancelSourcePreviewReveal();
@@ -2014,6 +2041,7 @@ const presentPreviewSurface = (
   }
   else editor?.setLinkedPreviewEnabled?.(false);
   presentSourcePreviewPosition(false, true);
+  outlineController.refreshAppearance();
   return { split, visible };
 };
 const getActiveEditableMode = (): 'live' | 'source' => {
@@ -2997,9 +3025,11 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
     if (preparingSourceSplit && editor) {
       (editor.view as typeof editor.view & { measure(flush?: boolean): void }).measure(false);
     }
+    outlineController.refreshAppearance();
   },
   presentModeControl(mode) {
     root.dataset.mode = mode;
+    outlineController.refreshAppearance();
     modeControl.setActive(mode);
     changesReviewMode = mode;
     presentChangesReview();
@@ -3219,6 +3249,7 @@ const themeAdapter = createAppearanceWebviewAdapter({
   applyCodePalette: palette => {
     codePaletteAdapter.apply(palette);
     applyUiVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
+    outlineController.refreshAppearance();
   },
   refreshMermaidTheme: () => mermaidDiagramRenderPool.refreshTheme(),
   applyWithEditorViewportPreserved: (action) => {
@@ -3281,6 +3312,7 @@ const refreshUiColors = () => {
     mermaidDiagramRenderPool.refreshTheme();
   }
   previewController.refreshDocumentBackground(refreshMermaid);
+  outlineController.refreshAppearance();
 };
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
 const previewPresetTransport = createPreviewPresetTransport(request => vscode.postMessage(request));

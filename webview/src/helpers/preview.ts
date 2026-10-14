@@ -57,6 +57,8 @@ type PreviewControllerOptions = {
   requestFonts?: (refresh: boolean) => Promise<readonly PreviewFont[] | null>;
   onRendered?: (options?: { readonly skipLinkedViewportProjection?: boolean }) => void;
   onPaintReady?: () => void;
+  /** Publishes final document colors, including CSS-only background updates. */
+  onPaletteChanged?: () => void;
   /** Return true for a handled global command; other command keys continue to VS Code. */
   onShortcut?: (event: KeyboardEvent) => boolean;
   onSearchResultsChanged?: () => void;
@@ -815,6 +817,7 @@ export function createPreviewController({
   requestFonts,
   onRendered,
   onPaintReady,
+  onPaletteChanged,
   onShortcut,
   onSearchResultsChanged,
   onNavigateToTop,
@@ -1622,6 +1625,7 @@ export function createPreviewController({
       frameDocument.documentElement.style.setProperty('--meo-preview-foreground', foreground);
       frameDocument.documentElement.style.setProperty('--meo-preview-background', background);
       host.style.colorScheme = appearance;
+      onPaletteChanged?.();
     }
   };
 

@@ -2,6 +2,7 @@ import { createElement, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDow
 import { DEFAULT_OUTLINE_WIDTH, normalizeOutlineWidth } from '../../../src/shared/outlineWidth';
 import type { HeadingInlineSegment } from './markdownSyntax';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
+import { applyOutlinePalette, type OutlinePaletteInput } from './uiTheme';
 
 export interface OutlineHeading {
   text: string;
@@ -36,6 +37,7 @@ interface OutlineControllerOptions {
   outlineLeftButton?: HTMLElement;
   additionalOutlineLeftButtons?: HTMLElement[];
   getEditor: () => EditorApi | null;
+  getPalette?: (position: OutlinePosition) => OutlinePaletteInput;
   onVisibilityRequest?: (visible: boolean) => void;
   onPositionRequest?: (position: OutlinePosition) => void;
   onUiStateChange?: (state: OutlineUiState) => void;
@@ -55,6 +57,7 @@ interface OutlineController {
   sidebar: HTMLElement;
   setVisible: (nextVisible: boolean) => void;
   refresh: () => void;
+  refreshAppearance: () => void;
   /** Re-measures the current viewport after Preview layout changes, without rebuilding headings. */
   refreshViewport: () => void;
   setPosition: (position: OutlinePosition) => void;
@@ -136,6 +139,7 @@ export function createOutlineController({
   outlineLeftButton,
   additionalOutlineLeftButtons = [],
   getEditor,
+  getPalette,
   onVisibilityRequest,
   onPositionRequest,
   onUiStateChange,
@@ -196,6 +200,9 @@ export function createOutlineController({
   const applyOutlineWidth = () => {
     outlineSidebar.style.width = `${width}px`;
     editorWrapper.style.setProperty('--meo-outline-width', `${width}px`);
+  };
+  const refreshAppearance = () => {
+    if (visible && getPalette && outlineSidebar.isConnected) applyOutlinePalette(outlineSidebar, getPalette(position));
   };
 
   const scrollItemsIntoView = (items: HTMLElement[]) => {
@@ -398,6 +405,7 @@ export function createOutlineController({
   };
 
   const refresh = () => {
+    refreshAppearance();
     const editor = getEditor();
     if (!editor) {
       currentOutlineHeadings = [];
@@ -451,6 +459,7 @@ export function createOutlineController({
     applyOutlineWidth();
     updatePositionButton();
     updateModeButton();
+    refreshAppearance();
   };
 
   const setVisible = (nextVisible: boolean) => {
@@ -621,6 +630,7 @@ export function createOutlineController({
     sidebar: outlineSidebar,
     setVisible,
     refresh,
+    refreshAppearance,
     refreshViewport: scheduleActiveRefresh,
     setPosition,
     requestPosition,

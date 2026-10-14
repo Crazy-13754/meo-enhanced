@@ -30,16 +30,7 @@ const neutral = (value: Rgb): Rgb => {
 // events invalidate it by changing the key; mode switches reuse the same roles.
 let paletteCache: { key: string; roles: Record<string, string>; documentRoles: Record<string, string> } | undefined;
 
-export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean, overrides: UiColorOverrides = {}): void {
-  const style = document.documentElement.style;
-  const fallback = appearance === 'light' ? lightCssVariableOverrides : darkCssVariableOverrides;
-  const defaults = defaultUiColors[appearance];
-  const color = (id: string, legacy: string): string => matchesHost ? `var(--vscode-${id.replace(/\./g, '-')}, ${legacy})` : legacy;
-  const highContrast = matchesHost && (document.body.classList.contains('vscode-high-contrast')
-    || document.body.classList.contains('vscode-high-contrast-light'));
-  document.documentElement.dataset.meoUiContrast = highContrast ? 'high' : 'normal';
-  document.documentElement.dataset.meoUiColorSource = matchesHost ? 'vscode' : 'default';
-  const custom = highContrast ? {} : overrides;
+function createColorTools(appearance: 'light' | 'dark') {
   const probe = document.createElement('span');
   probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
   document.body.appendChild(probe);
@@ -58,7 +49,6 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
     const channel = (index: number): number => Math.round(pixel[index]! * alpha + underlay[index]! * (1 - alpha));
     return [channel(0), channel(1), channel(2)];
   };
-  const read = (id: string, legacy: string, underlay?: Rgb): Rgb => sample(color(id, legacy), underlay);
   const mixSpace = CSS.supports('color', 'color-mix(in oklab, black, white)') ? 'oklab' : 'srgb';
   const mix = (first: Rgb, second: Rgb, amount: number): Rgb => sample(`color-mix(in ${mixSpace}, ${rgb(first)} ${(1 - amount) * 100}%, ${rgb(second)} ${amount * 100}%)`);
   const minimumContrast = (value: Rgb, surfaces: readonly Rgb[]): number => Math.min(...surfaces.map(surface => contrast(value, surface)));
@@ -75,6 +65,21 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
     }
     return mix(value, end, upper);
   };
+  return { sample, mix, minimumContrast, endpoint, fit, dispose: () => probe.remove() };
+}
+
+export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean, overrides: UiColorOverrides = {}): void {
+  const style = document.documentElement.style;
+  const fallback = appearance === 'light' ? lightCssVariableOverrides : darkCssVariableOverrides;
+  const defaults = defaultUiColors[appearance];
+  const color = (id: string, legacy: string): string => matchesHost ? `var(--vscode-${id.replace(/\./g, '-')}, ${legacy})` : legacy;
+  const highContrast = matchesHost && (document.body.classList.contains('vscode-high-contrast')
+    || document.body.classList.contains('vscode-high-contrast-light'));
+  document.documentElement.dataset.meoUiContrast = highContrast ? 'high' : 'normal';
+  document.documentElement.dataset.meoUiColorSource = matchesHost ? 'vscode' : 'default';
+  const custom = highContrast ? {} : overrides;
+  const { sample, mix, minimumContrast, endpoint, fit, dispose } = createColorTools(appearance);
+  const read = (id: string, legacy: string, underlay?: Rgb): Rgb => sample(color(id, legacy), underlay);
 
   try {
     const documentSurface = custom.documentBackground ? sample(custom.documentBackground) : read('editor.background', defaults.documentBackground);
@@ -260,7 +265,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
       'semantic-codeCopyHoverBackground': 'block-hover'
     })) style.setProperty('--meo-' + property, paletteCache.documentRoles[role]!);
   } finally {
-    probe.remove();
+    dispose();
   }
   for (const id of ['font-family', 'editor-font-family']) style.setProperty('--meo-ui-' + id, `var(--vscode-${id})`);
   // Notifications keep their existing component contract, backed by the same
@@ -283,4 +288,51 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
     ['line-number', 'editorLineNumber.foreground', fallback['--vscode-editorLineNumber-foreground']],
     ['active-line-number', 'editorLineNumber.activeForeground', fallback['--vscode-editor-foreground']]
   ] as const) style.setProperty('--meo-source-' + name, color(id, legacy));
+}
+
+export interface OutlinePaletteInput {
+  background: string;
+  foreground: string;
+}
+
+const outlinePaletteKeys = new WeakMap<HTMLElement, string>();
+
+/** Derive navigation colors against its adjacent document, preserving shared emphasis and contrast rules. */
+export function applyOutlinePalette(sidebar: HTMLElement, input: OutlinePaletteInput): void {
+  const rootStyles = getComputedStyle(document.documentElement);
+  const highContrast = document.documentElement.dataset.meoUiContrast === 'high';
+  const inputs = Object.fromEntries(['text-emphasis-content', 'focus', 'danger', 'border-control'].map(role =>
+    [role, rootStyles.getPropertyValue('--meo-ui-' + role).trim()]));
+  const key = JSON.stringify([input, highContrast, inputs]);
+  if (outlinePaletteKeys.get(sidebar) === key) return;
+  const { sample, mix, fit, dispose } = createColorTools('dark');
+  try {
+    const background = sample(input.background);
+    const dark = luminance(background) < 0.18;
+    const ink = sample(input.foreground, background);
+    const hover = highContrast ? background : mix(background, ink, 0.08);
+    const visible = highContrast ? background : mix(background, ink, 0.05);
+    const surfaces = [background, hover, visible];
+    const text = fit(ink, surfaces, 4.55);
+    const roles = {
+      background, foreground: text,
+      'muted-foreground': fit(mix(text, background, 0.30), surfaces, 4.55),
+      'hover-background': hover, 'visible-background': visible,
+      emphasis: fit(sample(inputs['text-emphasis-content'] || rgb(text), background), surfaces, 4.55),
+      border: highContrast ? fit(sample(inputs['border-control'] || rgb(text), background), [background], 3.05)
+        : mix(background, text, 0.20),
+      focus: fit(sample(inputs.focus || rgb(text), background), surfaces, 3.05),
+      danger: fit(sample(inputs.danger || rgb(text), background), surfaces, 4.55)
+    };
+    for (const [role, value] of Object.entries(roles)) sidebar.style.setProperty('--meo-outline-' + role, rgb(value));
+    for (const [role, amount] of [['scrollbar-thumb', 38], ['scrollbar-thumb-hover', 50], ['scrollbar-thumb-active', 62]] as const) {
+      sidebar.style.setProperty('--meo-outline-' + role, `color-mix(in srgb, ${rgb(text)} ${amount}%, transparent)`);
+    }
+    sidebar.style.setProperty('--meo-outline-shadow', `0 8px 28px rgb(0 0 0 / ${dark ? 45 : 16}%)`);
+    sidebar.style.colorScheme = dark ? 'dark' : 'light';
+    sidebar.dataset.outlineContrast = highContrast ? 'high' : 'normal';
+    outlinePaletteKeys.set(sidebar, key);
+  } finally {
+    dispose();
+  }
 }
