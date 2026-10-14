@@ -260,10 +260,10 @@ try {
   });
   assert.deepEqual(sideTools, {
     expanded: 'true', open: true,
-    rows: ['Preview preset', 'Preview theme', 'Font', 'Width', 'Code color', 'HTML comments'],
+    rows: ['Preview preset', 'Preview theme', 'Body font', 'Code font', 'Width', 'Code color', 'HTML comments'],
     hasExport: false, belowSync: true, icon: 'ellipsis', text: '',
     size: { width: 20, height: 20 }, borderRadius: '50%', boxShadow: 'none',
-    controlsVisible: [true, true, true, true, true, true], editorFocused: true
+    controlsVisible: [true, true, true, true, true, true, true], editorFocused: true
   });
   await page.click('.source-preview-more-button');
   assert.equal(await page.$eval('.source-preview-more-panel', panel => (panel as HTMLElement).hidden), true);
@@ -1937,7 +1937,13 @@ try {
   await page.click('.source-preview-more-panel .preview-font-family-dropdown');
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('role')), 'combobox');
   await page.click('.preview-font-family-dropdown-panel [role="option"]:nth-child(2)');
-  await page.waitForFunction(() => document.activeElement === document.querySelector('.cm-content'));
+  await page.waitForFunction(() => document.activeElement === document.querySelector('.preview-font-family-dropdown-panel input'));
+  assert.equal(await page.$eval('.preview-font-family-dropdown-panel', panel => (panel as HTMLElement).hidden), false, 'Choosing a font keeps comparison open');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.source-preview-more-panel', panel => (panel as HTMLElement).hidden), false, 'First Escape closes the font child only');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.source-preview-more-panel', panel => (panel as HTMLElement).hidden), true);
+  await page.waitForFunction(() => document.activeElement === document.querySelector('.source-preview-more-button'));
 } catch (error) {
   primaryError = error;
 } finally {

@@ -317,7 +317,7 @@ async function main() {
       language: 'zh-CN',
       previewTools: '预览工具',
       sourceColoring: '代码着色',
-      exports: ['导出'],
+      exports: ['导出为...'],
       previewFrameTitle: 'Markdown 预览',
       previewAppearance: '预览主题',
       editorAppearance: '界面主题',
@@ -1776,7 +1776,8 @@ async function main() {
     });
     await page.mouse.click(previewToolbarReachability.font.center.x, previewToolbarReachability.font.center.y);
     const previewFontFocused = await page.evaluate(() => (
-      document.activeElement === document.querySelector('.preview-font-family-dropdown')
+      document.activeElement === document.querySelector('.preview-font-family-dropdown-panel input')
+      && document.querySelector('.preview-font-family-dropdown')?.getAttribute('aria-expanded') === 'true'
     ));
     await page.select('.preview-source-coloring-select', 'false');
     const sourceColoringAfterPointer = await page.evaluate(() => ({
@@ -2997,13 +2998,13 @@ async function main() {
           height: style.height,
           borderRadius: style.borderRadius,
           background: style.backgroundColor,
-          toolbarBackground: getComputedStyle(document.querySelector<HTMLElement>('.mode-toolbar')!).backgroundColor
+          documentBackground: getComputedStyle(document.querySelector<HTMLElement>('.editor-host')!).backgroundColor
         };
       });
       if (
         !hiddenAtTop || !visibleAfterScroll || afterClick.scrollTop !== 0 || !afterClick.hidden ||
         afterClick.width !== afterClick.height || afterClick.borderRadius !== '50%' ||
-        afterClick.background !== afterClick.toolbarBackground ||
+        afterClick.background !== afterClick.documentBackground ||
         Math.abs(visibleGeometry.centerXDelta) > 0.01 || Math.abs(visibleGeometry.centerYDelta - 1) > 0.01 ||
         visibleGeometry.iconLeftFraction > 0.01 || visibleGeometry.iconTopFraction > 0.01
       ) {

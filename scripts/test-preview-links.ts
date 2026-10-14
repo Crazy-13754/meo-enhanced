@@ -157,25 +157,45 @@ try {
   }
   await page.click('[data-preview-appearance-choice="dark"]');
   await page.click('.preview-font-family-dropdown');
+  const selectedFont = await page.$eval('.preview-font-family-dropdown-panel .preview-dropdown-option:nth-child(2)', option => (option as HTMLElement).dataset.value);
   await page.click('.preview-font-family-dropdown-panel .preview-dropdown-option:nth-child(2)');
-  if (!await page.evaluate(() =>
+  if (!await page.evaluate(selectedFont =>
     document.querySelector<HTMLSelectElement>('.preview-appearance-select')?.value === 'dark'
-    && document.querySelector('.preview-font-family-dropdown')?.getAttribute('aria-expanded') === 'false'
-  )) throw new Error('Preview controls did not select and close');
+    && document.querySelector<HTMLSelectElement>('.preview-font-family-select')?.value === selectedFont
+    && document.querySelector('.preview-font-family-dropdown')?.getAttribute('aria-expanded') === 'true',
+    selectedFont
+  )) throw new Error('Preview controls did not select and keep font comparison open');
+  await page.keyboard.press('Escape');
+  if (!await page.evaluate(() => document.querySelector('.preview-font-family-dropdown')?.getAttribute('aria-expanded') === 'false')) {
+    throw new Error('Escape did not close the font comparison');
+  }
+  await page.evaluate(() => {
+    // Keep this fixture's pointer targets below the font popup rather than clicking covered text.
+    document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
+      .querySelector<HTMLElement>('.meo-export-doc')!.style.paddingTop = '320px';
+  });
   // Use real pointer input: DOM click() bypasses the outside-pointer dismissal contract.
+  const previewPointerPoint = (id: string) => page.evaluate(id => {
+    const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!;
+    const target = frame.contentDocument!.getElementById(id)!;
+    target.scrollIntoView({ block: 'nearest' });
+    const frameRect = frame.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    const y = frameRect.top + rect.top + rect.height / 2;
+    // A popup may cover part of an inline link; require a visible hit on the intended target.
+    for (const offset of [rect.width / 2, 2, rect.width - 2]) {
+      const x = frameRect.left + rect.left + offset;
+      if (document.elementFromPoint(x, y) === frame
+        && target.contains(frame.contentDocument!.elementFromPoint(x - frameRect.left, y - frameRect.top))) return { x, y };
+    }
+    throw new Error(`Preview ${id} pointer target is covered`);
+  }, id);
   for (const targetId of ['plain', 'fragment']) {
     await page.click('.preview-font-family-dropdown');
     if (!await page.evaluate(() =>
       document.querySelector('.preview-font-family-dropdown')?.getAttribute('aria-expanded') === 'true'
     )) throw new Error('Preview dropdown did not open');
-    const point = await page.evaluate((id) => {
-      const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!;
-      const target = frame.contentDocument!.getElementById(id)!;
-      target.scrollIntoView();
-      const frameRect = frame.getBoundingClientRect();
-      const rect = target.getBoundingClientRect();
-      return { x: frameRect.left + rect.left + 8, y: frameRect.top + rect.top + 8 };
-    }, targetId);
+    const point = await previewPointerPoint(targetId);
     await page.mouse.click(point.x, point.y);
     if (!await page.evaluate(() =>
       document.querySelector('.preview-font-family-dropdown')?.getAttribute('aria-expanded') === 'false'
@@ -184,20 +204,11 @@ try {
   await page.evaluate(() => {
     document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentWindow!.scrollTo(0, 0);
   });
-  const clickPoint = await page.evaluate(() => {
-    const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!;
-    const link = frame.contentDocument!.getElementById('changelog')!;
-    const frameRect = frame.getBoundingClientRect();
-    const linkRect = link.getBoundingClientRect();
-    return {
-      x: frameRect.left + linkRect.left + linkRect.width / 2,
-      y: frameRect.top + linkRect.top + linkRect.height / 2
-    };
-  });
   await page.evaluate(() => {
     ((window as any).__previewMessages as unknown[]).length = 0;
   });
   await page.click('.preview-font-family-dropdown');
+  const clickPoint = await previewPointerPoint('changelog');
   await page.mouse.click(clickPoint.x, clickPoint.y);
   await new Promise((resolve) => setTimeout(resolve, 50));
   const trustedClickResult = await page.evaluate(() => {

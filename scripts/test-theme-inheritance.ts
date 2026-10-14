@@ -519,12 +519,22 @@ try {
       await screenshot(profile.id + '-outline-live.png');
       await page.hover('.outline-item.outline-level-3');
       {
-        const alpha = await page.$eval('.outline-item.outline-level-3:hover', el => {
+        const hover = await page.$eval('.outline-item.outline-level-3:hover', el => {
           const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
-          const context = canvas.getContext('2d')!; context.fillStyle = getComputedStyle(el).backgroundColor;
-          context.fillRect(0, 0, 1, 1); return context.getImageData(0, 0, 1, 1).data[3]!;
+          const context = canvas.getContext('2d')!;
+          const read = (color: string) => {
+            context.clearRect(0, 0, 1, 1); context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          };
+          const sidebar = el.closest('.outline-sidebar')!;
+          const probe = document.createElement('span'); probe.style.color = 'var(--meo-outline-hover-background)'; sidebar.append(probe);
+          const role = read(getComputedStyle(probe).color); probe.remove();
+          return { actual: read(getComputedStyle(el).backgroundColor), role, adjacent: read(getComputedStyle(sidebar).backgroundColor) };
         });
-        assert.ok(alpha > 0 && alpha < 32, 'Outline hover keeps its subtle original surface');
+        assert.deepEqual(hover.actual, hover.role, `${profile.id}: outline hover uses its adjacent document palette`);
+        const difference = Math.max(...hover.actual.slice(0, 3).map((channel, index) => Math.abs(channel - hover.adjacent[index]!)));
+        assert.ok(difference <= 21, `${profile.id}: outline hover remains subtle`);
+        if (!profile.kind.includes('contrast')) assert.ok(difference > 0, `${profile.id}: outline hover remains visible`);
       }
       await screenshot(profile.id + '-outline-hover.png');
       await page.mouse.move(700, 900);
@@ -544,23 +554,35 @@ try {
       await screenshot(profile.id + '-outline-source.png');
       await page.click('button[data-mode="preview"]');
       await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'preview' && document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('h1')?.textContent === '产品说明');
-      assert.equal(await page.$eval('.outline-sidebar', el => getComputedStyle(el).backgroundColor), await page.$eval('.editor-host', el => getComputedStyle(el).backgroundColor), `${profile.id}: outline retains the Live/Source background in Preview`);
+      const previewPalette = () => page.evaluate(() => {
+        const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!;
+        const doc = frame.contentDocument!;
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d')!;
+        const normalize = (color: string) => {
+          context.clearRect(0, 0, 1, 1); context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+          return `rgb(${[...context.getImageData(0, 0, 1, 1).data].slice(0, 3).join(', ')})`;
+        };
+        return { background: normalize(frame.contentWindow!.getComputedStyle(doc.body).backgroundColor),
+          foreground: normalize(frame.contentWindow!.getComputedStyle(doc.querySelector('.meo-export-doc')!).color) };
+      });
+      assert.equal(await page.$eval('.outline-sidebar', el => getComputedStyle(el).backgroundColor), (await previewPalette()).background, `${profile.id}: outline follows the adjacent Preview background`);
       await screenshot(profile.id + '-outline-preview.png');
       if (profile.id === 'dark' || profile.id === 'light') {
         const previousBackground = await page.evaluate(() => { const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!; return frame.contentWindow!.getComputedStyle(frame.contentDocument!.body).backgroundColor; });
-        const outlineForeground = await page.$eval('.outline-header-label', el => getComputedStyle(el).color);
         await page.click(`[data-preview-appearance-choice="${profile.id === 'dark' ? 'light' : 'dark'}"]`);
         await page.waitForFunction(previous => {
           const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!;
           const color = frame.contentWindow?.getComputedStyle(frame.contentDocument!.body).backgroundColor;
           return color && color !== previous;
         }, {}, previousBackground);
-        assert.equal(await page.$eval('.outline-sidebar', el => getComputedStyle(el).backgroundColor), await page.$eval('.editor-host', el => getComputedStyle(el).backgroundColor), 'Manual Preview appearance must not recolor the outline background');
-        assert.equal(await page.$eval('.outline-header-label', el => getComputedStyle(el).color), outlineForeground, 'Manual Preview appearance must not recolor outline text');
+        const oppositePalette = await previewPalette();
+        assert.equal(await page.$eval('.outline-sidebar', el => getComputedStyle(el).backgroundColor), oppositePalette.background, 'Manual Preview appearance recolors the adjacent outline background');
+        assert.equal(await page.$eval('.outline-header-label', el => getComputedStyle(el).color), oppositePalette.foreground, 'Readable Preview ink is retained in the outline');
         await screenshot(profile.id + '-outline-preview-opposite.png');
         await page.click('button[data-mode="live"]');
         await page.waitForFunction(() => getComputedStyle(document.querySelector('.outline-sidebar')!).backgroundColor === getComputedStyle(document.querySelector('.editor-host')!).backgroundColor);
-        assert.equal(await page.$eval('.outline-sidebar', el => (el as HTMLElement).style.getPropertyValue('--meo-outline-foreground')), '', 'Outline text has no Preview-specific color override');
+        assert.equal(await page.$eval('.outline-header-label', el => getComputedStyle(el).color), await page.$eval('.cm-content', el => getComputedStyle(el).color), 'Returning to Live restores the adjacent editor ink');
       }
     }
   }

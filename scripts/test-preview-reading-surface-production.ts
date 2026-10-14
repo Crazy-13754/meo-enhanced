@@ -1242,7 +1242,7 @@ async function main(): Promise<void> {
       controlAppearance: 'light',
       panelAppearance: 'light',
       panelHidden: false,
-      panelRadius: 9,
+      panelRadius: 6,
       triggerShadow: 'none'
     }, 'Preview dropdown popup must keep its rounded native UI surface and shadow');
     await page.keyboard.press('Escape');
