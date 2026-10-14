@@ -20,8 +20,9 @@ export async function createVscodePreviewPresets(context: vscode.ExtensionContex
   if (errors.length) void vscode.window.showWarningMessage(`${errors.length} custom preview preset(s) could not be loaded: ${errors.join('; ')}`);
   const disabledKey = 'previewPresets.disabled';
   let disabled = decodeDisabledPreviewPresets(context.globalState.get(disabledKey, [])) ?? [];
+  const isAvailable = (id: PreviewPresetId) => !id.startsWith('user:') || !!library.get(id);
   const saveDisabled = async (next: PreviewPresetId[]) => {
-    const available = next.filter(id => !!library.get(id));
+    const available = next.filter(isAvailable);
     await context.globalState.update(disabledKey, available);
     disabled = available;
   };
@@ -55,15 +56,18 @@ export async function createVscodePreviewPresets(context: vscode.ExtensionContex
         throw error;
       }
     }
-    if (!('preset' in request) || !isPreviewPresetId(request.preset) || !request.preset.startsWith('user:')) throw new Error('Built-in presets are always enabled and cannot be removed.');
-    const preset = library.get(request.preset);
-    if (!preset) throw new Error('Preview preset is unavailable.');
+    if (!('preset' in request) || !isPreviewPresetId(request.preset)) throw new Error('Preview preset is unavailable.');
     if (request.action === 'setEnabled') {
-      const next = disabled.filter(id => id !== preset.id);
-      if (!request.enabled) next.push(preset.id);
+      if (request.preset === 'default') throw new Error('Default preset is always enabled.');
+      if (!isAvailable(request.preset)) throw new Error('Preview preset is unavailable.');
+      const next = disabled.filter(id => id !== request.preset);
+      if (!request.enabled) next.push(request.preset);
       await saveDisabled(next);
       return { changed: true };
     }
+    if (!request.preset.startsWith('user:')) throw new Error('Built-in presets cannot be exported or removed.');
+    const preset = library.get(request.preset);
+    if (!preset) throw new Error('Preview preset is unavailable.');
     if (request.action === 'remove') {
       // The Webview confirms removal before sending this action.
       await library.remove(preset.id);
@@ -80,7 +84,7 @@ export async function createVscodePreviewPresets(context: vscode.ExtensionContex
   }
   return {
     ...library,
-    disabled: () => disabled.filter(id => !!library.get(id)),
+    disabled: () => disabled.filter(isAvailable),
     perform(request: PreviewPresetAction) {
       const operation = queue.then(() => perform(request));
       queue = operation.catch(() => undefined);

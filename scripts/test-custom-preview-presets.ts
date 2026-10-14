@@ -3,9 +3,9 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createPreviewPresetLibrary, validatePresetCss, type StoredPreviewPreset } from '../src/host/customPreviewPresets';
 import { createCustomPreviewPreset, decodeCustomPreviewPresets, parseCustomPreviewPresetManifest } from '../src/foundation/customPreviewPreset';
-import { decodePreviewPresetState, getPreviewPreset, getPreviewPresetCodeTheme, replaceCustomPreviewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
+import { decodePreviewPresetState, getPreviewPreset, getPreviewPresetCodeTheme, isPreviewPresetEnabled, replaceCustomPreviewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
 import { buildPresetPreviewStyles } from '../src/preview/presetStyles';
-import { decodePreviewPresetsChanged, decodePreviewPresetRequest, decodePreviewPresetResponse } from '../src/protocol/previewPresets';
+import { decodeDisabledPreviewPresets, decodePreviewPresetsChanged, decodePreviewPresetRequest, decodePreviewPresetResponse } from '../src/protocol/previewPresets';
 import { decodePreviewRenderRequest } from '../src/protocol/previewRender';
 import exportRuntime from '../src/export/runtime';
 
@@ -34,11 +34,19 @@ assert.equal(dual.controls.fontFamily.mode, 'fixed');
 assert.deepEqual(decodeCustomPreviewPresets(library.list()), library.list());
 assert.ok(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), selected: dual.id }));
 assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), selected: 'user:missing' }), null);
-assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), disabled: ['default'] }), null, 'Built-ins cannot be hidden over the protocol');
+assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), disabled: ['default'] }), null, 'Default cannot be hidden over the protocol');
 assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), disabled: [dual.id], selected: dual.id }), null, 'A disabled preset cannot become selected');
-for (const action of ['setEnabled', 'remove', 'export']) {
-  assert.equal(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action, preset: 'github-readme', enabled: false, language: 'en' }), null);
+const hideableBuiltIns = ['github-readme', 'newsprint', 'whitey', 'obsidian-minimal'] as const;
+for (const id of hideableBuiltIns) {
+  assert.deepEqual(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), disabled: [id] })?.disabled, [id]);
+  assert.equal(decodePreviewPresetsChanged({ type: 'previewPresetsChanged', presets: library.list(), disabled: [id], selected: id }), null, 'A hidden built-in cannot become selected');
+  for (const enabled of [false, true]) assert.ok(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action: 'setEnabled', preset: id, enabled, language: 'en' }));
 }
+for (const id of ['default', ...hideableBuiltIns]) for (const action of ['remove', 'export']) assert.equal(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action, preset: id, language: 'en' }), null);
+assert.equal(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action: 'setEnabled', preset: 'default', enabled: false, language: 'en' }), null);
+const allHidden = [...hideableBuiltIns, ...Array.from({ length: 100 }, (_, index) => `user:test-${index}`)];
+assert.deepEqual(decodeDisabledPreviewPresets(allHidden), allHidden, 'Hiding built-ins does not consume the 100 custom-preset slots');
+assert.equal(decodeDisabledPreviewPresets([...allHidden, 'user:overflow']), null);
 assert.ok(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action: 'setEnabled', preset: dual.id, enabled: false, language: 'zh-CN' }));
 assert.equal(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: 'test', action: 'guide', language: 'auto' }), null, 'Guide routing requires the resolved panel language');
 assert.equal(decodePreviewPresetRequest({ type: 'previewPresetRequest', requestId: '', action: 'import', language: 'en' }), null);
@@ -55,7 +63,17 @@ for (const [filename, alternate] of [['README.md', 'README.zh-CN.md'], ['README.
     assert.ok(await readFile(file), `${filename}: ${href} resolves inside the standalone catalog`);
   }
 }
+replaceCustomPreviewPresets(library.list(), ['default', ...hideableBuiltIns]);
+assert.equal(isPreviewPresetEnabled('default'), true, 'Default remains available even if a caller passes it as disabled');
+for (const id of hideableBuiltIns) {
+  assert.equal(isPreviewPresetEnabled(id), false);
+  const preferences = { [id]: { appearance: 'dark', contentWidth: 'responsive' } };
+  const state = decodePreviewPresetState({ preset: id, preferences });
+  assert.equal(state?.preset, 'default', 'A hidden built-in restores to Default');
+  assert.ok(state?.preferences[id], 'Hiding retains the preset preferences');
+}
 replaceCustomPreviewPresets(library.list());
+for (const id of hideableBuiltIns) assert.equal(isPreviewPresetEnabled(id), true);
 assert.equal(getPreviewPreset('default').custom, undefined);
 const preference = { preset: single.id, preferences: { [single.id]: { appearance: 'dark', contentWidth: 'reference' } } };
 assert.equal(decodePreviewPresetState(preference)?.preferences[single.id]?.appearance, 'light');

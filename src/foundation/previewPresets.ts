@@ -51,13 +51,13 @@ export const previewPresets: PreviewPresetDefinition[] = [...builtInPresets];
 let disabledPresets: readonly PreviewPresetId[] = [];
 
 export function isPreviewPresetEnabled(id: PreviewPresetId): boolean {
-  return !id.startsWith('user:') || !disabledPresets.includes(id);
+  return id === 'default' || !disabledPresets.includes(id);
 }
 
 /** Only Host-validated presets enter the catalog; built-ins cannot be replaced. */
 export function replaceCustomPreviewPresets(presets: readonly PreviewPresetDefinition[], disabled: readonly PreviewPresetId[] = []): void {
   previewPresets.splice(0, previewPresets.length, ...builtInPresets, ...presets);
-  disabledPresets = disabled.filter(id => id.startsWith('user:'));
+  disabledPresets = disabled.filter(id => id !== 'default');
 }
 
 export function isPreviewPresetId(value: unknown): value is PreviewPresetId {

@@ -16,9 +16,13 @@ export function createPreviewPresetSettings(options: {
   let pending = false;
   let error = '';
   let disposed = false;
+  const pendingVisibility = new Map<string, boolean>();
+  const valuePresenters = new Set<() => void>();
+  const rows = new Map<PreviewPresetDefinition['id'], { element: HTMLDivElement; signature: string; dispose(): void }>();
   let removal: { anchor: HTMLButtonElement; close(restoreFocus?: boolean): void } | undefined;
-  const infos: ReturnType<typeof createPreviewPresetInfo>[] = [];
-  const clear = () => { removal?.close(); for (const info of infos.splice(0)) info.dispose(); };
+  const infos = new Map<ReturnType<typeof createPreviewPresetInfo>, () => void>();
+  const clear = () => { removal?.close(); valuePresenters.clear(); rows.clear(); for (const info of infos.keys()) info.dispose(); infos.clear(); };
+  const rowSignature = (preset: PreviewPresetDefinition, language: UiLanguage) => JSON.stringify([language, preset.name, preset.custom?.revision]);
   const t = (language: UiLanguage, zh: string, en: string) => settingsText(language, zh, en);
   const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) => {
     const element = document.createElement(tag); element.className = className; if (text !== undefined) element.textContent = text; return element;
@@ -26,17 +30,22 @@ export function createPreviewPresetSettings(options: {
   const button = (text: string, className = 'settings-button') => { const element = node('button', className, text); element.type = 'button'; element.disabled = pending; return element; };
   const actionButton = (label: string, icon: typeof Download, warning = false) => {
     const element = button(label, `settings-button settings-subtle settings-preset-button${warning ? ' settings-warning' : ''}`);
+    valuePresenters.add(() => { element.disabled = pending; });
     element.setAttribute('aria-label', label);
     element.prepend(createElement(icon, { width: 15, height: 15, 'aria-hidden': 'true' })); return element;
   };
   const perform = async (action: PreviewPresetAction) => {
-    if (pending || disposed) return;
-    pending = true; error = ''; options.changed();
+    if (pending || disposed || action.action === 'setEnabled' && pendingVisibility.has(action.preset)) return;
+    if (action.action === 'setEnabled') pendingVisibility.set(action.preset, action.enabled);
+    else pending = true;
+    error = ''; options.changed();
     try {
       const result = await options.request(action);
       if (!result.ok) error = result.error.message;
     } catch (failure) { error = String(failure); }
-    pending = false; if (!disposed) options.changed();
+    if (action.action === 'setEnabled') pendingVisibility.delete(action.preset);
+    else pending = false;
+    if (!disposed) options.changed();
   };
   const confirmRemoval = (anchor: HTMLButtonElement, preset: PreviewPresetDefinition, language: UiLanguage) => {
     if (pending || disposed) return;
@@ -87,24 +96,67 @@ export function createPreviewPresetSettings(options: {
         ...(['import', 'guide'] as const).filter(action => settingsSearchMatches(query, ...previewPresetSearchKeywords[action])).map(action => ({ section: 'presetFiles' as const, action }))
       ];
     },
-    signature: () => JSON.stringify([previewPresets.map(preset => [preset.id, preset.name, preset.custom?.revision, isPreviewPresetEnabled(preset.id)]), options.getDiagnostics(), pending, error]),
+    // Reconcile preset rows only; file controls and window navigation stay mounted.
+    updateList(list: HTMLDivElement, presets: readonly PreviewPresetDefinition[], language: UiLanguage) {
+      const wanted = new Set(presets.map(preset => preset.id));
+      for (const [id, record] of rows) {
+        if (wanted.has(id)) continue;
+        const focused = record.element.contains(document.activeElement);
+        const neighbor = record.element.nextElementSibling ?? record.element.previousElementSibling;
+        record.dispose(); record.element.remove(); rows.delete(id);
+        if (focused) neighbor?.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus({ preventScroll: true });
+      }
+      for (const [index, preset] of presets.entries()) {
+        const item: PresetSettingItem = { section: 'presetList', preset }; const record = rows.get(preset.id);
+        if (record && record.signature !== rowSignature(preset, language)) {
+          const active = document.activeElement;
+          const focused = record.element.contains(active) ? active instanceof HTMLInputElement ? 'input' : active?.getAttribute('data-preset-action') ? `[data-preset-action="${active.getAttribute('data-preset-action')}"]` : '.settings-preset-info' : null;
+          record.dispose(); record.element.replaceWith(this.render(item, language));
+          if (focused) rows.get(preset.id)!.element.querySelector<HTMLElement>(focused)?.focus({ preventScroll: true });
+        } else if (!record) this.render(item, language);
+        const row = rows.get(preset.id)!.element;
+        if (list.children[index] !== row) list.insertBefore(row, list.children[index] ?? null);
+      }
+    },
+    present() {
+      for (const presentValue of valuePresenters) presentValue();
+      for (const presentInfo of infos.values()) presentInfo();
+    },
     render(item: PresetSettingItem, language: UiLanguage) {
       const row = node('div', 'settings-item settings-preset-row');
       if (item.preset) {
         const preset = item.preset; const builtIn = !preset.id.startsWith('user:'); row.dataset.preset = preset.id;
+        const presenters: (() => void)[] = [];
         const label = node('label', 'settings-preset-label'); const input = node('input', 'settings-preset-checkbox'); input.type = 'checkbox';
-        input.checked = isPreviewPresetEnabled(preset.id); input.disabled = pending || builtIn;
+        const presentValue = () => {
+          input.checked = pendingVisibility.get(preset.id) ?? isPreviewPresetEnabled(preset.id);
+          input.disabled = pending || preset.id === 'default';
+          // Native disabling would drop keyboard focus during a visibility save.
+          input.setAttribute('aria-busy', String(pendingVisibility.has(preset.id)));
+          input.setAttribute('aria-disabled', String(input.disabled || pendingVisibility.has(preset.id)));
+        };
+        presenters.push(presentValue); presentValue();
         input.setAttribute('aria-label', `${t(language, '显示预设：', 'Show preset: ')}${preset.name[language]}`);
-        input.addEventListener('change', () => { void perform({ action: 'setEnabled', preset: preset.id, enabled: input.checked, language }); });
+        input.addEventListener('change', () => {
+          if (pending || pendingVisibility.has(preset.id)) { presentValue(); return; }
+          void perform({ action: 'setEnabled', preset: preset.id, enabled: input.checked, language });
+        });
         const text = node('span', 'settings-item-text'); text.append(node('span', 'settings-item-title', preset.name[language]), node('span', 'settings-context', builtIn ? t(language, '内置', 'Built-in') : preset.id.slice(5)));
         label.append(input, text); row.append(label);
         const info = createPreviewPresetInfo('settings-preset-info');
-        const errors = options.getDiagnostics().filter(diagnostic => diagnostic.preset === preset.id).map(diagnostic => diagnostic.message);
-        info.present(preset, language, errors); infos.push(info); row.append(info.element);
+        let infoSignature = '';
+        const presentInfo = () => {
+          const errors = options.getDiagnostics().filter(diagnostic => diagnostic.preset === preset.id).map(diagnostic => diagnostic.message);
+          const signature = JSON.stringify(errors);
+          if (infoSignature === signature) return;
+          infoSignature = signature; info.present(preset, language, errors);
+        };
+        presentInfo(); infos.set(info, presentInfo); row.append(info.element);
         if (!builtIn) {
           for (const action of ['export', 'remove'] as const) {
             const caption = action === 'export' ? t(language, '导出', 'Export') : t(language, '移除', 'Remove');
             const control = button('', `settings-button settings-subtle settings-preset-button settings-preset-icon${action === 'remove' ? ' settings-warning' : ''}`);
+            presenters.push(() => { control.disabled = pending; });
             control.setAttribute('aria-label', `${preset.name[language]} · ${caption}`); control.dataset.tooltip = caption;
             control.append(createElement(action === 'export' ? Download : Trash2, { width: 15, height: 15, 'aria-hidden': 'true' }));
             control.dataset.presetAction = action;
@@ -112,6 +164,12 @@ export function createPreviewPresetSettings(options: {
             control.addEventListener('click', () => { if (action === 'remove') confirmRemoval(control, preset, language); else void perform({ action, preset: preset.id, language }); }); row.append(control);
           }
         }
+        for (const presenter of presenters) valuePresenters.add(presenter);
+        rows.set(preset.id, { element: row, signature: rowSignature(preset, language), dispose() {
+          if (removal && row.contains(removal.anchor)) removal.close();
+          for (const presenter of presenters) valuePresenters.delete(presenter);
+          infos.delete(info); info.dispose();
+        } });
         return row;
       }
       const action = item.action!; row.dataset.presetAction = action;
@@ -127,7 +185,7 @@ export function createPreviewPresetSettings(options: {
     },
     description(language: UiLanguage) {
       const enabled = previewPresets.filter(preset => isPreviewPresetEnabled(preset.id)).length;
-      return t(language, `已安装 ${previewPresets.length} 套，显示 ${enabled} 套。勾选后显示在预览下拉菜单中；隐藏或移除正在使用的预设时回到默认。`, `${previewPresets.length} installed, ${enabled} shown. Checked presets appear in the Preview menu. Hiding or removing a preset in use returns its previews to Default.`);
+      return t(language, `已安装 ${previewPresets.length} 套，显示 ${enabled} 套。勾选后显示在预览下拉菜单中；默认预设始终显示，内置预设不能移除。隐藏或移除正在使用的预设时回到默认。`, `${previewPresets.length} installed, ${enabled} shown. Checked presets appear in the Preview menu. Default is always shown; built-in presets cannot be removed. Hiding or removing a preset in use returns its previews to Default.`);
     },
     clear,
     error: () => error,
