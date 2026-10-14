@@ -144,6 +144,8 @@ try {
   await page.evaluate(() => { (window as any).refreshed = true; (window as any).editor.refreshInputSuggestions(); });
   await page.waitForFunction(() => document.querySelector('.meo-input-suggestions:not([hidden]) [aria-selected="true"] .meo-suggestion-label')?.textContent === 'Short refreshed');
   assert.equal(await page.$eval('.meo-input-suggestions [aria-selected="true"]', element => (element as HTMLElement).dataset.suggestionIndex), '0', 'metadata reordering preserves selected file identity');
+  // Labels render synchronously; the overflow hint settles on the next paint.
+  await page.waitForFunction(() => !document.querySelector('.meo-tooltip.is-visible'), { timeout: 2000 });
   assert.equal(await page.$('.meo-tooltip.is-visible'), null, 'renamed short item stays without a hint');
   await page.keyboard.press('Escape'); await closed();
   phase = 'source table alias';
