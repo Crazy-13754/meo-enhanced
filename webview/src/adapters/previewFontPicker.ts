@@ -43,6 +43,7 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
   list.append(results); panel.append(searchRow, list, empty, status); document.body.append(panel);
   let labels: FontPickerLabels = { search: '', clear: '', empty: '', reset: '', resetShort: '', refresh: '', refreshShort: '', missing: '' };
   let active: HTMLButtonElement | undefined;
+  let panelLeft: number | undefined;
   let composing = false;
   const events = new AbortController();
   const selectedOption = () => select.selectedOptions.item(0) ?? select.options.item(0);
@@ -71,7 +72,9 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
     panel.style.maxHeight = `${Math.max(0, below, above)}px`;
     const openAbove = panel.offsetHeight > below && above > below;
     panel.style.maxHeight = `${Math.max(0, openAbove ? above : below)}px`;
-    panel.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - panel.offsetWidth - 8))}px`;
+    // Font labels can move the trigger; keep this opening's anchor until closed.
+    panelLeft = Math.max(8, Math.min(panelLeft ?? bounds.left, window.innerWidth - panel.offsetWidth - 8));
+    panel.style.left = `${panelLeft}px`;
     panel.style.top = `${openAbove ? Math.max(8, bounds.top - panel.offsetHeight - 4) : bounds.bottom + 4}px`;
   };
   const setActive = (option: HTMLButtonElement | undefined) => {
@@ -113,6 +116,7 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
   const open = () => {
     if (select.disabled) return;
     activePickerClose?.(); activePickerClose = close;
+    panelLeft = undefined;
     panel.hidden = false; trigger.setAttribute('aria-expanded', 'true');
     searchInput.value = ''; refreshOptions(); searchInput.focus({ preventScroll: true }); onLoad(false);
   };

@@ -1085,7 +1085,7 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
   height: 24px;
   padding: 0 6px;
   border: 1px solid var(--meo-ui-border-control);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--meo-ui-text);
   background: var(--meo-ui-surface-field);
   font: inherit;

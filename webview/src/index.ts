@@ -1540,7 +1540,8 @@ const syncToolbarOverflow = () => {
   const nextLayoutKey = `${toolbar.clientWidth}:${rightGroup.offsetWidth}:${root.dataset.mode ?? ''}:${activeUiLanguage}:${previewController.getPresetState().preset}`;
   if (nextLayoutKey === toolbarOverflowLayoutKey) return;
   toolbarOverflowLayoutKey = nextLayoutKey;
-  previewOptionsMenu.close();
+  // Source's options belong to the preview pane, outside the toolbar being rearranged.
+  if (!previewOptionsPanel.classList.contains('source-preview-more-panel')) previewOptionsMenu.close();
   restoreToolbarOverflowItems();
 
   const toolbarBounds = toolbar.getBoundingClientRect();

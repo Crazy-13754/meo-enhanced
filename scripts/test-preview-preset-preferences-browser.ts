@@ -238,6 +238,14 @@ try {
       && !document.querySelector<HTMLElement>('.preview-host')!.inert
       && getComputedStyle(document.querySelector<HTMLElement>('.preview-host')!).visibility !== 'hidden');
     await fontPage.click('.source-preview-more-button');
+    await fontPage.click('.preview-code-font-family-dropdown');
+    await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Arial');
+    await fontPage.click('.preview-code-font-family-dropdown-panel [data-value="Arial"]');
+    await settle(fontPage);
+    await fontPage.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false, 'The first Source font change keeps its options panel open through toolbar synchronization');
+    assert.equal(await fontPage.$eval('.preview-code-font-family-dropdown-panel', el => (el as HTMLElement).hidden), false);
+    await fontPage.keyboard.press('Escape');
     await select(fontPage, 'github-readme');
     if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.source-preview-more-button');
     assert.equal(await fontPage.$$eval('.source-preview-more-panel .preview-select-control', els => els.some(el => (el as HTMLElement).hidden)), false, 'Split Preview shows the same preset configuration items');
@@ -247,7 +255,25 @@ try {
     if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.source-preview-more-button');
     await fontPage.waitForSelector('.preview-code-font-family-dropdown', { visible: true });
     await fontPage.click('.preview-code-font-family-dropdown');
-    await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
+    const splitPopup = '.preview-code-font-family-dropdown-panel';
+    const splitLeft = await fontPage.$eval(splitPopup, el => el.getBoundingClientRect().left);
+    await fontPage.type(`${splitPopup} input`, 'Example Font 050');
+    await fontPage.keyboard.press('Enter'); await settle(fontPage);
+    assert.equal(preferences!.whitey.codeFontFamily, 'Example Font 050');
+    assert.equal(await fontPage.$eval(splitPopup, el => el.getBoundingClientRect().left), splitLeft, 'A longer font name must not move the open comparison list');
+    await fontPage.click(`${splitPopup} .preview-font-clear`);
+    await fontPage.type(`${splitPopup} input`, 'Arial');
+    await fontPage.keyboard.press('Enter'); await settle(fontPage);
+    assert.equal(preferences!.whitey.codeFontFamily, 'Arial');
+    assert.equal(await fontPage.$eval(splitPopup, el => el.getBoundingClientRect().left), splitLeft, 'A shorter font name keeps the same horizontal anchor');
+    await fontPage.keyboard.press('Escape');
+    await fontPage.click('.preview-code-font-family-dropdown');
+    assert.equal(await fontPage.$eval(splitPopup, el => el.getBoundingClientRect().left), await fontPage.evaluate(() => {
+      const control = document.querySelector('.preview-code-font-family-dropdown')!.getBoundingClientRect();
+      const panel = document.querySelector<HTMLElement>('.preview-code-font-family-dropdown-panel')!;
+      return Math.max(8, Math.min(control.left, window.innerWidth - panel.offsetWidth - 8));
+    }), 'Reopening anchors to the current control position');
+    await fontPage.type(`${splitPopup} input`, 'Consolas');
     await fontPage.mouse.move(2, 400);
     assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false, 'Split Preview keeps the search open after pointer exit');
     await fontPage.setViewport({ width: 420, height: 700 });
@@ -306,6 +332,18 @@ try {
     await reopened.waitForFunction(() => document.querySelector('.preview-font-family-dropdown .preview-toolbar-dropdown-value')!.textContent === '微软雅黑');
     assert.equal(await reopened.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value), 'Microsoft YaHei');
     assert.equal(await reopened.$eval('.preview-code-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), '宋体', 'Reopened documents restore both localized labels');
+    await reopened.keyboard.press('Escape');
+    await reopened.click('button[data-mode="source"]');
+    await reopened.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'source'
+      && (window as any).__presetMessages.findLast((message: any) => message.type === 'setMode')?.mode === 'source');
+    if (await reopened.$eval('.source-preview-button', el => el.getAttribute('aria-pressed') !== 'true')) await reopened.click('.source-preview-button');
+    await reopened.waitForFunction(() => document.querySelector('.source-preview-more-panel .preview-preset-control') && !document.querySelector<HTMLElement>('.preview-host')!.inert);
+    await reopened.click('.source-preview-more-button'); await reopened.click('.preview-code-font-family-dropdown');
+    await reopened.type('.preview-code-font-family-dropdown-panel input', 'Arial');
+    await reopened.click('.preview-code-font-family-dropdown-panel [data-value="Arial"]'); await settle(reopened);
+    await reopened.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    assert.equal(await reopened.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false, 'Chinese Source keeps its panel open when the first font change refreshes the toolbar layout');
+    assert.equal(await reopened.$eval('.preview-code-font-family-dropdown-panel', el => (el as HTMLElement).hidden), false);
     await reopened.close();
   };
   const page = await open();
