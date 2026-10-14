@@ -1682,6 +1682,7 @@ const previewController = createPreviewController({
     persistUiState();
     syncToolbarOverflow();
   },
+  onPaletteChanged: () => outlineController?.refreshAppearance(),
   mermaidRenderResources: mermaidDiagramRenderPool,
   // The side Preview is also read-only, even while Source is the active mode.
   onShortcut: event => handleEditorShortcut(event, { ...shortcutHandlerContext, editorSurfaceActive: false }),
@@ -1771,6 +1772,21 @@ outlineController = createOutlineController({
   outlineLeftButton: outlineLeftBtn,
   additionalOutlineLeftButtons: [previewOutlineLeftBtn],
   getEditor: () => getActiveEditorMode() === 'preview' ? previewController.getOutlineAdapter() : editor,
+  getPalette: (position) => {
+    // Layout owns the color source; focus and linked scrolling do not change it.
+    const mode = root.dataset.mode;
+    const usePreview = mode === 'preview'
+      || (mode === 'source' && editorSurface.hasAttribute('data-source-preview') && position === 'right');
+    const editorStyles = getComputedStyle(editorHost);
+    const content = editorHost.querySelector('.cm-content');
+    const foreground = content ? getComputedStyle(content).color : getComputedStyle(document.body).color;
+    if (!usePreview) return { background: editorStyles.backgroundColor, foreground };
+    const previewStyles = getComputedStyle(previewController.host);
+    return {
+      background: previewStyles.getPropertyValue('--meo-preview-background').trim() || editorStyles.backgroundColor,
+      foreground: previewStyles.getPropertyValue('--meo-preview-foreground').trim() || foreground
+    };
+  },
   onVisibilityRequest: (visible) => {
     vscode.postMessage({ type: 'setOutlineVisible', visible });
   },
@@ -1957,6 +1973,7 @@ const presentPreviewSurface = (
   if (visible !== !previewController.host.hidden || splitGeometryChanged) previewPaintReady = false;
   editorSurface.removeAttribute('data-source-preview-preparing');
   editorSurface.toggleAttribute('data-source-preview', split);
+  outlineController.refreshAppearance();
   sourcePreviewButton.classList.toggle('is-active', split);
   sourcePreviewButton.setAttribute('aria-pressed', split ? 'true' : 'false');
   presentSourcePreviewControls();
@@ -2982,6 +2999,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
   },
   presentModeControl(mode) {
     root.dataset.mode = mode;
+    outlineController.refreshAppearance();
     modeControl.setActive(mode);
     changesReviewMode = mode;
     presentChangesReview();
@@ -3201,6 +3219,7 @@ const themeAdapter = createAppearanceWebviewAdapter({
   applyCodePalette: palette => {
     codePaletteAdapter.apply(palette);
     applyUiVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
+    outlineController.refreshAppearance();
   },
   refreshMermaidTheme: () => mermaidDiagramRenderPool.refreshTheme(),
   applyWithEditorViewportPreserved: (action) => {
@@ -3263,6 +3282,7 @@ const refreshUiColors = () => {
     mermaidDiagramRenderPool.refreshTheme();
   }
   previewController.refreshDocumentBackground(refreshMermaid);
+  outlineController.refreshAppearance();
 };
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
 const previewPresetTransport = createPreviewPresetTransport(request => vscode.postMessage(request));

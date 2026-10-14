@@ -5515,7 +5515,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   overflow: hidden;
   box-sizing: border-box;
   background-color: var(--meo-outline-background);
-  color: var(--meo-ui-text);
+  color: var(--meo-outline-foreground, var(--meo-ui-text));
   user-select: none;
   z-index: var(--meo-layer-document-chrome);
 }
@@ -5535,7 +5535,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   top: 0;
   bottom: 0;
   width: 1px;
-  background-color: color-mix(in srgb, var(--meo-foreground) 28%, transparent);
+  background-color: var(--meo-outline-border, color-mix(in srgb, var(--meo-foreground) 28%, transparent));
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
@@ -5559,10 +5559,10 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   bottom: 16px;
   height: auto;
   max-height: calc(100% - 24px);
-  border: 1px solid var(--meo-content-panel-border);
+  border: 1px solid var(--meo-outline-border, var(--meo-content-panel-border));
   border-radius: 8px;
   background-color: var(--meo-outline-background);
-  box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
+  box-shadow: var(--meo-outline-shadow, 0 8px 28px rgb(0 0 0 / 45%));
 }
 
 .editor-wrapper[data-outline-mode='floating'][data-outline-position='left'] .outline-sidebar {
@@ -5587,7 +5587,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   min-width: 0;
   font-size: 13px;
   font-weight: 600;
-  color: var(--meo-ui-text);
+  color: var(--meo-outline-foreground, var(--meo-ui-text));
 }
 
 .outline-header-button {
@@ -5599,18 +5599,18 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   padding: 0;
   border: 0;
   border-radius: 4px;
-  color: var(--meo-muted-foreground);
+  color: var(--meo-outline-muted-foreground, var(--meo-muted-foreground));
   background: transparent;
   cursor: pointer;
 }
 
 .outline-header-button:hover {
-  color: var(--meo-ui-text);
+  color: var(--meo-outline-foreground, var(--meo-ui-text));
   background: var(--meo-outline-hover-background);
 }
 
 .outline-close-button:hover {
-  color: var(--meo-ui-danger, #f48771);
+  color: var(--meo-outline-danger, var(--meo-ui-danger, #f48771));
 }
 
 .editor-wrapper[data-outline-mode='fixed'] .outline-header-button {
@@ -5643,14 +5643,14 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   left: 4px;
   right: 4px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--meo-foreground) 5%, transparent);
+  background: var(--meo-outline-visible-background, color-mix(in srgb, var(--meo-foreground) 5%, transparent));
   pointer-events: none;
 }
 
 .outline-sidebar:hover .outline-content {
   scrollbar-color: var(
-    --meo-scrollbar-thumb,
-    color-mix(in srgb, var(--meo-ui-text) 22%, transparent)
+    --meo-outline-scrollbar-thumb,
+    var(--meo-scrollbar-thumb, color-mix(in srgb, var(--meo-ui-text) 22%, transparent))
   ) transparent;
 }
 
@@ -5669,7 +5669,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 
 .outline-content::-webkit-scrollbar-thumb {
   -webkit-appearance: none;
-  background: var(--meo-scrollbar-thumb) !important;
+  background: var(--meo-outline-scrollbar-thumb, var(--meo-scrollbar-thumb)) !important;
   background-clip: border-box !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -5678,14 +5678,14 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 
 .outline-content::-webkit-scrollbar-thumb:hover {
   -webkit-appearance: none;
-  background: var(--meo-scrollbar-thumb-hover) !important;
+  background: var(--meo-outline-scrollbar-thumb-hover, var(--meo-scrollbar-thumb-hover)) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
 
 .outline-content::-webkit-scrollbar-thumb:active {
   -webkit-appearance: none;
-  background: var(--meo-scrollbar-thumb-active) !important;
+  background: var(--meo-outline-scrollbar-thumb-active, var(--meo-scrollbar-thumb-active)) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
@@ -5697,7 +5697,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 .outline-empty {
   padding: 12px 14px;
   font-size: 12px;
-  color: var(--meo-ui-text-muted);
+  color: var(--meo-outline-muted-foreground, var(--meo-ui-text-muted));
   font-style: italic;
 }
 
@@ -5747,14 +5747,14 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   width: 16px;
   padding: 0;
   border: 0;
-  color: var(--meo-muted-foreground);
+  color: var(--meo-outline-muted-foreground, var(--meo-muted-foreground));
   background: transparent;
   cursor: pointer;
   opacity: 0.7;
 }
 
 .outline-fold-button:hover {
-  color: var(--meo-foreground);
+  color: var(--meo-outline-foreground, var(--meo-foreground));
   opacity: 1;
 }
 
@@ -5784,16 +5784,31 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 }
 
 .outline-item:hover {
-  color: var(--meo-ui-text-emphasis-content, #79b8ff);
+  color: var(--meo-outline-emphasis, var(--meo-ui-text-emphasis-content, #79b8ff));
   background-color: var(--meo-outline-hover-background);
 }
 
 .outline-item.is-visible-first {
-  color: var(--meo-ui-text-emphasis-content, #79b8ff);
+  color: var(--meo-outline-emphasis, var(--meo-ui-text-emphasis-content, #79b8ff));
 }
 
 .outline-item.is-visible:hover {
-  color: var(--meo-ui-text-emphasis-content, #79b8ff);
+  color: var(--meo-outline-emphasis, var(--meo-ui-text-emphasis-content, #79b8ff));
+}
+
+.outline-sidebar :is(.outline-header-button, .outline-fold-button, .outline-item):focus-visible {
+  outline: 1px solid var(--meo-outline-focus, var(--meo-ui-focus));
+  outline-offset: -1px;
+}
+
+.outline-sidebar[data-outline-contrast='high'] {
+  outline: 1px solid var(--meo-outline-border);
+  outline-offset: -1px;
+}
+
+.outline-sidebar[data-outline-contrast='high'] .outline-visible-range {
+  outline: 1px solid var(--meo-outline-border);
+  outline-offset: -1px;
 }
 
 .outline-item strong {
@@ -5858,7 +5873,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 
 .outline-resizer:hover::before,
 body.outline-resizing .outline-resizer::before {
-  background: #316dca;
+  background: var(--meo-outline-focus, #316dca);
 }
 
 .outline-sidebar:has(.outline-resizer:hover) .outline-content {
@@ -8351,7 +8366,7 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb { background-color: var(--meo-ui-scrollbar); }
 .meo-input-suggestions:hover .meo-suggestion-list::-webkit-scrollbar-thumb:hover { background-color: var(--meo-ui-scrollbar-hover); }
 .outline-sidebar, .outline-header-label, .outline-item { color: var(--meo-outline-foreground); }
-.outline-item:is(:hover, :focus-visible, .is-visible-first) { color: var(--meo-ui-text-emphasis-content, #79b8ff); }
+.outline-item:is(:hover, :focus-visible, .is-visible-first) { color: var(--meo-outline-emphasis, var(--meo-ui-text-emphasis-content, #79b8ff)); }
 /* Source owns native editor chrome and TextMate styling independently of Live. */
 .cm-editor.meo-mode-source {
   --meo-foreground: var(--meo-source-foreground);
