@@ -52,6 +52,16 @@ to the quick, targeted viewport and release gates. Late-layout compensation rema
 covered by the viewport and virtual-block contracts. Full-document scroll traversal
 must reach both boundaries; a capped or stalled loop cannot report full traversal.
 
+For installed-VSIX scrollbar acceptance, use an isolated VS Code profile and check
+Live, Source, full Preview and split Preview in light/dark appearances, including
+Default and GitHub Preview presets. Trusted wheel input must move actual content;
+drag the native thumb to both boundaries and record visible scrollbar screenshots.
+Resolve pointer coordinates against the active outer Webview and nested Preview
+frame. The scrolling document's content width excludes its scrollbar, so use the
+Preview viewport width when targeting that scrollbar. Grab the thumb rather than
+the platform arrow buttons, and remeasure after virtualized content settles.
+Programmatic scroll assignments may prepare a case but cannot prove dragging.
+
 `scripts/test-long-document-scroll.ts` exercises the production Webview in Live,
 Source, Preview and split views, using shared visible-content witnesses in both
 scroll directions. The targeted viewport gate uses a bounded rich-document fixture
