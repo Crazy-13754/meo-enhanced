@@ -104,10 +104,12 @@ try {
     assert.equal(fontRequests, 1);
     const popup = '.preview-font-family-dropdown-panel';
     const search = `${popup} input`;
-    assert.equal(await fontPage.$eval(`${popup} .preview-font-default button`, el => el.textContent?.includes('Use preset font')), true);
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-reset`, el => el.textContent), 'Default');
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-refresh`, el => el.textContent), 'Refresh');
+    assert.deepEqual(await fontPage.$$eval(`${popup} .preview-font-search-row .preview-font-action`, els => els.map(el => el.getAttribute('aria-label'))), ['Reset font', 'Refresh font list'], 'Compact search actions retain their full accessible names');
     assert.equal(await fontPage.$eval(`${popup} [data-value="Missing Font"] .preview-font-missing`, el => el.textContent), 'Not found in the font list');
     await fontPage.type(search, '不存在的字体');
-    assert.equal(await fontPage.$eval(`${popup} .preview-font-default button`, el => (el as HTMLElement).offsetHeight > 0), true);
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-reset`, el => (el as HTMLElement).offsetHeight > 0), true);
     assert.equal(await fontPage.$$eval(`${popup} .preview-font-results button`, els => els.length), 0);
     const before = await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value);
     await fontPage.keyboard.press('Enter');
@@ -132,9 +134,9 @@ try {
     assert.equal(await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value), before, 'IME confirmation never selects a font');
     await fontPage.$eval(search, el => el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })));
     await fontPage.click(search, { clickCount: 3 }); await fontPage.keyboard.press('Backspace');
-    const pinnedTop = await fontPage.$eval(`${popup} .preview-font-default`, el => el.getBoundingClientRect().top);
+    const pinnedTop = await fontPage.$eval(`${popup} .preview-font-actions`, el => el.getBoundingClientRect().top);
     await fontPage.$eval(`${popup} .preview-font-results`, el => { el.scrollTop = el.scrollHeight; });
-    assert.equal(await fontPage.$eval(`${popup} .preview-font-default`, el => el.getBoundingClientRect().top), pinnedTop, 'Default stays visible while results scroll');
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-actions`, el => el.getBoundingClientRect().top), pinnedTop, 'Both search actions stay visible while results scroll');
     await fontPage.screenshot({ path: 'tmp/preview-font-picker-large.png' });
     await fontPage.type(search, 'Arial'); await fontPage.keyboard.press('Enter');
     assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false);
@@ -142,6 +144,26 @@ try {
     assert.equal(fontRequests, 1, 'Both font pickers share the catalog');
     await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
     await fontPage.keyboard.press('Enter'); await settle(fontPage);
+    for (const [kind, key, family, otherKey, otherFamily] of [
+      ['font', 'fontFamily', 'Arial', 'codeFontFamily', 'Consolas'],
+      ['code-font', 'codeFontFamily', 'Consolas', 'fontFamily', 'Arial']
+    ]) {
+      const panel = `.preview-${kind}-family-dropdown-panel`;
+      await fontPage.click(`.preview-${kind}-family-dropdown`);
+      await fontPage.type(`${panel} input`, '不存在的字体');
+      if (kind === 'font') {
+        await fontPage.keyboard.press('Tab');
+        assert.equal(await fontPage.$eval(`${panel} .preview-font-reset`, el => el === document.activeElement), true, 'Reset is the first action after search');
+        await fontPage.keyboard.press('Enter');
+      } else await fontPage.click(`${panel} .preview-font-reset`);
+      await settle(fontPage);
+      assert.equal(preferences!.whitey[key], '', `${kind} reset restores the preset font even when search has no results`);
+      assert.equal(preferences!.whitey[otherKey], otherFamily, 'Reset leaves the other font preference intact');
+      assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false);
+      await fontPage.click(`.preview-${kind}-family-dropdown`);
+      assert.equal(await fontPage.$eval(`${panel} .preview-font-reset`, el => (el as HTMLButtonElement).disabled), true, 'Already using the default font disables reset');
+      await fontPage.type(`${panel} input`, family); await fontPage.keyboard.press('Enter'); await settle(fontPage);
+    }
     const readTypography = () => fontPage.evaluate(() => {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
       const style = (selector: string) => doc.defaultView!.getComputedStyle(doc.querySelector(selector)!);

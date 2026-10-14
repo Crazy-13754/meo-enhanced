@@ -1019,7 +1019,7 @@ export function createPreviewController({
   const fontPickers = [fontFamilySelectControl, codeFontFamilySelectControl];
   const updateFontPickerLabels = () => {
     for (const picker of fontPickers) {
-      picker.setLabels({ search: uiStrings.previewFontSearch, empty: uiStrings.previewFontEmpty, refresh: uiStrings.previewFontRefresh, missing: uiStrings.previewFontMissing });
+      picker.setLabels({ search: uiStrings.previewFontSearch, empty: uiStrings.previewFontEmpty, reset: uiStrings.previewFontReset, resetShort: uiStrings.previewFontResetShort, refresh: uiStrings.previewFontRefresh, refreshShort: uiStrings.previewFontRefreshShort, missing: uiStrings.previewFontMissing });
       picker.setStatus(fontLoad ? uiStrings.previewFontLoading : fontCatalogError ? uiStrings.previewFontUnavailable : '', Boolean(fontLoad));
     }
   };

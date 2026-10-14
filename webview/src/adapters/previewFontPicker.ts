@@ -1,6 +1,6 @@
-import { createElement, RefreshCw, Search } from 'lucide';
+import { createElement, Search } from 'lucide';
 
-type FontPickerLabels = { search: string; empty: string; refresh: string; missing: string };
+type FontPickerLabels = { search: string; empty: string; reset: string; resetShort: string; refresh: string; refreshShort: string; missing: string };
 let nextPickerId = 0;
 let activePickerClose: (() => void) | undefined;
 
@@ -26,15 +26,20 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
   const searchInput = document.createElement('input'); searchInput.type = 'search'; searchInput.className = 'preview-font-search';
   searchInput.setAttribute('role', 'combobox'); searchInput.setAttribute('aria-autocomplete', 'list'); searchInput.setAttribute('aria-controls', id); searchInput.setAttribute('aria-expanded', 'true');
   const list = document.createElement('div'); list.id = id; list.className = 'preview-font-list'; list.setAttribute('role', 'listbox');
-  const pinned = document.createElement('div'); pinned.className = 'preview-font-default'; pinned.setAttribute('role', 'presentation');
+  const actions = document.createElement('div'); actions.className = 'preview-font-actions';
+  const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'preview-font-action preview-font-reset';
+  const resetLabel = document.createElement('span');
+  reset.append(resetLabel);
   const results = document.createElement('div'); results.className = 'preview-font-results'; results.setAttribute('role', 'presentation');
   const empty = document.createElement('div'); empty.className = 'preview-font-message'; empty.hidden = true;
   const status = document.createElement('div'); status.className = 'preview-font-message'; status.setAttribute('role', 'status'); status.hidden = true;
-  const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'preview-font-refresh';
-  refresh.append(createElement(RefreshCw, { width: 13, height: 13, 'aria-hidden': 'true' }));
-  searchRow.append(createElement(Search, { width: 13, height: 13, 'aria-hidden': 'true' }), searchInput, refresh);
-  list.append(pinned, results); panel.append(searchRow, list, empty, status); document.body.append(panel);
-  let labels: FontPickerLabels = { search: '', empty: '', refresh: '', missing: '' };
+  const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'preview-font-action preview-font-refresh';
+  const refreshLabel = document.createElement('span');
+  refresh.append(refreshLabel);
+  actions.append(reset, refresh);
+  searchRow.append(createElement(Search, { width: 13, height: 13, 'aria-hidden': 'true' }), searchInput, actions);
+  list.append(results); panel.append(searchRow, list, empty, status); document.body.append(panel);
+  let labels: FontPickerLabels = { search: '', empty: '', reset: '', resetShort: '', refresh: '', refreshShort: '', missing: '' };
   let active: HTMLButtonElement | undefined;
   let composing = false;
   const events = new AbortController();
@@ -48,6 +53,7 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
   };
   const syncFromSelect = () => {
     trigger.disabled = select.disabled;
+    reset.disabled = select.disabled || select.value === '';
     if (select.disabled) close();
     value.textContent = selectedOption()?.textContent ?? '';
     for (const option of panel.querySelectorAll<HTMLButtonElement>('[role="option"]')) {
@@ -77,9 +83,10 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
   };
   const refreshOptions = () => {
     const query = searchInput.value.trim().toLocaleLowerCase();
-    pinned.replaceChildren(); results.replaceChildren();
+    results.replaceChildren();
     for (const [index, native] of Array.from(select.options).entries()) {
-      if (native.value && query && !`${native.value} ${native.dataset.aliases ?? ''}`.toLocaleLowerCase().includes(query)) continue;
+      if (!native.value) continue;
+      if (query && !`${native.value} ${native.dataset.aliases ?? ''}`.toLocaleLowerCase().includes(query)) continue;
       const option = document.createElement('button'); option.type = 'button'; option.tabIndex = -1;
       option.id = `${id}-${index}`; option.className = 'preview-dropdown-option'; option.dataset.value = native.value; option.setAttribute('role', 'option');
       const name = document.createElement('span'); name.className = 'preview-font-option-name'; name.textContent = native.textContent;
@@ -87,11 +94,11 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
       option.append(name);
       if (native.dataset.missing === 'true') { const note = document.createElement('span'); note.className = 'preview-font-missing'; note.textContent = labels.missing; name.append(note); }
       option.addEventListener('click', () => choose(native.value));
-      (native.value ? results : pinned).append(option);
+      results.append(option);
     }
     empty.hidden = results.childElementCount > 0;
     syncFromSelect();
-    const selected = panel.querySelector<HTMLButtonElement>('[aria-selected="true"]') ?? undefined;
+    const selected = results.querySelector<HTMLButtonElement>('[aria-selected="true"]') ?? undefined;
     setActive(query ? results.querySelector<HTMLButtonElement>('button') ?? undefined : selected);
     position();
   };
@@ -117,6 +124,7 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
     const index = active ? options.indexOf(active) : event.key === 'ArrowDown' ? -1 : 0;
     setActive(options[(index + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length]);
   }, { signal: events.signal });
+  reset.addEventListener('click', () => choose(''), { signal: events.signal });
   refresh.addEventListener('click', () => onLoad(true), { signal: events.signal });
   select.addEventListener('change', syncFromSelect, { signal: events.signal });
   window.addEventListener('pointerdown', event => { if (event.target instanceof Node && !element.contains(event.target) && !panel.contains(event.target)) close(); }, { capture: true, signal: events.signal });
@@ -135,6 +143,8 @@ export function createPreviewFontPicker(controlClass: string, labelText: string,
     element, label, select, trigger, panel, searchInput, setLabel, close, refreshOptions, syncFromSelect,
     setLabels(next: FontPickerLabels) {
       labels = next; searchInput.placeholder = next.search; searchInput.setAttribute('aria-label', next.search);
+      resetLabel.textContent = next.resetShort; reset.setAttribute('aria-label', next.reset); reset.dataset.tooltip = next.reset;
+      refreshLabel.textContent = next.refreshShort;
       empty.textContent = next.empty; refresh.setAttribute('aria-label', next.refresh); refresh.dataset.tooltip = next.refresh; refreshOptions();
     },
     setStatus(message: string, loading = false) { status.textContent = message; status.hidden = !message; refresh.disabled = loading; position(); },

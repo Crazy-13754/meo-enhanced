@@ -1047,36 +1047,40 @@ html[data-editor-appearance='light'] .segmented-control-button:not(.is-active):i
 .preview-font-search::placeholder { color: var(--meo-ui-text-muted); }
 .preview-font-search:focus { outline: none; }
 
-.preview-font-refresh {
-  display: grid;
+.preview-font-actions {
+  display: flex;
   flex: 0 0 auto;
-  place-items: center;
-  width: 24px;
+  align-items: center;
+  gap: 4px;
+}
+
+.preview-font-action {
+  display: flex;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
   height: 24px;
-  padding: 0;
-  border: 0;
+  padding: 0 6px;
+  border: 1px solid var(--meo-ui-border-control);
   border-radius: 3px;
-  color: var(--meo-ui-text-muted);
-  background: transparent;
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-field);
+  font: inherit;
+  line-height: 1.5;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.preview-font-refresh:is(:hover, :focus-visible):not(:disabled) { color: var(--meo-ui-text); background: var(--meo-ui-surface-hover); }
-.preview-font-refresh:focus-visible { outline: 1px solid var(--meo-ui-focus); outline-offset: -1px; }
-.preview-font-refresh:disabled { color: var(--meo-ui-text-disabled); cursor: default; }
+.preview-font-action:is(:hover, :focus-visible):not(:disabled) { color: var(--meo-ui-text); background: var(--meo-ui-surface-hover); }
+.preview-font-action:focus-visible { outline: 1px solid var(--meo-ui-focus); outline-offset: -1px; }
+.preview-font-action:disabled { color: var(--meo-ui-text-disabled); cursor: default; }
 
 .preview-font-list {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-}
-
-.preview-font-default {
-  flex: 0 0 auto;
-  padding-bottom: 4px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--meo-ui-separator);
 }
 
 .preview-font-results {

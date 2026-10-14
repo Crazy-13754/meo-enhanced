@@ -57,6 +57,9 @@ export type UiStrings = Readonly<{
   previewFontSearch: string;
   previewFontEmpty: string;
   previewFontRefresh: string;
+  previewFontReset: string;
+  previewFontResetShort: string;
+  previewFontRefreshShort: string;
   previewFontMissing: string;
   previewFontLoading: string;
   previewPresetFont: string;
@@ -370,6 +373,9 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewFontSearch: 'Search fonts',
     previewFontEmpty: 'No matching fonts',
     previewFontRefresh: 'Refresh font list',
+    previewFontReset: 'Reset font',
+    previewFontResetShort: 'Default',
+    previewFontRefreshShort: 'Refresh',
     previewFontMissing: 'Not found in the font list',
     previewFontLoading: 'Loading system fonts…',
     previewPresetFont: 'Use preset font',
@@ -578,6 +584,9 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewFontSearch: '搜索字体',
     previewFontEmpty: '未找到匹配字体',
     previewFontRefresh: '刷新字体列表',
+    previewFontReset: '还原默认字体',
+    previewFontResetShort: '默认',
+    previewFontRefreshShort: '刷新',
     previewFontMissing: '列表中未找到',
     previewFontLoading: '正在读取系统字体…',
     previewPresetFont: '使用预设字体',
