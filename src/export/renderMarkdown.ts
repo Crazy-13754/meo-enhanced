@@ -7,7 +7,7 @@ import hljs from 'highlight.js';
 import sanitizeHtml from 'sanitize-html';
 import { Parser, parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
-import { isLocalImageSrc, rewriteExportImageSrc } from './assetPaths';
+import { isLocalImageSrc, rewriteExportImageSrc, rewriteExportLinkHref } from './assetPaths';
 import { extractExportFrontmatter } from './frontmatter';
 import { prepareMarkdownWithFootnotes } from './footnotes';
 import type { SourceMappedMarkdown } from './sourceMappedMarkdown';
@@ -60,12 +60,15 @@ export type RenderMarkdownOptions = {
   markdownText: string;
   markdownFilePath: string;
   imageSearchRoots?: readonly string[];
+  workspaceRootPath?: string;
   outputFilePath?: string;
   target: RenderMarkdownTarget;
   uiLanguage?: UiLanguage;
   includeTableOfContents?: boolean;
   /** Preview resolves local and network images after the reading frame is ready. */
   deferImages?: boolean;
+  /** Preview leaves workspace-root links for Host URI resolution. */
+  deferLocalLinks?: boolean;
   /** Permit local file destinations alongside the preset's safe URL schemes. */
   allowLocalLinks?: boolean;
   showComments?: boolean;
@@ -102,6 +105,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
     outputFilePath: options.outputFilePath,
     target: options.target,
     imageSearchRoots: options.imageSearchRoots,
+    workspaceRootPath: options.workspaceRootPath,
     embeddedImageDataUrlCache
   });
   const deferImageSrc = (rawSrc: string): { src: string; deferredSrc?: string } => (
@@ -123,8 +127,10 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   });
   if (github) installGithubInlineRules(md);
   const allowLocalLinks = !github || options.allowLocalLinks === true;
+  const normalizeHref = (href: string) => options.deferLocalLinks || !allowLocalLinks
+    ? normalizeLinkDestination(href) : rewriteExportLinkHref(href, options);
   const normalizeLink = md.normalizeLink.bind(md), validateLink = md.validateLink.bind(md);
-  md.normalizeLink = href => normalizeLink(normalizeLinkDestination(href));
+  md.normalizeLink = href => normalizeLink(normalizeHref(href));
   md.validateLink = href => allowLocalLinks && isLocalFileLinkDestination(href) || validateLink(href);
   const githubHtml = github ? createGithubHtmlSanitizer(deferImageSrc, allowLocalLinks) : undefined;
   // The bundled backtick rule strips bounding spaces even from all-space code.
@@ -412,7 +418,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
         };
       },
       a: (tagName, attribs) => {
-        if (attribs.href) attribs.href = normalizeLinkDestination(attribs.href);
+        if (attribs.href) attribs.href = normalizeHref(attribs.href);
         if (github && attribs.href) {
           if (!isGithubLink(attribs.href, allowLocalLinks)) delete attribs.href;
           else if (attribs.href.startsWith('#')) {

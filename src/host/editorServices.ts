@@ -1,16 +1,50 @@
 import MarkdownIt from 'markdown-it';
 import { markdownHeadingCandidates } from '../application/markdownHeadingCandidates';
+import { candidateTextMatch } from '../foundation/candidateText';
 import * as vscode from 'vscode';
-import * as path from 'node:path';
 import type { EditorServiceRequest, EditorServiceResponse, LinkCandidate } from '../protocol/editorServices';
+import { markdownPathTarget, resolveMarkdownReference } from './markdownPathTargets';
+import { resolveWikiResource, wikiLinkCandidates, wikiPathDirectory } from './wikiResources';
 
-const documentExtensions = /\.(?:md|markdown|mdx|mdc)$/i;
-const safeGlobFragment = (value: string) => value.replace(/[\*?{}\[\]\\]/g, '?').slice(0, 200);
-const relativePath = (folder: string, uri: vscode.Uri) => path.relative(folder, uri.fsPath).replaceAll('\\', '/');
+async function pathCandidates(query: string, document: vscode.Uri, wiki: boolean): Promise<LinkCandidate[]> {
+  const normalized = query.replaceAll('\\', '/'), slash = normalized.lastIndexOf('/');
+  let parent = normalized.slice(0, slash + 1), name = normalized.slice(slash + 1);
+  try { parent = decodeURIComponent(parent); } catch { /* Partial escapes stay literal. */ }
+  try { name = decodeURIComponent(name); } catch { /* Partial escapes stay literal. */ }
+  const directory = wiki ? await wikiPathDirectory(parent || '.', document) : markdownPathTarget(parent || '.', document);
+  const ignored = new Set(['.git', 'node_modules', 'dist', '.cache', '.obsidian']);
+  const rows = (await vscode.workspace.fs.readDirectory(directory)).flatMap(([filename, type]) => {
+    if (filename.length > 1000 || ignored.has(filename) || wiki && /[\r\n|#]|\[\[|\]\]/.test(filename)) return [];
+    const match = candidateTextMatch(filename, name);
+    if (!match) return [];
+    const folder = Boolean(type & vscode.FileType.Directory);
+    return [{ filename, folder, rank: match.rank }];
+  }).sort((a, b) => Number(b.folder) - Number(a.folder) || a.rank - b.rank || (a.filename < b.filename ? -1 : a.filename > b.filename ? 1 : 0));
+  return rows.slice(0, 50).map(row => ({ label: row.filename + (row.folder ? '/' : ''), insert: row.filename + (row.folder ? '/' : ''),
+    detail: vscode.workspace.asRelativePath(vscode.Uri.joinPath(directory, row.filename), false).slice(0, 1000), kind: row.folder ? 'directory' : 'file' }));
+}
+
+async function headingCandidates(target: string, query: string, document: vscode.Uri, wiki: boolean): Promise<LinkCandidate[]> {
+  const uri = wiki ? (await resolveWikiResource(target, document)).uri : await resolveMarkdownReference(target, document);
+  if (!uri) return [];
+  const open = vscode.workspace.textDocuments?.find(document => document.uri.toString() === uri.toString());
+  if (!open && (await vscode.workspace.fs.stat(uri)).size > 2_000_000) return [];
+  const text = open?.getText() ?? Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+  if (Buffer.byteLength(text) > 2_000_000) return [];
+  const tokens = new MarkdownIt({ html: true }).parse(text, {});
+  const headings = tokens.flatMap((token, index) => {
+    if (token.type !== 'heading_open') return [];
+    const inline = tokens[index + 1];
+    const label = (inline.children ?? []).map(child => ['text', 'code_inline', 'image'].includes(child.type) ? child.content : ['softbreak', 'hardbreak'].includes(child.type) ? ' ' : '').join('').replace(/\s+/g, ' ').trim();
+    return [{ text: label, source: inline.content, line: (token.map?.[0] ?? 0) + 1 }];
+  });
+  return markdownHeadingCandidates(headings).filter(heading => heading.text.length <= 1000 && heading.anchor.length <= 1000 && candidateTextMatch(heading.text, query))
+    .slice(0, 50).map(heading => ({ label: heading.text, insert: heading.anchor, anchor: heading.anchor, detail: vscode.workspace.asRelativePath(uri, false).slice(0, 1000) }));
+}
 
 export async function runEditorService(request: EditorServiceRequest, documentUri: vscode.Uri): Promise<EditorServiceResponse> {
   try {
-    let value: { text: string } | { candidates: LinkCandidate[] };
+    let value: { text: string } | { candidates: readonly LinkCandidate[] };
     if (request.action === 'readClipboard') {
       const text = await vscode.env.clipboard.readText();
       if (text.length > 5_000_000) throw new Error('Clipboard text is too large');
@@ -18,51 +52,13 @@ export async function runEditorService(request: EditorServiceRequest, documentUr
     } else if (request.action === 'writeClipboard') {
       await vscode.env.clipboard.writeText(request.text); value = { text: '' };
     } else {
-      const candidates: LinkCandidate[] = [];
-      const folder = path.dirname(documentUri.fsPath);
-      const cancellation = new vscode.CancellationTokenSource();
-      const timeout = setTimeout(() => cancellation.cancel(), 3000);
+      const lookup = request.kind === 'documents' ? wikiLinkCandidates(request.query, documentUri)
+        : request.kind === 'paths' ? pathCandidates(request.query, documentUri, request.wiki === true)
+        : headingCandidates(request.target, request.query, documentUri, request.wiki === true);
+      let timer: ReturnType<typeof setTimeout>;
       try {
-        let target = request.target;
-        try { target = decodeURIComponent(target); } catch { /* A partially typed escape stays literal. */ }
-        const wanted = target.replace(documentExtensions, '').replaceAll('\\', '/');
-        const fragment = safeGlobFragment((request.kind === 'headings' ? wanted : request.query).split('/').at(-1) ?? '');
-        const include = request.kind === 'paths' ? `**/*${fragment}*` : `**/*${fragment}*.{md,markdown,mdx,mdc}`;
-        const uris = await vscode.workspace.findFiles(include, '**/{.git,node_modules,dist,.cache}/**', 2000, cancellation.token);
-        if (cancellation.token.isCancellationRequested) throw new Error('Link lookup timed out');
-        const query = request.query.toLocaleLowerCase();
-        if (request.kind === 'headings') {
-          // An exact relative target wins. A wiki basename is allowed only when unambiguous.
-          const exact = uris.filter(uri => relativePath(folder, uri).replace(documentExtensions, '') === wanted);
-          const basename = uris.filter(uri => path.basename(uri.fsPath).replace(documentExtensions, '') === wanted);
-          const uri = exact.length === 1 ? exact[0] : !exact.length && basename.length === 1 ? basename[0] : null;
-          if (uri) {
-            const bytes = await vscode.workspace.fs.readFile(uri);
-            if (cancellation.token.isCancellationRequested) throw new Error('Link lookup timed out');
-            if (bytes.byteLength <= 2_000_000) {
-              const tokens = new MarkdownIt({ html: true }).parse(Buffer.from(bytes).toString('utf8'), {});
-              const headings = tokens.flatMap((token, index) => {
-                if (token.type !== 'heading_open') return [];
-                const inline = tokens[index + 1];
-                const label = (inline.children ?? []).map(child => ['text', 'code_inline', 'image'].includes(child.type) ? child.content : ['softbreak', 'hardbreak'].includes(child.type) ? ' ' : '').join('').replace(/\s+/g, ' ').trim();
-                return [{ text: label, source: inline.content, line: (token.map?.[0] ?? 0) + 1 }];
-              });
-              for (const heading of markdownHeadingCandidates(headings)) {
-                if (heading.text.length <= 1000 && heading.anchor.length <= 1000 && heading.text.toLocaleLowerCase().includes(query)) candidates.push({ label: heading.text, insert: heading.text, anchor: heading.anchor, detail: relativePath(folder, uri).slice(0, 1000) });
-                if (candidates.length === 50) break;
-              }
-            }
-          }
-        } else {
-          for (const uri of uris) {
-            const relative = relativePath(folder, uri);
-            if (relative.length > 1000 || !relative.toLocaleLowerCase().includes(query)) continue;
-            candidates.push({ label: path.basename(relative), insert: relative, detail: vscode.workspace.asRelativePath(uri, true).slice(0, 1000) });
-            if (candidates.length === 50) break;
-          }
-        }
-      } finally { clearTimeout(timeout); cancellation.dispose(); }
-      value = { candidates };
+        value = { candidates: await Promise.race([lookup, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Link lookup timed out')), 4000); })]) };
+      } finally { clearTimeout(timer!); }
     }
     return { type: 'editorServiceResult', requestId: request.requestId, result: { ok: true, value } };
   } catch (error) {

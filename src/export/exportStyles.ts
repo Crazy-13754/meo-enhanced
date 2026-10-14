@@ -792,12 +792,12 @@ code:not(pre code) {
   border-radius: 0.35em;
   background: var(--meo-inline-code-bg);
   box-shadow: inset 0 0 0 1px var(--meo-inline-code-border, transparent);
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+  box-decoration-break: slice;
+  -webkit-box-decoration-break: slice;
 }
 
 p:has(code:not(pre code)) {
-  /* Leave room for cloned code decoration beyond the last wrapped glyph. */
+  /* Leave room for the code span's final end padding at a paragraph boundary. */
   padding-inline-end: 0.25em;
 }
 

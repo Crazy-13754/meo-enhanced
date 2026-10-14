@@ -348,7 +348,7 @@ try {
 
   await prepare('source', ':smile:', 7, 7, { emoji: true }); assert.equal(await text(), ':smile:');
   await prepare('source', '', 0, 0, { emoji: true }); await page.keyboard.type(':smi'); await page.waitForSelector('.meo-input-suggestions:not([hidden])', { timeout: 5000 }); await page.keyboard.press('Tab'); assert.equal(await text(), '😄');
-  await prepare('source', '', 0, 0, { pairMode: 'off' }, 'documents/note.md'); await page.keyboard.type('[[doc'); await page.waitForSelector('.meo-input-suggestions:not([hidden])', { timeout: 5000 }); await page.keyboard.press('Enter'); assert.equal(await text(), '[[documents/note');
+  await prepare('source', '', 0, 0, { pairMode: 'off' }, [{ label: 'note.md', insert: 'documents/note', detail: 'documents/note.md' }]); await page.keyboard.type('[[doc'); await page.waitForSelector('.meo-input-suggestions:not([hidden])', { timeout: 5000 }); await page.keyboard.press('Enter'); assert.equal(await text(), '[[documents/note');
   await prepare('source', '', 0, 0, { pairMode: 'off' }, 'hold'); await page.keyboard.type('[[old');
   await page.waitForFunction(() => typeof (window as any).releaseLinks === 'function');
   await page.evaluate(() => { const g = window as any; g.editor.setText('plain', true); g.releaseLinks([{ label: 'old', insert: 'old', detail: '' }]); });
@@ -392,27 +392,27 @@ try {
       await page.keyboard.type(query); await openSuggestions(); await settleSuggestions();
       const { width, rowPadding, rowHeight, ...sharedSurface } = await surface();
       const { width: slashWidth, rowPadding: slashPadding, rowHeight: slashHeight, ...slashSurface } = expectedSurface;
-      const links = kind === 'documents' || kind === 'paths';
+      const documents = kind === 'documents';
       assert.deepEqual(sharedSurface, slashSurface, [mode, appearance, language, kind].join(':') + ': shares slash shell and editor font');
-      assert.equal(width, kind === 'emoji' ? '240px' : slashWidth, kind + ': width follows the candidate content');
-      assert.equal(rowPadding, links ? '5px 8px' : slashPadding);
-      if (links) assert.ok(rowHeight > slashHeight * 1.5, 'document and path rows reserve two full text lines');
+      assert.equal(width, kind === 'emoji' ? '240px' : kind === 'paths' ? '300px' : slashWidth, kind + ': width follows the candidate content and editor font');
+      assert.equal(rowPadding, documents ? '5px 8px' : slashPadding);
+      if (documents) assert.ok(rowHeight > slashHeight * 1.5, 'Wiki document rows reserve two full text lines');
       else assert.equal(rowHeight, slashHeight);
       const layout = await page.$eval('.meo-input-suggestions:not([hidden])', popup => {
         const list = popup.querySelector<HTMLElement>('.meo-suggestion-list')!, row = list.querySelector<HTMLElement>('[aria-selected="true"]')!;
-        const label = row.querySelector<HTMLElement>('.meo-suggestion-label')!, detail = row.querySelector<HTMLElement>('.meo-input-suggestion-detail')!;
+        const label = row.querySelector<HTMLElement>('.meo-suggestion-label')!, detail = row.querySelector<HTMLElement>('.meo-input-suggestion-detail');
         const bounds = popup.getBoundingClientRect(), rowBounds = row.getBoundingClientRect();
-        const labelBounds = label.getBoundingClientRect(), detailBounds = detail.getBoundingClientRect();
+        const labelBounds = label.getBoundingClientRect(), detailBounds = detail?.getBoundingClientRect();
         return {
-          clipped: label.getBoundingClientRect().width > 20 && detail.getBoundingClientRect().width > 10 && list.scrollWidth <= list.clientWidth + 1 && detail.getBoundingClientRect().right <= list.getBoundingClientRect().right + 1,
-          singleLine: getComputedStyle(label).whiteSpace === 'nowrap' && getComputedStyle(detail).whiteSpace === 'nowrap',
-          twoLines: detailBounds.top >= labelBounds.bottom - 1 && Math.abs(detailBounds.left - labelBounds.left) < 1 && Math.abs(detailBounds.width - labelBounds.width) < 1,
+          clipped: labelBounds.width > 20 && list.scrollWidth <= list.clientWidth + 1 && labelBounds.right <= list.getBoundingClientRect().right + 1 && (!detailBounds || detailBounds.width > 10 && detailBounds.right <= list.getBoundingClientRect().right + 1),
+          singleLine: getComputedStyle(label).whiteSpace === 'nowrap' && (!detail || getComputedStyle(detail).whiteSpace === 'nowrap'),
+          twoLines: !!detailBounds && detailBounds.top >= labelBounds.bottom - 1 && Math.abs(detailBounds.left - labelBounds.left) < 1 && Math.abs(detailBounds.width - labelBounds.width) < 1,
           uniformHeight: Array.from(list.children).every(item => Math.abs(item.getBoundingClientRect().height - rowBounds.height) < 1),
           fallback: list.children[23]?.querySelector('.meo-input-suggestion-detail')?.textContent,
           repeatedDetail: list.children[24]?.querySelector('.meo-input-suggestion-detail')?.textContent,
-          label: label.textContent, detail: detail.textContent, labelTitle: label.dataset.tooltip, detailTitle: detail.dataset.tooltip,
+          label: label.textContent, detail: detail?.textContent, labelTitle: label.dataset.tooltip, detailTitle: detail?.dataset.tooltip,
           match: row.querySelector('.meo-suggestion-match')?.textContent,
-          ellipsis: getComputedStyle(label).textOverflow === 'ellipsis' && getComputedStyle(detail).textOverflow === 'ellipsis',
+          ellipsis: getComputedStyle(label).textOverflow === 'ellipsis' && (!detail || getComputedStyle(detail).textOverflow === 'ellipsis'),
           selectedTop: Math.abs(parseFloat(popup.style.getPropertyValue('--meo-suggestion-selected-top')) - (rowBounds.top - bounds.top - popup.clientTop)) < 1,
           markerCount: Array.from(list.querySelectorAll('.meo-suggestion-marker')).filter(marker => getComputedStyle(marker).visibility === 'visible').length,
           scrollbar: getComputedStyle(list, '::-webkit-scrollbar').width,
@@ -421,14 +421,14 @@ try {
       });
       assert.equal(layout.clipped, true, kind + ': long names and paths stay inside the menu');
       assert.equal(layout.singleLine, true); assert.equal(layout.ellipsis, true); assert.equal(layout.selectedTop, true); assert.equal(layout.markerCount, 1);
-      assert.equal(layout.twoLines, links, kind + ': only document and path candidates use two aligned lines');
+      assert.equal(layout.twoLines, documents, kind + ': only Wiki document candidates use two aligned lines');
       assert.equal(layout.uniformHeight, true, kind + ': row geometry remains stable for viewport clipping and scrolling');
-      if (links) { assert.equal(layout.fallback, candidates[23].insert); assert.equal(layout.repeatedDetail, candidates[24].detail); }
+      if (documents) { assert.equal(layout.fallback, candidates[23].insert); assert.equal(layout.repeatedDetail, candidates[24].detail); }
       assert.equal(layout.scrollbar, '6px'); assert.equal(layout.track, 'rgba(0, 0, 0, 0)');
       assert.equal(layout.match?.toLowerCase(), kind === 'headings' ? 'shared' : kind === 'emoji' ? 's' : 'note');
       if (kind === 'headings') assert.equal(layout.detail, '#shared-title', 'duplicate headings expose their canonical anchors');
       else if (kind === 'emoji') { assert.equal(layout.label, ':smile:'); assert.equal(layout.detail, '😄'); }
-      else { assert.equal(layout.labelTitle, candidates[0].label); assert.equal(layout.detailTitle, candidates[0].detail); }
+      else { assert.equal(layout.labelTitle, candidates[0].label); assert.equal(layout.detailTitle, kind === 'paths' ? undefined : candidates[0].detail); }
       await page.keyboard.press('ArrowDown'); await settleSuggestions();
       assert.equal(await page.$eval('.meo-input-suggestions', popup => popup.querySelector('[aria-selected="true"]') === popup.querySelectorAll('[role="option"]')[1]), true);
       if (kind !== 'emoji') {
@@ -443,7 +443,7 @@ try {
       await page.mouse.move(0, 0); await page.hover('.meo-input-suggestion:nth-child(2)');
       assert.equal(await page.$eval('.meo-input-suggestions', popup => popup.querySelector('[aria-selected="true"]') === popup.querySelectorAll('[role="option"]')[1]), true, kind + ': pointer uses the same selected-row state');
       await page.click('.meo-input-suggestion:nth-child(2)');
-      const inserted = kind === 'documents' ? '[[docs/1/Note with space' : kind === 'paths' ? '[Go](docs/1/Note%20with%20space.md' : kind === 'headings' ? repeatedHeadings + '[Go](#shared-title-2' : '✨';
+      const inserted = kind === 'documents' ? '[[docs/1/Note with space.md' : kind === 'paths' ? '[Go](docs/1/Note%20with%20space.md' : kind === 'headings' ? repeatedHeadings + '[Go](#shared-title-2' : '✨';
       await waitText(inserted);
       assert.equal(await page.evaluate(() => (window as any).editor.view.hasFocus), true, kind + ': accepting keeps document input connected');
     }
@@ -502,7 +502,7 @@ try {
     await ime.send('Input.insertText', { text: committed });
     await page.waitForFunction(() => document.querySelector('.meo-input-suggestions:not([hidden]) [aria-selected="true"]')?.getAttribute('aria-disabled') === 'false');
     await page.keyboard.press('Tab');
-    const inserted = kind === 'emoji' ? '😄' : kind === 'documents' ? '[[docs/0/Note with space' : '[Go](docs/0/Note%20with%20space.md';
+    const inserted = kind === 'emoji' ? '😄' : kind === 'documents' ? '[[docs/0/Note with space.md' : '[Go](docs/0/Note%20with%20space.md';
     await waitText(imePrefix + inserted + imeTail); await ime.detach();
     await prepare(mode, imePrefix + imeTail, imePrefix.length, imePrefix.length, { pairMode: 'off', emoji: true, slashPreferAbove }, kind === 'emoji' ? undefined : candidates);
     await page.evaluate(() => { (window as any).editor.view.dispatch({ scrollIntoView: true }); });

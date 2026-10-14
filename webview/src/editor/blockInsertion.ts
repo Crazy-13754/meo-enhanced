@@ -2,6 +2,7 @@ import { matchInlineScript } from '../../../src/foundation/inlineScript';
 import { EditorSelection, type EditorState, type TransactionSpec } from '@codemirror/state';
 import type { Tree } from '@lezer/common';
 import { syntaxTree } from '@codemirror/language';
+import { isSuggestionAddress } from '../application/inputSuggestions';
 export type MarkdownInputContext = 'block' | 'inline' | 'heading' | 'excluded';
 
 /** Literal comment markers in code cannot affect later prose comment operations. */
@@ -17,7 +18,7 @@ export function markdownCodeRanges(tree: Tree): { from: number; to: number }[] {
 export function markdownSyntaxContext(state: EditorState, position: number): MarkdownInputContext {
   if (state.readOnly) return 'excluded';
   const line = state.doc.lineAt(position), before = state.sliceDoc(line.from, position);
-  if (/\]\([^)]*$|\]\[[^\]]*$|\[\[[^\]]*$|!\[[^\]]*$|<[^>]*$|(?:[a-z][a-z0-9+.-]*:\/+|www\.)[^\s]*$/i.test(before)) return 'excluded';
+  if (isSuggestionAddress(before)) return 'excluded';
   let context: MarkdownInputContext = 'block';
   let node = syntaxTree(state).resolveInner(position, -1);
   for (;;) {

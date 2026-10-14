@@ -3,11 +3,11 @@ import { spawn } from 'node:child_process';
 import { parser as markdownParser } from '@lezer/markdown';
 import * as vscode from 'vscode';
 import { safeDecodeURIComponent } from '../agents/resourceMatching';
-import { withMarkdownExtensions } from './extensionConfig';
 import { WIKI_IMAGE_SCHEME, WIKI_LINK_SCHEME, wikiTargetFromImageSrc } from '../foundation/wikiReference';
 import { resolveWikiResource } from '../host/wikiResources';
 import { canResolveImageFromRoot, getImagePathCandidates } from './imagePaths';
 import { normalizeLinkDestination } from '../foundation/linkDestination';
+import { markdownPathTarget, resolveMarkdownReference } from '../host/markdownPathTargets';
 
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview:|vscode-webview-resource:|vscode-resource:)/i;
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
@@ -199,55 +199,7 @@ export async function resolveWikiLinkTargetUri(target: string, documentUri: vsco
 }
 
 export async function resolveLocalLinkTargetUri(rawHref: string, documentUri: vscode.Uri): Promise<vscode.Uri | null> {
-  const trimmed = normalizeLinkDestination(rawHref);
-  if (!trimmed || trimmed.startsWith('#')) {
-    return null;
-  }
-  if (/^\/\//.test(trimmed)) {
-    return null;
-  }
-
-  const [targetPath = ''] = trimmed.split(/[?#]/, 1);
-  if (!targetPath) {
-    return null;
-  }
-
-  if (/^file:/i.test(targetPath)) {
-    try {
-      const fileUri = vscode.Uri.parse(targetPath, true);
-      return (await uriExists(fileUri)) ? fileUri : null;
-    } catch {
-      return null;
-    }
-  }
-
-  const decodedPath = safeDecodeURIComponent(targetPath).replace(/\\/g, path.sep);
-  if (SCHEME_RE.test(targetPath) && !WINDOWS_ABSOLUTE_PATH_RE.test(decodedPath)) {
-    return null;
-  }
-
-  const basePath = path.isAbsolute(decodedPath)
-    ? decodedPath
-    : path.resolve(path.dirname(documentUri.fsPath), decodedPath);
-  const ext = path.extname(decodedPath);
-  const candidates = ext ? [basePath] : withMarkdownExtensions(basePath, true);
-  const resolvedFromDocumentDir = await findFirstExistingUri(candidates.map((candidate) => toDocumentScopedUri(candidate, documentUri)));
-  if (resolvedFromDocumentDir) {
-    return resolvedFromDocumentDir;
-  }
-
-  if (path.isAbsolute(decodedPath)) {
-    return null;
-  }
-
-  const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
-  if (!workspaceRoot?.fsPath) {
-    return null;
-  }
-
-  const workspaceBasePath = path.resolve(workspaceRoot.fsPath, decodedPath);
-  const workspaceCandidates = ext ? [workspaceBasePath] : withMarkdownExtensions(workspaceBasePath, true);
-  return findFirstExistingUri(workspaceCandidates.map((candidate) => toDocumentScopedUri(candidate, workspaceRoot)));
+  return resolveMarkdownReference(rawHref, documentUri);
 }
 
 export async function uriExists(uri: vscode.Uri): Promise<boolean> {
@@ -345,10 +297,7 @@ function resolveLocalImageUri(rawUrl: string, documentUri: vscode.Uri): vscode.U
     }
   }
 
-  const paths = documentUri.scheme === 'file' ? path : path.posix;
-  const documentPath = documentUri.scheme === 'file' ? documentUri.fsPath : documentUri.path;
-  const filePath = getImagePathCandidates(safeDecodeURIComponent(pathPart), documentPath, [], paths)[0];
-  return toDocumentScopedUri(filePath, documentUri);
+  return markdownPathTarget(safeDecodeURIComponent(pathPart), documentUri);
 }
 
 /** A detected vault is authoritative; otherwise use only the document's owning workspace. */

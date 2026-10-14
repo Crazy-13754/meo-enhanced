@@ -1,7 +1,7 @@
 import { editorViewportBounds } from './editor/editorViewportBounds';
 import { currentHeadingSuggestions } from './editor/headingSuggestions';
 import { markdownSyntaxContext, type MarkdownInputContext } from './editor/blockInsertion';
-import { createInputSuggestions } from './editor/inputSuggestions';
+import { createInputSuggestions, refreshInputSuggestions } from './editor/inputSuggestions';
 import type { LinkCandidate } from '../../src/protocol/editorServices';
 import { sourceTableAt, createSourceTableCommandTarget, tableShortcutCommands } from './editor/sourceTableCommands';
 import { parseMarkdownTable, serializeDelimitedTable } from './application/delimitedTable';
@@ -235,7 +235,7 @@ type CreateEditorOptions = {
   initialLongCodeBlockFolding?: boolean;
   initialTableStickyHeaderEnabled?: boolean;
   initialInputAssistance?: InputAssistance;
-  requestLinkCandidates?: (input: { kind: 'documents' | 'paths' | 'headings'; query: string; target: string }) => Promise<readonly LinkCandidate[]>;
+  requestLinkCandidates?: (input: { kind: 'documents' | 'paths' | 'headings'; query: string; target: string; wiki?: boolean }) => Promise<readonly LinkCandidate[]>;
   initialDiagnostics?: readonly EditorDiagnostic[];
   mermaidDiagramPresentationFactory: MermaidDiagramPresentationFactory;
   previewViewportSurface?: PreviewViewportSurface;
@@ -4213,6 +4213,9 @@ export function createEditor({
     refreshDecorations() {
       view.dispatch({ effects: refreshDecorationsEffect.of(null) });
       refreshTableLocalLinkIndicators(view.dom, view.state.facet(uiLanguageFacet));
+    },
+    refreshInputSuggestions() {
+      view.dispatch({ effects: refreshInputSuggestions.of(null) });
     },
     preserveViewport(mutate: () => void, immediateLayout = false) {
       viewportController.preserveDocumentAnchorWhileMutation(mutate, immediateLayout);

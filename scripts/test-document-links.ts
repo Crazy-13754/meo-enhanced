@@ -51,7 +51,7 @@ mock.module('vscode', () => ({
   }
 }));
 
-const { openLink } = await import('../src/shared/documentLinks');
+const { openLink, resolveLocalLinkTargetUri } = await import('../src/shared/documentLinks');
 const documentUri = URI.file(path.join(repoRoot, 'README.md'));
 const hrefs = [
   'https://example.com/',
@@ -99,6 +99,10 @@ if (commands.length !== 1 || commands[0].command !== 'vscode.open') {
 }
 
 for (const destination of [documentUri.fsPath, documentUri.fsPath.replace(/\\/g, '%5C'), `<${documentUri.fsPath}>`]) {
+  const resolved = await resolveLocalLinkTargetUri(destination, documentUri as never);
+  if (resolved?.fsPath !== documentUri.fsPath) {
+    throw new Error(`Absolute local destination did not survive shared resolution: ${destination}`);
+  }
   openedExternal.length = 0;
   commands.length = 0;
   await openLink(destination, documentUri as never, { localEditor: 'default' });

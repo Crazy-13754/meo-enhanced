@@ -964,13 +964,28 @@ release acceptance session.
 ## Settings, typing assistance and shortcuts
 
 The quick and release gates include `test-editing-preferences.ts`,
-`test-editor-services.ts`, `test-input-assistance-production.ts`,
-`test-editing-features-production.ts`, `test-slash-commands-production.ts` and
+`test-editor-services.ts`, `test-link-candidates.ts`, `test-input-assistance-production.ts`,
+`test-editing-features-production.ts`, `test-link-candidates-production.ts`, `test-slash-commands-production.ts` and
 `test-settings-window-production.ts`.
 The table/history packs exercise the new editing paths; the appearance pack
 includes the actual settings and toolbar menus. Browser tests use the production
 editor and full Webview bootstrap. They assert resulting documents, undo results,
 actual remapped gestures, persisted projections, focus and DOM disposal.
+Link candidate checks cover owning-workspace and remote root paths, directory chaining,
+segment/fragment/title preservation, vault-scoped fuzzy/multiword ranking before the
+limit, background aliases/titles and invalidation, shortest unambiguous Wiki targets,
+native table alias escaping, slash ownership even when suggestions are disabled, and
+selected clipped text without pointer hover. Path menus use one line and do not repeat
+the path; default-size width is 260px, larger fonts stop at 300px, selection and
+directory chaining retain width, and narrow viewports constrain the menu. Wiki
+document results retain the wider two-line layout. Browser checks include Source/Live,
+Chinese/light and English/dark, all candidate families, narrow menus, focus,
+Escape followed by metadata refresh and owner disposal. Quoted-directory IME checks
+retain literal directory prefixes and raw preedit spans while filtering separators
+only in the current segment. Pointer-return checks resume an existing directory in
+Source/Live and native table editing after dismissal and external focus.
+Existing tooltip checks retain
+the ordinary hover delay and continuous-hover handoff contracts.
 Settings-return checks cover the close button, backdrop and Escape in Live/Source,
 scrolled documents, native table cells, and Mermaid/math Source/Split editors.
 They require preserved caret/selection direction and the first typed character

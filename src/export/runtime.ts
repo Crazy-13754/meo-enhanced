@@ -20,6 +20,7 @@ export type ExportRuntimeBuildHtmlOptions = {
   presetDefinition?: PreviewPresetDefinition;
   sourceDocumentPath: string;
   imageSearchRoots?: readonly string[];
+  workspaceRootPath?: string;
   outputFilePath: string;
   target: 'html' | 'pdf' | 'docx';
   mermaidRuntimeSrc: string;
@@ -60,6 +61,7 @@ async function renderExportHtmlDocument(
       markdownText: snapshot.text,
       markdownFilePath: options.sourceDocumentPath,
       imageSearchRoots: options.imageSearchRoots,
+      workspaceRootPath: options.workspaceRootPath,
       outputFilePath: options.outputFilePath,
       target: options.target,
       uiLanguage: snapshot.uiLanguage,
@@ -123,6 +125,7 @@ function renderPreviewDocument(options: {
     uiLanguage: options.uiLanguage,
     showComments: environment.previewShowComments === true,
     deferImages: true,
+    deferLocalLinks: true,
     allowLocalLinks: true,
     preset,
     presetDefinition: definition

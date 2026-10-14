@@ -3552,8 +3552,9 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 .cm-editor .meo-md-html-inline code,
 .cm-editor .meo-md-html-content code:not(pre code) {
   padding: 0.08em 0.25em;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+  /* Wrapped code keeps its outer corners only at the start and end of the span. */
+  box-decoration-break: slice;
+  -webkit-box-decoration-break: slice;
   box-shadow: inset 0 0 0 1px var(--meo-document-inline-border);
 }
 
@@ -8125,6 +8126,7 @@ html[data-editor-appearance='dark'] :is(.settings-warning, .settings-shortcut-co
   font-family: var(--meo-suggestion-font, var(--meo-active-editor-font));
   font-size: var(--meo-suggestion-font-size, 13px);
 }
+.meo-path-suggestions { width: min(clamp(260px, 20em, 300px), calc(100vw - 16px)); }
 .meo-narrow-suggestions { width: min(240px, calc(100vw - 16px)); }
 .meo-input-suggestions[hidden] { display: none; }
 html[data-editor-appearance='dark'] .meo-input-suggestions {

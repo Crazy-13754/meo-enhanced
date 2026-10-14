@@ -112,6 +112,7 @@ type ExportRuntimeModule = {
     presetDefinition?: PreviewPresetDefinition;
     sourceDocumentPath: string;
     imageSearchRoots: readonly string[];
+    workspaceRootPath?: string;
     outputFilePath: string;
     target: ExportFormat;
     mermaidRuntimeSrc: string;
@@ -899,6 +900,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       presetDefinition: params.presetDefinition,
       sourceDocumentPath: params.sourceDocumentUri.fsPath,
       imageSearchRoots: await resolveImageSearchRoots(params.sourceDocumentUri),
+      workspaceRootPath: vscode.workspace.getWorkspaceFolder(params.sourceDocumentUri)?.uri.fsPath,
       outputFilePath: params.outputFileUri.fsPath,
       target: params.target,
       mermaidRuntimeSrc,

@@ -10,9 +10,13 @@ export function getImagePathCandidates(
   decodedPath: string,
   documentPath: string,
   searchRoots: readonly string[] = [],
-  paths: typeof path.posix = path
+  paths: typeof path.posix = path,
+  workspaceRoot?: string
 ): string[] {
   const normalized = decodedPath.replace(/\\/g, paths.sep);
+  if (decodedPath.startsWith('/') && !decodedPath.startsWith('//')) {
+    return [paths.resolve(workspaceRoot ?? paths.dirname(documentPath), decodedPath.slice(1))];
+  }
   const candidates = [paths.resolve(paths.dirname(documentPath), normalized)];
   if (!canResolveImageFromRoot(normalized, paths)) return candidates;
   for (const root of searchRoots) {

@@ -170,7 +170,7 @@ async function main(): Promise<void> {
         };
       });
       assert.ok(wrapState.fragments > 1, 'Long inline code must wrap');
-      assert.equal(wrapState.decoration, 'clone', 'Wrapped fragments must retain the same padding');
+      assert.equal(wrapState.decoration, 'slice', 'Wrapped code keeps its rounded ends across the whole span');
       assert.ok(wrapState.markerWidths.every(width => width === 0));
       await page.evaluate(() => (window as any).inlineCodeEditor.setMode('source'));
       await page.waitForSelector('.cm-editor.meo-mode-source');
@@ -207,6 +207,13 @@ async function main(): Promise<void> {
         })));
         assert.ok(blocks.some(block => block.text?.includes('block')));
         assert.ok(blocks.every(block => block.padding === '0px'), 'Reading code blocks must not receive inline padding');
+        await reading.setViewport({ width: 360, height: 1400, deviceScaleFactor: 1 });
+        const wrappedHtml = renderMarkdownToHtml({ markdownText: wrapped, markdownFilePath: 'inline-code-layout.md', target: 'html' }).html;
+        await reading.$eval('.meo-export-doc', (root, html) => { root.innerHTML = html; }, wrappedHtml);
+        await settle(reading);
+        const fragments = await reading.$eval('code:not(pre code)', code => ({ count: code.getClientRects().length, decoration: getComputedStyle(code).boxDecorationBreak }));
+        assert.ok(fragments.count > 1, `${surface} ${appearance}: long inline code must wrap`);
+        assert.equal(fragments.decoration, 'slice', `${surface} ${appearance}: wrapped code keeps one pair of rounded ends`);
         await reading.close();
       }
     }
