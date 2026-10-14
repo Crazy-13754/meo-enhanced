@@ -92,6 +92,67 @@ try {
     const root = doc?.querySelector('.meo-export-doc');
     return root && doc!.defaultView!.getComputedStyle(root).backgroundColor === (appearance === 'dark' ? 'rgb(30, 34, 42)' : 'rgb(254, 254, 254)');
   }, {}, appearance);
+  const verifyFontPickerViewport = async () => {
+    const previousPreset = selected;
+    const previousFonts = [defaults.previewFontFamily, defaults.previewCodeFontFamily];
+    selected = 'default'; defaults.previewFontFamily = 'Example Font 218'; defaults.previewCodeFontFamily = 'Example Font 219';
+    const page = await open({}, 'dark', 'zh-CN');
+    const frame = () => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    const chrome = () => page.evaluate(() => {
+      const toolbar = document.querySelector('.mode-toolbar')!.getBoundingClientRect();
+      return { x: toolbar.x, y: toolbar.y, windowX: scrollX, windowY: scrollY,
+        bodyX: document.body.scrollLeft, bodyY: document.body.scrollTop,
+        rootY: document.querySelector('.editor-root')!.scrollTop };
+    });
+    try {
+      await settle(page); await page.setViewport({ width: 1100, height: 430 }); await frame();
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('.preview-code-font-family-select')!.options.length > 200);
+      for (const mode of ['preview', 'source']) {
+        if (mode === 'source') {
+          await page.keyboard.press('Escape');
+          await page.click('button[data-mode="source"]');
+          await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'source'
+            && (window as any).__presetMessages.findLast((message: any) => message.type === 'setMode')?.mode === 'source');
+          if (await page.$eval('.source-preview-button', el => el.getAttribute('aria-pressed') !== 'true')) await page.click('.source-preview-button');
+          await page.waitForFunction(() => document.querySelector('.source-preview-more-panel .preview-preset-control')
+            && !document.querySelector<HTMLElement>('.preview-host')!.inert
+            && getComputedStyle(document.querySelector<HTMLElement>('.preview-host')!).visibility !== 'hidden');
+          await settle(page); await frame();
+        }
+        await page.select('.preview-font-family-control select', 'Example Font 218');
+        await page.select('.preview-code-font-family-control select', 'Example Font 219');
+        await settle(page); await frame();
+        await page.click(mode === 'preview' ? '.preview-options-trigger' : '.source-preview-more-button');
+        const before = await chrome();
+        for (const kind of ['font', 'code-font']) {
+          const popup = `.preview-${kind}-family-dropdown-panel`;
+          const visibleActive = () => page.$eval(popup, panel => {
+            const results = panel.querySelector<HTMLElement>('.preview-font-results')!;
+            const active = results.querySelector('.is-active')!.getBoundingClientRect();
+            const bounds = results.getBoundingClientRect();
+            const top = bounds.top + results.clientTop;
+            return active.top >= top - 1 && active.bottom <= top + results.clientHeight + 1;
+          });
+          await page.click(`.preview-${kind}-family-dropdown`); await frame();
+          assert.deepEqual(await chrome(), before, `${mode} ${kind}: opening the font list keeps toolbar and outer scroll positions`);
+          assert.equal(await visibleActive(), true, `${mode} ${kind}: the restored late-catalog selection is visible after popup sizing`);
+          await page.keyboard.press('ArrowDown'); await frame();
+          assert.equal(await visibleActive(), true, `${mode} ${kind}: keyboard comparison scrolls the results only`);
+          await page.keyboard.press('Enter'); await settle(page); await frame();
+          assert.deepEqual(await chrome(), before, `${mode} ${kind}: font comparison keeps the toolbar fixed`);
+          await page.type(`${popup} input`, 'Arial'); await page.keyboard.press('Enter'); await settle(page);
+          await page.click(`${popup} .preview-font-clear`); await frame();
+          assert.equal(await visibleActive(), true, `${mode} ${kind}: clearing the filter reveals the selected font`);
+          assert.deepEqual(await chrome(), before, `${mode} ${kind}: filtering keeps outer scroll positions`);
+          await page.keyboard.press('Escape'); await frame();
+          assert.deepEqual(await chrome(), before, `${mode} ${kind}: closing leaves the toolbar at its original position`);
+        }
+      }
+    } finally {
+      await page.close(); selected = previousPreset;
+      [defaults.previewFontFamily, defaults.previewCodeFontFamily] = previousFonts;
+    }
+  };
   const verifyFontPicker = async () => {
     selected = 'whitey';
     preferences!.whitey.fontFamily = 'Missing Font';
@@ -452,6 +513,7 @@ try {
   await otherMigrated.close();
   await verifyFontPicker();
   await verifyLocalizedFontNames();
+  await verifyFontPickerViewport();
   console.log('Preview preset preferences: built-in/custom defaults, switches, new documents, stale caches, Auto and legacy migration passed.');
 } finally {
   await browser.close();

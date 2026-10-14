@@ -17,6 +17,8 @@ and the fixed GitHub font policy. The preset preference browser contract also co
 large searchable catalogs, aliases, restored localized font labels before opening either picker,
 shared label queries without preference writes, lazy default/fixed typography, and a pinned default during filtering and scrolling,
 IME confirmation, separate body/code families, inline/block typography and split Preview.
+Short viewports also verify restored selections remain visible after popup sizing, with
+toolbar geometry and outer scroll positions unchanged through comparison, filtering and closing.
 The toolbar menu contract verifies click ownership and nested Escape ordering in
 Chinese/English, light/dark and narrow layouts. System enumeration is local-only;
 Windows is smoke checked against the installed font collection. Mac/Linux adapters
