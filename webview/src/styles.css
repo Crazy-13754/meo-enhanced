@@ -1254,7 +1254,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   transition:
     opacity 80ms ease,
     transform 80ms ease,
-    visibility 0s linear 180ms;
+    visibility 0s linear 80ms;
 }
 
 .preview-export-menu::before {
@@ -1266,8 +1266,7 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   height: 5px;
 }
 
-.preview-export-control:hover .preview-export-menu,
-.preview-export-control:has(:focus-visible) .preview-export-menu {
+.preview-export-control.is-expanded .preview-export-menu {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;

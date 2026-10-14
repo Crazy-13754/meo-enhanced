@@ -117,7 +117,7 @@ try {
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false, 'Escape closes a nested dropdown before the options panel');
   await page.keyboard.press('Escape');
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true);
-  assert.equal(await page.$eval('.preview-export-trigger', element => element.textContent?.trim()), '导出');
+  assert.equal(await page.$eval('.preview-export-trigger', element => element.textContent?.trim()), '导出为...');
   assert.equal(await page.$eval('.preview-export-trigger svg path', path => path.getAttribute('d')?.startsWith('M14 17a1 1 0 1 0 0 2z') && path.getAttribute('fill') === 'currentColor'), true);
   assert.equal(await page.$$eval('.preview-export-menu-action', elements => elements.length), 6);
   const formatIconColors = await page.$$eval('.preview-export-menu-action', elements => elements.map(element => {
@@ -171,6 +171,37 @@ try {
       .map(({ format, includeTableOfContents }) => [format, includeTableOfContents])
   ));
   assert.deepEqual(requests, options.map(option => [...option]));
+  const exportState = () => page.$eval('.preview-export-menu', menu => ({
+    expanded: document.querySelector('.preview-export-trigger')!.getAttribute('aria-expanded'),
+    opacity: getComputedStyle(menu).opacity, visibility: getComputedStyle(menu).visibility
+  }));
+  await page.hover('.preview-export-trigger');
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.preview-export-menu')!).opacity === '1');
+  await page.mouse.move(4, 400);
+  assert.deepEqual(await exportState(), { expanded: 'true', opacity: '1', visibility: 'visible' }, 'Pointer exit preserves the interactive menu during the close delay');
+  await page.hover('.preview-export-menu-action');
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 450)));
+  assert.equal((await exportState()).expanded, 'true', 'Entering the menu cancels the pending close');
+  await page.mouse.move(4, 400);
+  await page.waitForFunction(() => document.querySelector('.preview-export-trigger')!.getAttribute('aria-expanded') === 'false');
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.preview-export-menu')!).visibility === 'hidden');
+  await page.hover('.preview-export-trigger');
+  await page.keyboard.press('Escape');
+  assert.deepEqual(await exportState(), { expanded: 'false', opacity: '0', visibility: 'hidden' }, 'Escape closes immediately even while hovered');
+  await page.mouse.move(4, 400); await page.hover('.preview-export-trigger');
+  await page.mouse.click(4, 10);
+  assert.deepEqual(await exportState(), { expanded: 'false', opacity: '0', visibility: 'hidden' }, 'An outside click closes immediately');
+  await page.hover('.preview-export-trigger');
+  const frameBounds = (await page.$('.preview-frame'))!;
+  const frameRect = (await frameBounds.boundingBox())!;
+  await page.mouse.click(frameRect.x + 20, frameRect.y + 20);
+  assert.deepEqual(await exportState(), { expanded: 'false', opacity: '0', visibility: 'hidden' }, 'Clicking the Preview iframe also closes immediately');
+  await page.$eval('.preview-export-trigger', element => (element as HTMLElement).focus());
+  await page.keyboard.press('ArrowDown');
+  await page.mouse.move(4, 400);
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 450)));
+  assert.equal((await exportState()).expanded, 'true', 'Keyboard focus inside the menu survives pointer exit');
+  await page.keyboard.press('Escape');
   await page.hover('.preview-export-trigger');
   await page.click('.preview-export-trigger');
   await page.mouse.move(0, 0);
@@ -346,6 +377,21 @@ try {
   assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), false, 'First Escape dismisses options');
   await page.keyboard.press('Escape');
   assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), true, 'Second Escape dismisses overflow');
+  await page.setViewport({ width: 1400, height: 700 });
+  await page.waitForFunction(() => document.querySelector('.preview-format-group .preview-export-control'));
+  for (const language of ['zh-CN', 'en']) for (const appearance of ['light', 'dark']) {
+    await page.click('.more-tools-wrapper > .format-button');
+    await page.click(`.ui-language-button[data-ui-language="${language}"]`);
+    await page.click(`.editor-appearance-button[data-editor-appearance="${appearance}"]`);
+    await page.click('.more-tools-wrapper > .format-button');
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await page.$eval('.preview-export-trigger', el => el.textContent?.trim()), language === 'zh-CN' ? '导出为...' : 'Export as...');
+    await page.hover('.preview-export-trigger');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.preview-export-menu')!).opacity === '1');
+    assert.equal(await page.$eval('.preview-export-trigger .preview-toolbar-action-label', el => el.scrollWidth <= el.clientWidth), true, 'Export wording fits the toolbar');
+    await page.screenshot({ path: `tmp/preview-toolbar/export-${appearance}-${language}.png` });
+    await page.keyboard.press('Escape');
+  }
   await page.close();
   console.log('Toolbar menus browser test passed.');
 } finally {

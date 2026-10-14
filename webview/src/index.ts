@@ -950,7 +950,14 @@ exportMenu.append(exportMenuNote);
 exportControl.className = 'preview-export-control';
 exportControl.append(exportButton, exportMenu);
 
+let exportMenuCloseTimer: number | null = null;
+const cancelExportMenuClose = (): void => {
+  if (exportMenuCloseTimer !== null) window.clearTimeout(exportMenuCloseTimer);
+  exportMenuCloseTimer = null;
+};
 const setExportMenuExpanded = (expanded: boolean): void => {
+  cancelExportMenuClose();
+  exportControl.classList.toggle('is-expanded', expanded);
   exportButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 };
 const positionExportMenu = (): void => {
@@ -966,14 +973,19 @@ const positionExportMenu = (): void => {
 exportControl.addEventListener('pointerenter', () => {
   previewOptionsMenu.close();
   positionExportMenu();
-  if (!exportControl.classList.contains('is-dismissed')) setExportMenuExpanded(true);
+  exportControl.classList.remove('is-dismissed');
+  setExportMenuExpanded(true);
 });
 exportControl.addEventListener('pointerleave', () => {
   exportControl.classList.remove('is-dismissed');
-  if (exportControl.contains(document.activeElement)) {
-    (document.activeElement as HTMLElement).blur();
-  }
-  setExportMenuExpanded(false);
+  cancelExportMenuClose();
+  if (exportButton.getAttribute('aria-expanded') !== 'true') return;
+  // Keyboard navigation owns the open menu until focus moves away or Escape is pressed.
+  if (exportControl.contains(document.activeElement) && document.activeElement?.matches(':focus-visible')) return;
+  exportMenuCloseTimer = window.setTimeout(() => {
+    if (exportControl.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    setExportMenuExpanded(false);
+  }, 300);
 });
 exportControl.addEventListener('focusin', () => {
   previewOptionsMenu.close();
@@ -983,7 +995,7 @@ exportControl.addEventListener('focusin', () => {
 });
 exportControl.addEventListener('focusout', (event) => {
   if (!(event.relatedTarget instanceof Node) || !exportControl.contains(event.relatedTarget)) {
-    setExportMenuExpanded(false);
+    if (!exportControl.matches(':hover') || exportControl.classList.contains('is-dismissed')) setExportMenuExpanded(false);
     if (!exportControl.matches(':hover')) exportControl.classList.remove('is-dismissed');
   }
 });
@@ -1000,9 +1012,14 @@ const dismissExportMenu = (): void => {
     (document.activeElement as HTMLElement).blur();
   }
 };
-exportControl.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') dismissExportMenu();
-});
+window.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || event.isComposing || exportButton.getAttribute('aria-expanded') !== 'true') return;
+  event.preventDefault(); event.stopPropagation();
+  dismissExportMenu();
+}, { capture: true });
+window.addEventListener('pointerdown', (event) => {
+  if (exportButton.getAttribute('aria-expanded') === 'true' && event.target instanceof Node && !exportControl.contains(event.target)) dismissExportMenu();
+}, { capture: true });
 
 const previewAppearanceSlot = document.createElement('span');
 const previewPresetSlot = document.createElement('span');
