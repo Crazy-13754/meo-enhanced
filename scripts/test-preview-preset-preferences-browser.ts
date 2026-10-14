@@ -133,36 +133,64 @@ try {
     await fontPage.keyboard.press('Enter');
     assert.equal(await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value), before, 'IME confirmation never selects a font');
     await fontPage.$eval(search, el => el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })));
-    await fontPage.click(search, { clickCount: 3 }); await fontPage.keyboard.press('Backspace');
+    await fontPage.click(`${popup} .preview-font-clear`);
+    assert.equal(await fontPage.$eval(search, el => (el as HTMLInputElement).value), '');
+    assert.equal(await fontPage.$eval(search, el => el === document.activeElement), true);
+    assert.equal(await fontPage.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value), before, 'Clearing the search never changes the saved font');
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-clear`, el => (el as HTMLElement).hidden), true);
     const pinnedTop = await fontPage.$eval(`${popup} .preview-font-actions`, el => el.getBoundingClientRect().top);
     await fontPage.$eval(`${popup} .preview-font-results`, el => { el.scrollTop = el.scrollHeight; });
     assert.equal(await fontPage.$eval(`${popup} .preview-font-actions`, el => el.getBoundingClientRect().top), pinnedTop, 'Both search actions stay visible while results scroll');
     await fontPage.screenshot({ path: 'tmp/preview-font-picker-large.png' });
+    await fontPage.type(search, 'Example Font');
+    await fontPage.$eval(`${popup} [data-value="Example Font 050"]`, el => el.scrollIntoView({ block: 'center' }));
+    const scrollTop = await fontPage.$eval(`${popup} .preview-font-results`, el => el.scrollTop);
+    await fontPage.click(`${popup} [data-value="Example Font 050"]`); await settle(fontPage);
+    await fontPage.waitForFunction(() => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      return doc.defaultView!.getComputedStyle(doc.querySelector('.meo-export-doc')!).fontFamily.startsWith('"Example Font 050"');
+    });
+    assert.equal(preferences!.whitey.fontFamily, 'Example Font 050');
+    assert.equal(await fontPage.$eval(popup, el => (el as HTMLElement).hidden), false, 'Choosing a font keeps the comparison list open');
+    assert.equal(await fontPage.$eval(search, el => (el as HTMLInputElement).value), 'Example Font', 'Choosing preserves the filter');
+    assert.equal(await fontPage.$eval(search, el => el === document.activeElement), true, 'Choosing returns keyboard focus to search');
+    assert.equal(await fontPage.$eval(`${popup} .preview-font-results`, el => el.scrollTop), scrollTop, 'Choosing preserves the visible comparison rows');
+    await fontPage.keyboard.press('ArrowDown'); await fontPage.keyboard.press('Enter'); await settle(fontPage);
+    assert.equal(preferences!.whitey.fontFamily, 'Example Font 051', 'Keyboard comparison continues from the newly selected row');
+    assert.equal(await fontPage.$eval(popup, el => (el as HTMLElement).hidden), false);
+    await fontPage.click(`${popup} .preview-font-clear`);
     await fontPage.type(search, 'Arial'); await fontPage.keyboard.press('Enter');
     assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false);
+    await fontPage.keyboard.press('Escape');
     await fontPage.click('.preview-code-font-family-dropdown');
     assert.equal(fontRequests, 1, 'Both font pickers share the catalog');
     await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
     await fontPage.keyboard.press('Enter'); await settle(fontPage);
+    await fontPage.keyboard.press('Escape');
     for (const [kind, key, family, otherKey, otherFamily] of [
       ['font', 'fontFamily', 'Arial', 'codeFontFamily', 'Consolas'],
       ['code-font', 'codeFontFamily', 'Consolas', 'fontFamily', 'Arial']
     ]) {
       const panel = `.preview-${kind}-family-dropdown-panel`;
-      await fontPage.click(`.preview-${kind}-family-dropdown`);
+      if (await fontPage.$eval(panel, el => (el as HTMLElement).hidden)) await fontPage.click(`.preview-${kind}-family-dropdown`);
+      if (await fontPage.$eval(`${panel} .preview-font-clear`, el => !(el as HTMLElement).hidden)) await fontPage.click(`${panel} .preview-font-clear`);
       await fontPage.type(`${panel} input`, '不存在的字体');
       if (kind === 'font') {
         await fontPage.keyboard.press('Tab');
-        assert.equal(await fontPage.$eval(`${panel} .preview-font-reset`, el => el === document.activeElement), true, 'Reset is the first action after search');
+        assert.equal(await fontPage.$eval(`${panel} .preview-font-clear`, el => el === document.activeElement), true, 'Clear search is keyboard accessible');
+        await fontPage.keyboard.press('Tab');
+        assert.equal(await fontPage.$eval(`${panel} .preview-font-reset`, el => el === document.activeElement), true, 'Reset follows clear search');
         await fontPage.keyboard.press('Enter');
       } else await fontPage.click(`${panel} .preview-font-reset`);
       await settle(fontPage);
       assert.equal(preferences!.whitey[key], '', `${kind} reset restores the preset font even when search has no results`);
       assert.equal(preferences!.whitey[otherKey], otherFamily, 'Reset leaves the other font preference intact');
       assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false);
-      await fontPage.click(`.preview-${kind}-family-dropdown`);
+      assert.equal(await fontPage.$eval(panel, el => (el as HTMLElement).hidden), false, 'Reset keeps the list open for comparison with preset typography');
       assert.equal(await fontPage.$eval(`${panel} .preview-font-reset`, el => (el as HTMLButtonElement).disabled), true, 'Already using the default font disables reset');
+      await fontPage.click(`${panel} .preview-font-clear`);
       await fontPage.type(`${panel} input`, family); await fontPage.keyboard.press('Enter'); await settle(fontPage);
+      await fontPage.keyboard.press('Escape');
     }
     const readTypography = () => fontPage.evaluate(() => {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
@@ -185,8 +213,11 @@ try {
       assert.deepEqual(typography, beforeTypography, `${preset} font changes preserve each code surface's typography`);
     }
     await select(fontPage, 'github-readme');
-    assert.equal(await fontPage.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), true);
-    assert.equal(await fontPage.$eval('.preview-code-font-family-control', el => (el as HTMLElement).hidden), true);
+    for (const kind of ['font', 'code-font']) {
+      assert.equal(await fontPage.$eval(`.preview-${kind}-family-control`, el => (el as HTMLElement).hidden), false);
+      assert.equal(await fontPage.$eval(`.preview-${kind}-family-dropdown`, el => (el as HTMLButtonElement).disabled), true, 'Fixed fonts remain visible and disabled');
+      assert.equal(await fontPage.$eval(`.preview-${kind}-family-dropdown-panel`, el => (el as HTMLElement).hidden), true, 'Switching to a fixed preset closes any font comparison');
+    }
     await select(fontPage, 'whitey');
     if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.preview-options-trigger');
     await fontPage.click('.preview-font-family-dropdown');
@@ -207,6 +238,13 @@ try {
       && !document.querySelector<HTMLElement>('.preview-host')!.inert
       && getComputedStyle(document.querySelector<HTMLElement>('.preview-host')!).visibility !== 'hidden');
     await fontPage.click('.source-preview-more-button');
+    await select(fontPage, 'github-readme');
+    if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.source-preview-more-button');
+    assert.equal(await fontPage.$$eval('.source-preview-more-panel .preview-select-control', els => els.some(el => (el as HTMLElement).hidden)), false, 'Split Preview shows the same preset configuration items');
+    assert.equal(await fontPage.$eval('.preview-code-font-family-control', el => (el as HTMLElement).offsetHeight > 0), true);
+    assert.equal(await fontPage.$eval('.preview-font-family-dropdown', el => (el as HTMLButtonElement).disabled), true);
+    await select(fontPage, 'whitey');
+    if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.source-preview-more-button');
     await fontPage.waitForSelector('.preview-code-font-family-dropdown', { visible: true });
     await fontPage.click('.preview-code-font-family-dropdown');
     await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
@@ -242,6 +280,7 @@ try {
     await page.keyboard.press('Enter'); await settle(page);
     assert.equal(preferences!.whitey.fontFamily, 'Microsoft YaHei', 'Choosing a Chinese label persists the canonical family');
     assert.equal(await page.$eval('.preview-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), '微软雅黑');
+    await page.keyboard.press('Escape');
     const codePopup = await openPicker('code-font');
     await page.type(`${codePopup} input`, '宋体'); await page.keyboard.press('Enter'); await settle(page);
     assert.equal(preferences!.whitey.codeFontFamily, 'SimSun', 'Code fonts use the same localized labels and canonical persistence');

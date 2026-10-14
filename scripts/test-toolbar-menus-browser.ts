@@ -335,6 +335,7 @@ try {
   await page.click('.preview-font-family-dropdown');
   assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), false, 'Nested option controls keep the overflow menu open');
   await page.click('.preview-font-family-dropdown-panel .preview-font-results [role="option"]:first-child');
+  assert.equal(await page.$eval('.preview-font-family-dropdown-panel', panel => (panel as HTMLElement).hidden), false);
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false);
   const optionsBounds = await page.$eval('.preview-options-panel', panel => {
     const bounds = panel.getBoundingClientRect();
@@ -343,9 +344,12 @@ try {
   assert.ok(optionsBounds.left >= 0 && optionsBounds.right <= 420 && optionsBounds.top >= 0 && optionsBounds.bottom <= 700, JSON.stringify(optionsBounds));
   await page.screenshot({ path: 'tmp/preview-toolbar/options-narrow-en.png' });
   await page.keyboard.press('Escape');
-  assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), false, 'First Escape dismisses options');
+  assert.equal(await page.$eval('.preview-font-family-dropdown-panel', panel => (panel as HTMLElement).hidden), true, 'First Escape dismisses the font comparison');
+  assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false);
   await page.keyboard.press('Escape');
-  assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), true, 'Second Escape dismisses overflow');
+  assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), false, 'Second Escape dismisses options');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.toolbar-overflow-panel', panel => (panel as HTMLElement).hidden), true, 'Third Escape dismisses overflow');
   await page.close();
   console.log('Toolbar menus browser test passed.');
 } finally {

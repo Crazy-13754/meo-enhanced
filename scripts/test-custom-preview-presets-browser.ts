@@ -177,8 +177,9 @@ try {
   assert.equal((await visual()).h1, '30px');
   assert.equal((await visual()).color, 'rgb(226, 229, 231)');
   assert.equal(await page.$eval('.mode-toolbar', el => getComputedStyle(el).backgroundColor), uiBefore, 'Document CSS does not recolor the toolbar');
-  assert.equal(await page.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), true);
-  assert.equal(await page.$eval('.preview-code-font-family-control', el => (el as HTMLElement).hidden), true, 'Fixed custom presets hide both font overrides');
+  assert.equal(await page.$eval('.preview-font-family-control', el => (el as HTMLElement).hidden), false);
+  assert.equal(await page.$eval('.preview-code-font-family-control', el => (el as HTMLElement).hidden), false, 'Fixed custom presets show both font overrides');
+  assert.equal(await page.$eval('.preview-code-font-family-dropdown', el => (el as HTMLButtonElement).disabled), true);
   assert.equal(await page.$eval('.preview-font-family-dropdown', el => (el as HTMLButtonElement).disabled), true);
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-mermaid.is-rendered'));
   await page.evaluate(async () => { await document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.fonts.ready; });
@@ -261,6 +262,12 @@ try {
   for (const [preset, comments, coloring] of [[fixedOn, true, false], [fixedOff, false, true]] as const) {
     await choose(preset.id);
     await waitBehavior(comments, coloring);
+    for (const kind of ['font', 'code-font']) {
+      const control = await controlState(`.preview-${kind}-family-control`);
+      assert.equal(control.hidden, false, 'Custom presets show the same font settings');
+      assert.ok(control.buttons.every(button => button.disabled));
+      assert.equal(control.reason, '字体由此预设的样式决定');
+    }
     for (const [selector, enabled] of [['.preview-show-comments', comments], ['.preview-source-coloring', coloring]] as const) {
       const control = await controlState(selector);
       assert.equal(control.hidden, false);
@@ -270,6 +277,8 @@ try {
     }
     const messageCount = await page.evaluate(() => (window as any).__presetMessages.length);
     await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('.preview-font-family-dropdown')!.click();
+      document.querySelector<HTMLButtonElement>('.preview-code-font-family-dropdown')!.click();
       document.querySelector<HTMLButtonElement>('[data-preview-comments="false"]')!.click();
       document.querySelector<HTMLButtonElement>('[data-preview-source-coloring="true"]')!.click();
     });

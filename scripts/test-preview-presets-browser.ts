@@ -162,12 +162,13 @@ try {
   await waitFor(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector<HTMLElement>('.meo-export-code-line-source')?.dataset.meoShiki);
   let github = await read();
   assert.equal(await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector('colgroup[data-meo-preview-columns]') === null), true);
-  assert.deepEqual(github.hidden, [true, false, false, false]);
-  assert.equal(await page.$eval('.preview-code-font-family-control', element => (element as HTMLElement).hidden), true, 'GitHub hides both fixed font controls');
+  assert.deepEqual(github.hidden, [false, false, false, false]);
+  assert.equal(await page.$eval('.preview-code-font-family-control', element => (element as HTMLElement).hidden), false, 'GitHub shows both fixed font controls');
   await page.click('.preview-options-trigger');
   assert.equal(await page.$$eval('.preview-options-panel button', buttons => buttons.every(button => (button as HTMLButtonElement).disabled)), true);
   assert.deepEqual(await page.$$eval('.preview-options-panel .preview-toolbar-dropdown-value', values => values.map(value => value.textContent)), ['由样式决定', '由样式决定', '适配面板']);
   for (const [selector, reason] of [
+    ['.preview-font-family-dropdown', '字体由此预设的样式决定'], ['.preview-code-font-family-dropdown', '字体由此预设的样式决定'],
     ['.preview-width-dropdown', '正文宽度由此预设固定'],
     ['[data-preview-source-coloring="true"]', '此预设固定开启代码着色'], ['[data-preview-comments="false"]', '此预设固定隐藏 HTML 注释']
   ]) {
