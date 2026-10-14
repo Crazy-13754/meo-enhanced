@@ -1,4 +1,4 @@
-import { createElement, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, PanelLeft, PanelRight, Pin, PinOff, X, type IconNode } from 'lucide';
+import { createElement, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ArrowLeftToLine, ArrowRightToLine, Pin, PinOff, X, type IconNode } from 'lucide';
 import { DEFAULT_OUTLINE_WIDTH, normalizeOutlineWidth } from '../../../src/shared/outlineWidth';
 import type { HeadingInlineSegment } from './markdownSyntax';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
@@ -152,10 +152,10 @@ export function createOutlineController({
   const outlineLabel = document.createElement('span');
   outlineLabel.className = 'outline-header-label';
   outlineLabel.textContent = uiStrings.outline;
-  const collapseButton = iconButton(ChevronsUp, 'collapse-top2', uiStrings.outlineCollapseTopTwo);
-  const expandButton = iconButton(ChevronsDown, 'expand-all', uiStrings.outlineExpandAll);
+  const collapseButton = iconButton(ChevronsDownUp, 'collapse-top2', uiStrings.outlineCollapseTopTwo);
+  const expandButton = iconButton(ChevronsUpDown, 'expand-all', uiStrings.outlineExpandAll);
   const modeButton = iconButton(Pin, 'toggle-mode', uiStrings.outlineSwitchFixed);
-  const positionButton = iconButton(PanelLeft, 'toggle-position', uiStrings.outlineSwitchLeft);
+  const positionButton = iconButton(ArrowLeftToLine, 'toggle-position', uiStrings.outlineSwitchLeft);
   const closeButton = iconButton(X, 'close', uiStrings.outlineClose);
   closeButton.classList.add('outline-close-button');
   outlineHeader.append(outlineLabel, collapseButton, expandButton, positionButton, modeButton, closeButton);
@@ -431,7 +431,7 @@ export function createOutlineController({
   const updatePositionButton = () => {
     positionButton.dataset.tooltipLiveUpdate = 'true';
     const nextPosition = position === 'left' ? 'right' : 'left';
-    positionButton.replaceChildren(createElement(nextPosition === 'left' ? PanelLeft : PanelRight, { width: 14, height: 14 }));
+    positionButton.replaceChildren(createElement(nextPosition === 'left' ? ArrowLeftToLine : ArrowRightToLine, { width: 14, height: 14 }));
     positionButton.dataset.tooltip = nextPosition === 'left' ? uiStrings.outlineSwitchLeft : uiStrings.outlineSwitchRight;
     positionButton.setAttribute('aria-label', positionButton.dataset.tooltip ?? '');
   };
