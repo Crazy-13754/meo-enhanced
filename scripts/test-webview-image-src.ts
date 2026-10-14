@@ -1,48 +1,7 @@
 import * as path from 'node:path';
 import { mock } from 'bun:test';
+import { URI as TestUri } from 'vscode-uri';
 import { encodeMarkdownPath } from '../src/foundation/linkDestination';
-
-class TestUri {
-  readonly scheme: string;
-  readonly authority: string;
-  readonly fsPath: string;
-  readonly path: string;
-  readonly query: string;
-  readonly fragment: string;
-
-  constructor(fsPath: string, scheme = 'file', query = '', fragment = '') {
-    this.scheme = scheme;
-    this.authority = '';
-    this.fsPath = path.normalize(fsPath);
-    const uriPath = this.fsPath.replace(/\\/g, '/');
-    this.path = uriPath.startsWith('/') ? uriPath : `/${uriPath}`;
-    this.query = query;
-    this.fragment = fragment;
-  }
-
-  static file(filePath: string): TestUri {
-    return new TestUri(filePath);
-  }
-
-  static parse(raw: string): TestUri {
-    if (!raw.toLowerCase().startsWith('file:')) throw new Error(`Unsupported test URI: ${raw}`);
-    const uriPath = decodeURIComponent(new URL(raw).pathname);
-    return new TestUri(path.sep === '\\' ? uriPath.replace(/^\/(?=[a-z]:)/i, '') : uriPath);
-  }
-
-  with(changes: { path?: string; query?: string; fragment?: string }): TestUri {
-    return new TestUri(
-      changes.path ?? this.fsPath,
-      this.scheme,
-      changes.query ?? this.query,
-      changes.fragment ?? this.fragment
-    );
-  }
-
-  toString(): string {
-    return `file://${encodeURI(this.path)}`;
-  }
-}
 
 const existingFiles = new Map<string, Uint8Array>();
 const fileKey = (fsPath: string) => path.sep === '\\' ? fsPath.toLowerCase() : fsPath;
@@ -106,7 +65,7 @@ function createWebview(localResourceRoots: TestUri[]) {
 
 // URI fixtures and production node:path operations must use the same host dialect.
 // CI runs these contracts on both Windows (drive paths) and Ubuntu (POSIX paths).
-const fixtureRoot = path.resolve(path.sep, 'meo-image-fixture');
+const fixtureRoot = TestUri.file(path.resolve(path.sep, 'meo-image-fixture')).fsPath;
 const documentDirectory = path.join(fixtureRoot, 'docs');
 const documentUri = TestUri.file(path.join(documentDirectory, 'test.md'));
 const localImage = TestUri.file(path.join(documentDirectory, 'local.png'));
