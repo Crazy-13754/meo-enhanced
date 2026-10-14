@@ -326,6 +326,9 @@ signal. Native menu dismissal still requires separate Windows verification.
 The Live and Source painting cases capture the browser's actual caret pixels,
 using a distinct caret color and a visible-caret positive control. Browser virtual
 time keeps screenshot transport from consuming the activation interval. Before
+each capture, queue the screenshot request and then advance its fixed 34ms frame
+budget; requesting a new compositor frame only after pausing can stall capture.
+The clock remains paused during image transport after the budget expires. Before
 the delayed click, screenshots must contain no old-position caret; afterward they
 must contain the new-position caret. Frame observations also cover the unfrozen
 browser event path. These checks do not simulate Windows Alt+Tab or prove native

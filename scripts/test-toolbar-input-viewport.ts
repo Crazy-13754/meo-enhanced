@@ -838,6 +838,14 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
       await input.send('Emulation.setVirtualTimePolicy', { policy: 'advance', budget });
       await expired;
     };
+    const capture = async () => {
+      // Queue capture before its frame budget: a paused clock cannot service a
+      // screenshot that needs another compositor frame. Budget expiry freezes
+      // the clock again while image transport finishes.
+      const screenshot = input.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+      await advance(34);
+      return Buffer.from((await screenshot).data, 'base64');
+    };
     // Freeze browser time between actual screenshots, so image transport and
     // decoding cannot consume the short display guard. No fake caret is drawn.
     await input.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
@@ -850,14 +858,10 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
       return document.activeElement === content;
     });
     assert.equal(ready, true, `${mode} painted caret guard delayed input focus`);
-    await advance(34);
-    // Keep capture inside the current viewport so screenshot transport does not
-    // request an expanded surface while virtual time is paused.
-    const beforeClick = await page.screenshot({ captureBeyondViewport: false });
+    const beforeClick = await capture();
     await input.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...geometry.click });
     await input.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...geometry.click });
-    await advance(34);
-    const afterClick = await page.screenshot({ captureBeyondViewport: false });
+    const afterClick = await capture();
     const pixels = await page.evaluate(async ({ images, geometry }) => {
       const counts: Array<{ old: number; next: number }> = [];
       for (const encoded of images) {
