@@ -124,6 +124,12 @@ exact commands without running them.
 
 ## Daily repair loop
 
+`scripts/test-list-toolbar-browser.ts` checks all three toolbar list actions in Live
+and Source with monospaced/proportional fonts: empty and nonempty caret placement,
+indented markers, immediate task layout without overshoot, conversion, cancellation,
+forward/backward multiline selection and one-click undo/redo. It runs in the list,
+high-risk browser and release browser gates.
+
 `scripts/test-ui-colors.ts` checks the eight base inputs, configuration ownership,
 strict Protocol decoding and correlated saves. `scripts/test-ui-colors-production.ts`
 uses the production Settings window and the same configuration owner to verify

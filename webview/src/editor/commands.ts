@@ -12,6 +12,7 @@ import { markdownCodeRanges } from './blockInsertion';
 import { planHtmlCommentToggle } from '../application/htmlCommentInput';
 import { beginHtmlCommentTemplate } from './htmlCommentEditing';
 import { addAutomaticSymbolPair } from './typingAssistance';
+import { supersedeLiveInputDerivedWork } from './liveInputDerivedWork';
 
 const selectionHistory = new WeakMap<EditorView, { after: EditorSelection; before: EditorSelection[] }>();
 // Programmatic edits share the existing toolbar caret-continuity path in both modes.
@@ -35,6 +36,7 @@ function toggleLines(view: EditorView, command: EditorCommandId): boolean {
   const ownMarker = command === 'bullet' ? /^\s*[-+*]\s+(?!\[[ xX]\])/ : command === 'ordered' ? /^\s*\d+[.)]\s+/ : command === 'taskList' ? /^\s*[-+*]\s+\[[ xX]\]\s+/ : command === 'quote' ? /^\s*>\s?/ : heading ? new RegExp('^\\s*#{' + heading[1] + '} ') : null;
   const remove = !!ownMarker && lines.every(line => ownMarker.test(line.text));
   let ordinal = 0;
+  const contentOffsets = new Map<number, number>();
   const changes = lines.map(line => {
     if (command === 'taskDone') {
       const match = /^(\s*[-+*]\s+\[)([ xX])(\])/.exec(line.text);
@@ -48,9 +50,27 @@ function toggleLines(view: EditorView, command: EditorCommandId): boolean {
       const next = Math.max(0, Math.min(6, level + (command === 'headingDown' ? 1 : -1)));
       prefix = next ? '#'.repeat(next) + ' ' : '';
     }
+    contentOffsets.set(line.from, indentation.length + prefix.length);
     return { from: line.from + indentation.length, to: line.from + indentation.length + existing.length, insert: prefix };
   });
-  const transaction = view.state.update({ changes, annotations: annotation });
+  const changeSet = view.state.changes(changes);
+  if (changeSet.empty) return true;
+  // Complete block markers and their Live widgets must appear together. A
+  // caret at an inserted prefix belongs after it, at the original body text.
+  const transaction = view.state.update({
+    changes: changeSet,
+    selection: EditorSelection.create(view.state.selection.ranges.map(range => {
+      const mapped = range.map(changeSet, command === 'taskDone' ? -1 : 1);
+      if (!range.empty) return mapped;
+      const line = view.state.doc.lineAt(range.head);
+      const offset = contentOffsets.get(line.from);
+      if (offset === undefined) return mapped;
+      const contentStart = changeSet.mapPos(line.from, -1) + offset;
+      return mapped.head < contentStart ? EditorSelection.cursor(contentStart, range.assoc) : mapped;
+    }), view.state.selection.mainIndex),
+    effects: supersedeLiveInputDerivedWork(),
+    annotations: [annotation, isolateHistory.of('full')]
+  });
   view.dispatch(transaction);
   return true;
 }
