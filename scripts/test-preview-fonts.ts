@@ -11,6 +11,14 @@ import { createPreviewFontsTransport } from '../webview/src/adapters/previewFont
 
 const fonts = [{ family: 'Example Sans', aliases: ['示例字体'] }, { family: 'example sans', aliases: ['Example'] }];
 assert.deepEqual(mergePreviewFonts(fonts), [{ family: 'Example Sans', aliases: ['示例字体', 'Example'] }]);
+const localizedFont = { family: 'Microsoft YaHei', aliases: ['微软雅黑'], localizedFamilies: { 'zh-CN': '微软雅黑' } };
+assert.deepEqual(decodePreviewFonts([localizedFont]), [localizedFont], 'Localized display names survive the catalog decoder');
+assert.deepEqual(mergePreviewFonts([{ family: localizedFont.family, aliases: [] }, localizedFont]), [localizedFont], 'Merging a duplicate family retains its localized name');
+for (const localizedFamilies of [null, [], { 'zh-CN': 12 }, { 'zh-CN': 'Bad; name' }, { 'zh-CN': '' }, { ja: '日本語' }]) {
+  assert.equal(decodePreviewFonts([{ ...localizedFont, localizedFamilies }]), null, 'Localized names are validated at the Protocol boundary');
+}
+assert.deepEqual(decodeHostToWebviewMessage({ type: 'previewFontsResult', requestId: 'localized', result: { ok: true, value: [localizedFont] } }),
+  { type: 'previewFontsResult', requestId: 'localized', result: { ok: true, value: [localizedFont] } });
 assert.equal(decodePreviewFonts([{ family: 'Bad; name', aliases: [] }]), null);
 assert.equal(decodePreviewFonts([{ family: 'Good', aliases: [12] }]), null);
 assert.equal(decodeWebviewToHostMessage({ type: 'getPreviewFonts', requestId: '', refresh: false }), null);

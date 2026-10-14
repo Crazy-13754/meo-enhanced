@@ -4,7 +4,7 @@ import { decodePreviewFonts, mergePreviewFonts, type PreviewFont } from '../foun
 
 const execute = promisify(execFile);
 // Static commands only: font names never enter shell source or command arguments.
-const windowsFonts = `$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); Add-Type -AssemblyName System.Drawing; $collection=[System.Drawing.Text.InstalledFontCollection]::new(); try { @($collection.Families | ForEach-Object { $family=$_; [PSCustomObject]@{ family=$family.GetName(1033); aliases=@(@($family.Name,$family.GetName(2052)) | Select-Object -Unique) } }) | ConvertTo-Json -Compress -Depth 4 } finally { $collection.Dispose() }`;
+const windowsFonts = `$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); Add-Type -AssemblyName System.Drawing; $collection=[System.Drawing.Text.InstalledFontCollection]::new(); try { @($collection.Families | ForEach-Object { $family=$_; [PSCustomObject]@{ family=$family.GetName(1033); aliases=@(@($family.Name,$family.GetName(2052)) | Select-Object -Unique); localizedFamilies=@{'zh-CN'=$family.GetName(2052)} } }) | ConvertTo-Json -Compress -Depth 4 } finally { $collection.Dispose() }`;
 
 export async function readSystemPreviewFonts(platform = process.platform): Promise<readonly PreviewFont[]> {
   const options = { encoding: 'utf8' as const, timeout: 10000, maxBuffer: 2 * 1024 * 1024, windowsHide: true };

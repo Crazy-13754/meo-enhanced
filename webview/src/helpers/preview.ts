@@ -1028,7 +1028,7 @@ export function createPreviewController({
       const current = index === 0 ? fontFamilyPreference : codeFontFamilyPreference;
       const defaultOption = index === 0 ? defaultFontOption : defaultCodeFontOption;
       const options = fontCatalog.map(font => {
-        const option = document.createElement('option'); option.value = font.family; option.textContent = font.family; option.dataset.aliases = font.aliases.join(' '); return option;
+        const option = document.createElement('option'); option.value = font.family; option.textContent = font.localizedFamilies?.[uiLanguage] ?? font.family; option.dataset.aliases = [...font.aliases, ...Object.values(font.localizedFamilies ?? {})].join(' '); return option;
       });
       if (current && !options.some(option => option.value === current)) {
         const option = document.createElement('option'); option.value = current; option.textContent = current; if (fontCatalogAvailable && !fontCatalog.some(font => [font.family, ...font.aliases].some(name => name.toLocaleLowerCase() === current.toLocaleLowerCase()))) option.dataset.missing = 'true'; options.unshift(option);

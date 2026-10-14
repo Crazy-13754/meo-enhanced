@@ -11,7 +11,13 @@ const bundle = await build.outputs[0]!.text();
 const text = '# Preset memory\n\nInline `npm install` and 中文 `路径`\n\n```typescript\nconst value = 42;\n```\n\n<!-- memory comment -->';
 let fontRequests = 0;
 let fontFailure = false;
-const fonts = [{ family: 'Arial', aliases: [] }, { family: 'Georgia', aliases: [] }, { family: 'Consolas', aliases: [] }, ...Array.from({ length: 220 }, (_, index) => ({ family: `Example Font ${String(index).padStart(3, '0')}`, aliases: index === 50 ? ['示例字体'] : [] }))];
+const fonts = [
+  { family: 'Arial', aliases: [] }, { family: 'Georgia', aliases: [] }, { family: 'Consolas', aliases: [] },
+  { family: 'Microsoft YaHei', aliases: ['微软雅黑'], localizedFamilies: { 'zh-CN': '微软雅黑' } },
+  { family: 'SimSun', aliases: [], localizedFamilies: { 'zh-CN': '宋体' } },
+  { family: 'Example JP', aliases: ['漢字名'] },
+  ...Array.from({ length: 220 }, (_, index) => ({ family: `Example Font ${String(index).padStart(3, '0')}`, aliases: index === 50 ? ['示例字体'] : [] }))
+];
 let selected: string | undefined;
 let preferences: Record<string, any> | undefined;
 const custom = createCustomPreviewPreset(parseCustomPreviewPresetManifest({ schemaVersion: 1, id: 'memory', name: 'Memory', description: 'Memory fixture', base: 'default', controls: { fontFamily: { mode: 'editable' } }, themes: { light: { css: 'light.css' }, dark: { css: 'dark.css' } } }), { light: ':root { --meo-bg: #fafafa; }', dark: ':root { --meo-bg: #222222; }' }, 'a'.repeat(64));
@@ -20,7 +26,7 @@ let owner = createOwner();
 const defaults = { previewAppearance: 'auto', previewFontFamily: 'Georgia', previewCodeFontFamily: '', previewSourceColoring: true, previewShowComments: false };
 const browser = await launchTestBrowser();
 try {
-  const open = async (state: unknown = {}, editorAppearance = 'dark') => {
+  const open = async (state: unknown = {}, editorAppearance = 'dark', uiLanguage = 'en') => {
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 760 });
     await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
@@ -50,7 +56,7 @@ try {
     await page.addScriptTag({ content: bundle });
     await page.evaluate(init => window.dispatchEvent(new MessageEvent('message', { data: init })), {
       type: 'init', documentId: 'file:///preset-memory.md', text, version: 1, savedRevision: { version: 1, text },
-      diagnostics: [], mode: 'preview', uiLanguage: 'en', sourceLineNumbers: 'on', ...defaults, editorAppearance,
+      diagnostics: [], mode: 'preview', uiLanguage, sourceLineNumbers: 'on', ...defaults, editorAppearance,
       previewPreset: selected, previewPresetPreferences: await owner.read(),
       customPreviewPresets: [custom],
       gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit',
@@ -171,18 +177,75 @@ try {
     assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false);
     await fontPage.keyboard.press('Escape');
     assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), true);
-    await fontPage.click('button[data-mode="source"]'); await fontPage.click('.source-preview-button');
-    await fontPage.click('.source-preview-more-button'); await fontPage.click('.preview-code-font-family-dropdown');
+    await fontPage.click('button[data-mode="source"]');
+    await fontPage.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'source'
+      && (window as any).__presetMessages.findLast((message: any) => message.type === 'setMode')?.mode === 'source');
+    if (await fontPage.$eval('.source-preview-button', el => el.getAttribute('aria-pressed') !== 'true')) await fontPage.click('.source-preview-button');
+    await fontPage.waitForFunction(() => document.querySelector('.source-preview-more-panel .preview-preset-control')
+      && !document.querySelector<HTMLElement>('.preview-host')!.inert
+      && getComputedStyle(document.querySelector<HTMLElement>('.preview-host')!).visibility !== 'hidden');
+    await fontPage.click('.source-preview-more-button');
+    await fontPage.waitForSelector('.preview-code-font-family-dropdown', { visible: true });
+    await fontPage.click('.preview-code-font-family-dropdown');
     await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
     await fontPage.mouse.move(2, 400);
     assert.equal(await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden), false, 'Split Preview keeps the search open after pointer exit');
     await fontPage.setViewport({ width: 420, height: 700 });
+    await fontPage.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     if (await fontPage.$eval('.preview-options-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.source-preview-more-button');
     if (await fontPage.$eval('.preview-code-font-family-dropdown-panel', el => (el as HTMLElement).hidden)) await fontPage.click('.preview-code-font-family-dropdown');
     await fontPage.type('.preview-code-font-family-dropdown-panel input', 'Consolas');
     assert.equal(await fontPage.$eval('.preview-code-font-family-dropdown-panel', el => (el as HTMLElement).hidden), false);
     await fontPage.screenshot({ path: 'tmp/preview-font-picker-narrow.png' });
     await fontPage.close();
+  };
+  const verifyLocalizedFontNames = async () => {
+    selected = 'whitey';
+    const page = await open({}, 'light', 'zh-CN');
+    const openPicker = async (kind: 'font' | 'code-font') => {
+      if (await page.$eval('.preview-options-panel', element => (element as HTMLElement).hidden)) await page.click('.preview-options-trigger');
+      await page.click(`.preview-${kind}-family-dropdown`);
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('.preview-font-family-select')!.options.length > 200);
+      return `.preview-${kind}-family-dropdown-panel`;
+    };
+    const popup = await openPicker('font');
+    assert.equal(await page.$eval(`${popup} [data-value="Microsoft YaHei"] .preview-font-option-name`, el => el.textContent), '微软雅黑');
+    assert.equal(await page.$eval(`${popup} [data-value="Arial"] .preview-font-option-name`, el => el.textContent), 'Arial', 'Families without a Chinese name retain their original name');
+    assert.equal(await page.$eval(`${popup} [data-value="Example JP"] .preview-font-option-name`, el => el.textContent), 'Example JP', 'Unlabelled Han aliases are not assumed to be Chinese');
+    for (const query of ['Microsoft YaHei', '微软雅黑']) {
+      await page.click(`${popup} input`, { clickCount: 3 }); await page.keyboard.press('Backspace');
+      await page.type(`${popup} input`, query);
+      assert.deepEqual(await page.$$eval(`${popup} .preview-font-results button`, els => els.map(el => [el.getAttribute('data-value'), el.textContent])), [['Microsoft YaHei', '微软雅黑']], `Chinese UI finds the same canonical family using ${query}`);
+    }
+    await page.keyboard.press('Enter'); await settle(page);
+    assert.equal(preferences!.whitey.fontFamily, 'Microsoft YaHei', 'Choosing a Chinese label persists the canonical family');
+    assert.equal(await page.$eval('.preview-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), '微软雅黑');
+    const codePopup = await openPicker('code-font');
+    await page.type(`${codePopup} input`, '宋体'); await page.keyboard.press('Enter'); await settle(page);
+    assert.equal(preferences!.whitey.codeFontFamily, 'SimSun', 'Code fonts use the same localized labels and canonical persistence');
+    const language = async (value: string) => {
+      await page.click('.more-tools-wrapper > .format-button');
+      await page.click(`.ui-language-button[data-ui-language="${value}"]`);
+      await page.click('.more-tools-wrapper > .format-button');
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    };
+    await language('en');
+    assert.equal(await page.$eval('.preview-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), 'Microsoft YaHei');
+    assert.equal(await page.$eval('.preview-code-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), 'SimSun');
+    await openPicker('font'); await page.type(`${popup} input`, '微软雅黑');
+    assert.deepEqual(await page.$$eval(`${popup} .preview-font-results button`, els => els.map(el => [el.getAttribute('data-value'), el.textContent])), [['Microsoft YaHei', 'Microsoft YaHei']], 'Chinese names remain searchable in English UI');
+    await page.keyboard.press('Escape');
+    await language('zh-CN');
+    assert.equal(await page.$eval('.preview-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), '微软雅黑');
+    assert.equal(await page.$eval('.preview-code-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), '宋体');
+    await page.close();
+    owner = createOwner();
+    const reopened = await open({}, 'dark', 'zh-CN');
+    await reopened.click('.preview-options-trigger'); await reopened.click('.preview-font-family-dropdown');
+    await reopened.waitForFunction(() => document.querySelector('.preview-font-family-dropdown .preview-toolbar-dropdown-value')!.textContent === '微软雅黑');
+    assert.equal(await reopened.$eval('.preview-font-family-select', el => (el as HTMLSelectElement).value), 'Microsoft YaHei');
+    assert.equal(await reopened.$eval('.preview-code-font-family-dropdown .preview-toolbar-dropdown-value', el => el.textContent), '宋体', 'Reopened documents restore both localized labels');
+    await reopened.close();
   };
   const page = await open();
   for (const id of ['default', 'github-readme', 'newsprint', 'obsidian-minimal', custom.id, 'whitey']) {
@@ -274,6 +337,7 @@ try {
   assert.deepEqual(await controls(otherMigrated), { appearance: 'light', fontFamily: 'Georgia', sourceColoring: true, showComments: false }, 'Legacy migration snapshots shared switches before later Default changes');
   await otherMigrated.close();
   await verifyFontPicker();
+  await verifyLocalizedFontNames();
   console.log('Preview preset preferences: built-in/custom defaults, switches, new documents, stale caches, Auto and legacy migration passed.');
 } finally {
   await browser.close();
