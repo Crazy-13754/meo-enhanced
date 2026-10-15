@@ -464,6 +464,11 @@ preview is covered by
 with a viewport table whose row layout is deliberately delayed. The first
 visible Live frame must already contain content and the table's final height;
 this check runs in the quick, targeted table/viewport, and release gates.
+`scripts/test-preview-transition.ts` tolerates a temporarily absent iframe body
+while polling readiness. It establishes interactive Live readiness before the next
+case and retains the 150ms late-cancellation observation after readiness.
+The slow-image reveal bound remains 260ms and measures the trusted click through
+the actual visibility mutation in the browser, excluding automation transport.
 `scripts/test-mode-transition-matrix.ts` checks both six-step mode cycles with
 Source's split preview on and off. It covers paragraphs, tables, code blocks,
 successful and failed Mermaid renders, images, math, HTML/quotes, and nested

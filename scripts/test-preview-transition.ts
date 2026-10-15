@@ -156,7 +156,7 @@ try {
       releaseInitialRender();
     }
     await waitFor(`${phase} preview ready`, () =>
-      document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.body.textContent?.includes('Paragraph 39')
+      document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.body?.textContent?.includes('Paragraph 39')
       && !document.querySelector('.editor-host')?.hasAttribute('data-preview-cover')
     , { timeout: 5000 });
     const activatedPreviewScrollTop = await page.$eval(
@@ -206,6 +206,11 @@ try {
     assert.ok(inkCounts.length >= 2, `${phase}: screencast must capture the transition`);
     assert.ok(inkCounts.every(count => count > 100), `${phase}: blank painted frame: ${inkCounts}`);
     await page.click('button[data-mode="live"]');
+    await waitFor(`${phase} live ready before the next case`, () =>
+      document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'live'
+      && !document.querySelector<HTMLElement>('.editor-host')?.inert
+      && document.querySelector<HTMLElement>('.preview-host')?.hidden
+    , { timeout: 5000 });
     await new Promise(resolve => setTimeout(resolve, 150));
   }
   assert.ok(preloadWidth > 100, 'Background preview must have reading width before activation');
@@ -213,6 +218,11 @@ try {
     document.querySelector<HTMLButtonElement>('button[data-mode="preview"]')!.click();
     document.querySelector<HTMLButtonElement>('button[data-mode="live"]')!.click();
   });
+  await waitFor('cancelled live return ready', () =>
+    document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'live'
+    && !document.querySelector<HTMLElement>('.editor-host')?.inert
+    && document.querySelector<HTMLElement>('.preview-host')?.hidden
+  , { timeout: 5000 });
   await new Promise(resolve => setTimeout(resolve, 150));
   const cancelled = await page.evaluate(() => {
     const editor = document.querySelector<HTMLElement>('.editor-host')!;
@@ -324,12 +334,28 @@ try {
   await page.click('button[data-mode="preview"]');
   await waitFor('timeout preview visible', () => !document.querySelector<HTMLElement>('.preview-host')?.hidden);
   holdLiveImageResolution = true;
-  const timeoutRevealStartedAt = Date.now();
+  const revealTiming = await page.evaluateHandle(() => {
+    const preview = document.querySelector<HTMLElement>('.preview-host')!;
+    const timing = { start: null as number | null, elapsed: null as number | null, trusted: false };
+    document.querySelector('button[data-mode="live"]')!.addEventListener('click', event => {
+      timing.start = performance.now(); timing.trusted = event.isTrusted;
+    }, { capture: true, once: true });
+    const observer = new MutationObserver(() => {
+      if (preview.hidden && timing.start !== null) {
+        timing.elapsed = performance.now() - timing.start;
+        observer.disconnect();
+      }
+    });
+    observer.observe(preview, { attributes: true, attributeFilter: ['hidden'] });
+    return timing;
+  });
   await page.click('button[data-mode="live"]');
   await waitFor('timeout live hidden', () => document.querySelector<HTMLElement>('.preview-host')?.hidden, { timeout: 1000 });
-  const timeoutRevealElapsed = Date.now() - timeoutRevealStartedAt;
+  const { elapsed: timeoutRevealElapsed, trusted } = await revealTiming.jsonValue();
+  await revealTiming.dispose();
+  assert.equal(trusted, true, 'Slow-image reveal timing starts at the real click');
   assert.ok(
-    timeoutRevealElapsed <= 260,
+    timeoutRevealElapsed !== null && timeoutRevealElapsed <= 260,
     `Live reveal must not wait indefinitely for slow images: ${timeoutRevealElapsed}ms`
   );
   holdLiveImageResolution = false;
