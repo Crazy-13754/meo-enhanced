@@ -994,13 +994,39 @@ try {
       // Content below the reading line changes the boundary, not this line's geometry.
       readingScroller.scrollHeight += delta;
       readingScroller.scrollTop = delta > 0
-        ? adoptedTop + delta : readingScroller.scrollHeight - readingScroller.clientHeight;
+        ? adoptedTop : readingScroller.scrollHeight - readingScroller.clientHeight;
       readingScroller.dispatch('scroll', {});
       readingController.reconcileAfterEditorUpdate();
       for (let frame = 0; frame < 20; frame++) await readingFrame();
       const expected = Math.min(adoptedTop, readingScroller.scrollHeight - readingScroller.clientHeight);
       if (Math.abs(readingScroller.scrollTop - expected) > 1) {
         throw new Error(`Bottom layout discarded adopted reading or chased an unreachable target (${distance}, ${delta}): ${readingScroller.scrollTop} instead of ${expected}`);
+      }
+    }
+  }
+  for (const nearBoundary of [false, true]) {
+    for (const rangeDelta of [-300, 300]) {
+      for (const direction of [-1, 1]) {
+        readingController.markInteraction();
+        readingScroller.scrollHeight = 5000;
+        const adoptedTop = nearBoundary ? 4400 : 1000;
+        readingScroller.scrollTop = adoptedTop - direction * 20;
+        readingLineTop = adoptedTop + 200;
+        readingHeightMapTop = 2000;
+        nativeReadingWheel(direction * 20);
+        await readingFrame();
+        readingScroller.scrollHeight += rangeDelta;
+        const boundaryTop = Math.min(adoptedTop, readingScroller.scrollHeight - readingScroller.clientHeight);
+        const expected = Math.max(0, Math.min(readingScroller.scrollHeight - readingScroller.clientHeight,
+          boundaryTop + direction * 17));
+        // The same native gesture advances after a range change, without another wheel receipt.
+        readingScroller.scrollTop = expected;
+        readingScroller.dispatch('scroll', {});
+        readingController.reconcileAfterEditorUpdate();
+        for (let frame = 0; frame < 20; frame++) await readingFrame();
+        if (Math.abs(readingScroller.scrollTop - expected) > 1) {
+          throw new Error(`Range change discarded continuing native progress (${nearBoundary}, ${rangeDelta}, ${direction}): ${readingScroller.scrollTop} instead of ${expected}`);
+        }
       }
     }
   }

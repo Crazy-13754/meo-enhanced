@@ -65,6 +65,8 @@ Native layout retention uses the last observed scroll position and line geometry
 nominal height-map movement is only a layout signal. Cover complete/partial
 anchoring, browser boundary clamps, below-line growth/contraction and input whose
 native scroll has not yet been adopted, without replaying event deltas.
+Also combine range growth/contraction with continuing native motion in the same
+gesture: range changes alone must not reject actual scroll progress.
 
 For installed-VSIX scrollbar acceptance, use an isolated VS Code profile and check
 Live, Source, full Preview and split Preview in light/dark appearances, including

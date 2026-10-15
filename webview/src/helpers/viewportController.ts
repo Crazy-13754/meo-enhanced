@@ -124,7 +124,6 @@ interface LayoutAnchor {
   viewportOffset: number;
   readingDocumentTop?: number;
   readingScrollTop?: number;
-  readingMaximumScrollTop?: number;
   readingHeightMapTop?: number;
   readingNativeAdopted?: boolean;
 }
@@ -555,7 +554,6 @@ export class ViewportController {
                 viewportOffset: activeAnchor.viewportOffset,
                 readingDocumentTop: activeAnchor.readingDocumentTop,
                 readingScrollTop: activeAnchor.readingScrollTop,
-                readingMaximumScrollTop: activeAnchor.readingMaximumScrollTop,
                 readingHeightMapTop: activeAnchor.readingHeightMapTop,
                 readingNativeAdopted: activeAnchor.readingNativeAdopted
               }
@@ -3042,7 +3040,6 @@ export class ViewportController {
         ? anchor.top + this.view.scrollDOM.scrollTop - scrollerRect.top
         : undefined,
       readingScrollTop: this.isUserScrolling() ? this.view.scrollDOM.scrollTop : undefined,
-      readingMaximumScrollTop: this.isUserScrolling() ? this.maximumScrollTop() : undefined,
       readingHeightMapTop: this.isUserScrolling() ? this.view.lineBlockAt(anchor.position).top : undefined,
       readingNativeAdopted: this.isUserScrolling() ? false : undefined
     };
@@ -3101,22 +3098,17 @@ export class ViewportController {
     });
   }
 
-  private maximumScrollTop(): number {
-    return Math.max(0, this.view.scrollDOM.scrollHeight - this.view.scrollDOM.clientHeight);
-  }
-
   private adoptReadingLayout(anchor: ActiveLayoutAnchor, documentTop: number): void {
     anchor.readingDocumentTop = documentTop;
     anchor.readingScrollTop = this.view.scrollDOM.scrollTop;
-    anchor.readingMaximumScrollTop = this.maximumScrollTop();
     anchor.readingHeightMapTop = this.view.lineBlockAt(anchor.position).top;
   }
 
   private readingLayoutUnchanged(anchor: ActiveLayoutAnchor): boolean {
     const heightMapTop = this.view.lineBlockAt(anchor.position).top;
     // Height-map movement is a layout signal, never an assumed applied scroll distance.
-    return Math.abs(heightMapTop - (anchor.readingHeightMapTop ?? heightMapTop)) <= POSITION_EPSILON
-      && Math.abs(this.maximumScrollTop() - (anchor.readingMaximumScrollTop ?? this.maximumScrollTop())) <= POSITION_EPSILON;
+    // A changing scroll range alone cannot distinguish native motion from boundary following.
+    return Math.abs(heightMapTop - (anchor.readingHeightMapTop ?? heightMapTop)) <= POSITION_EPSILON;
   }
 
   private readLayoutAnchorDocumentTop(position: number): number | null {
