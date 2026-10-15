@@ -59,6 +59,12 @@ The viewport-controller unit matrix interleaves background document presentation
 native wheel adoption and virtual-gap contraction in both directions. Document
 presentation yields its fixed-target projection to the active native reading owner;
 explicit viewport controls retain their separate capture behavior.
+Standalone bulk edits retain the explicit capture path and end the preceding
+native reading owner, including edits between wheel receipt and scroll adoption.
+Native layout retention uses the last observed scroll position and line geometry;
+nominal height-map movement is only a layout signal. Cover complete/partial
+anchoring, browser boundary clamps, below-line growth/contraction and input whose
+native scroll has not yet been adopted, without replaying event deltas.
 
 For installed-VSIX scrollbar acceptance, use an isolated VS Code profile and check
 Live, Source, full Preview and split Preview in light/dark appearances, including

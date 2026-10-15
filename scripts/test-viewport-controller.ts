@@ -955,6 +955,57 @@ try {
     throw new Error('A new wheel delta reused the previous reading anchor');
   }
   for (const direction of [-1, 1]) {
+    for (const correction of ['full', 'partial', 'clamped']) {
+      readingController.markInteraction();
+      readingScroller.scrollHeight = 5000;
+      readingScroller.scrollTop = 4000;
+      readingLineTop = 4200;
+      readingHeightMapTop = 2000;
+      nativeReadingWheel(direction * 20);
+      await readingFrame();
+      const adoptedTop = readingScroller.scrollTop;
+      const contraction = correction === 'clamped' ? 1000 : 300;
+      readingLineTop -= contraction;
+      readingHeightMapTop -= contraction;
+      readingScroller.scrollHeight -= contraction;
+      // The nominal height-map delta need not be the correction actually applied to the DOM.
+      readingScroller.scrollTop = correction === 'clamped'
+        ? readingScroller.scrollHeight - readingScroller.clientHeight
+        : adoptedTop - (correction === 'full' ? contraction : 120);
+      readingScroller.dispatch('scroll', {});
+      readingController.reconcileAfterEditorUpdate();
+      for (let frame = 0; frame < 20; frame++) await readingFrame();
+      const expected = adoptedTop - contraction;
+      if (Math.abs(readingScroller.scrollTop - expected) > 1) {
+        throw new Error(`Reading layout used a nominal rather than applied correction (${direction}, ${correction}): ${readingScroller.scrollTop} instead of ${expected}`);
+      }
+    }
+  }
+  for (const distance of [0, 4, 5]) {
+    for (const delta of [-300, 300]) {
+      readingController.markInteraction();
+      readingScroller.scrollHeight = 5000;
+      const adoptedTop = 4500 - distance;
+      readingScroller.scrollTop = adoptedTop - 20;
+      readingLineTop = adoptedTop + 200;
+      readingHeightMapTop = 2000;
+      nativeReadingWheel(20);
+      await readingFrame();
+      // Content below the reading line changes the boundary, not this line's geometry.
+      readingScroller.scrollHeight += delta;
+      readingScroller.scrollTop = delta > 0
+        ? adoptedTop + delta : readingScroller.scrollHeight - readingScroller.clientHeight;
+      readingScroller.dispatch('scroll', {});
+      readingController.reconcileAfterEditorUpdate();
+      for (let frame = 0; frame < 20; frame++) await readingFrame();
+      const expected = Math.min(adoptedTop, readingScroller.scrollHeight - readingScroller.clientHeight);
+      if (Math.abs(readingScroller.scrollTop - expected) > 1) {
+        throw new Error(`Bottom layout discarded adopted reading or chased an unreachable target (${distance}, ${delta}): ${readingScroller.scrollTop} instead of ${expected}`);
+      }
+    }
+  }
+  readingScroller.scrollHeight = 5000;
+  for (const direction of [-1, 1]) {
     for (const phase of ['before-wheel', 'before-native-scroll', 'after-native-scroll']) {
       readingController.markInteraction();
       readingLineTop = 1200;
@@ -970,7 +1021,7 @@ try {
       let completePresentation!: () => void;
       const presentation = readingController.runAnchorTransaction(handle, 'editor', async () => {
         await new Promise<void>(resolve => { completePresentation = resolve; });
-        readingController.runDocumentChange(() => {
+        readingController.runDocumentPresentation(() => {
           // A virtual gap contracts while native scroll adoption is still in flight.
           readingLineTop -= 40;
           readingHeightMapTop -= 40;
@@ -991,9 +1042,66 @@ try {
       }
     }
   }
+  for (const direction of [-1, 1]) {
+    for (const phase of ['before-wheel', 'before-native-scroll', 'after-native-scroll']) {
+      readingController.markInteraction();
+      readingLineTop = 1200;
+      readingHeightMapTop = -1400;
+      readingScroller.scrollTop = 1000;
+      const receiveWheel = () => readingScroller.dispatch('wheel', { deltaX: 0, deltaY: direction * 20, ctrlKey: false });
+      if (phase !== 'before-wheel') receiveWheel();
+      if (phase === 'after-native-scroll') {
+        readingScroller.scrollTop += direction * 20;
+        readingScroller.dispatch('scroll', {});
+      }
+      let presented = false;
+      readingController.runDocumentPresentation(() => {
+        presented = true;
+        readingLineTop -= 40;
+        readingHeightMapTop -= 40;
+        readingScroller.scrollHeight -= 40;
+        readingScroller.scrollTop -= 40;
+        readingController.reconcileAfterEditorUpdate();
+      });
+      if (!presented) throw new Error('Standalone presentation skipped its Document update');
+      if (phase === 'before-wheel') receiveWheel();
+      readingScroller.scrollTop += direction * 20;
+      readingScroller.dispatch('scroll', {});
+      for (let frame = 0; frame < 20; frame++) await readingFrame();
+      const expected = 960 + direction * (phase === 'after-native-scroll' ? 40 : 20);
+      if (Math.abs(readingScroller.scrollTop - expected) > 1) {
+        throw new Error(`Standalone presentation discarded native scroll (${phase}, ${direction}): ${readingScroller.scrollTop} instead of ${expected}`);
+      }
+    }
+  }
   nativeReadingWheel(20);
   if (!readingController.captureAnchorToken('editor')) {
     throw new Error('An explicit viewport action must still supersede native reading');
+  }
+  for (const direction of [-1, 1]) {
+    for (const adopted of [false, true]) {
+      readingController.markInteraction();
+      readingLineTop = 1200;
+      readingHeightMapTop = -1400;
+      readingScroller.scrollTop = 1000;
+      readingScroller.dispatch('wheel', { deltaX: 0, deltaY: direction * 20, ctrlKey: false });
+      if (adopted) {
+        readingScroller.scrollTop += direction * 20;
+        readingScroller.dispatch('scroll', {});
+      }
+      // Standalone bulk edits are explicit intentions, unlike background presentation scopes.
+      readingController.runDocumentChange(() => {
+        readingLineTop -= 40;
+        readingHeightMapTop -= 40;
+        readingScroller.scrollHeight -= 40;
+        readingScroller.scrollTop -= 40;
+        readingController.reconcileAfterEditorUpdate();
+      });
+      if (!readingController.captureDocumentPresentationAnchorToken('editor')) {
+        throw new Error(`Standalone Document change retained the old native reading owner (${direction}, ${adopted})`);
+      }
+      for (let frame = 0; frame < 20; frame++) await readingFrame();
+    }
   }
   readingDom.dispatch('beforeinput', { inputType: 'insertCompositionText' });
   readingScroller.scrollTop = 600;

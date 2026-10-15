@@ -3655,7 +3655,7 @@ export function createEditor({
       document.dispatchEvent(new CustomEvent('meo-table-selection-external-presentation', {
         detail: { owner: view.dom }
       }));
-      viewportController.runDocumentChange(() => {
+      viewportController.runDocumentPresentation(() => {
         const dispatchTextUpdate = (spec: TransactionSpec): void => {
           const transaction = view.state.update(spec);
           if (!resetHistory) {

@@ -123,8 +123,10 @@ interface LayoutAnchor {
   position: number;
   viewportOffset: number;
   readingDocumentTop?: number;
+  readingScrollTop?: number;
+  readingMaximumScrollTop?: number;
   readingHeightMapTop?: number;
-  readingHeightMapPosition?: number;
+  readingNativeAdopted?: boolean;
 }
 
 interface ActiveLayoutAnchor extends LayoutAnchor {
@@ -405,10 +407,10 @@ export class ViewportController {
     const anchor = this.activeLayoutAnchor;
     if (anchor?.readingDocumentTop !== undefined) {
       const documentTop = this.readLayoutAnchorDocumentTop(anchor.position);
-      if (documentTop !== null && Math.abs(documentTop - anchor.readingDocumentTop) <= POSITION_EPSILON) {
-        const block = this.readScrollHeightMapAnchor(anchor.position);
-        anchor.readingHeightMapPosition = block.from ?? anchor.position;
-        anchor.readingHeightMapTop = block.top;
+      if (documentTop !== null && Math.abs(documentTop - anchor.readingDocumentTop) <= POSITION_EPSILON
+        && this.readingLayoutUnchanged(anchor)) {
+        this.adoptReadingLayout(anchor, documentTop);
+        anchor.readingNativeAdopted = true;
         anchor.revision += 1;
       }
       this.restartLayoutStabilization();
@@ -552,8 +554,10 @@ export class ViewportController {
                 position: activeAnchor.position,
                 viewportOffset: activeAnchor.viewportOffset,
                 readingDocumentTop: activeAnchor.readingDocumentTop,
+                readingScrollTop: activeAnchor.readingScrollTop,
+                readingMaximumScrollTop: activeAnchor.readingMaximumScrollTop,
                 readingHeightMapTop: activeAnchor.readingHeightMapTop,
-                readingHeightMapPosition: activeAnchor.readingHeightMapPosition
+                readingNativeAdopted: activeAnchor.readingNativeAdopted
               }
             : this.captureLayoutAnchor(region),
           from,
@@ -625,10 +629,7 @@ export class ViewportController {
         const resolved = this.resolveLayoutAnchorTarget(activeAnchor);
         this.writeScrollPosition(resolved.target);
         if (resolved.readingDocumentTop !== undefined) {
-          activeAnchor.readingDocumentTop = resolved.readingDocumentTop;
-            const block = this.readScrollHeightMapAnchor(activeAnchor.position);
-            activeAnchor.readingHeightMapPosition = block.from ?? activeAnchor.position;
-            activeAnchor.readingHeightMapTop = block.top;
+          this.adoptReadingLayout(activeAnchor, resolved.readingDocumentTop);
         }
       }
       this.restartLayoutStabilization();
@@ -2618,7 +2619,17 @@ export class ViewportController {
     this.completeAnchorTransactionScope(scope, true);
   }
 
-  /** Uses the active scope, or captures the Editor surface for a standalone Document change. */
+  /** Background presentation inherits its outer scope or yields to native reading when standalone. */
+  runDocumentPresentation(mutate: () => void): void {
+    if (this.anchorTransactionScope.kind !== 'idle') {
+      this.runDocumentChange(mutate);
+      return;
+    }
+    const handle = this.captureDocumentPresentationAnchorToken('editor');
+    this.runAnchorTransaction(handle, 'editor', () => this.runDocumentChange(mutate));
+  }
+
+  /** Uses the active scope, or captures the Editor surface for an explicit standalone Document change. */
   runDocumentChange(mutate: () => void): void {
     if (this.anchorTransactionScope.kind !== 'idle') {
       if (this.anchorTransactionScope.kind === 'current') {
@@ -2632,7 +2643,7 @@ export class ViewportController {
       }
       return;
     }
-    const handle = this.captureDocumentPresentationAnchorToken('editor');
+    const handle = this.captureAnchorToken('editor');
     this.runAnchorTransaction(handle, 'editor', () => this.runDocumentChange(mutate));
   }
 
@@ -3030,9 +3041,10 @@ export class ViewportController {
       readingDocumentTop: this.isUserScrolling()
         ? anchor.top + this.view.scrollDOM.scrollTop - scrollerRect.top
         : undefined,
-      readingHeightMapTop: this.isUserScrolling() ? this.readScrollHeightMapAnchor(anchor.position).top : undefined,
-      readingHeightMapPosition: this.isUserScrolling()
-        ? this.readScrollHeightMapAnchor(anchor.position).from ?? anchor.position : undefined
+      readingScrollTop: this.isUserScrolling() ? this.view.scrollDOM.scrollTop : undefined,
+      readingMaximumScrollTop: this.isUserScrolling() ? this.maximumScrollTop() : undefined,
+      readingHeightMapTop: this.isUserScrolling() ? this.view.lineBlockAt(anchor.position).top : undefined,
+      readingNativeAdopted: this.isUserScrolling() ? false : undefined
     };
   }
 
@@ -3073,10 +3085,7 @@ export class ViewportController {
           if (!userScrolling) activeAnchor.remainingFrames -= 1;
           const changed = this.writeScrollPosition(resolved.target);
           if (resolved.readingDocumentTop !== undefined) {
-            activeAnchor.readingDocumentTop = resolved.readingDocumentTop;
-            const block = this.readScrollHeightMapAnchor(activeAnchor.position);
-            activeAnchor.readingHeightMapPosition = block.from ?? activeAnchor.position;
-            activeAnchor.readingHeightMapTop = block.top;
+            this.adoptReadingLayout(activeAnchor, resolved.readingDocumentTop);
           }
           activeAnchor.stableFrames = changed ? 0 : activeAnchor.stableFrames + 1;
           if (!userScrolling && (
@@ -3092,11 +3101,22 @@ export class ViewportController {
     });
   }
 
-  private readScrollHeightMapAnchor(fallbackPosition: number) {
-    // Match CodeMirror's scroll anchor at the viewport edge. A reading line can
-    // share an aggregate block with a widget and have a different height delta.
-    return this.view.lineBlockAtHeight?.(this.view.scrollDOM.scrollTop + 8)
-      ?? this.view.lineBlockAt(fallbackPosition);
+  private maximumScrollTop(): number {
+    return Math.max(0, this.view.scrollDOM.scrollHeight - this.view.scrollDOM.clientHeight);
+  }
+
+  private adoptReadingLayout(anchor: ActiveLayoutAnchor, documentTop: number): void {
+    anchor.readingDocumentTop = documentTop;
+    anchor.readingScrollTop = this.view.scrollDOM.scrollTop;
+    anchor.readingMaximumScrollTop = this.maximumScrollTop();
+    anchor.readingHeightMapTop = this.view.lineBlockAt(anchor.position).top;
+  }
+
+  private readingLayoutUnchanged(anchor: ActiveLayoutAnchor): boolean {
+    const heightMapTop = this.view.lineBlockAt(anchor.position).top;
+    // Height-map movement is a layout signal, never an assumed applied scroll distance.
+    return Math.abs(heightMapTop - (anchor.readingHeightMapTop ?? heightMapTop)) <= POSITION_EPSILON
+      && Math.abs(this.maximumScrollTop() - (anchor.readingMaximumScrollTop ?? this.maximumScrollTop())) <= POSITION_EPSILON;
   }
 
   private readLayoutAnchorDocumentTop(position: number): number | null {
@@ -3118,14 +3138,15 @@ export class ViewportController {
     if (anchor.readingDocumentTop !== undefined) {
       const readingDocumentTop = this.readLayoutAnchorDocumentTop(anchor.position);
       if (readingDocumentTop === null) return { target: current };
-      // CodeMirror has already applied the height map's anchoring. Replace only
-      // that correction with the actual line movement, retaining native progress.
+      // Preserve the offset last adopted from real native scrolling. CodeMirror's
+      // nominal height delta may differ from its applied correction or a browser clamp.
       const geometryDelta = readingDocumentTop - anchor.readingDocumentTop;
-      const heightMapTop = this.view.lineBlockAt(anchor.readingHeightMapPosition ?? anchor.position).top;
-      const heightMapDelta = heightMapTop - (anchor.readingHeightMapTop ?? heightMapTop);
+      const layoutUnchanged = Math.abs(geometryDelta) <= POSITION_EPSILON && this.readingLayoutUnchanged(anchor);
       return {
         target: this.resolveScrollTarget({
-          top: current.top + geometryDelta - heightMapDelta
+          // A receipt without a native scroll record cannot establish an applied movement.
+          top: !anchor.readingNativeAdopted || layoutUnchanged
+            ? current.top : (anchor.readingScrollTop ?? current.top) + geometryDelta
         }, current),
         readingDocumentTop
       };
