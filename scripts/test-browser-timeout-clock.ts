@@ -15,6 +15,7 @@ export async function testBrowserTimeoutClock(): Promise<void> {
   const events: string[] = [];
   const canceledNative = window.setTimeout(() => events.push('canceled native'));
   const renewingNative = window.setTimeout(() => window.setTimeout(() => events.push('renewed'), 1));
+  const lateNative = window.setTimeout(() => window.setTimeout(() => events.push('late renewal leak'), 0));
   vm.runInNewContext('(' + installBrowserTimeoutClock.toString() + ')()', { window });
   const clock = window.__timeoutClock;
   window.clearTimeout(canceledNative);
@@ -46,11 +47,15 @@ export async function testBrowserTimeoutClock(): Promise<void> {
   assert.equal(clock.pending().length, 0, 'failed callback must not be retried');
   assert.equal(window.requestAnimationFrame, descriptors.requestAnimationFrame!.value);
   assert.equal(window.performance, descriptors.performance!.value);
-  window.setTimeout(() => events.push('restore leak'), 0);
-  clock.restore(); clock.restore();
+  assert.equal(clock.pending().length, 0);
+  native.get(lateNative)!(); native.delete(lateNative);
+  const abandoned = clock.restore();
+  assert.equal(abandoned.length, 1, 'restore must report renewal arriving after the earlier empty snapshot');
+  assert.equal(abandoned[0].due, 68);
+  assert.equal(clock.restore(), abandoned, 'repeated restore retains the original diagnostic snapshot');
   assert.deepEqual(Object.getOwnPropertyDescriptors(window), descriptors, 'restore must preserve exact native descriptors');
   await assert.rejects(clock.advance(1), /Invalid timeout clock advance/);
-  assert.equal(events.includes('restore leak'), false);
+  assert.equal(events.includes('late renewal leak'), false);
   const restored = window.setTimeout(() => events.push('native restored'));
   native.get(restored)!(); native.delete(restored);
   assert.equal(events.at(-1), 'native restored');

@@ -868,11 +868,13 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
       return document.activeElement === content;
     });
     assert.equal(ready, true, mode + ' painted caret guard delayed input focus');
-    await page.evaluate(async () => {
+    const guardTimers = await page.evaluate(async () => {
       await (window as any).__timeoutClock.advance(34);
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       document.getElementById('caret-paint-epoch')!.style.background = 'rgb(100,40,60)';
+      return (window as any).__timeoutClock.pending() as Array<{ id: number; due: number }>;
     });
+    assert.deepEqual(guardTimers.map(timer => timer.due), [50], mode + ' activation guard must still be pending at 34ms');
     // Screenshots are real paint barriers. Transport may take real time without
     // consuming the production guard's remaining logical timeout budget.
     frames.push({ data: Buffer.from(await page.screenshot({ captureBeyondViewport: false })).toString('base64'), sequence: frames.length });
@@ -885,6 +887,10 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
     });
     await input.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...geometry.click });
     await input.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...geometry.click });
+    const afterClickTimers = await page.evaluate(() => ({ now: (window as any).__timeoutClock.now(), pending: (window as any).__timeoutClock.pending() as Array<{ id: number; due: number }> }));
+    assert.equal(afterClickTimers.now, 34, mode + ' click advanced the timeout budget');
+    assert.equal(afterClickTimers.pending.some(timer => timer.id === guardTimers[0]!.id), false,
+      mode + ' trusted click did not cancel the activation guard before its deadline');
     const clock = await page.evaluate(async () => {
       await (window as any).__timeoutClock.advance(34);
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -925,7 +931,10 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
     const cleanupErrors: unknown[] = [];
     for (const cleanup of [() => input.send('Page.stopScreencast'),
       async () => { input.off('Page.screencastFrame', observeFrame); await Promise.allSettled(acknowledgements); },
-      () => page.evaluate(() => (window as any).__timeoutClock?.restore()),
+      async () => {
+        const abandoned = await page.evaluate(() => (window as any).__timeoutClock?.restore() ?? []);
+        assert.deepEqual(abandoned, [], mode + ' timeout callbacks remained at descriptor restoration: ' + JSON.stringify(abandoned));
+      },
       () => input.detach(), () => page.close()]) {
       try { await cleanup(); } catch (error) { cleanupErrors.push(error); }
     }
@@ -934,7 +943,7 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
       if (cleanupErrors.length) throw new AggregateError([primaryError, ...cleanupErrors], mode + ' caret witness and cleanup failed', { cause: primaryError });
       throw primaryError;
     }
-    assert.deepEqual(cleanupErrors, [], mode + ' caret witness cleanup failed');
+    if (cleanupErrors.length) throw new AggregateError(cleanupErrors, mode + ' caret witness cleanup failed', { cause: cleanupErrors[0] });
   }
 }
 

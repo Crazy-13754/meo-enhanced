@@ -9,6 +9,7 @@ export function installBrowserTimeoutClock(): void {
   let now = 0;
   let nextId = 0x40000000;
   let restored = false;
+  let abandoned: Array<{ id: number; due: number }> = [];
   Object.defineProperty(window, 'setTimeout', { ...originalSet, value: (callback: (...args: any[]) => void, delay = 0, ...args: any[]) => {
     if (typeof callback !== 'function') throw new Error('Browser timeout fixture requires a function callback');
     const id = nextId++;
@@ -38,13 +39,17 @@ export function installBrowserTimeoutClock(): void {
       now = end;
     },
     restore() {
-      if (restored) return;
+      if (restored) return abandoned;
+      // Snapshot and restore in one task: no native renewal can slip between
+      // the caller's final queue check and descriptor restoration.
+      abandoned = [...pending].map(([id, timer]) => ({ id, due: timer.due }));
       restored = true;
       pending.clear();
       Object.defineProperty(window, 'setTimeout', originalSet);
       Object.defineProperty(window, 'clearTimeout', originalClear);
       if (originalClock) Object.defineProperty(window, '__timeoutClock', originalClock);
       else delete (window as any).__timeoutClock;
+      return abandoned;
     }
   };
 }
