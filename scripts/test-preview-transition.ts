@@ -218,11 +218,6 @@ try {
     document.querySelector<HTMLButtonElement>('button[data-mode="preview"]')!.click();
     document.querySelector<HTMLButtonElement>('button[data-mode="live"]')!.click();
   });
-  await waitFor('cancelled live return ready', () =>
-    document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'live'
-    && !document.querySelector<HTMLElement>('.editor-host')?.inert
-    && document.querySelector<HTMLElement>('.preview-host')?.hidden
-  , { timeout: 5000 });
   await new Promise(resolve => setTimeout(resolve, 150));
   const cancelled = await page.evaluate(() => {
     const editor = document.querySelector<HTMLElement>('.editor-host')!;

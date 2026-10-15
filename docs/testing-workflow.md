@@ -466,7 +466,7 @@ visible Live frame must already contain content and the table's final height;
 this check runs in the quick, targeted table/viewport, and release gates.
 `scripts/test-preview-transition.ts` tolerates a temporarily absent iframe body
 while polling readiness. It establishes interactive Live readiness before the next
-case and retains the 150ms late-cancellation observation after readiness.
+case; rapid Preview/Live cancellation still must restore interactivity within 150ms.
 The slow-image reveal bound remains 260ms and measures the trusted click through
 the actual visibility mutation in the browser, excluding automation transport.
 `scripts/test-mode-transition-matrix.ts` checks both six-step mode cycles with
