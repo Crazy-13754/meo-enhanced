@@ -448,9 +448,10 @@ export async function runHistoryRenderedBlockChromiumInteraction(
   // makes the virtualized accessible group materialize so the first explicit
   // source mode can be read; it never sends a pointer or accepts geometry.
   try {
-    await page.evaluate(({ editorName, lineNumber }) => {
+    await page.evaluate(async ({ editorName, lineNumber }) => {
       const editor = (window as any)[editorName];
       if (!editor) throw new Error(`Missing History editor: ${editorName}`);
+      await editor.whenVisiblePresentationReady(1_200);
       editor.scrollToLine(lineNumber, 'center');
     }, { editorName: editorGlobal, lineNumber: interaction.lineNumber });
     await page.waitForFunction((controlsLabel) => Boolean(

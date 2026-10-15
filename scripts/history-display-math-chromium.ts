@@ -42,20 +42,22 @@ export async function enterDisplayMathSource(page: Page, editorGlobal: string, o
   }, { editorGlobal, position: edge === 'start' ? bounds.from : bounds.to });
   await page.waitForFunction(({ editorGlobal, position }) => {
     const view = (window as any)[editorGlobal].view;
+    const coords = view.coordsAtPos(position), viewport = view.scrollDOM.getBoundingClientRect();
     return view.hasFocus && document.activeElement === view.contentDOM &&
       view.state.selection.main.empty && view.state.selection.main.head === position &&
-      document.querySelector('.meo-math-source-line');
+      document.querySelector('.meo-math-source-line') && coords &&
+      coords.bottom > viewport.top && coords.top < viewport.bottom;
   }, {}, { editorGlobal, position: edge === 'start' ? bounds.from : bounds.to });
   return bounds;
 }
 
-export async function readDisplayMathHistoryTarget(page: Page, editorGlobal: string, openingLine: number) {
+export async function readDisplayMathHistoryTarget(page: Page, editorGlobal: string, openingLine: number, options: { waitForVisibility?: boolean } = {}) {
   const bounds = await displayMathSourceBounds(page, editorGlobal, openingLine);
-  return page.evaluate(({ editorGlobal, bounds }) => {
+  const sample = ({ editorGlobal, bounds, waitForVisibility }: { editorGlobal: string; bounds: { from: number; to: number }; waitForVisibility?: boolean }) => {
     const view = (window as any)[editorGlobal].view;
     const selection = view.state.selection.main;
     const coords = view.coordsAtPos(selection.head), viewport = view.scrollDOM.getBoundingClientRect();
-    return {
+    const result = {
       source: view.state.doc.sliceString(bounds.from, bounds.to),
       focused: view.hasFocus && document.activeElement === view.contentDOM,
       caretAtEnd: selection.empty && selection.head === bounds.to,
@@ -63,5 +65,15 @@ export async function readDisplayMathHistoryTarget(page: Page, editorGlobal: str
       visible: !!coords && coords.bottom > viewport.top && coords.top < viewport.bottom,
       resultPresent: !!document.querySelector('.meo-math-live-result')
     };
-  }, { editorGlobal, bounds });
+    return waitForVisibility && (!result.focused || !result.visible) ? false : result;
+  };
+  const args = { editorGlobal, bounds, waitForVisibility: options.waitForVisibility };
+  if (options.waitForVisibility) {
+    const handle = await page.waitForFunction(sample, {}, args);
+    try { return await handle.jsonValue() as Exclude<ReturnType<typeof sample>, false>; }
+    finally { await handle.dispose(); }
+  }
+  const result = await page.evaluate(sample, args);
+  if (result === false) throw new Error('Unexpected pending formula target');
+  return result;
 }

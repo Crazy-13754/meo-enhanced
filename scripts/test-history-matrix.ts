@@ -311,6 +311,9 @@ async function editRenderedBlock(
     });
   };
   const clickTargetModeButton = async () => {
+    // Visible geometry may precede the last accepted input presentation.
+    // Acquire the native target only after the public readiness boundary.
+    await page.evaluate(async () => (window as any).__historyMatrixEditor.whenVisiblePresentationReady(1_200));
     modeClickSequence += 1;
     await settleTargetModeControl();
     const transition = await page.evaluate(({ blockKind, needle, lineNumber }) => {
@@ -942,7 +945,7 @@ async function assertHistoryTarget(
 
   if (target.kind === 'math') {
     const opening = await findDisplayMathOpening(page, '__historyMatrixEditor', target.needle, target.occurrence ?? 'first');
-    const state = await readDisplayMathHistoryTarget(page, '__historyMatrixEditor', opening);
+    const state = await readDisplayMathHistoryTarget(page, '__historyMatrixEditor', opening, { waitForVisibility: true });
     if (!state.focused || !state.caretAtEnd || !state.visible || !state.resultPresent || state.source.includes(target.marker) !== (direction === 'redo'))
       throw new Error(`${direction} step ${step} missed native formula: ${JSON.stringify({ target, state })}`);
     return;
