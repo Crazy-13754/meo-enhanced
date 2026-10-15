@@ -93,9 +93,9 @@ the long-run authorization policy below.
 | Tier | Use it when | Expected time | Command |
 | --- | --- | --- | --- |
 | Light UI | Copy, existing icon replacements, or local visual style changes meet the boundary below | Build plus a scoped smoke pass | `bun run test:ui-light` |
-| Quick | A behavior or other implementation change is ready for a general regression check | About 5–10 minutes, depending on the host | `bun run test:quick` |
+| Quick | A behavior or other implementation change is ready for a general regression check | Last measured baseline about 18 minutes; host dependent | `bun run test:quick` |
 | Targeted | A change affects one high-risk area, or a quick check identifies that area | About 1–5 minutes | `bun run test:targeted -- <area>` |
-| Release | A milestone or release candidate needs the complete gate | About 12–25 minutes | `bun run test:release -- --confirm-long-run` |
+| Release | A milestone or release candidate needs the complete gate | Last measured baseline about 60 minutes, excluding native acceptance and endurance | `bun run test:release -- --confirm-long-run` |
 | Large document | A shorter production-like document stress pass is specifically needed | About 1–3 minutes | `bun run test:large-document -- <document> --confirm-long-run` |
 | Endurance | Full-document edit, undo/redo, cursor, and viewport stress is specifically needed | About 20–35 minutes per run | `bun run test:endurance -- <document> --confirm-long-run` |
 
@@ -280,6 +280,12 @@ This focused pack typically takes less than a minute.
 4. Add the matching targeted pack when the change touches a high-risk area.
 5. Assess the long-run triggers above. If one applies, recommend the matching
    run and wait for authorization; otherwise stop.
+
+When an authorized release gate immediately follows the repair, do not prepend
+another complete quick gate. The release gate covers those contracts. Finish
+the focused regression and review first, then fix the candidate and run release
+once. A real failure returns the task to diagnosis; report that phase separately
+instead of repeatedly promising that acceptance is almost finished.
 
 This avoids repeatedly paying for browser startup and unrelated matrices while
 still checking type safety, workflow policy, history, tables, rendered blocks,
@@ -907,15 +913,70 @@ architecture checks, every sub-suite from the repository's unchanged full
 bun run test:release -- --confirm-long-run
 ```
 
-To reduce wall-clock time without reducing coverage, independent static and
-domain suites run with bounded concurrency. High-risk browser contracts run as
-an early serial preflight before the complete production browser matrix, so a
-recent interaction regression fails before the longest stage. The matrix is
-followed by the production build and package validation. Workflow contracts
+The production build runs first, so tests that consume generated assets cannot
+accidentally use an old checkout's output. Build failure blocks dependent tests.
+Independent static and domain suites retain bounded concurrency. High-risk
+browser contracts run before the complete serial production browser matrix;
+package validation runs last. Workflow contracts
 verify both that every sub-suite from `bun run test` appears exactly once in
 the release plan and that every non-UAT targeted contract is transitively
 included in the full suite, so scheduling changes cannot silently remove
 coverage.
+
+The workflow expands test aliases into individual script executions, preserving
+their arguments, environment and within-group order. It does not add browser
+workers, remove cases, change thresholds or retry tests. During release, a test
+failure does not short-circuit the remaining independent scripts or stages:
+collect their results in the same run, then report a failing gate. Infrastructure
+errors that prevent safe execution stop the run. Short repair and endurance
+workflows retain stage failure boundaries. Direct `bun run test` retains its
+existing shell behavior; use the guarded workflow for release evidence.
+
+Each invocation owns a fresh `.local/test-runs/<run-id>/` directory. `report.json`
+records per-script commands, status, elapsed time and separate stdout/stderr logs;
+it is checkpointed after each result. Stage times measure actual wall time,
+including scheduling, rather than the maximum single-command duration. The
+console lists the ten slowest executed commands. Reused results are labelled
+separately and point back to the original evidence. Never infer completion from
+the latest console line: require the final report's passed status and complete
+coverage. Keep the report and all referenced logs together.
+
+### Conservative release resume
+
+An interrupted or previously successful run can be resumed only after verifying
+that OS motion/theme preferences, installed fonts, display and other external
+conditions are unchanged, and no abandoned test/browser processes remain.
+A hash cannot establish those host conditions; when
+they are unknown, start a fresh run. The executing agent performs this check;
+the user does not need to manage test IDs or hash inventories.
+
+```shell
+bun run test:release -- --confirm-long-run --resume=<previous-report.json> --same-environment
+```
+
+Resume additionally requires matching commit/index identity, source/test/config files, installed
+dependency contents, Bun/Node/browser executables, process environment, host
+identity and the expanded plan. Changed inputs, missing/changed evidence,
+an apparently live previous runner, and any recorded failure reject resume.
+The original report is never overwritten. Build and package checks execute
+again; a different built artifact invalidates reuse and reruns the test cases.
+Incomplete scripts restart from their beginning, never from the middle of a
+stateful scenario. Inputs and built outputs are checked again before success.
+This does not import historical ad-hoc logs or resume the separate font sweep.
+
+This first implementation deliberately does not infer which tests are unaffected
+by a code or test change. Fixing a known failure requires a fresh gate, but the
+preceding release census should already have exposed its independent siblings.
+Do not restore an earlier checkpoint to conceal a later failure. Do not use
+resume as an automatic flaky-test retry or as evidence from a different OS.
+
+For future speed improvements, first use the recorded per-script times to split
+isolated functional checks across independent machines. Timing, focus and pixel
+checks need exclusive resources. A changed-file heuristic is only an early
+feedback tool and must not replace complete release coverage. These boundaries
+follow the [Playwright CI guidance](https://playwright.dev/docs/ci) and
+[sharding guidance](https://playwright.dev/docs/test-sharding); the current
+implementation keeps the existing Bun/Puppeteer tests.
 
 The existing `bun run test` command remains the complete test pipeline for CI
 compatibility. Agents and local repair work use the guarded release entry when
@@ -973,10 +1034,11 @@ the document end, an enlarged layout can reach the maximum scroll position;
 those frames are reported as bottom-constrained instead of being counted as
 top-anchor jumps. Any remaining displacement over 12 px is a failure.
 
-Run the complete release gate before endurance. Keep browser performance and
+After focused fixes and review have converged, run the complete release gate before endurance. Keep browser performance and
 native endurance runs serial to avoid resource contention. Diagnose failures with
-the smallest reproducer, inspect any skipped remainder, then run the required
-formal gate on the corrected candidate. Do not retry failures until one passes
+the smallest reproducer and use the per-script census to inspect the full result,
+then run the required formal gate on the corrected candidate. For unchanged
+interrupted runs, use conservative resume above. Do not retry failures until one passes
 or lower endurance limits to obtain release evidence. A short runner preflight
 is useful during setup, but must be reported separately from the full run.
 

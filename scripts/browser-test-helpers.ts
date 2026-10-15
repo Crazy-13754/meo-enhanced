@@ -299,7 +299,7 @@ function throwLifecycleErrors(
   }
 }
 
-function findBrowserExecutable(): string {
+export function findBrowserExecutable(): string {
   const candidates = [
     process.env.MEO_TEST_BROWSER,
     process.env.PUPPETEER_EXECUTABLE_PATH,

@@ -288,7 +288,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
       return {
         tier: 'quick',
         title: 'Quick regression gate',
-        expectedDuration: 'about 5-10 minutes, depending on the host',
+        expectedDuration: 'host-dependent; last measured baseline about 18 minutes',
         longRunning: false,
         stages: [serialStage('Quick regression contracts', [
           packageScript('typecheck'),
@@ -367,9 +367,10 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
       return {
         tier: 'release',
         title: 'Full release gate',
-        expectedDuration: 'about 12-25 minutes',
+        expectedDuration: 'last measured baseline about 60 minutes, excluding native acceptance and endurance',
         longRunning: true,
         stages: [
+          serialStage('Production build', [packageScript('build')]),
           {
             title: 'Static checks and domain suites',
             maxConcurrency: 3,
@@ -397,7 +398,6 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
             packageScript('test:browser-high-risk')
           ]),
           serialStage('Production browser matrix', [packageScript('test:browser')]),
-          serialStage('Production build', [packageScript('build')]),
           serialStage('VSIX content validation', [packageScript('package:check')])
         ]
       };

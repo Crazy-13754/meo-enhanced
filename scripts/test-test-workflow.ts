@@ -8,6 +8,7 @@ import {
   parseTestWorkflowRequest,
   validateTestWorkflowAuthorization
 } from './test-workflow-policy';
+import { prepareWorkflow } from './test-workflow-execution';
 
 const quick = createTestWorkflowPlan(parseTestWorkflowRequest(['quick']));
 const lightUi = createTestWorkflowPlan(parseTestWorkflowRequest(['ui-light', '--dry-run']));
@@ -134,15 +135,16 @@ assert.deepEqual(uatCommands[1]?.args, [
 
 const release = createTestWorkflowPlan(parseTestWorkflowRequest(['release']));
 assert.equal(release.longRunning, true);
-assert.equal(release.stages[0]?.maxConcurrency, 3);
-assert.deepEqual(release.stages[1]?.commands, [
+assert.deepEqual(release.stages[0]?.commands, [{ args: ['run', 'build'] }]);
+assert.equal(release.stages[1]?.maxConcurrency, 3);
+assert.deepEqual(release.stages[2]?.commands, [
   { args: ['scripts/test-editor-startup-load.ts'] },
   { args: ['scripts/test-mode-roundtrip-reveal.ts'] },
   { args: ['scripts/test-preview-navigation-continuity.ts'] },
   { args: ['scripts/test-preview-shortcuts-production.ts'] },
   { args: ['run', 'test:browser-high-risk'] }
 ]);
-assert.deepEqual(release.stages[2]?.commands, [{ args: ['run', 'test:browser'] }]);
+assert.deepEqual(release.stages[3]?.commands, [{ args: ['run', 'test:browser'] }]);
 assert.throws(
   () => validateTestWorkflowAuthorization(release, false, false),
   /--confirm-long-run/
@@ -306,6 +308,11 @@ function collectTransitiveTestScripts(
 }
 
 const fullDirectScripts = collectTransitiveTestScripts('test', packageScripts);
+const executableScripts = new Set(prepareWorkflow(release, packageScripts)
+  .flatMap(stage => stage.groups.flat()).map(task => task.command.args[0]));
+for (const script of fullDirectScripts) {
+  assert.ok(executableScripts.has(script), `Expanded release execution must retain ${script}`);
+}
 const releaseDirectScripts = new Set<string>();
 for (const command of flattenTestWorkflowCommands(release)) {
   if (command.args[0] === 'run') {
@@ -398,6 +405,8 @@ assert.ok(contributingGuide.includes('docs/testing-workflow.md'));
 assert.ok(contributingGuide.includes('bun run test:release -- --confirm-long-run'));
 
 console.log('Test workflow policy contract passed');
+
+await import('./test-workflow-execution-contract');
 
 for (const contract of ['test-editing-preferences.ts', 'test-editor-services.ts', 'test-link-candidates.ts', 'test-input-assistance-production.ts', 'test-editing-features-production.ts', 'test-link-candidates-production.ts', 'test-mixed-html-paste-production.ts', 'test-settings-window-production.ts']) {
   assert.ok(quickCommands.some(command => command.args.includes('scripts/' + contract)), contract + ' is a quick contract');

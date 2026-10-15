@@ -86,6 +86,13 @@ the latter invokes Bun's built-in test discovery and is not this repository's
 test pipeline. Full-document stress is separately available through
 `bun run test:endurance` and should be scheduled deliberately.
 
+The release workflow builds first and records each test script separately. Test
+failures are collected across the remaining independent checks, and any failure
+still fails the gate. Do not run an additional complete quick gate immediately
+before an authorized release gate. See the testing guide for reports and the
+strict same-input resume procedure; changed candidates and known failures
+require a fresh run.
+
 ### Full-suite expectation
 
 The full suite is expected to finish with exit code 0. The repository has no
