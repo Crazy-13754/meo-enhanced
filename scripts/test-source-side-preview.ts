@@ -327,7 +327,7 @@ try {
     }, lineNumber);
     await new Promise(resolve => setTimeout(resolve, 100));
   };
-  const startPreviewAnchorSampling = async (lineNumber: number) => page.evaluate(line => {
+  const startPreviewAnchorSampling = async (lineNumber: number) => page.evaluate(async line => {
     const samples: Array<{
       started: boolean;
       mode: string;
@@ -398,7 +398,8 @@ try {
       markStarted: () => { started = true; },
       stop: () => { active = false; }
     };
-    requestAnimationFrame(sample);
+    // Establish a real pre-transition frame before the caller can markStarted.
+    await new Promise<void>(resolve => requestAnimationFrame(() => { sample(); resolve(); }));
   }, lineNumber);
   const stopPreviewAnchorSampling = async () => page.evaluate(() => {
     const probe = (window as typeof window & {
@@ -422,7 +423,7 @@ try {
     probe.stop();
     return probe.samples;
   });
-  const startEditorAnchorSampling = async (anchorText: string) => page.evaluate(text => {
+  const startEditorAnchorSampling = async (anchorText: string) => page.evaluate(async text => {
     const samples: Array<{
       started: boolean;
       mode: string;
@@ -461,7 +462,8 @@ try {
       markStarted: () => { started = true; },
       stop: () => { active = false; }
     };
-    requestAnimationFrame(sample);
+    // The first frame belongs to the state before the caller's mode change.
+    await new Promise<void>(resolve => requestAnimationFrame(() => { sample(); resolve(); }));
   }, anchorText);
   const stopEditorAnchorSampling = async () => page.evaluate(() => {
     const probe = (window as typeof window & {
