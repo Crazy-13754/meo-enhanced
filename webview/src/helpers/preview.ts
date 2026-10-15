@@ -1250,6 +1250,7 @@ export function createPreviewController({
   let mermaidPresentationGeneration = 0;
   let activeFrameDocument: Document | null = null;
   let pendingPresentationScroll: { document: Document; scrollTop: number } | null = null;
+  let appearanceRetention: { readonly retain: () => void; readonly release: () => void } | null = null;
   let viewportInteractionGeneration = 0;
   let retainedViewportProjection: {
     readonly document: Document;
@@ -1303,6 +1304,7 @@ export function createPreviewController({
     // Explicit navigation owns the new reading position even when its control
     // lives outside the iframe or uses Enter without a pointer gesture.
     viewportInteractionGeneration += 1;
+    appearanceRetention?.release();
     retainedViewportProjection = null;
     pendingExternalViewportRestore = null;
     pendingPresentationScroll = null;
@@ -1422,6 +1424,10 @@ export function createPreviewController({
         );
         retainViewportProjection(restore);
       }
+      // A background resource commit belongs to the active appearance update.
+      // Reaffirm that visual anchor before paint rather than adopting its
+      // semantic projection as a new user scroll.
+      appearanceRetention?.retain();
     } finally {
       acceptingViewportProjection = previousSlot;
     }
@@ -1728,6 +1734,7 @@ export function createPreviewController({
     if (disposed || !latestPayload) {
       return;
     }
+    appearanceRetention?.release();
     const payload = latestPayload;
     cancelHighlightFrame();
     commitPendingCodeHighlight = null;
@@ -1960,6 +1967,7 @@ export function createPreviewController({
 
   const applyAppearanceToFrame = (preserveReadingPosition = false) => {
     if (disposed) return;
+    appearanceRetention?.release();
     const frameDocument = activeFrameDocument;
     const styleElement = frameDocument?.querySelector<HTMLStyleElement>('style[data-meo-preview-styles]');
     if (!latestPayload || !frameDocument || !styleElement) {
@@ -1998,18 +2006,17 @@ export function createPreviewController({
     let hasRetainedPosition = false;
     let retentionCancelled = false;
     let layoutObserver: ResizeObserver | null = null;
-    const keepPosition = () => {
+    const keepPosition = (fromPresentation = false) => {
       // Let the appearance render finish, but retire its old reading offset as
       // soon as the user interacts with the frame during asynchronous work.
       if (isCurrent() && !retentionCancelled && interactionGeneration === viewportInteractionGeneration && scrollElement) {
         const scrollDelta = scrollElement.scrollTop - retainedScrollTop;
         const visualDelta = visualAnchor?.isConnected && visualY !== undefined
           ? visualAnchor.getBoundingClientRect().top - (visualRect?.top ?? visualY) : null;
-        if (hasRetainedPosition && Math.abs(scrollDelta) > 24 && (
+        if (!fromPresentation && hasRetainedPosition && Math.abs(scrollDelta) > 24 && (
           wasAtDocumentTop || (visualDelta !== null && Math.abs(visualDelta + scrollDelta) < 8)
         )) {
-          retentionCancelled = true;
-          layoutObserver?.disconnect();
+          retention.release();
           retainedViewportProjection = null;
           pendingPresentationScroll = null;
           return;
@@ -2049,14 +2056,26 @@ export function createPreviewController({
         recordRetainedPosition();
       }
     };
+    const retention = {
+      retain: () => keepPosition(true),
+      release: (): void => {
+        retentionCancelled = true;
+        layoutObserver?.disconnect();
+        if (appearanceRetention === retention) appearanceRetention = null;
+      }
+    };
+    if (preserveReadingPosition) appearanceRetention = retention;
     layoutObserver = preserveReadingPosition && typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(keepPosition) : null;
+      ? new ResizeObserver(() => keepPosition()) : null;
     const previewContent = frameDocument.querySelector<HTMLElement>('.meo-export-doc');
     if (previewContent) layoutObserver?.observe(previewContent);
     if (visualAnchor && visualAnchor !== previewContent) layoutObserver?.observe(visualAnchor);
     // This is a presentation-only update of the same frame and document. A
     // cross-surface semantic projection would race this exact reading offset.
     styleElement.textContent = payload.styles[appearance];
+    // A queued image commit can capture a reading anchor before ResizeObserver
+    // reports this style change. Never let it project the previous geometry.
+    sourceMapDirty = true;
     syncGithubPictures(frameDocument, appearance);
     frameDocument.documentElement.dataset.meoPreviewBracketColoring = String(presetPreference === 'default');
     previewTableLayout?.refresh();
@@ -2067,12 +2086,15 @@ export function createPreviewController({
       let remainingFrames = 20;
       const settlePosition = () => {
         if (!isCurrent() || retentionCancelled || interactionGeneration !== viewportInteractionGeneration) {
-          layoutObserver?.disconnect();
+          retention.release();
           return;
         }
         keepPosition();
         if (--remainingFrames > 0) requestAnimationFrame(settlePosition);
-        else layoutObserver?.disconnect();
+        else {
+          layoutObserver?.disconnect();
+          if (appearanceRetention === retention) appearanceRetention = null;
+        }
       };
       requestAnimationFrame(settlePosition);
     } else {
@@ -3211,6 +3233,7 @@ export function createPreviewController({
       host.hidden = !visible;
       host.inert = !visible;
       if (!visible) {
+        appearanceRetention?.release();
         cancelPaintReady();
         search.surfaceHidden();
         hideSourceNavigation();
@@ -3266,6 +3289,7 @@ export function createPreviewController({
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      appearanceRetention?.release();
       cancelPaintReady();
       cancelHighlightFrame();
       requestGeneration += 1;

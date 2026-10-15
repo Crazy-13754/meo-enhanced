@@ -17,12 +17,13 @@ const controller = createPreviewController({
     initialize: initializeMermaidEditorRuntime,
     render: renderMermaidRuntime
   }),
-  onRendered() { scope.__previewRenderedAt = performance.now(); }
+  onRendered() { scope.__previewRenderedAt = performance.now(); scope.__previewRenderProbe?.(); }
 });
 const scope = window as typeof window & {
   __previewController: typeof controller;
   __previewMessages: unknown[];
   __previewRenderedAt?: number;
+  __previewRenderProbe?: () => void;
 };
 scope.__previewController = controller;
 scope.__previewMessages = messages;

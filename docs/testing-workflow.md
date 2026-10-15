@@ -344,6 +344,20 @@ outside the editor, window blur, plain clicks and one-time navigation in both
 themes. Source links and directly clickable footnote/open-link buttons remain
 covered. This check is part of the production browser gate.
 
+`scripts/test-preview-code-update.ts` also checks style-only reading geometry.
+It warms the source map, changes paragraph metrics, and captures/projects a real
+reading point synchronously in `onRendered`, before ResizeObserver delivery.
+Both growth and shrinkage must expose current source ranges and retain the same
+scroll position. This closes the window where a queued image commit could reuse
+pre-font-change geometry; asynchronous resize notification alone is insufficient.
+`scripts/test-preview-deferred-geometry.ts` also releases a real pending image
+below an active font reading point. Growth, shrinkage and a newer appearance
+must keep that point through the same rendering opportunity; trusted wheel
+input must take over, and hiding or replacing the document must retire retention.
+The image transaction still uses the shared viewport path, then reaffirms the
+active appearance's visual anchor before paint instead of treating that
+programmatic projection as native input.
+
 ## Tooltip display timing
 
 `scripts/test-tooltip-display-latency.ts` observes actual Chromium compositor frames

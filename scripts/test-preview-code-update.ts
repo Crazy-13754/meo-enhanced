@@ -7,6 +7,8 @@ type Harness = Window & {
   __previewController: ReturnType<typeof createPreviewController>;
   __previewMessages: Array<{ type: string; requestId: string }>;
   __previewRenderedAt?: number;
+  __previewRenderProbe?: () => void;
+  __previewMapProbe?: {expectedLine: number; capturedLine: number; before: number; after: number};
   __releaseLanguage: (language: string) => void;
   __waitingLanguages: Set<string>;
   __fullParses: number;
@@ -74,7 +76,7 @@ assert.ok(build.success, build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
 let primaryError: unknown;
 try {
-  for (const scenario of ['staggered', 'superseded', 'removed', 'hidden', 'theme', 'disabled', 'disposed']) {
+  for (const scenario of ['staggered', 'superseded', 'removed', 'hidden', 'theme', 'disabled', 'disposed', 'font-map-grow', 'font-map-shrink']) {
     const page = await browser.newPage();
     const waitFor = async (predicate: () => unknown) => {
       try { await page.waitForFunction(predicate); }
@@ -109,6 +111,54 @@ try {
       }, { text, value });
       return value;
     };
+    if (scenario.startsWith('font-map-')) {
+      const markdown = ['# Geometry', ...Array.from({length: 64}, (_, index) => `Reading paragraph ${index}: stable text.`)].join('\n\n');
+      const value = await render(markdown);
+      await waitFor(() => Boolean((window as Harness).__previewRenderedAt));
+      await page.evaluate(async () => {
+        const scope = window as Harness;
+        scope.__previewController.host.querySelector('iframe')!.contentDocument!
+          .querySelector<HTMLElement>('[data-source-line="41"]')!.scrollIntoView({block: 'start'});
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        // Cache the current source map before the style-only render. The probe
+        // runs in onRendered, before ResizeObserver can invalidate old geometry.
+        scope.__previewController.getReadingPosition(0.2);
+        scope.__previewRenderProbe = () => {
+          scope.__previewRenderProbe = undefined;
+          const controller = scope.__previewController;
+          const frame = controller.host.querySelector('iframe')!;
+          const doc = frame.contentDocument!;
+          const anchor = Array.from(doc.querySelectorAll<HTMLElement>('p[data-source-line]')).find(element => {
+            const rect = element.getBoundingClientRect();
+            return rect.top >= 40 && rect.bottom < frame.clientHeight - 40;
+          })!;
+          const rect = anchor.getBoundingClientRect();
+          const position = controller.getReadingPosition((rect.top + rect.height / 2) / frame.clientHeight)!;
+          const before = doc.scrollingElement!.scrollTop;
+          controller.restoreTopVisiblePosition({line: position.topLine, lineOffset: position.topLineOffset,
+            viewportOffset: position.viewportOffset, sourceRange: position.sourceRange}, () => true);
+          scope.__previewMapProbe = {expectedLine: Number(anchor.dataset.sourceLine), capturedLine: position.topLine,
+            before, after: doc.scrollingElement!.scrollTop};
+        };
+      });
+      const size = scenario === 'font-map-grow' ? 22 : 12;
+      value.styles.dark += `\n.meo-export-doc p { font-size:${size}px !important; line-height:2 !important; }`;
+      await page.evaluate(({markdown, value}) => {
+        const scope = window as Harness;
+        void scope.__previewController.requestRender(markdown, {force: true, preserveViewport: true, preserveFrame: true});
+        const message = scope.__previewMessages.filter(message => message.type === 'requestPreviewRender').at(-1)!;
+        scope.__previewController.acceptRenderResponse({type: 'previewRenderResult', requestId: message.requestId,
+          result: {ok: true, value}});
+      }, {markdown, value});
+      await waitFor(() => Boolean((window as Harness).__previewMapProbe));
+      const probe = await page.evaluate(() => (window as Harness).__previewMapProbe!);
+      assert.equal(probe.capturedLine, probe.expectedLine, `${scenario}: appearance commits must expose current geometry before observer delivery`);
+      assert.ok(Math.abs(probe.after - probe.before) <= 2, `${scenario}: a same-frame capture/project must retain its actual reading point: ${JSON.stringify(probe)}`);
+      assert.deepEqual(errors, [], scenario);
+      await page.evaluate(() => (window as Harness).__previewController.dispose());
+      await page.close();
+      continue;
+    }
     const text = (revision: string, first = 'typescript', second = 'typescript') => [
       '# Stable heading', `${revision} revision`, 'Stable selected paragraph',
       `\`\`\`${first}\n${revision}_first = 1\n\`\`\``,
