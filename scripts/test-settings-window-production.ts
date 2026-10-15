@@ -476,6 +476,7 @@ try {
   await page.click('.settings-tab[data-tab="typing"]'); assert.equal(await page.$eval('[data-setting="emoji"] [role="switch"]', e => e.getAttribute('aria-checked')), 'true');
   await page.click('.settings-tab[data-tab="general"]');
   await page.click('[data-tab="appearance"]');
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
   const animation = await page.$eval('[data-appearance-mode="light"]', e => {
     (e as HTMLButtonElement).click();
     const pill = e.querySelector<HTMLElement>('.segmented-control-button-indicator')!;

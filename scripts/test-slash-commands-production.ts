@@ -219,7 +219,10 @@ try {
     await placeAnchor(90); await page.keyboard.type('/'); await open();
     const initial = await geometry();
     assert.ok(Math.abs(initial.menu.top - initial.anchor.bottom - 4) < 2, mode + ': initially opens below the slash');
-    await page.evaluate(() => { (window as any).editor.view.scrollDOM.scrollTop -= 60; }); await settlePosition();
+    await page.mouse.move(900, 500);
+    await page.mouse.wheel({ deltaY: -60 });
+    await page.waitForFunction(top => Math.abs((window as any).editor.view.scrollDOM.scrollTop - top + 60) < 1, { timeout: 2000 }, initial.scrollTop);
+    await settlePosition();
     const moved = await geometry();
     assert.ok(Math.abs(moved.menu.top - initial.menu.top - 60) < 2, mode + ': follows document scrolling');
     await page.keyboard.type('bold'); await open();

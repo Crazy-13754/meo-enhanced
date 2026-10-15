@@ -1031,6 +1031,10 @@ to reach the original document without another click. Segmented controls keep
 constant pill dimensions and radius during motion, respect reduced motion, and
 automatic font sizing disables the whole stepper. Toolbar checks cover localized
 HTML-comment labels and consistent indicator insets.
+Animation checks explicitly emulate both motion preferences so desktop accessibility
+settings cannot disable the ordinary-motion branch of the fixture.
+Popup scroll-following checks use a real wheel gesture and verify its actual scroll
+distance before comparing menu coordinates; direct scroll assignment is not user input.
 The selection-toolbar switch is checked through real Source/Live drag selections,
 native cell selections, immediate updates, failed writes, stale snapshots and
 reopened documents, while formatting shortcuts remain usable.
