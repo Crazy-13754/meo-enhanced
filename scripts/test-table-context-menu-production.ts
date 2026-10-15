@@ -263,6 +263,10 @@ async function main(): Promise<void> {
       firstInput.value = 'row 1';
       firstInput.setSelectionRange(firstInput.value.length, firstInput.value.length);
       firstInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await waitUntil(
+        () => initialRow.getBoundingClientRect().height <= table.tHead!.rows[0].getBoundingClientRect().height + 0.5,
+        'the reset body row to finish shrinking before sticky-header positioning'
+      );
       await frames(4);
 
       const scrollBeforeStickyOcclusion = editor.view.scrollDOM.scrollTop;

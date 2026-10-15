@@ -1035,6 +1035,8 @@ Animation checks explicitly emulate both motion preferences so desktop accessibi
 settings cannot disable the ordinary-motion branch of the fixture.
 Popup scroll-following checks use a real wheel gesture and verify its actual scroll
 distance before comparing menu coordinates; direct scroll assignment is not user input.
+Sticky-header occlusion fixtures wait for an edited tall row to shrink before using
+its bounds to position the row behind the header.
 The selection-toolbar switch is checked through real Source/Live drag selections,
 native cell selections, immediate updates, failed writes, stale snapshots and
 reopened documents, while formatting shortcuts remain usable.
