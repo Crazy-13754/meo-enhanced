@@ -44,6 +44,17 @@ const mermaidPresentationFactory = createMermaidDiagramPresentationFactory({
   }
 });
 
+let previewRenderGate: Promise<void> | null = null;
+(window as typeof window & { __holdPreviewMermaid?: () => void; __releasePreviewMermaid?: () => void })
+  .__holdPreviewMermaid = () => {
+    (window as typeof window & { __previewMermaidGateStarted?: boolean }).__previewMermaidGateStarted = false;
+    previewRenderGate = new Promise<void>(resolve => {
+      (window as typeof window & { __releasePreviewMermaid?: () => void }).__releasePreviewMermaid = () => {
+        previewRenderGate = null;
+        resolve();
+      };
+    });
+  };
 const previewMermaidResources: MermaidDiagramRenderResources = {
   ...mermaidResources,
   acquireGroup() {
@@ -53,7 +64,13 @@ const previewMermaidResources: MermaidDiagramRenderResources = {
       runExclusive<T>(operation: () => Promise<T>, priority?: 'high' | 'normal') {
         const testWindow = window as typeof window & { __previewMermaidRequests?: number };
         testWindow.__previewMermaidRequests = (testWindow.__previewMermaidRequests ?? 0) + 1;
-        return consumer.runExclusive(operation, priority);
+        const gate = previewRenderGate;
+        if (!gate) return consumer.runExclusive(operation, priority);
+        return consumer.runExclusive(async () => {
+          (window as typeof window & { __previewMermaidGateStarted?: boolean }).__previewMermaidGateStarted = true;
+          await gate;
+          return operation();
+        }, priority);
       }
     };
   }

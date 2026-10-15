@@ -357,6 +357,11 @@ input must take over, and hiding or replacing the document must retire retention
 The image transaction still uses the shared viewport path, then reaffirms the
 active appearance's visual anchor before paint instead of treating that
 programmatic projection as native input.
+`scripts/test-preview-mermaid-runtime.ts` holds a real Mermaid resource operation
+past the 20-frame appearance settling window. Hide/stay, hide/show and a style
+update while hidden must permanently retire the old anchor, while the late SVG
+still commits. These controller checks complement the production hidden-image
+and Source Split checks; the adjacent editor is only an isolation observation.
 
 ## Tooltip display timing
 

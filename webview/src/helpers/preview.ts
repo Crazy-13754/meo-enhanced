@@ -1251,6 +1251,8 @@ export function createPreviewController({
   let activeFrameDocument: Document | null = null;
   let pendingPresentationScroll: { document: Document; scrollTop: number } | null = null;
   let appearanceRetention: { readonly retain: () => void; readonly release: () => void } | null = null;
+  // Late diagram callbacks outlive the settling window and its shared reference.
+  let appearanceRetentionGeneration = 0;
   let viewportInteractionGeneration = 0;
   let retainedViewportProjection: {
     readonly document: Document;
@@ -2004,12 +2006,14 @@ export function createPreviewController({
     );
     let retainedScrollTop = scrollElement?.scrollTop ?? 0;
     let hasRetainedPosition = false;
-    let retentionCancelled = false;
+    const retentionGeneration = appearanceRetentionGeneration;
+    let retentionCancelled = host.hidden;
     let layoutObserver: ResizeObserver | null = null;
     const keepPosition = (fromPresentation = false) => {
       // Let the appearance render finish, but retire its old reading offset as
       // soon as the user interacts with the frame during asynchronous work.
-      if (isCurrent() && !retentionCancelled && interactionGeneration === viewportInteractionGeneration && scrollElement) {
+      if (isCurrent() && !retentionCancelled && retentionGeneration === appearanceRetentionGeneration
+        && interactionGeneration === viewportInteractionGeneration && scrollElement) {
         const scrollDelta = scrollElement.scrollTop - retainedScrollTop;
         const visualDelta = visualAnchor?.isConnected && visualY !== undefined
           ? visualAnchor.getBoundingClientRect().top - (visualRect?.top ?? visualY) : null;
@@ -2064,8 +2068,8 @@ export function createPreviewController({
         if (appearanceRetention === retention) appearanceRetention = null;
       }
     };
-    if (preserveReadingPosition) appearanceRetention = retention;
-    layoutObserver = preserveReadingPosition && typeof ResizeObserver !== 'undefined'
+    if (preserveReadingPosition && !retentionCancelled) appearanceRetention = retention;
+    layoutObserver = preserveReadingPosition && !retentionCancelled && typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => keepPosition()) : null;
     const previewContent = frameDocument.querySelector<HTMLElement>('.meo-export-doc');
     if (previewContent) layoutObserver?.observe(previewContent);
@@ -2082,7 +2086,7 @@ export function createPreviewController({
     syncPreviewCodeHighlight(frameDocument);
     ensureReadableCode(frameDocument);
     keepPosition();
-    if (preserveReadingPosition) {
+    if (preserveReadingPosition && !retentionCancelled) {
       let remainingFrames = 20;
       const settlePosition = () => {
         if (!isCurrent() || retentionCancelled || interactionGeneration !== viewportInteractionGeneration) {
@@ -3233,6 +3237,7 @@ export function createPreviewController({
       host.hidden = !visible;
       host.inert = !visible;
       if (!visible) {
+        appearanceRetentionGeneration += 1;
         appearanceRetention?.release();
         cancelPaintReady();
         search.surfaceHidden();

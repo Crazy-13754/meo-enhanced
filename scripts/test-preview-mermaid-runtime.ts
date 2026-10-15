@@ -718,6 +718,82 @@ try {
   }
   assert.deepEqual(layoutFailures, [], 'Whole-document Preview must center rendered blocks and retain the Mermaid language across theme changes');
 
+  for (const scenario of ['hidden', 'reshown', 'hidden-update']) {
+    console.log(`Preview delayed Mermaid retirement ${scenario} started`);
+    const text = ['# Retired appearance', ...Array.from({length: 40}, (_, index) => `Reading paragraph ${index}.`),
+      '```mermaid', `flowchart LR; A[${scenario}] --> B[Late SVG]`, '```'].join('\n\n');
+    const rendered = renderMarkdownToHtml({ markdownText: text, markdownFilePath: 'C:/tmp/retirement.md', target: 'html' });
+    await page.evaluate(({text, html, lightStyles, darkStyles}) => {
+      const scope = window as any;
+      const controller = scope.__previewController;
+      controller.setVisible(true);
+      controller.requestRender(text);
+      const requestId = scope.__previewMessages.findLast((message: any) => message.type === 'requestPreviewRender').requestId;
+      controller.acceptRenderResponse({type: 'previewRenderResult', requestId,
+        result: {ok: true, value: {html, hasMermaid: true, styles: {light: lightStyles, dark: darkStyles}}}});
+    }, {text, html: rendered.html, lightStyles, darkStyles});
+    await page.waitForFunction(() => Boolean(document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument
+      ?.querySelector('.meo-export-mermaid.is-rendered svg')));
+    const expectedColor = scenario === 'hidden-update' ? 'rgb(192, 52, 103)' : 'rgb(176, 35, 86)';
+    const baseline = await page.evaluate(async ({text, html, lightStyles, darkStyles, scenario}) => {
+      const scope = window as any;
+      const controller = scope.__previewController;
+      const doc = controller.host.querySelector('iframe').contentDocument as Document;
+      doc.scrollingElement!.scrollTop = 300;
+      const oldSvg = doc.querySelector('.meo-export-mermaid svg');
+      scope.__retirementOldSvg = oldSvg;
+      scope.__holdPreviewMermaid();
+      const update = (color: string) => {
+        const extra = `:root{--meo-mermaid-node-background:${color}}`;
+        controller.requestRender(text, {force: true, preserveViewport: true, preserveFrame: true});
+        const requestId = scope.__previewMessages.findLast((message: any) => message.type === 'requestPreviewRender').requestId;
+        controller.acceptRenderResponse({type: 'previewRenderResult', requestId, result: {ok: true,
+          value: {html, hasMermaid: true, styles: {light: lightStyles + extra, dark: darkStyles + extra}}}});
+      };
+      update('#b02356');
+      for (let frame = 0; frame < 60 && !scope.__previewMermaidGateStarted; frame++) await new Promise(requestAnimationFrame);
+      if (!scope.__previewMermaidGateStarted) throw Error('The real Preview Mermaid operation never reached its gate');
+      // Expire the 20-frame observer/shared reference using real rendering opportunities.
+      for (let frame = 0; frame < 24; frame++) await new Promise(requestAnimationFrame);
+      controller.setVisible(false);
+      if (scenario === 'hidden-update') {
+        update('#c03467');
+        for (let frame = 0; frame < 24; frame++) await new Promise(requestAnimationFrame);
+      }
+      if (scenario !== 'hidden') controller.setVisible(true);
+      for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame);
+      // A small newer offset is below the native takeover heuristic. Hiding must
+      // have permanently retired the old anchor independently of that heuristic.
+      if (scenario === 'hidden-update') doc.scrollingElement!.scrollTop = 12;
+      else doc.scrollingElement!.scrollTop += 12;
+      const anchor = Array.from(doc.querySelectorAll('p')).find(element => element.textContent === 'Reading paragraph 6.')!;
+      scope.__retirementAnchor = anchor;
+      return {scrollTop: doc.scrollingElement!.scrollTop, anchorTop: anchor.getBoundingClientRect().top,
+        editorTop: document.querySelector('.cm-scroller')!.scrollTop};
+    }, {text, html: rendered.html, lightStyles, darkStyles, scenario});
+    await page.evaluate(() => (window as any).__releasePreviewMermaid());
+    await page.waitForFunction(color => {
+      const scope = window as any;
+      const block = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
+        .querySelector<HTMLElement>('.meo-export-mermaid')!;
+      return block.querySelector('svg') !== scope.__retirementOldSvg
+        && block.dataset.meoPreviewMermaidTheme?.includes(color);
+    }, {}, expectedColor);
+    const completed = await page.evaluate(async () => {
+      for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame);
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      return {scrollTop: doc.scrollingElement!.scrollTop,
+        anchorTop: (window as any).__retirementAnchor.getBoundingClientRect().top,
+        editorTop: document.querySelector('.cm-scroller')!.scrollTop};
+    });
+    assert.ok(Math.abs(completed.scrollTop - baseline.scrollTop) <= 2,
+      `${scenario}: a late Mermaid completion replayed a retired scroll offset: ${JSON.stringify({baseline, completed})}`);
+    assert.ok(Math.abs(completed.anchorTop - baseline.anchorTop) <= 2,
+      `${scenario}: a late Mermaid completion moved the current reading anchor`);
+    assert.equal(completed.editorTop, baseline.editorTop, `${scenario}: unrelated editor viewport must remain unchanged`);
+    console.log(`Preview delayed Mermaid retirement ${scenario} passed`);
+  }
+
   const disposingPreview = await page.evaluate(({ text, html, lightStyles, darkStyles }) => {
     const controller = (window as typeof window & { __previewController?: any }).__previewController;
     const testWindow = window as typeof window & {
