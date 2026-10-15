@@ -71,6 +71,9 @@ const documentUri = TestUri.file(path.join(documentDirectory, 'test.md'));
 const localImage = TestUri.file(path.join(documentDirectory, 'local.png'));
 const externalImage = TestUri.file(path.join(fixtureRoot, 'Pictures', 'external.jpg'));
 const newExternalImage = TestUri.file(path.join(fixtureRoot, 'Other', 'new.jpg'));
+// A leading slash is document/workspace-root syntax, not a POSIX OS path.
+const absoluteImageTarget = (uri: TestUri) => path.sep === '\\' ? uri.fsPath : uri.toString();
+const externalTarget = absoluteImageTarget(externalImage);
 existingFiles.set(fileKey(localImage.fsPath), new Uint8Array([1, 2, 3]));
 existingFiles.set(fileKey(externalImage.fsPath), new Uint8Array([1, 2, 3]));
 existingFiles.set(fileKey(newExternalImage.fsPath), new Uint8Array([1, 2, 3]));
@@ -83,7 +86,7 @@ assert(readFileCount === 0, 'document-local image was unnecessarily copied into 
 
 for (const source of [
   './local.png', 'nested/../local.png', 'nested\\..\\local.png',
-  localImage.fsPath, localImage.fsPath.replace(/\\/g, '/'), localImage.toString()
+  ...(path.sep === '\\' ? [localImage.fsPath, localImage.fsPath.replace(/\\/g, '/')] : []), localImage.toString()
 ]) {
   const result = await resolveWebviewImageSrc(source, documentUri as never, localWebview.webview as never);
   assert(result === localResult, `local image path variant resolved differently: ${source}`);
@@ -94,7 +97,7 @@ assert(localWebview.optionsAssignments === 0, 'local image path variants changed
 assert(readFileCount === 0, 'local image path variants unnecessarily copied image bytes');
 
 const collectedRoots = collectWebviewImageResourceRoots(
-  `![external](${externalImage.fsPath})`,
+  `![external](${externalTarget})`,
   documentUri as never
 ) as unknown as TestUri[];
 assert(collectedRoots.length === 1, `initial image root count was ${collectedRoots.length}`);
@@ -104,12 +107,12 @@ assert(
 );
 
 const externalWebview = createWebview([TestUri.file(documentDirectory), ...collectedRoots]);
-const externalResult = await resolveWebviewImageSrc(externalImage.fsPath, documentUri as never, externalWebview.webview as never);
+const externalResult = await resolveWebviewImageSrc(externalTarget, documentUri as never, externalWebview.webview as never);
 assert(externalResult.startsWith('vscode-webview-resource:'), 'initial external image did not use its exact authorized URI');
 assert(externalWebview.optionsAssignments === 0, 'external image changed webview options and can reload the editor');
 assert(readFileCount === 0, `initial external image was unnecessarily copied ${readFileCount} times`);
 const embeddedPreviewResult = await resolveWebviewImageSrc(
-  externalImage.fsPath,
+  externalTarget,
   documentUri as never,
   externalWebview.webview as never,
   { delivery: 'embedded' }
@@ -118,7 +121,7 @@ assert(embeddedPreviewResult === 'data:image/jpeg;base64,AQID', 'Preview did not
 assert(readFileCount === 1, 'embedded Preview image was not read exactly once');
 
 const newExternalResult = await resolveWebviewImageSrc(
-  newExternalImage.fsPath,
+  absoluteImageTarget(newExternalImage),
   documentUri as never,
   externalWebview.webview as never
 );
@@ -129,7 +132,7 @@ assert(readFileCount === 2, `new external image read count was ${readFileCount}`
 // Exercise the actual Preview-to-Host seam: Markdown normalizes Windows
 // backslashes to %5C before the deferred resource request reaches the resolver.
 const { default: exportRuntime } = await import('../src/export/runtime');
-for (const source of [externalImage.fsPath, encodeURI(externalImage.fsPath)]) {
+for (const source of [externalTarget, encodeURI(externalTarget), externalImage.toString()]) {
   const preview = exportRuntime.renderPreviewDocument({
     markdownText: `![external](${source})\n\n<img src="${source}" alt="HTML external">`,
     sourceDocumentPath: documentUri.fsPath,
@@ -158,7 +161,8 @@ assert(await resolveWebviewImageSrc('//images.example.test/image.png', documentU
 // Encoded pasted-image names retain their identity outside initial resource roots.
 const specialImage = TestUri.file(path.join(path.dirname(newExternalImage.fsPath), 'images (v1) #100%', 'paste.png'));
 existingFiles.set(fileKey(specialImage.fsPath), new Uint8Array([4, 5, 6]));
-const specialPath = encodeURI(specialImage.fsPath.replace(/\\/g, '/')).replace(/[()#?]/g, character => '%' + character.charCodeAt(0).toString(16).toUpperCase());
+const specialTarget = path.sep === '\\' ? encodeURI(specialImage.fsPath.replace(/\\/g, '/')) : specialImage.toString();
+const specialPath = specialTarget.replace(/[()#?]/g, character => '%' + character.charCodeAt(0).toString(16).toUpperCase());
 const specialPreview = exportRuntime.renderPreviewDocument({
   markdownText: '![](' + specialPath + ')',
   sourceDocumentPath: documentUri.fsPath,

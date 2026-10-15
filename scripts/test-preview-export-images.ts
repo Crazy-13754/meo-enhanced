@@ -6,6 +6,8 @@ import exportRuntime from '../src/export/runtime';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-preview-image-'));
 const localImagePath = path.join(tempDir, 'absolute-image.png');
+// Keep drive-path coverage on Windows; leading slash destinations are document/workspace-relative.
+const localImageTarget = process.platform === 'win32' ? localImagePath : pathToFileURL(localImagePath).toString();
 const pngBytes = Buffer.concat([
   Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -16,11 +18,11 @@ const pngBytes = Buffer.concat([
 fs.writeFileSync(localImagePath, pngBytes);
 
 const remoteImageUrl = 'https://i2.hdslb.com/bfs/banner/example.jpg@976w_550h_!web-home-carousel-cover.avif';
-const markdownText = `![local](${localImagePath} "title")\n\n<img src="${localImagePath}" alt="raw local">\n\n![remote](${remoteImageUrl})\n\n![missing fallback](missing-image.png)`;
+const markdownText = `![local](${localImageTarget} "title")\n\n<img src="${localImageTarget}" alt="raw local">\n\n![remote](${remoteImageUrl})\n\n![missing fallback](missing-image.png)`;
 const baseOptions = {
   sourceDocumentPath: path.join(tempDir, 'document.md'),
   mermaidRuntimeSrc: 'mermaid.min.js',
-  baseHref: `file:///${tempDir.replace(/\\/g, '/')}/`,
+  baseHref: pathToFileURL(tempDir + path.sep).toString(),
   title: 'Image coverage'
 };
 
@@ -63,10 +65,10 @@ try {
     if (html.includes('meo-md-image-controls')) throw new Error(`${surface} exposed Live image controls`);
   }
   if (!exported.htmlDocument.includes('src="data:image/png;base64,')) {
-    throw new Error('HTML export did not embed a Windows absolute-path image');
+    throw new Error('HTML export did not embed a local absolute image target');
   }
   if (!pdf.htmlDocument.includes(pathToFileURL(localImagePath).toString())) {
-    throw new Error('PDF export did not convert a Windows absolute-path image to a file URL');
+    throw new Error('PDF export did not preserve the local image file URL');
   }
   if (!pdf.htmlDocument.includes(remoteImageUrl)) {
     throw new Error('PDF export changed or dropped a valid remote AVIF image URL');

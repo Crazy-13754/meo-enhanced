@@ -237,6 +237,15 @@ Find/Replace and mode switching from text and margins. Native selection, copy,
 undo, scrolling, composition and iframe input controls must keep their scope.
 It belongs to the quick and targeted history gates.
 
+`scripts/test-wiki-paths.ts` uses POSIX and Windows URI fixtures on every host to
+distinguish vault-root `/...`, document-relative paths, explicit `file:` URIs and
+drive-qualified paths. It covers links and image resource maps, fragments,
+Unicode/space/literal-percent names, and collisions with OS-root files. It runs
+in the unit and Wiki gates. `scripts/test-wiki-resources.ts` retains real-filesystem
+coverage; its native `fsPath` absolute-path assertion applies only to Windows
+drive paths. POSIX filesystem locations use `file:` URIs instead of changing
+the existing vault-root meaning of a leading slash.
+
 `scripts/test-image-path-compatibility.ts` checks document-relative precedence,
 Obsidian vault and owning-workspace fallback, encoded image names, explicit
 relative paths, root traversal, unrelated workspaces and remote URI identity.
