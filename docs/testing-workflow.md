@@ -67,6 +67,9 @@ anchoring, browser boundary clamps, below-line growth/contraction and input whos
 native scroll has not yet been adopted, without replaying event deltas.
 Also combine range growth/contraction with continuing native motion in the same
 gesture: range changes alone must not reject actual scroll progress.
+IME fixtures must hit painted text or use native caret movement, then verify the
+source boundary after Live marker reconciliation paints. A `display:none` source
+delimiter has a zero rectangle and must never become an editor click at `(0, 0)`.
 
 For installed-VSIX scrollbar acceptance, use an isolated VS Code profile and check
 Live, Source, full Preview and split Preview in light/dark appearances, including

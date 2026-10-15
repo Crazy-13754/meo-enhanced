@@ -211,7 +211,23 @@ async function main() {
       throw new Error(`IME sync retained or restored composition text: ${JSON.stringify(state)}`);
     }
 
-    const clickLineEnd = async (label: string) => {
+    const readCaretSuffix = async (label: string) => page.evaluate(async lineLabel => {
+      // Native selection and Live marker reconciliation must reach a painted frame
+      // before Chromium starts a platform composition at the new source boundary.
+      for (let frame = 0; frame < 2; frame++) {
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      }
+      const line = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
+        .find(candidate => candidate.textContent?.includes(lineLabel))!;
+      const selection = getSelection();
+      if (!selection?.focusNode || !line.contains(selection.focusNode)) return null;
+      const range = document.createRange();
+      range.setStart(selection.focusNode, selection.focusOffset);
+      range.setEnd(line, line.childNodes.length);
+      return range.toString();
+    }, label);
+
+    const placeCaretAtLineEnd = async (label: string) => {
       const activationPoint = await page.evaluate((lineLabel) => {
         const line = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
           .find((candidate) => candidate.textContent?.includes(lineLabel));
@@ -229,13 +245,24 @@ async function main() {
         range.selectNodeContents(line);
         const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0);
         const rect = rects.at(-1) ?? line.getBoundingClientRect();
-        return { x: rect.right + 2, y: rect.top + rect.height / 2 };
+        return { x: line.getBoundingClientRect().right - 2, y: rect.top + rect.height / 2 };
       }, label);
       await page.mouse.click(point.x, point.y);
+      // A click beside formatted text can retain its inner affinity. End is a
+      // native user action that reaches the full source boundary for this IME test.
+      await page.keyboard.press('End');
+      let suffix = await readCaretSuffix(label);
+      // These fixtures end with at most three hidden emphasis/strike characters.
+      // Traverse their native caret stops without stepping into the following line.
+      for (let step = 0; step < 3 && suffix && /^[*~]+$/.test(suffix); step++) {
+        await page.keyboard.press('ArrowRight');
+        suffix = await readCaretSuffix(label);
+      }
+      assert.equal(suffix, '', 'Native navigation must reach the source line end after hidden delimiters');
     };
 
     const assertPreeditUsesLineColor = async (label: string) => {
-      await clickLineEnd(label);
+      await placeCaretAtLineEnd(label);
       await session.send('Input.imeSetComposition', {
         text: 'pinyin',
         selectionStart: 6,
@@ -288,7 +315,7 @@ async function main() {
       }, label);
       await page.mouse.click(activationPoint.x, activationPoint.y);
       await new Promise((resolve) => setTimeout(resolve, 50));
-      const markerPoint = await page.evaluate(({ lineLabel, text }) => {
+      const boundaryPoint = await page.evaluate(({ lineLabel, text }) => {
         const line = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
           .find((candidate) => candidate.textContent?.includes(lineLabel));
         if (!line) throw new Error(`Closing marker line not found: ${lineLabel}`);
@@ -303,12 +330,21 @@ async function main() {
         const marker = matches.at(-1);
         if (!marker) throw new Error(`Closing marker not found: ${lineLabel} ${text}`);
         const range = document.createRange();
-        range.setStart(marker.node, marker.offset);
-        range.setEnd(marker.node, marker.offset + text.length);
-        const rect = range.getBoundingClientRect();
-        return { x: rect.right + 1, y: rect.top + rect.height / 2 };
+        // Collapsed source markers have no painted rectangle. Click the first
+        // visible character after the marker, at its leading caret boundary.
+        range.setStart(marker.node, marker.offset + text.length);
+        range.setEnd(line, line.childNodes.length);
+        const rect = Array.from(range.getClientRects()).find(rect => rect.width > 0 && rect.height > 0);
+        if (!rect) throw new Error(`Painted boundary not found: ${lineLabel}`);
+        const point = { x: rect.left + 0.1, y: rect.top + rect.height / 2 };
+        if (!line.contains(document.elementFromPoint(point.x, point.y))) {
+          throw new Error(`Boundary click does not hit its line: ${lineLabel}`);
+        }
+        return point;
       }, { lineLabel: label, text: markerText });
-      await page.mouse.click(markerPoint.x, markerPoint.y);
+      await page.mouse.click(boundaryPoint.x, boundaryPoint.y);
+      const caretSuffix = await readCaretSuffix(label);
+      assert.equal(caretSuffix, '后续', 'The real pointer must place the caret after the closing source marker');
       await session.send('Input.imeSetComposition', {
         text: 'pinyin',
         selectionStart: 6,
@@ -350,7 +386,7 @@ async function main() {
 
     for (const label of ['正文组合', '标题组合']) {
       const messageCountBefore = await page.evaluate(() => (window as any).__hostMessages.length);
-      await clickLineEnd(label);
+      await placeCaretAtLineEnd(label);
       const before = await page.evaluate((lineLabel) => (
         Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
           .find((line) => line.textContent?.includes(lineLabel))?.textContent ?? ''
@@ -387,33 +423,7 @@ async function main() {
       assert.ok(hostText.split('\n').find(line => line.includes(label))?.endsWith('12'));
     }
 
-    const strikeActivation = await page.evaluate(() => {
-      const line = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-        .find((candidate) => candidate.textContent?.includes('删除线输入'))!;
-      const rect = line.getBoundingClientRect();
-      return { x: rect.left + 8, y: rect.top + rect.height / 2 };
-    });
-    await page.mouse.click(strikeActivation.x, strikeActivation.y);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const strikeEnd = await page.evaluate(() => {
-      const line = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-        .find((candidate) => candidate.textContent?.includes('删除线输入'))!;
-      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-      const matches: Array<{ node: Node; offset: number }> = [];
-      let node: Node | null = walker.nextNode();
-      while (node) {
-        const offset = node.textContent?.lastIndexOf('~~') ?? -1;
-        if (offset >= 0) matches.push({ node, offset });
-        node = walker.nextNode();
-      }
-      const marker = matches.at(-1)!;
-      const range = document.createRange();
-      range.setStart(marker.node, marker.offset);
-      range.setEnd(marker.node, marker.offset + 2);
-      const rect = range.getBoundingClientRect();
-      return { x: rect.right + 1, y: rect.top + rect.height / 2 };
-    });
-    await page.mouse.click(strikeEnd.x, strikeEnd.y);
+    await placeCaretAtLineEnd('删除线输入');
     await session.send('Input.insertText', { text: '123' });
     await new Promise((resolve) => setTimeout(resolve, 80));
     const strikeAfterInsert = await page.evaluate(() => {
