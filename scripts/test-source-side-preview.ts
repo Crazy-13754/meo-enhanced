@@ -327,6 +327,20 @@ try {
     }, lineNumber);
     await new Promise(resolve => setTimeout(resolve, 100));
   };
+  const waitForPreviewTransition = async (mode: 'source' | 'preview') => {
+    await page.waitForFunction(expectedMode => {
+      const app = document.querySelector<HTMLElement>('#app');
+      const surface = document.querySelector<HTMLElement>('.editor-surface');
+      const preview = document.querySelector<HTMLElement>('.preview-host');
+      const editor = document.querySelector<HTMLElement>('.editor-host');
+      if (app?.dataset.mode !== expectedMode || !surface || !preview || !editor
+        || preview.hidden || getComputedStyle(preview).visibility === 'hidden') return false;
+      return expectedMode === 'source'
+        ? surface.hasAttribute('data-source-preview') && !surface.hasAttribute('data-source-preview-preparing')
+          && !editor.hidden && !editor.inert
+        : editor.hidden && !editor.hasAttribute('data-preview-cover');
+    }, { timeout: 2_000 }, mode);
+  };
   const startPreviewAnchorSampling = async (lineNumber: number) => page.evaluate(async line => {
     const samples: Array<{
       started: boolean;
@@ -1460,6 +1474,8 @@ try {
   await startPreviewAnchorSampling(transitionTableAnchorLine);
   await page.click('button[data-mode="source"]');
   await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'source');
+  // Keep sampling until the asynchronous mode transaction has exposed its final surface.
+  await waitForPreviewTransition('source');
   await new Promise(resolve => setTimeout(resolve, 220));
   const splitModeEntryFrames = await stopPreviewAnchorSampling();
   const visibleSplitModeOffsets = splitModeEntryFrames
@@ -1518,6 +1534,8 @@ try {
     document.querySelector<HTMLButtonElement>('button[data-mode="preview"]')!.click();
   });
   await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'preview');
+  // Keep sampling until the asynchronous mode transaction has exposed its final surface.
+  await waitForPreviewTransition('preview');
   await new Promise(resolve => setTimeout(resolve, 220));
   const sourceToFullPreviewFrames = await stopPreviewAnchorSampling();
   const lastSplitFrame = sourceToFullPreviewFrames
@@ -1587,6 +1605,8 @@ try {
     document.querySelector<HTMLButtonElement>('button[data-mode="source"]')!.click();
   });
   await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'source');
+  // Keep sampling until the asynchronous mode transaction has exposed its final surface.
+  await waitForPreviewTransition('source');
   await new Promise(resolve => setTimeout(resolve, 220));
   const fullPreviewToSourceFrames = await stopPreviewAnchorSampling();
   const visibleReverseFrames = fullPreviewToSourceFrames.filter(frame => (

@@ -669,26 +669,58 @@ async function main(): Promise<void> {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
     });
-    const tableCaret = await page.evaluate(() => {
-      const editor = (window as any).__editor;
-      const input = document.querySelector<HTMLTextAreaElement>(
-        '.meo-md-html-table-shell tbody tr:first-child td:first-child textarea'
-      )!;
-      const viewport = editor.view.scrollDOM.getBoundingClientRect();
-      const inputRect = input.getBoundingClientRect();
-      const cellRect = input.closest<HTMLTableCellElement>('td')!.getBoundingClientRect();
-      return {
-        active: document.activeElement === input,
-        selectionEnd: input.selectionEnd,
-        valueLength: input.value.length,
-        inputBottom: inputRect.bottom,
-        cellBottom: cellRect.bottom,
-        viewportBottom: viewport.bottom,
-        inputScrollTop: input.scrollTop,
-        visible: inputRect.bottom <= viewport.bottom + 3 && cellRect.bottom <= viewport.bottom + 3 && input.scrollTop <= 1
-      };
+    // Chromium's native text node uses the textarea's actual shaping and
+    // wrapping rules, which a separate DOM mirror cannot fully reproduce.
+    const caretClient = await page.createCDPSession();
+    const { root } = await caretClient.send('DOM.getDocument', { depth: 0, pierce: true });
+    const { nodeId } = await caretClient.send('DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: '.meo-md-html-table-shell tbody tr:first-child td:first-child textarea'
     });
-    if (!tableCaret.visible || !tableCaret.active || tableCaret.selectionEnd !== tableCaret.valueLength) {
+    const described = await caretClient.send('DOM.describeNode', { nodeId, depth: -1, pierce: true });
+    const descendants = (node: typeof described.node): Array<typeof described.node> => [
+      node, ...(node.shadowRoots ?? []).flatMap(descendants), ...(node.children ?? []).flatMap(descendants)
+    ];
+    const nativeText = descendants(described.node).filter(node => node.nodeType === 3);
+    if (nativeText.length !== 1) throw new Error('Expected one native numeric textarea text node');
+    const { object } = await caretClient.send('DOM.resolveNode', { backendNodeId: nativeText[0].backendNodeId });
+    const measured = await caretClient.send('Runtime.callFunctionOn', {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: function(this: Text) {
+        const input = (this.getRootNode() as ShadowRoot).host;
+        if (!(input instanceof HTMLTextAreaElement) || this.data !== input.value) {
+          throw new Error('Native textarea text no longer matches its input');
+        }
+        const range = this.ownerDocument.createRange();
+        range.setStart(this, input.selectionEnd);
+        range.collapse(true);
+        const caret = range.getBoundingClientRect();
+        const viewport = (window as any).__editor.view.scrollDOM.getBoundingClientRect();
+        return {
+          active: document.activeElement === input,
+          selectionStart: input.selectionStart,
+          selectionEnd: input.selectionEnd,
+          selectionDirection: input.selectionDirection,
+          valueLength: input.value.length,
+          inputBottom: input.getBoundingClientRect().bottom,
+          cellBottom: input.closest('td')!.getBoundingClientRect().bottom,
+          caretTop: caret.top,
+          caretBottom: caret.bottom,
+          viewportBottom: viewport.bottom,
+          inputScrollTop: input.scrollTop,
+          visible: caret.height > 0 && caret.top >= viewport.top && caret.bottom <= viewport.bottom && input.scrollTop <= 1
+        };
+      }.toString()
+    });
+    if (measured.exceptionDetails || !measured.result.value) {
+      throw new Error(`Native textarea caret measurement failed: ${JSON.stringify(measured.exceptionDetails)}`);
+    }
+    const tableCaret = measured.result.value as {
+      visible: boolean; active: boolean; selectionStart: number; selectionEnd: number; valueLength: number;
+    };
+    await caretClient.detach();
+    if (!tableCaret.visible || !tableCaret.active || tableCaret.selectionStart !== tableCaret.selectionEnd
+      || tableCaret.selectionEnd !== tableCaret.valueLength) {
       throw new Error(`Numeric table input left its active line outside the viewport: ${JSON.stringify(tableCaret)}`);
     }
 
