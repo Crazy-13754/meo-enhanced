@@ -233,6 +233,9 @@ export function isLiveInputDerivedWorkRefresh(transaction: Transaction): boolean
 
 export function shouldDeferLiveInputDerivedWork(transaction: Transaction): boolean {
   if (isLiveInputDerivedWorkRefresh(transaction)) return false;
+  // Settling only retires an already applied generation. It must not rebuild
+  // presentation a second time after accepted consumers finish.
+  if (transaction.effects.some((effect) => effect.is(settleLiveInputDerivedWorkEffect))) return true;
   if (transaction.effects.some((effect) => effect.is(cancelLiveInputDerivedWorkEffect))) return true;
   if (transaction.effects.some((effect) => effect.is(supersedeLiveInputDerivedWorkEffect))) return false;
   const phase = transaction.state.field(liveInputDerivedWorkPhaseField, false)?.phase;
@@ -300,6 +303,34 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
   const runningFrameConsumers = new Set<object>();
   const frameConsumers = new Map<object, FrameConsumerRecord>();
   let disposed = false;
+  // Keep a pressed widget button alive until its pointer gesture ends.
+  // Primary input still commits; only the later full derived rebuild waits.
+  const activePointers = new Set<number>();
+  const pointerOwner = view.dom.ownerDocument.defaultView;
+  const pointerListeners = new AbortController();
+  const pointerOptions = { capture: true, signal: pointerListeners.signal };
+  view.dom.addEventListener('pointerdown', (event) => {
+    if (event.button === 0 && (event.buttons & 1) !== 0
+      && event.target instanceof Element && event.target.closest('button')) {
+      activePointers.add(event.pointerId);
+    }
+  }, pointerOptions);
+  const endPointer = (event: PointerEvent): void => { activePointers.delete(event.pointerId); };
+  pointerOwner?.addEventListener('pointerup', endPointer, pointerOptions);
+  pointerOwner?.addEventListener('pointercancel', endPointer, pointerOptions);
+  const clearPointers = (): void => { activePointers.clear(); };
+  const reconcilePointer = (event: PointerEvent): void => {
+    // A release outside the Webview may have no matching up or blur here.
+    // Re-entry reports the current buttons, so it can retire that stale hold.
+    if ((event.buttons & 1) === 0) activePointers.delete(event.pointerId);
+  };
+  pointerOwner?.addEventListener('pointermove', reconcilePointer, pointerOptions);
+  pointerOwner?.addEventListener('pointerover', reconcilePointer, pointerOptions);
+  pointerOwner?.addEventListener('blur', clearPointers, pointerOptions);
+  pointerOwner?.addEventListener('pagehide', clearPointers, pointerOptions);
+  view.dom.ownerDocument.addEventListener('visibilitychange', () => {
+    if (view.dom.ownerDocument.hidden) clearPointers();
+  }, pointerOptions);
   const reportError = (error: unknown): void => {
     console.error('[MEO live input] derived refresh failed', error);
   };
@@ -570,7 +601,7 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
     cancelFrame: (frameId: number) => window.cancelAnimationFrame(frameId),
     // Mermaid yields internally while measuring SVG labels. A full-document
     // rebuild in those gaps can turn a tiny split edit into a second-long wait.
-    shouldWaitForPresentation: () => Boolean(view.dom.querySelector(
+    shouldWaitForPresentation: () => activePointers.size > 0 || Boolean(view.dom.querySelector(
       '.meo-mermaid-editing-block[data-meo-mermaid-rendering="true"], '
         + '.meo-mermaid-editing-block [data-meo-mermaid-rendering="true"]'
     )),
@@ -647,6 +678,8 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
     },
     destroy() {
       disposed = true;
+      pointerListeners.abort();
+      activePointers.clear();
       scheduler.dispose();
       for (const taskId of [...deferredTasks.keys()]) cancelLargeDocumentDeferred(taskId);
       cancelConsumerGeneration();

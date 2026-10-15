@@ -304,6 +304,110 @@ async function assertInlineInputFormatting(page: import('puppeteer-core').Page):
   }
 }
 
+async function assertDerivedPointerLifecycle(page: import('puppeteer-core').Page): Promise<void> {
+  await page.evaluate(async () => {
+    const frames = async () => {
+      for (let index = 0; index < 8; index += 1) {
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      }
+    };
+    for (const scenario of ['none', 'document-content', 'secondary-button', 'zero-buttons', 'up', 'cancel', 'blur', 'two-pointers', 'two-blur', 'held-move', 'held-over', 'released-off-window', 'move-with-secondary', 'pagehide', 'hidden', 'destroy']) {
+      const host = document.createElement('div');
+      document.body.append(host);
+      const signals = new Set<AbortSignal>();
+      const addListener = EventTarget.prototype.addEventListener;
+      let probe: any;
+      try {
+        // Observe lifecycle resources at the real DOM adapter boundary, without
+        // exposing the plugin's private pointer ownership to the fixture.
+        EventTarget.prototype.addEventListener = function(type, listener, options) {
+          if (['pointerdown', 'pointerup', 'pointercancel', 'pointermove', 'pointerover', 'blur', 'pagehide', 'visibilitychange'].includes(type)
+            && typeof options === 'object' && options?.signal) signals.add(options.signal);
+          return addListener.call(this, type, listener, options);
+        };
+        probe = (window as any).__createLiveInputConsumerProbe(host);
+      } finally {
+        EventTarget.prototype.addEventListener = addListener;
+      }
+      const control = document.createElement('button');
+      const controlLabel = document.createElement('span');
+      control.append(controlLabel);
+      probe.view.dom.append(control);
+      let destroyed = false;
+      const pointer = (target: EventTarget, type: string, id: number, button = 0) => {
+        target.dispatchEvent(new PointerEvent(type, { pointerId: id, button, buttons: type === 'pointerdown' ? (button === 0 ? 1 : 2) : 0, bubbles: true }));
+      };
+      const expectRefreshes = (expected: number, phase: string) => {
+        if (probe.refreshes() !== expected) {
+          throw new Error(`Pointer lifecycle ${scenario}/${phase}: ${probe.refreshes()} refreshes, expected ${expected}`);
+        }
+      };
+      try {
+        if (scenario === 'document-content') {
+          pointer(probe.view.dom, 'pointerdown', 1);
+        } else if (scenario === 'zero-buttons') {
+          controlLabel.dispatchEvent(new PointerEvent('pointerdown', {pointerId: 1, button: 0, buttons: 0, bubbles: true}));
+        } else if (scenario !== 'none') pointer(controlLabel, 'pointerdown', 1, scenario === 'secondary-button' ? 2 : 0);
+        if (scenario === 'two-pointers' || scenario === 'two-blur') pointer(controlLabel, 'pointerdown', 2);
+        probe.input(' accepted');
+        if (probe.view.state.doc.toString() !== 'probe accepted') throw new Error('Held pointer blocked primary input');
+        await frames();
+        const holds = scenario !== 'none' && scenario !== 'document-content' && scenario !== 'secondary-button' && scenario !== 'zero-buttons';
+        expectRefreshes(holds ? 0 : 1, 'held');
+        if (scenario === 'two-pointers') {
+          pointer(window, 'pointerup', 99);
+          pointer(window, 'pointerup', 1);
+          pointer(window, 'pointerup', 1);
+          await frames();
+          expectRefreshes(0, 'one-owner-remains');
+          pointer(window, 'pointerup', 2);
+        } else if (scenario === 'up') {
+          pointer(window, 'pointerup', 99);
+          await frames();
+          expectRefreshes(0, 'unknown-release');
+          pointer(window, 'pointerup', 1);
+        } else if (scenario === 'cancel') {
+          pointer(window, 'pointercancel', 1);
+        } else if (scenario === 'held-move' || scenario === 'held-over') {
+          const type = scenario === 'held-move' ? 'pointermove' : 'pointerover';
+          window.dispatchEvent(new PointerEvent(type, { pointerId: 1, buttons: 1 }));
+          await frames();
+          expectRefreshes(0, 'still-held-after-motion');
+          pointer(window, type, 1);
+        } else if (scenario === 'released-off-window') {
+          pointer(window, 'pointerover', 1);
+        } else if (scenario === 'move-with-secondary') {
+          window.dispatchEvent(new PointerEvent('pointermove', {pointerId: 1, buttons: 2}));
+        } else if (scenario === 'pagehide') {
+          window.dispatchEvent(new PageTransitionEvent('pagehide'));
+        } else if (scenario === 'hidden') {
+          Object.defineProperty(document, 'hidden', {configurable: true, value: true});
+          try { document.dispatchEvent(new Event('visibilitychange')); }
+          finally { delete (document as any).hidden; }
+        } else if (scenario === 'blur' || scenario === 'two-blur') {
+          window.dispatchEvent(new Event('blur'));
+        } else if (scenario === 'destroy') {
+          probe.destroy();
+          destroyed = true;
+          if (signals.size === 0 || [...signals].some(signal => !signal.aborted)) {
+            throw new Error('Destroyed derived pointer listeners retained their owner');
+          }
+          pointer(controlLabel, 'pointerdown', 3);
+        }
+        await frames();
+        expectRefreshes(destroyed ? 0 : 1, 'released');
+        pointer(window, 'pointerup', 1);
+        pointer(window, 'pointercancel', 1);
+        await frames();
+        expectRefreshes(destroyed ? 0 : 1, 'no-duplicate-refresh');
+      } finally {
+        if (!destroyed) probe.destroy();
+        host.remove();
+      }
+    }
+  });
+}
+
 async function main(): Promise<void> {
   const build = await Bun.build({
     entrypoints: [path.join(repoRoot, 'scripts', 'test-input-cursor-navigation-entry.ts')],
@@ -1710,6 +1814,7 @@ async function main(): Promise<void> {
       throw new Error(`Destroy/multi-editor isolation failed: ${JSON.stringify(isolation)}`);
     }
 
+    await assertDerivedPointerLifecycle(page);
     console.log('Live input production frame trace passed');
   } finally {
     await browser.close();

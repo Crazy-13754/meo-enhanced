@@ -1024,6 +1024,144 @@ async function assertMermaidModePointerSurvivesToolbarUpdate(page: Page): Promis
   }
 }
 
+async function assertMermaidModePointerSurvivesDerivedRefresh(page: Page): Promise<void> {
+  for (const completion of ['click', 'outside'] as const) {
+    await page.evaluate(() => {
+      const host = document.createElement('div');
+      host.id = 'mermaid-derived-pointer-probe';
+      host.style.cssText = 'position:fixed;inset:0;z-index:10000;background:white';
+      document.body.append(host);
+      (window as any).__mermaidDerivedPointerProbe = (window as any).MermaidEditingHarness
+        .createMermaidDerivedPointerProbe(host);
+    });
+    const selector = '#mermaid-derived-pointer-probe .meo-mermaid-mode-label';
+    try {
+      await page.waitForSelector(selector);
+      await waitForFrames(page, 8);
+      await page.hover(selector);
+      const label = (await page.$(selector))!;
+      const rect = (await label.boundingBox())!;
+      await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      await page.mouse.down();
+      let released = false;
+      try {
+        // Primary input may already be accepted while its full derived frame is
+        // still queued. That frame must preserve the trusted gesture target.
+        await page.evaluate(() => (window as any).__mermaidDerivedPointerProbe.input());
+        await waitForFrames(page, 8);
+        const held = await label.evaluate(element => ({
+          connected: element.isConnected,
+          ...(window as any).__mermaidDerivedPointerProbe.snapshot()
+        }));
+        if (!held.text.endsWith('plain accepted') || !held.connected || !held.pending || held.refreshes !== 0) {
+          throw new Error(`Derived rebuild interrupted the held Mermaid mode gesture: ${JSON.stringify(held)}`);
+        }
+        if (completion === 'outside') await page.mouse.move(1090, 710);
+        await page.mouse.up();
+        released = true;
+        if (completion === 'click') {
+          await page.waitForFunction(() => document.querySelector('#mermaid-derived-pointer-probe .meo-mermaid-toolbar')
+            ?.getAttribute('data-meo-mermaid-mode') === 'split');
+        } else {
+          await page.waitForFunction(() => {
+            const result = (window as any).__mermaidDerivedPointerProbe.snapshot();
+            return result.refreshes === 1 && !result.pending;
+          });
+        }
+      } finally {
+        if (!released) await page.mouse.up();
+        await label.dispose();
+      }
+    } finally {
+      await page.evaluate(() => {
+        (window as any).__mermaidDerivedPointerProbe.destroy();
+        delete (window as any).__mermaidDerivedPointerProbe;
+        document.getElementById('mermaid-derived-pointer-probe')?.remove();
+      });
+    }
+  }
+}
+
+async function assertMermaidModePointerSurvivesSettlement(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.id = 'mermaid-settle-pointer-probe';
+    host.style.cssText = 'position:fixed;inset:0;z-index:10000;background:white';
+    document.body.append(host);
+    (window as any).__mermaidSettlePointerProbe = (window as any).MermaidEditingHarness
+      .createMermaidDerivedPointerProbe(host);
+  });
+  const selector = '#mermaid-settle-pointer-probe .meo-mermaid-mode-label';
+  let pressed = false;
+  try {
+    await page.waitForSelector(selector);
+    await waitForFrames(page, 8);
+    await page.evaluate(() => {
+      const probe = (window as any).__mermaidSettlePointerProbe;
+      probe.holdSettlement();
+      probe.input();
+    });
+    await waitForFrames(page, 8);
+    // A completed diagram layout changes its real height cache after refresh,
+    // before consumer checkpoints retire that generation.
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>('#mermaid-settle-pointer-probe .meo-mermaid-block')!
+        .style.minHeight = '600px';
+    });
+    await waitForFrames(page, 8);
+    const label = (await page.$(selector))!;
+    try {
+      const rect = (await label.boundingBox())!;
+      await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      await page.mouse.down();
+      pressed = true;
+      await label.evaluate(element => {
+        const scope = window as any;
+        scope.__mermaidSettleRemovals = 0;
+        scope.__mermaidSettleClicks = 0;
+        element.closest('button')!.addEventListener('click', () => { scope.__mermaidSettleClicks += 1; });
+        scope.__mermaidSettleObserver = new MutationObserver(records => {
+          for (const record of records) for (const node of record.removedNodes) {
+            if (node === element || node.contains(element)) scope.__mermaidSettleRemovals += 1;
+          }
+        });
+        scope.__mermaidSettleObserver.observe(document.body, { childList: true, subtree: true });
+        scope.__mermaidSettlePointerProbe.requestAccepted();
+        scope.__mermaidSettlePointerProbe.releaseSettlement();
+      });
+      await waitForFrames(page, 8);
+      const settled = await label.evaluate(element => ({
+        connected: element.isConnected,
+        removals: (window as any).__mermaidSettleRemovals,
+        ...(window as any).__mermaidSettlePointerProbe.snapshot(),
+        idle: (window as any).__mermaidSettlePointerProbe.acceptsImmediately()
+      }));
+      if (!settled.connected || settled.removals !== 0 || !settled.idle
+        || settled.acceptedRuns !== 1 || settled.refreshes !== 1) {
+        throw new Error(`Generation settlement rebuilt the pressed Mermaid shell: ${JSON.stringify(settled)}`);
+      }
+      await page.evaluate(() => (window as any).__mermaidSettleObserver.disconnect());
+      await page.mouse.up();
+      pressed = false;
+      await page.waitForFunction(() => document.querySelector('#mermaid-settle-pointer-probe .meo-mermaid-toolbar')
+        ?.getAttribute('data-meo-mermaid-mode') === 'split');
+      if (await page.evaluate(() => (window as any).__mermaidSettleClicks) !== 1) {
+        throw new Error('Settled Mermaid gesture did not deliver exactly one real click');
+      }
+    } finally {
+      await label.dispose();
+    }
+  } finally {
+    if (pressed) await page.mouse.up();
+    await page.evaluate(() => {
+      (window as any).__mermaidSettleObserver?.disconnect();
+      (window as any).__mermaidSettlePointerProbe.destroy();
+      delete (window as any).__mermaidSettlePointerProbe;
+      document.getElementById('mermaid-settle-pointer-probe')?.remove();
+    });
+  }
+}
+
 async function main() {
   const build = await Bun.build({
     entrypoints: [path.join(repoRoot, 'scripts', 'test-mermaid-editing-entry.ts')],
@@ -1140,6 +1278,8 @@ async function main() {
     // Display math now has a reading surface and main-document source editing.
     await waitForFrames(page);
     await assertMermaidModePointerSurvivesToolbarUpdate(page);
+    await assertMermaidModePointerSurvivesDerivedRefresh(page);
+    await assertMermaidModePointerSurvivesSettlement(page);
 
     const defaultMode = await page.evaluate(() => {
       const latexRoot = document.querySelector<HTMLElement>('.meo-md-math-fenced-display')!;
