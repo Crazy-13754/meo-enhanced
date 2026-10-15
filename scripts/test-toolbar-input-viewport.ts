@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import sharp from 'sharp';
+import { installBrowserTimeoutClock } from './browser-timeout-clock';
+import { testBrowserTimeoutClock } from './test-browser-timeout-clock';
 import type { Browser, Page } from 'puppeteer-core';
 import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
 
@@ -820,43 +823,43 @@ async function runSeparatedActivationClick(browser: Browser, mode: 'live' | 'sou
 async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'source'): Promise<void> {
   const page = await open(browser, mode);
   const input = await page.createCDPSession();
-  const frameAcknowledgements: Promise<unknown>[] = [];
-  const acknowledgeFrame = ({ sessionId }: { sessionId: number }) => {
-    frameAcknowledgements.push(input.send('Page.screencastFrameAck', { sessionId }));
+  const frames: Array<{ data: string; sequence: number }> = [];
+  const acknowledgements: Promise<void>[] = [];
+  const infrastructureErrors: unknown[] = [];
+  let primaryError: unknown;
+  const observeFrame = ({ data, sessionId }: { data: string; sessionId: number }) => {
+    frames.push({ data, sequence: frames.length });
+    acknowledgements.push(input.send('Page.screencastFrameAck', { sessionId }).then(() => {}, error => { infrastructureErrors.push(error); }));
   };
-  input.on('Page.screencastFrame', acknowledgeFrame);
   try {
-    // Keep compositor frame demand alive while virtual time pauses between captures.
-    await input.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
-    // Source has its own native-theme caret role; mark the active mode's real
-    // caret for the pixel witness without bypassing its activation behavior.
     await page.$eval('.editor-root', (root, mode) => (root as HTMLElement).style.setProperty(mode === 'source' ? '--meo-source-caret' : '--meo-caret-color', '#ff00ff'), mode);
+    // Stabilize the existing real caret's blink phase, never draw a substitute.
+    await page.addStyleTag({ content: '.cm-content{caret-animation:manual!important}.cm-cursorLayer{animation:none!important}' });
     await page.click('.cm-line:nth-child(3)');
     const geometry = await page.evaluate(() => {
       const old = document.getSelection()!.getRangeAt(0).getBoundingClientRect();
       const line = document.querySelector('.cm-line:nth-child(5)')!.getBoundingClientRect();
+      const marker = document.createElement('div');
+      marker.id = 'caret-paint-epoch';
+      marker.style.cssText = 'position:fixed;left:0;top:0;width:6px;height:6px;z-index:2147483647;pointer-events:none;background:rgb(20,40,60)';
+      document.body.append(marker);
       return { old: { left: old.left - 4, top: old.top - 2, right: old.right + 4, bottom: old.bottom + 2 },
         next: { left: line.left, top: line.top - 2, right: line.right, bottom: line.bottom + 2 },
         click: { x: line.left + 12, y: line.top + line.height / 2 } };
     });
-    const positiveControl = await page.screenshot({ captureBeyondViewport: false });
-    const advance = async (budget: number) => {
-      const expired = new Promise<void>((resolve) => input.once('Emulation.virtualTimeBudgetExpired', () => resolve()));
-      await input.send('Emulation.setVirtualTimePolicy', { policy: 'advance', budget });
-      await expired;
-    };
-    const capture = async () => {
-      // Queue capture before its frame budget: a paused clock cannot service a
-      // screenshot that needs another compositor frame. Budget expiry freezes
-      // the clock again while image transport finishes.
-      const screenshot = input.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-      await advance(34);
-      return Buffer.from((await screenshot).data, 'base64');
-    };
-    // Freeze browser time between actual screenshots, so image transport and
-    // decoding cannot consume the short display guard. No fake caret is drawn.
-    await input.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
+    assert.equal(await page.$eval('.editor-root', root => root.classList.contains('meo-window-focus-return-pending')), false,
+      mode + ' fixture already had an activation timer before installing its timeout clock');
+    await page.screenshot({ captureBeyondViewport: false });
+    input.on('Page.screencastFrame', observeFrame);
+    await input.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
+    const baselineDeadline = Date.now() + 5000;
+    while (frames.length === 0 && Date.now() < baselineDeadline) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(frames.length > 0, mode + ' no baseline compositor frame');
+    // Only timeout scheduling is controlled. Native rAF, performance.now, input,
+    // selection and the compositor retain their actual browser implementations.
+    await page.evaluate(installBrowserTimeoutClock);
     const ready = await page.evaluate(() => {
+      document.getElementById('caret-paint-epoch')!.style.background = 'rgb(60,40,60)';
       const content = document.querySelector<HTMLElement>('.cm-content')!;
       window.dispatchEvent(new Event('blur'));
       content.blur();
@@ -864,47 +867,97 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
       window.dispatchEvent(new MessageEvent('message', { data: { type: 'focusEditor' } }));
       return document.activeElement === content;
     });
-    assert.equal(ready, true, `${mode} painted caret guard delayed input focus`);
-    const beforeClick = await capture();
+    assert.equal(ready, true, mode + ' painted caret guard delayed input focus');
+    await page.evaluate(async () => {
+      await (window as any).__timeoutClock.advance(34);
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      document.getElementById('caret-paint-epoch')!.style.background = 'rgb(100,40,60)';
+    });
+    // Screenshots are real paint barriers. Transport may take real time without
+    // consuming the production guard's remaining logical timeout budget.
+    frames.push({ data: Buffer.from(await page.screenshot({ captureBeyondViewport: false })).toString('base64'), sequence: frames.length });
+    await page.evaluate(() => {
+      (window as any).__caretTrusted = false;
+      document.addEventListener('pointerdown', event => {
+        (window as any).__caretTrusted = event.isTrusted;
+        document.getElementById('caret-paint-epoch')!.style.background = 'rgb(140,40,60)';
+      }, { capture: true, once: true });
+    });
     await input.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...geometry.click });
     await input.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...geometry.click });
-    const afterClick = await capture();
-    const pixels = await page.evaluate(async ({ images, geometry }) => {
-      const counts: Array<{ old: number; next: number }> = [];
-      for (const encoded of images) {
-        const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-        const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-        const context = canvas.getContext('2d')!;
-        context.drawImage(bitmap, 0, 0);
-        const { data, width, height } = context.getImageData(0, 0, bitmap.width, bitmap.height);
-        const count = (rect: { left: number; top: number; right: number; bottom: number }) => {
-          let result = 0;
-          for (let y = Math.max(0, Math.floor(rect.top)); y < Math.min(height, Math.ceil(rect.bottom)); y += 1) {
-            for (let x = Math.max(0, Math.floor(rect.left)); x < Math.min(width, Math.ceil(rect.right)); x += 1) {
-              const offset = (y * width + x) * 4;
-              if (data[offset] > 200 && data[offset + 1] < 70 && data[offset + 2] > 200) result += 1;
-            }
-          }
-          return result;
-        };
-        counts.push({ old: count(geometry.old), next: count(geometry.next) });
-        bitmap.close();
-      }
-      return counts;
-    }, { images: [positiveControl, beforeClick, afterClick].map((buffer) => Buffer.from(buffer).toString('base64')), geometry });
-    assert.ok(pixels[0].old > 0, `${mode} fixture could not capture a real native caret`);
-    assert.equal(pixels[1].old, 0, `${mode} screenshot captured the old caret before clicking: ${JSON.stringify(pixels)}`);
-    assert.equal(pixels[2].old, 0, `${mode} screenshot retained the old caret after clicking`);
-    assert.ok(pixels[2].next > 0, `${mode} screenshot did not contain the new clicked caret`);
-    console.log(`${mode} activation caret pixels: ${JSON.stringify(pixels)}`);
-  } finally {
+    const clock = await page.evaluate(async () => {
+      await (window as any).__timeoutClock.advance(34);
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      document.getElementById('caret-paint-epoch')!.style.background = 'rgb(180,40,60)';
+      return { now: (window as any).__timeoutClock.now(), pending: (window as any).__timeoutClock.pending(), trusted: (window as any).__caretTrusted };
+    });
+    assert.equal(clock.now, 68, mode + ' timeout clock did not preserve 0\u219234\u219268');
+    assert.equal(clock.trusted, true, mode + ' caret click was not trusted');
+    assert.deepEqual(clock.pending, [], mode + ' click left pending fake timeout callbacks');
+    frames.push({ data: Buffer.from(await page.screenshot({ captureBeyondViewport: false })).toString('base64'), sequence: frames.length });
     await input.send('Page.stopScreencast');
-    input.off('Page.screencastFrame', acknowledgeFrame);
-    await Promise.all(frameAcknowledgements);
-    await input.detach();
-    await page.close();
+    input.off('Page.screencastFrame', observeFrame);
+    await Promise.allSettled(acknowledgements);
+    assert.equal(infrastructureErrors.length, 0, mode + ' frame acknowledgement failed');
+    const pixels: PaintedCaretFrame[] = [];
+    for (const frame of frames) {
+      const { data, info: { width, height } } = await sharp(Buffer.from(frame.data, 'base64')).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const markerOffset = (2 * width + 2) * 4;
+      assert.equal(data[markerOffset + 1], 40, mode + ' missing paint epoch marker');
+      assert.equal(data[markerOffset + 2], 60, mode + ' missing paint epoch marker');
+      const epoch = (data[markerOffset]! - 20) / 40;
+      const count = (rect: { left: number; top: number; right: number; bottom: number }) => {
+        let result = 0;
+        for (let y = Math.max(0, Math.floor(rect.top)); y < Math.min(height, Math.ceil(rect.bottom)); y += 1) {
+          for (let x = Math.max(0, Math.floor(rect.left)); x < Math.min(width, Math.ceil(rect.right)); x += 1) {
+            const offset = (y * width + x) * 4;
+            if (data[offset]! > 200 && data[offset + 1]! < 70 && data[offset + 2]! > 200) result += 1;
+          }
+        }
+        return result;
+      };
+      pixels.push({ epoch, old: count(geometry.old), next: count(geometry.next) });
+    }
+    assertPaintedCaretFrames(mode, pixels);
+    console.log(mode + ' activation caret pixels: ' + JSON.stringify({ pixels, clock }));
+  } catch (error) { primaryError = error; }
+  finally {
+    const cleanupErrors: unknown[] = [];
+    for (const cleanup of [() => input.send('Page.stopScreencast'),
+      async () => { input.off('Page.screencastFrame', observeFrame); await Promise.allSettled(acknowledgements); },
+      () => page.evaluate(() => (window as any).__timeoutClock?.restore()),
+      () => input.detach(), () => page.close()]) {
+      try { await cleanup(); } catch (error) { cleanupErrors.push(error); }
+    }
+    cleanupErrors.push(...infrastructureErrors);
+    if (primaryError !== undefined) {
+      if (cleanupErrors.length) throw new AggregateError([primaryError, ...cleanupErrors], mode + ' caret witness and cleanup failed', { cause: primaryError });
+      throw primaryError;
+    }
+    assert.deepEqual(cleanupErrors, [], mode + ' caret witness cleanup failed');
   }
+}
+
+type PaintedCaretFrame = { epoch: number; old: number; next: number };
+
+function assertPaintedCaretFrames(mode: string, frames: readonly PaintedCaretFrame[]): void {
+  for (const epoch of [0, 2, 4]) assert.ok(frames.some(frame => frame.epoch === epoch), `${mode} missing paint epoch ${epoch}`);
+  assert.ok(frames.some(frame => frame.epoch === 0 && frame.old > 0), `${mode} fixture could not capture a real native caret`);
+  for (const frame of frames) {
+    assert.ok(Number.isInteger(frame.epoch) && frame.epoch >= 0 && frame.epoch <= 4, `${mode} invalid paint epoch`);
+    if (frame.epoch > 0) assert.equal(frame.old, 0, `${mode} old caret painted in epoch ${frame.epoch}: ${JSON.stringify(frames)}`);
+    if (frame.epoch === 4) assert.ok(frame.next > 0, `${mode} terminal frame did not contain the new clicked caret`);
+  }
+}
+
+function testPaintedCaretFrameClassification(): void {
+  const valid = [0, 1, 2, 3, 4].map(epoch => ({ epoch, old: epoch === 0 ? 19 : 0, next: epoch === 4 ? 19 : 0 }));
+  // Arrival order and duplicates cannot turn an old PNG into a new phase.
+  assertPaintedCaretFrames('late/duplicate', [...valid.slice(1), valid[0]!, valid[4]!]);
+  for (const epoch of [0, 2, 4]) assert.throws(() => assertPaintedCaretFrames('missing', valid.filter(frame => frame.epoch !== epoch)));
+  for (const epoch of [1, 2, 3, 4]) assert.throws(() => assertPaintedCaretFrames('old flash', [...valid, { epoch, old: 1, next: 19 }]));
+  assert.throws(() => assertPaintedCaretFrames('late rollback', [...valid, { epoch: 4, old: 0, next: 0 }]));
+  assert.throws(() => assertPaintedCaretFrames('unattributed', [...valid, { epoch: 5, old: 0, next: 19 }]));
 }
 
 async function runWorkbenchMenuFocus(browser: Browser, mode: 'live' | 'source'): Promise<void> {
@@ -945,8 +998,7 @@ async function runWorkbenchMenuFocus(browser: Browser, mode: 'live' | 'source'):
   }
 }
 async function runIsolatedPaintedActivationClicks(): Promise<void> {
-  // After cross-frame focus fixtures, paused screenshots can wait indefinitely
-  // for a compositor update. Give the pixel witness its own browser state.
+  // Keep the pixel witness independent of earlier cross-frame focus and timer state.
   const browser = await launchTestBrowser();
   let primaryError: unknown;
   try {
@@ -961,6 +1013,8 @@ async function runIsolatedPaintedActivationClicks(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  await testBrowserTimeoutClock();
+  testPaintedCaretFrameClassification();
   const build = await Bun.build({
     entrypoints: [path.join(repoRoot, 'scripts', 'test-basic-capability-index-entry.ts')],
     outdir: tempDir,

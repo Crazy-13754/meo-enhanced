@@ -400,15 +400,21 @@ not be treated as window activation. A shell-only return is not a content-focus
 signal. Native menu dismissal still requires separate Windows verification.
 
 The Live and Source painting cases capture the browser's actual caret pixels,
-using a distinct caret color and a visible-caret positive control. Browser virtual
-time keeps screenshot transport from consuming the activation interval. Before
-each capture, queue the screenshot request and then advance its fixed 34ms frame
-budget; requesting a new compositor frame only after pausing can stall capture.
-Keep a screencast frame stream acknowledged during this witness so the compositor
-continues servicing captures while virtual time is paused; stop it before detaching.
-The clock remains paused during image transport after the budget expires. Before
-the delayed click, screenshots must contain no old-position caret; afterward they
-must contain the new-position caret. Frame observations also cover the unfrozen
+using a distinct caret color and a visible-caret positive control. Disable blink on
+the existing caret so a slow PNG cannot hide a regression in its off phase. Control
+only newly scheduled application timeouts with a test clock advancing 0→34→68ms;
+the 50ms activation grace must be canceled by the trusted click. Native rAF,
+performance.now, selection, input and the compositor keep running. Real animation
+frames settle each stage before its terminal screenshot; PNG transport consumes no
+logical timeout budget. This proves logical timeout behavior, real rAF ordering and
+actual painted pixels together, without claiming a 34ms wall-clock paint deadline.
+A tiny marker outside both caret regions identifies each PNG's action epoch,
+including late transported frames. Inspect every received frame: all focus/click
+epochs must have no old caret, and every terminal click frame must have the new
+caret. Missing baseline or terminal frames fail. The timeout lifecycle matrix covers
+ordering, cancellation, native-handle delegation, renewal, errors and exact restore.
+Stop/acknowledge the stream, restore timers and detach on success or failure, keeping
+the primary error if cleanup also fails. Frame observations also cover the unfrozen
 browser event path. These checks do not simulate Windows Alt+Tab or prove native
 activation event delivery; foreground acceptance remains a separate check.
 
