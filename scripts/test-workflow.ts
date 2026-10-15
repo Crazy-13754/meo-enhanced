@@ -74,6 +74,8 @@ async function main(): Promise<void> {
     throw new Error('Resume requires release, --resume=<report.json> and verified --same-environment.');
   }
   const root = process.cwd();
+  const { checkTestInventory } = await import('./check-test-inventory');
+  await checkTestInventory(root);
   const scripts = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts as Record<string, string>;
   const stages = prepareWorkflow(plan, scripts);
   const planHash = digest(JSON.stringify(stages));

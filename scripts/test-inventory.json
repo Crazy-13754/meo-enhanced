@@ -1,0 +1,72 @@
+{
+  "separate": {
+    "scripts/test-block-copy-consistency.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-block-copy-consistency.ts",
+      "reason": "Supplementary block-copy diagnosis using a stub diagram renderer; retained outside the existing release gate. Use for clipboard changes, not as a substitute for production clipboard contracts."
+    },
+    "scripts/test-block-sticky-header-production.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-block-sticky-header-production.ts",
+      "reason": "Supplementary Mermaid editing pack; test:mermaid-editing invokes this broader interaction probe. The release gate already runs the distinct viewport persistence contracts."
+    },
+    "scripts/test-github-readme-compatibility.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-github-readme-compatibility.ts",
+      "reason": "Compatibility audit fixture with explicitly pending probes; belongs to test:preview-presets. Its audit result is additional evidence, not the complete release preset acceptance."
+    },
+    "scripts/test-history-rendered-block-chromium.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-history-rendered-block-chromium.ts",
+      "reason": "Supplementary controlled DOM history reproduction in test:history-rendered-block-interaction; release retains its production mixed-history matrix."
+    },
+    "scripts/test-kbd-appearance.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-kbd-appearance.ts",
+      "reason": "Supplementary keyboard-markup appearance reproduction. Run when changing kbd rendering or export styles; not part of the existing release baseline."
+    },
+    "scripts/test-mermaid-visible-controls.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-mermaid-visible-controls.ts",
+      "reason": "Supplementary visible-control diagnosis documented in mermaid-rendering.md; release separately covers Mermaid editing and viewport interactions."
+    },
+    "scripts/test-font-size-full-document.ts": {
+      "kind": "endurance",
+      "command": "bun scripts/test-font-size-full-document.ts --document=<document> --confirm-long-run",
+      "reason": "Full font sweep needs a chosen document and long-run authorization. The release font-viewport test invokes only a bounded focused subset; that does not claim a full sweep."
+    },
+    "scripts/test-production-live-scroll-integrity.ts": {
+      "kind": "endurance",
+      "command": "bun scripts/test-production-live-scroll-integrity.ts --document=<document>",
+      "reason": "Document-specific scroll pass in guarded UAT/endurance workflows; requires a selected acceptance document."
+    },
+    "scripts/test-uat-full-document-endurance.ts": {
+      "kind": "endurance",
+      "command": "bun scripts/test-uat-full-document-endurance.ts <document>",
+      "reason": "Full-document edit/history stress is separately authorized through test:endurance; it is not implicitly launched by inventory discovery."
+    },
+    "scripts/test-vscode-auto-save-endurance.cjs": {
+      "kind": "native",
+      "command": "Load scripts/test-vscode-auto-save-endurance.cjs in the VS Code acceptance host as documented in docs/testing-workflow.md",
+      "reason": "Native extension-host save lifecycle verification requires an installed candidate and controlled VS Code session."
+    },
+    "scripts/test-vscode-preview-shortcuts.ps1": {
+      "kind": "native",
+      "command": "./scripts/test-vscode-preview-shortcuts.ps1 -CodePath <Code.exe>",
+      "reason": "Starts the native VS Code preview shortcut acceptance host; requires a selected VS Code installation."
+    },
+    "scripts/test-vscode-preview-shortcuts.cjs": {
+      "kind": "native",
+      "command": "scripts/test-vscode-preview-shortcuts.cjs is loaded by scripts/test-vscode-preview-shortcuts.ps1",
+      "reason": "Native acceptance host entry module, not a standalone Bun test; owned by the PowerShell launcher."
+    }
+  },
+  "repeats": [
+    { "args": ["scripts/test-host-view-navigation-lifecycle.ts"], "count": 2, "reason": "Existing ownership in reading-position and unit suites. Retained coverage; consolidate only after checking both suite entry contracts." },
+    { "args": ["scripts/test-fenced-code-source-prefix.ts"], "count": 2, "reason": "Existing ownership in unit and rendered-source suites. Retained while those independently callable packs share this boundary contract." },
+    { "args": ["scripts/test-mode-roundtrip-reveal.ts"], "count": 2, "reason": "Early high-risk preflight followed by the complete browser matrix on the same candidate." },
+    { "args": ["scripts/test-preview-navigation-continuity.ts"], "count": 2, "reason": "Early high-risk preflight followed by the complete browser matrix on the same candidate." },
+    { "args": ["scripts/test-preview-shortcuts-production.ts"], "count": 2, "reason": "Early high-risk preflight followed by the complete browser matrix on the same candidate." },
+    { "args": ["scripts/test-list-toolbar-browser.ts"], "count": 2, "reason": "Existing high-risk and complete browser packs both own toolbar behavior. Preserve the baseline; additional copies require a new review." }
+  ]
+}

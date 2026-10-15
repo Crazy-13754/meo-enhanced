@@ -44,6 +44,9 @@ contract for the live style path is `bun scripts/test-development-style-refresh.
 ## Develop and verify
 
 Use the tiered workflow in [docs/testing-workflow.md](docs/testing-workflow.md).
+When adding, moving or changing tests, follow the guide's
+[test registration procedure](docs/testing-workflow.md#adding-or-changing-tests)
+and run `bun run test:inventory`. Agents own this step without a user reminder.
 For copy, existing icon replacements and local visual style changes, use the
 guide's Light UI path: `bun run test:ui-light` builds the Webview, then complete
 the scoped bilingual light/dark visual and affected-control functional smoke.
@@ -65,6 +68,7 @@ Each platform runs:
 
 ```shell
 bun run typecheck
+bun run test:inventory
 bun run architecture:check
 bun run test:unit
 bun run build

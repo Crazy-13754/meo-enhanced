@@ -941,6 +941,53 @@ separately and point back to the original evidence. Never infer completion from
 the latest console line: require the final report's passed status and complete
 coverage. Keep the report and all referenced logs together.
 
+### Adding or changing tests
+
+Agents complete this procedure whenever they add, move or change a test or its
+workflow registration, without waiting for the user to request it:
+
+1. State the behavior that needs protection and select the smallest existing
+   suite that owns it. Prefer a focused contract; use a browser, native host or
+   endurance scenario when that environment is needed to expose the failure.
+2. Put runnable tests under `scripts/` using `test-*.ts`, `.tsx`, `.js`, `.mjs`,
+   `.cjs` or `.ps1`. Connect routine regressions to the appropriate release suite.
+   Imported helpers belong to their reachable caller; browser `test-*-entry.ts`
+   fixtures must be explicitly referenced by a reachable owner. A filename alone
+   is not registration. Keep nonliteral fixture construction explicitly registered
+   or change it to an auditable reference.
+3. For supplementary targeted, native or endurance checks, add an exact entry in
+   `scripts/test-inventory.json` with the classification, invocation and reason
+   for separate execution. Preserve existing release coverage. An exception is
+   a reviewable testing decision, not a way to waive a failing regression. The
+   initial supplementary entries record existing practice; they do not claim
+   those checks have passed or that their behavior is covered by another test.
+4. Run `bun run test:inventory`, then the smallest relevant behavioral tests.
+   The inventory check discovers nonignored untracked files too. It verifies
+   reachable tests, helpers, separate-test registrations and every `test:` alias.
+   Same runtime, arguments and environment count as the same invocation. Exact
+   intentional repeat counts need a reason; stale registrations also fail. The
+   six existing repeat allowances preserve the current release baseline.
+5. In the change summary, identify the added/changed tests, their suite or
+   separate classification, the behavior protected, why costly execution is
+   necessary, and measured time when available. Use the next natural run's timing
+   report when no representative timing exists; do not start a long acceptance
+   run merely to fill this field. Timing informs optimization and never skips a
+   required test automatically.
+
+CI runs inventory validation and its small contract tests before typechecking
+and building. Every guarded workflow checks registration before launching work,
+including dry runs. Architecture checking also invokes inventory validation;
+`bun run architecture:check:staged` reads the package scripts, workflow policy,
+test files and registrations from the Git index. The existing main-checkout
+pre-commit hook therefore rejects a staged omission even if the working copy
+contains an unstaged fix. Other checkouts must run that staged command as part
+of their commit checks; CI provides the repository-wide fallback.
+
+This check reads source and constructs plans; it never runs the product tests,
+opens a browser or starts VS Code. It cannot assess assertion quality, semantic
+overlap or whether a separate-test reason is justified; review must assess those
+decisions. It does not enforce Git hosting branch protection settings.
+
 ### Conservative release resume
 
 An interrupted or previously successful run can be resumed only after verifying

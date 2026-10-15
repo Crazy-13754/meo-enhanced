@@ -2,12 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
+import { checkTestInventory } from './check-test-inventory';
 
 type Source = { path: string; text: string };
 type Edge = { from: string; to: string; specifier: string };
 
 const repoRoot = resolve(import.meta.dir, '..');
 const staged = process.argv.includes('--staged');
+await checkTestInventory(repoRoot, staged);
 const configPath = join(repoRoot, 'scripts', 'architecture-baseline.json');
 
 function indexPaths(): string[] {
