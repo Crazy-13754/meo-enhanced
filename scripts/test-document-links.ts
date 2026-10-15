@@ -98,7 +98,12 @@ if (commands.length !== 1 || commands[0].command !== 'vscode.open') {
   throw new Error(`Associated editor routing changed outside Preview: ${JSON.stringify(commands)}`);
 }
 
-for (const destination of [documentUri.fsPath, documentUri.fsPath.replace(/\\/g, '%5C'), `<${documentUri.fsPath}>`]) {
+// /... is workspace-root syntax; file: URIs identify OS files on every platform.
+const localDestinations = [documentUri.toString(), `<${documentUri.toString()}>`, '/README.md'];
+if (process.platform === 'win32') {
+  localDestinations.push(documentUri.fsPath, documentUri.fsPath.replace(/\\/g, '%5C'), `<${documentUri.fsPath}>`);
+}
+for (const destination of localDestinations) {
   const resolved = await resolveLocalLinkTargetUri(destination, documentUri as never);
   if (resolved?.fsPath !== documentUri.fsPath) {
     throw new Error(`Absolute local destination did not survive shared resolution: ${destination}`);
