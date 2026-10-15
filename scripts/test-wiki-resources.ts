@@ -96,11 +96,16 @@ try {
   assert.equal((await resolveWikiResource('assets/图片 50%🖼️.png', document as never)).uri?.toString(), image.toString());
   assert.equal((await resolveWikiResource('./assets/图片 50%🖼️.png', document as never)).uri?.toString(), localImage.toString());
   assert.equal((await resolveLocalLinkTargetUri('assets/图片%2050%25🖼️.png', document as never))?.toString(), localImage.toString(), 'standard Markdown remains relative to its document');
-  for (const target of ['图片 50%🖼️.png', '字面%E8%AE%BE.png', 'a/same.png', '../assets/字面%E8%AE%BE.png', percentImage.fsPath, percentImage.toString()]) {
+  for (const target of ['图片 50%🖼️.png', '字面%E8%AE%BE.png', 'a/same.png', '../assets/字面%E8%AE%BE.png', percentImage.toString()]) {
     const resolved = await resolveWikiResource(target, document as never);
     if (target === '图片 50%🖼️.png') assert.equal(resolved.candidates?.length, 2, 'bare duplicate names cannot choose silently');
     else assert.ok(resolved.uri, `target must resolve: ${target}`);
   }
+  // Only drive-qualified native paths are absolute Wiki targets; /... is vault-root syntax.
+  if (process.platform === 'win32') {
+    assert.equal((await resolveWikiResource(percentImage.fsPath, document as never)).uri?.toString(), percentImage.toString());
+  }
+  assert.equal((await resolveWikiResource('/assets/字面%E8%AE%BE.png', document as never)).uri?.toString(), percentImage.toString());
   const ambiguous = await resolveWikiResource('same.png', document as never);
   assert.deepEqual(ambiguous.candidates, ['assets/a/same.png', 'assets/b/same.png']);
   assert.ok(searches.every(root => root.toLowerCase() === vault.toLowerCase()), 'lookup must not enter another workspace/vault');
