@@ -404,6 +404,8 @@ using a distinct caret color and a visible-caret positive control. Browser virtu
 time keeps screenshot transport from consuming the activation interval. Before
 each capture, queue the screenshot request and then advance its fixed 34ms frame
 budget; requesting a new compositor frame only after pausing can stall capture.
+Keep a screencast frame stream acknowledged during this witness so the compositor
+continues servicing captures while virtual time is paused; stop it before detaching.
 The clock remains paused during image transport after the budget expires. Before
 the delayed click, screenshots must contain no old-position caret; afterward they
 must contain the new-position caret. Frame observations also cover the unfrozen

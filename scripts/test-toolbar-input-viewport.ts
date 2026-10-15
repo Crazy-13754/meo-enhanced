@@ -820,7 +820,14 @@ async function runSeparatedActivationClick(browser: Browser, mode: 'live' | 'sou
 async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'source'): Promise<void> {
   const page = await open(browser, mode);
   const input = await page.createCDPSession();
+  const frameAcknowledgements: Promise<unknown>[] = [];
+  const acknowledgeFrame = ({ sessionId }: { sessionId: number }) => {
+    frameAcknowledgements.push(input.send('Page.screencastFrameAck', { sessionId }));
+  };
+  input.on('Page.screencastFrame', acknowledgeFrame);
   try {
+    // Keep compositor frame demand alive while virtual time pauses between captures.
+    await input.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
     // Source has its own native-theme caret role; mark the active mode's real
     // caret for the pixel witness without bypassing its activation behavior.
     await page.$eval('.editor-root', (root, mode) => (root as HTMLElement).style.setProperty(mode === 'source' ? '--meo-source-caret' : '--meo-caret-color', '#ff00ff'), mode);
@@ -892,6 +899,9 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
     assert.ok(pixels[2].next > 0, `${mode} screenshot did not contain the new clicked caret`);
     console.log(`${mode} activation caret pixels: ${JSON.stringify(pixels)}`);
   } finally {
+    await input.send('Page.stopScreencast');
+    input.off('Page.screencastFrame', acknowledgeFrame);
+    await Promise.all(frameAcknowledgements);
     await input.detach();
     await page.close();
   }
