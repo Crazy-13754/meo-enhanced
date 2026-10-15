@@ -2444,6 +2444,12 @@ export class ViewportController {
     }, { schedule, settle }, isCurrent);
   }
 
+  /** Capture background document presentation without superseding native reading. */
+  captureDocumentPresentationAnchorToken(owner: ViewportAnchorOwner): ViewportAnchorToken | null {
+    if (owner === 'editor' && this.isUserScrolling()) return null;
+    return this.captureAnchorToken(owner);
+  }
+
   captureAnchorToken(owner: ViewportAnchorOwner): ViewportAnchorToken | null {
     if (this.destroyed) return null;
     const navigationAnchor = owner === 'editor'
@@ -2626,7 +2632,7 @@ export class ViewportController {
       }
       return;
     }
-    const handle = this.captureAnchorToken('editor');
+    const handle = this.captureDocumentPresentationAnchorToken('editor');
     this.runAnchorTransaction(handle, 'editor', () => this.runDocumentChange(mutate));
   }
 

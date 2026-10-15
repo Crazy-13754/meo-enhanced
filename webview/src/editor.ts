@@ -3469,6 +3469,9 @@ export function createEditor({
     captureViewportAnchorToken(owner: ViewportAnchorOwner): ViewportAnchorToken | null {
       return viewportController.captureAnchorToken(owner);
     },
+    captureDocumentPresentationAnchorToken(owner: ViewportAnchorOwner): ViewportAnchorToken | null {
+      return viewportController.captureDocumentPresentationAnchorToken(owner);
+    },
     captureModeTransitionAnchorToken(owner: ViewportAnchorOwner): ViewportAnchorToken | null {
       return viewportController.captureModeTransitionAnchorToken(owner);
     },
@@ -3666,7 +3669,6 @@ export function createEditor({
             annotations: [Transaction.addToHistory.of(false), markExternalDocumentPresentation()]
           })]);
         };
-        viewportController.markInteraction();
         tableCommandRuntime.externalDocumentPresented();
         imagePresentationFactory.externalDocumentPresented();
         void editorHistoryRuntime?.dispatch({ type: 'externalDocumentPresented' });

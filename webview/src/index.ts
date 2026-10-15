@@ -2680,7 +2680,7 @@ const presentDocumentText = async (
   const owner = previewActive ? 'preview' : 'editor';
   const viewport = source === 'disk-reload' && pendingReloadViewport?.owner === owner
     ? pendingReloadViewport.handle
-    : editor.captureViewportAnchorToken?.(owner) ?? null;
+    : editor.captureDocumentPresentationAnchorToken(owner);
   let presented = false;
   const present = async (isViewportCurrent: () => boolean): Promise<void> => {
     presented = await setEditorTextSafely(text, `documentSession.${source}`, source === 'disk-reload');

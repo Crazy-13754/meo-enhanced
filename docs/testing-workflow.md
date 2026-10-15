@@ -51,6 +51,14 @@ to native `smooth` scrolling while retaining the trusted wheel event. It belongs
 to the quick, targeted viewport and release gates. Late-layout compensation remains
 covered by the viewport and virtual-block contracts. Full-document scroll traversal
 must reach both boundaries; a capped or stalled loop cannot report full traversal.
+The tall-Mermaid viewport contract checks each trusted pixel-wheel event's target,
+delta and scroll response, then waits for stable anchor/gap/scroll geometry before
+applying its unchanged displacement limit. Failure reports retain event and frame
+traces so dispatch timing cannot be mistaken for settled native scrolling.
+The viewport-controller unit matrix interleaves background document presentation,
+native wheel adoption and virtual-gap contraction in both directions. Document
+presentation yields its fixed-target projection to the active native reading owner;
+explicit viewport controls retain their separate capture behavior.
 
 For installed-VSIX scrollbar acceptance, use an isolated VS Code profile and check
 Live, Source, full Preview and split Preview in light/dark appearances, including

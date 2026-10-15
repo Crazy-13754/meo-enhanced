@@ -2875,9 +2875,53 @@ async function main() {
     const tallMermaidWheelDelta = -20;
     const tallMermaidWheelCount = 6;
     const pendingWheelCount = tallMermaidWheelCount / 2;
-    for (let index = 0; index < pendingWheelCount; index += 1) {
+    await page.evaluate(anchorText => {
+      const scroller = document.querySelector<HTMLElement>('.editor-host > .cm-editor .cm-scroller')!;
+      const probe = { events: [] as Array<Record<string, unknown>>, frames: [] as Array<Record<string, unknown>>, stopped: false };
+      const receive = (event: WheelEvent) => {
+        const entry = { trusted: event.isTrusted, deltaY: event.deltaY, deltaMode: event.deltaMode,
+          target: (event.target as Element).closest('.cm-scroller') === scroller, prevented: event.defaultPrevented, completed: false };
+        probe.events.push(entry);
+        // A later task observes default prevention after all event listeners have run.
+        setTimeout(() => { entry.prevented = event.defaultPrevented; entry.completed = true; }, 0);
+      };
+      scroller.addEventListener('wheel', receive, { capture: true, passive: true });
+      const record = () => {
+        if (probe.stopped) return;
+        const anchor = [...scroller.querySelectorAll<HTMLElement>('.cm-line')].find(line => line.textContent === anchorText);
+        probe.frames.push({ events: probe.events.length, top: anchor?.getBoundingClientRect().top ?? null,
+          scrollTop: scroller.scrollTop, scrollHeight: scroller.scrollHeight,
+          gaps: [...scroller.querySelectorAll<HTMLElement>('.cm-gap')].map(gap => gap.getBoundingClientRect().height) });
+        if (probe.frames.length < 500) requestAnimationFrame(record);
+      };
+      (window as any).__tallMermaidWheelProbe = probe;
+      (window as any).__stopTallMermaidWheelProbe = () => {
+        probe.stopped = true; scroller.removeEventListener('wheel', receive, { capture: true });
+      };
+      requestAnimationFrame(record);
+    }, tallMermaidBefore.text);
+    const wheelTallMermaid = async (index: number) => {
+      const point = await page.$eval('.editor-host > .cm-editor .cm-scroller', scroller => {
+        const rect = scroller.getBoundingClientRect();
+        return { x: rect.left + 20, y: rect.bottom - 30, scrollTop: scroller.scrollTop };
+      });
+      await page.mouse.move(point.x, point.y);
       await page.mouse.wheel({ deltaY: tallMermaidWheelDelta });
+      try {
+        // Dispatch completion alone does not prove native input reached and moved this viewport.
+        await page.waitForFunction(({ index, before }) => {
+          const event = (window as any).__tallMermaidWheelProbe.events[index];
+          return event?.completed && event.trusted && event.target && !event.prevented && event.deltaMode === 0 && event.deltaY === -20
+            && document.querySelector<HTMLElement>('.editor-host > .cm-editor .cm-scroller')!.scrollTop < before - 1;
+        }, { timeout: 2000 }, { index, before: point.scrollTop });
+      } catch (error) {
+        const probe = await page.evaluate(() => (window as any).__tallMermaidWheelProbe);
+        throw new Error(`Tall Mermaid wheel ${index} did not reach and move its viewport: ${JSON.stringify(probe)}`, { cause: error });
+      }
       await new Promise((resolve) => setTimeout(resolve, 50));
+    };
+    for (let index = 0; index < pendingWheelCount; index += 1) {
+      await wheelTallMermaid(index);
     }
     await page.evaluate(() => {
       const target = document.querySelector<HTMLElement>(
@@ -2911,11 +2955,20 @@ async function main() {
       throw new Error(`Tall Mermaid announced ready before layout settlement: ${JSON.stringify(tallMermaidReadyTrace)}`);
     }
     for (let index = pendingWheelCount; index < tallMermaidWheelCount; index += 1) {
-      await page.mouse.wheel({ deltaY: tallMermaidWheelDelta });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await wheelTallMermaid(index);
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
     await waitForFrames(page);
+    await page.waitForFunction(() => {
+      const frames = (window as any).__tallMermaidWheelProbe.frames.slice(-4);
+      return frames.length === 4 && frames.every((frame: { events: number }) => frame.events === 6)
+        && frames.every((frame: unknown) => JSON.stringify(frame) === JSON.stringify(frames[0]));
+    }, { timeout: 2000 });
+    const tallMermaidWheelProbe = await page.evaluate(() => {
+      (window as any).__stopTallMermaidWheelProbe();
+      const probe = (window as any).__tallMermaidWheelProbe;
+      return { events: probe.events, frames: probe.frames.slice(-20) };
+    });
     const tallMermaidAfter = await page.evaluate((anchorText) => {
       const scroller = document.querySelector<HTMLElement>('.editor-host > .cm-editor .cm-scroller')!;
       const anchor = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
@@ -2955,8 +3008,12 @@ async function main() {
         tallMermaidWheelDelta * tallMermaidWheelCount
       ) > 12
     ) {
-      throw new Error(`Tall Mermaid displaced the visible reading anchor: ${JSON.stringify({ tallMermaidBefore, tallMermaidAfter })}`);
+      throw new Error(`Tall Mermaid displaced the visible reading anchor: ${JSON.stringify({ tallMermaidBefore, tallMermaidAfter, tallMermaidWheelProbe })}`);
     }
+    if (tallMermaidWheelProbe.events.length !== tallMermaidWheelCount) {
+      throw new Error(`Tall Mermaid received unexpected wheel input: ${JSON.stringify(tallMermaidWheelProbe)}`);
+    }
+    console.log('Tall Mermaid trusted wheel reception, scroll response and settled geometry checks passed');
 
     const testEditorScrollToTop = async (mode: 'live' | 'source') => {
       await page.click(`[data-mode="${mode}"]`);

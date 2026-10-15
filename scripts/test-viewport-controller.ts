@@ -842,12 +842,14 @@ const readingLine = {
 let afterReadingMeasure: (() => void) | null = null;
 const readingView = {
   dom: readingDom,
+  state: { doc: Text.of(['x'.repeat(2000)]) },
   scrollDOM: readingScroller,
   contentDOM: { querySelectorAll: () => [readingLine] },
   coordsAtPos: () => readingLine.getBoundingClientRect(),
   posAtDOM: () => 42,
   // A rendered widget may share an aggregate height-map block with this line.
-  lineBlockAt: () => ({ top: readingHeightMapTop }),
+  lineBlockAt: () => ({ from: 42, top: readingHeightMapTop }),
+  lineBlockAtHeight: () => ({ from: 42, top: readingHeightMapTop }),
   requestMeasure: ({ read, write }: { read: () => unknown; write: (value: unknown) => void }) => {
     write(read());
     afterReadingMeasure?.();
@@ -951,6 +953,47 @@ try {
   await readingFrame();
   if (Math.abs(readingLine.getBoundingClientRect().top - (nativeTop - 20)) > 1) {
     throw new Error('A new wheel delta reused the previous reading anchor');
+  }
+  for (const direction of [-1, 1]) {
+    for (const phase of ['before-wheel', 'before-native-scroll', 'after-native-scroll']) {
+      readingController.markInteraction();
+      readingLineTop = 1200;
+      readingHeightMapTop = -1400;
+      readingScroller.scrollTop = 1000;
+      const receiveWheel = () => readingScroller.dispatch('wheel', { deltaX: 0, deltaY: direction * 20, ctrlKey: false });
+      if (phase !== 'before-wheel') receiveWheel();
+      if (phase === 'after-native-scroll') {
+        readingScroller.scrollTop += direction * 20;
+        readingScroller.dispatch('scroll', {});
+      }
+      const handle = readingController.captureDocumentPresentationAnchorToken('editor');
+      let completePresentation!: () => void;
+      const presentation = readingController.runAnchorTransaction(handle, 'editor', async () => {
+        await new Promise<void>(resolve => { completePresentation = resolve; });
+        readingController.runDocumentChange(() => {
+          // A virtual gap contracts while native scroll adoption is still in flight.
+          readingLineTop -= 40;
+          readingHeightMapTop -= 40;
+          readingScroller.scrollHeight -= 40;
+          readingScroller.scrollTop -= 40;
+          readingController.reconcileAfterEditorUpdate();
+        });
+      });
+      if (phase === 'before-wheel') receiveWheel();
+      readingScroller.scrollTop += direction * 20;
+      readingScroller.dispatch('scroll', {});
+      completePresentation();
+      await presentation;
+      for (let frame = 0; frame < 20; frame++) await readingFrame();
+      const expected = 960 + direction * (phase === 'after-native-scroll' ? 40 : 20);
+      if (Math.abs(readingScroller.scrollTop - expected) > 1) {
+        throw new Error(`Document presentation discarded native scroll (${phase}, ${direction}): ${readingScroller.scrollTop} instead of ${expected}`);
+      }
+    }
+  }
+  nativeReadingWheel(20);
+  if (!readingController.captureAnchorToken('editor')) {
+    throw new Error('An explicit viewport action must still supersede native reading');
   }
   readingDom.dispatch('beforeinput', { inputType: 'insertCompositionText' });
   readingScroller.scrollTop = 600;
