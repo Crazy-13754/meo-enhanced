@@ -414,6 +414,19 @@ empty border/background visibility, nested padded table containers, actual
 loaded image fitting/position/radii and width-only aspect ratios, source
 preservation and unchanged HTML node identity after prose input. GitHub's separate
 filter remains unchanged. Screenshots are saved under `.local/html-style-audit/`.
+
+`bun scripts/test-html-content.ts --lifecycle-only` checks pending/loaded native
+picture and srcset nodes, uninterrupted audio, form/disclosure state, changed URLs,
+removal and single/equal-text reloads in ordinary and actual Worker-backed documents.
+It checks native input, unchanged node identity, per-frame geometry and compositor
+pixels. `scripts/test-document-reload-mermaid-viewport.ts` also drives the real
+toolbar/Host reload roundtrip after disjoint HTML edits and unfinished markup;
+one confirmed reload must retire stale source bounds and duplicate previews.
+`scripts/test-mermaid-split-refresh.ts` pairs both editing layouts with ordinary
+and Worker-backed documents, keeps accepted diagrams through pending syntax,
+checks actual compositor frames and verifies selection/removal cleanup before its
+existing slow-render, cache, error, theme and stale-result scenarios.
+
 `bun scripts/test-preview-table-layout-production.ts --live-update-only` isolates
 Live HTML table input stability. Caption/cell typing and undo/redo check every
 sampled layout and actual compositor PNG column widths, including rowspan/colspan.

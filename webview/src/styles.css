@@ -4525,6 +4525,11 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   -webkit-user-select: text;
 }
 
+.cm-editor .meo-md-html-block.meo-md-html-live-result {
+  /* A reused result shell joins the source surface in the same paint. */
+  transition: box-shadow 100ms ease;
+}
+
 .cm-editor.meo-mode-live .meo-md-html-live-result,
 .cm-editor.meo-mode-live .meo-md-html-live-result * {
   /* The editing result is derived; source dragging must select each byte once.

@@ -1,5 +1,7 @@
 import { mapHtmlSrcset } from '../../../src/shared/htmlPolicy';
 
+const pendingResources = new WeakMap<Element, Map<string, { source: string; signal: AbortSignal }>>();
+
 /** Reuses the owning surface's resolver, cancellation and geometry commit.
  * Pictures and media stay native elements; an image widget cannot replace a
  * picture's direct img child without breaking browser source selection. */
@@ -13,6 +15,12 @@ export function resolveHtmlResources(root: ParentNode, options: {
       const key = `data-meo-html-${name}`;
       const source = element.getAttribute(key);
       if (!source) continue;
+      let pending = pendingResources.get(element);
+      const previous = pending?.get(name);
+      if (previous?.source === source && previous.signal === options.signal && !previous.signal.aborted) continue;
+      if (!pending) pendingResources.set(element, pending = new Map());
+      const request = { source, signal: options.signal };
+      pending.set(name, request);
       const resolve = async () => {
         if (name !== 'srcset') return options.resolve(source, options.signal);
         const urls = new Map<string, string>();
@@ -21,15 +29,21 @@ export function resolveHtmlResources(root: ParentNode, options: {
         return mapHtmlSrcset(source, url => urls.get(url) ?? '');
       };
       void resolve().then(value => {
-        if (options.signal.aborted) return;
+        if (pending.get(name) !== request) return;
+        if (options.signal.aborted) { pending.delete(name); return; }
         options.commit(() => {
+          if (pending.get(name) !== request) return;
+          pending.delete(name);
           if (options.signal.aborted || !element.isConnected) return;
           if (value) element.setAttribute(name, value); else element.removeAttribute(name);
           element.removeAttribute(key);
           const media = element.closest<HTMLMediaElement>('audio,video');
           if (media && name === 'src') media.load();
         });
-      }).catch(() => { /* A missing resource retains the document's fallback content. */ });
+      }).catch(() => {
+        // A failed/cancelled resolution leaves the source marker available to retry.
+        if (pending.get(name) === request) pending.delete(name);
+      });
     }
   }
 }

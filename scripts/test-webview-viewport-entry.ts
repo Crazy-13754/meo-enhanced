@@ -17,6 +17,10 @@ import { getGitDiffSummary } from '../webview/src/helpers/gitDiffGutter';
   document.querySelector<HTMLElement>('.editor-host > .cm-editor')!
 )!.state.doc.toString();
 
+(window as any).__viewportTestView = () => EditorView.findFromDOM(
+  document.querySelector<HTMLElement>('.editor-host > .cm-editor')!
+)!;
+
 (window as any).__viewportTestRetainReadingLine = async (text: string, top: number) => {
   const view = EditorView.findFromDOM(document.querySelector<HTMLElement>('.editor-host > .cm-editor')!)!;
   const position = view.state.doc.toString().indexOf(text);

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { launchTestBrowser } from './browser-test-helpers';
+import { checkMermaidInputContinuity } from './mermaid-input-continuity';
 
 // Exercise main-document source edits through the production editor. A held renderer
 // makes the old-diagram/loading transition observable without timing a CPU.
@@ -9,6 +10,7 @@ const build = await Bun.build({
 assert.ok(build.success, build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
 try {
+  await checkMermaidInputContinuity(browser, await build.outputs[0].text());
   const page = await browser.newPage();
   await page.setViewport({ width: 1100, height: 720, deviceScaleFactor: 1 });
   await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');

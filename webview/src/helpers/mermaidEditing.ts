@@ -15,6 +15,7 @@ import { setLivePointerSelectionActiveEffect, sourcePresentationSelection } from
 import { supersedeLiveInputDerivedWork, isLiveInputDerivedWorkRefresh } from '../editor/liveInputDerivedWork';
 import { isCompleteMarkdownStructure } from '../editor/markdownStructure';
 import { resolvedSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
+import { isExternalDocumentPresentation } from '../editor/externalDocumentPresentation';
 import {
   MermaidDiagramWidget,
   createMermaidViewportState,
@@ -653,6 +654,7 @@ function mermaidTextBlockAt(view: EditorView, position: number) {
 
 /** The native source stays in document flow. Only its derived canvas is placed beside it. */
 class MermaidInlinePreview {
+  private anchor: number | null = null;
   private panel: HTMLElement | null = null;
   private preview: PreviewElement | null = null;
   private presenter: MermaidSourcePreviewWidget | null = null;
@@ -664,6 +666,8 @@ class MermaidInlinePreview {
     this.schedule();
   }
   update(update: ViewUpdate): void {
+    if (update.transactions.some(isExternalDocumentPresentation)) this.anchor = null;
+    else if (this.anchor !== null) this.anchor = update.changes.mapPos(this.anchor, 1);
     if (
       update.docChanged ||
       update.selectionSet ||
@@ -685,18 +689,26 @@ class MermaidInlinePreview {
   }
   private measure() {
     const view = this.view;
-    const source = activeMermaidSource(view.state),
-      mode = source && blockMode(view, source.anchor);
-    const position = source && Math.max(source.opening.from, Math.min(source.closing.to, view.state.selection.main.head));
+    const source = activeMermaidSource(view.state);
+    const editing = view.state.field(mermaidEditingStateField);
+    // The interaction owner retains mapped bounds while the Worker is pending.
+    // Missing syntax must not discard an already accepted diagram or its camera.
+    const retaining = !source && !!this.panel && this.anchor !== null && editing.activeAnchor === this.anchor
+      && editing.activeTo !== null && editing.activeTo > this.anchor
+      && !isCompleteMarkdownStructure(resolvedSyntaxTree(view.state, 0), view.state.doc.length);
+    const bounds = source ?? (retaining ? { anchor: this.anchor!, opening: view.state.doc.lineAt(this.anchor!),
+      closing: view.state.doc.lineAt(Math.max(this.anchor!, editing.activeTo! - 1)) } : null);
+    const mode = bounds && getMermaidBlockMode(view.state, bounds.anchor, bounds.closing.to);
+    const position = bounds && Math.max(bounds.opening.from, Math.min(bounds.closing.to, view.state.selection.main.head));
     const node = position == null ? null : view.domAtPos(position).node;
     const row = view.dom.querySelector<HTMLElement>('.meo-mermaid-inline-source,.meo-mermaid-side-space')
       ?? (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('.cm-line');
     const block = row?.getBoundingClientRect();
     const blockWidth = block ? block.width / view.scaleX : 0;
-    const heading = source && view.dom.querySelector<HTMLElement>(
-      `.meo-mermaid-editing-preview[data-meo-mermaid-anchor="${source.anchor}"] .meo-native-source-preview-label`
+    const heading = bounds && view.dom.querySelector<HTMLElement>(
+      `.meo-mermaid-editing-preview[data-meo-mermaid-anchor="${bounds.anchor}"] .meo-native-source-preview-label`
     );
-    const toolbar = source && view.dom.querySelector<HTMLElement>(`.meo-mermaid-toolbar[data-meo-block-from="${source.anchor}"]`);
+    const toolbar = bounds && view.dom.querySelector<HTMLElement>(`.meo-mermaid-toolbar[data-meo-block-from="${bounds.anchor}"]`);
     const actionsWidth = toolbar ? toolbar.getBoundingClientRect().width / view.scaleX : 100;
     if (heading) {
       const [title, action] = Array.from(heading.children);
@@ -707,14 +719,14 @@ class MermaidInlinePreview {
     }
     const narrow = view.dom.clientWidth < MERMAID_SIDE_MIN_WIDTH
       || !!blockWidth && blockWidth < this.minimumPreviewWidth + 200;
-    if (!source || mode?.manual !== 'edit' || mode.layout !== 'side-by-side' || narrow)
-      return { narrow, source: null, geometry: null };
-    if (!block) return { narrow, source, geometry: null };
+    if (!bounds || mode?.manual !== 'edit' || mode.layout !== 'side-by-side' || narrow)
+      return { narrow, source: null, retaining: false, anchor: null, geometry: null };
+    if (!block) return { narrow, source, retaining, anchor: bounds.anchor, geometry: null };
     const minShare = Math.max(30, 200 / blockWidth * 100);
     const maxShare = Math.min(65, (1 - this.minimumPreviewWidth / blockWidth) * 100);
     const sourceShare = Math.max(minShare, Math.min(maxShare, this.sourceShare));
-    const first = mermaidTextBlockAt(view, source.opening.from);
-    const last = mermaidTextBlockAt(view, source.closing.from);
+    const first = mermaidTextBlockAt(view, bounds.opening.from);
+    const last = mermaidTextBlockAt(view, bounds.closing.from);
     const sourceHeight = Math.max(view.defaultLineHeight, last.bottom - first.top);
     // The scroller already excludes editor chrome; the canvas includes its own heading.
     const viewportHeight = Math.max(160, view.scrollDOM.clientHeight);
@@ -725,6 +737,8 @@ class MermaidInlinePreview {
     return {
       narrow,
       source,
+      retaining,
+      anchor: bounds.anchor,
       geometry: {
         top: (view.documentTop - scroller.top) / view.scaleY + first.top + view.scrollDOM.scrollTop,
         left: (block.right - scroller.left) / view.scaleX + view.scrollDOM.scrollLeft - width,
@@ -738,7 +752,7 @@ class MermaidInlinePreview {
       }
     };
   }
-  private draw({ narrow, source, geometry }: ReturnType<MermaidInlinePreview['measure']>): void {
+  private draw({ narrow, source, retaining, anchor, geometry }: ReturnType<MermaidInlinePreview['measure']>): void {
     const view = this.view,
       strings = getUiStrings(view.state.facet(uiLanguageFacet));
     for (const button of view.dom.querySelectorAll<HTMLButtonElement>('.meo-mermaid-layout-btn')) {
@@ -750,15 +764,15 @@ class MermaidInlinePreview {
       });
       return;
     }
-    if (!source) {
+    if (!source && !retaining) {
       this.clear();
       return;
     }
     if (!geometry) {
-      if (this.panel) this.panel.hidden = true;
+      if (this.panel && !retaining) this.panel.hidden = true;
       return;
     }
-    const next = new MermaidSourcePreviewWidget(
+    const next = source && new MermaidSourcePreviewWidget(
       source.anchor,
       source.source,
       source.opening.number,
@@ -769,17 +783,17 @@ class MermaidInlinePreview {
     );
     let replacing = false;
     if (
-      !this.panel ||
-      this.panel.dataset.meoMermaidAnchor !== String(source.anchor) ||
+      next && (!this.panel ||
+      this.panel.dataset.meoMermaidAnchor !== String(anchor) ||
       !this.preview ||
-      !next.updateDOM(this.preview, view)
+      !next.updateDOM(this.preview, view))
     ) {
       replacing = true;
       this.clear();
       this.panel = document.createElement('aside');
       this.panel.className = 'meo-mermaid-inline-preview';
       this.panel.setAttribute('aria-label', strings.mermaidCurrentPreview);
-      this.panel.dataset.meoMermaidAnchor = String(source.anchor);
+      this.panel.dataset.meoMermaidAnchor = String(anchor);
       this.preview = next.toDOM(view) as PreviewElement;
       const separator = document.createElement('div');
       separator.className = 'meo-mermaid-inline-separator';
@@ -808,7 +822,9 @@ class MermaidInlinePreview {
       this.panel.append(this.preview, separator);
       view.scrollDOM.append(this.panel);
     }
-    this.presenter = next;
+    if (!this.panel || !this.preview) return;
+    if (next) this.presenter = next;
+    this.anchor = anchor;
     this.panel.hidden = false;
     this.bounds = { left: geometry.blockLeft, width: geometry.blockWidth, minShare: geometry.minShare, maxShare: geometry.maxShare };
     const separator = this.panel.querySelector('[role="separator"]')!;
@@ -828,9 +844,9 @@ class MermaidInlinePreview {
     if (replacing) this.schedule();
     if (view.state.field(mermaidEditingStateField).sideSpace !== space)
       queueMicrotask(() => {
-        if (!this.disposed)
+        if (!this.disposed && this.anchor === anchor && view.state.field(mermaidEditingStateField).activeAnchor === anchor)
           view.dispatch({
-            effects: setMermaidSideSpaceEffect.of({ anchor: source.anchor, height: space })
+            effects: setMermaidSideSpaceEffect.of({ anchor: anchor!, height: space })
           });
       });
   }
@@ -844,6 +860,7 @@ class MermaidInlinePreview {
     this.panel.remove();
     this.panel = this.preview = null;
     this.presenter = null;
+    this.anchor = null;
     this.view.requestMeasure();
   }
   destroy(): void {

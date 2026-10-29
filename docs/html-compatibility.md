@@ -22,6 +22,13 @@ attributes are supported; editor-owned classes, IDs and source/resource markers
 remain reserved. Native control values are temporary presentation state, not
 edits to the Markdown. Form submission is prevented.
 
+Within a mounted Live HTML block, unrelated source edits retain unchanged
+pictures, responsive images, media playback, form values and nested disclosure
+state. Changed or removed resources use the existing resolution/disposal owners.
+Source-bound controls receive current callbacks and coordinates. External document
+replacement invalidates the old HTML editing range, including equal-text reloads;
+the new document's syntax determines any remaining source presentation.
+
 Unknown tags inside a supported fragment are shown as escaped markup without
 discarding supported siblings or children. Unsupported standalone fragments
 retain their source. Script elements and event attributes never execute.

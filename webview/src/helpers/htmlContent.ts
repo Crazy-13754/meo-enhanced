@@ -30,6 +30,8 @@ import {
 import { createHtmlDocumentStyles, collectHtmlDocumentStyles, readHtmlDocumentStyles } from './htmlDocumentStyles';
 import { usesBackgroundMarkdownStructure } from '../editor/backgroundMarkdownStructure';
 import { resolveHtmlResources } from './htmlResources';
+import { rememberHtmlNativeContent, updateHtmlContentDom } from './htmlContentDom';
+import { isExternalDocumentPresentation } from '../editor/externalDocumentPresentation';
 import { scanHtmlTags, splitHtmlBlockFragments } from '../../../src/foundation/htmlSyntax';
 import { renderHtmlMarkdown } from '../../../src/shared/htmlMarkdown';
 import { createOpenLinkButton } from './linkOpenButton';
@@ -204,6 +206,7 @@ export const htmlEditingRangeField = StateField.define<HtmlEditingRange | null>(
     return null;
   },
   update(value, transaction) {
+    if (isExternalDocumentPresentation(transaction)) return null;
     const previous = value ?? selectedHtmlBlock(transaction.startState);
     let replaced = false;
     if (previous) transaction.changes.iterChangedRanges((from, to) => {
@@ -588,7 +591,10 @@ function enhanceLinks(root: ParentNode, inline: boolean, uiLanguage: UiLanguage)
     linkText.addEventListener('click', (event) => {
       event.preventDefault();
       if (!isPrimaryModifierPointerClick(event)) return;
-      linkText.dispatchEvent(new CustomEvent('meo-open-link', { bubbles: true, detail: { href } }));
+      const currentHref = linkText.dataset.meoLinkHref;
+      if (currentHref && isSafeHtmlUrl(currentHref, 'href')) {
+        linkText.dispatchEvent(new CustomEvent('meo-open-link', { bubbles: true, detail: { href: currentHref } }));
+      }
     });
     const button = createOpenLinkButton(href, uiLanguage);
     button.classList.add(inline ? 'meo-md-html-inline-link-button' : 'meo-md-html-link-button');
@@ -684,6 +690,7 @@ function createSanitizedHtml(
   const template = document.createElement('template');
   template.innerHTML = rendered;
   sanitizeElementTree(template.content);
+  rememberHtmlNativeContent(template.content);
   annotateHtmlSourceLines(template.content, masked.source, sourceStartLine);
   if (view && masked.comments.length) {
     showHtmlComments(template.content, masked.comments, view, source, sourceFrom, inline, sourceStartLine);
@@ -735,14 +742,20 @@ export function enterHtmlSource(view: EditorView, block: HtmlEditingRange, ancho
 // CodeMirror may retain a widget's DOM while replacing its equal value object.
 const htmlTableLayouts = new WeakMap<HTMLElement, PreviewTableLayoutController>();
 const htmlResourceControllers = new WeakMap<HTMLElement, AbortController>();
+const htmlBlockWidgets = new WeakMap<HTMLElement, HtmlBlockWidget>();
+const boundHtmlDetails = new WeakSet<HTMLDetailsElement>();
 
 function attachHtmlResources(root: HTMLElement): void {
-  const controller = new AbortController();
-  htmlResourceControllers.set(root, controller);
-  root.addEventListener('submit', event => event.preventDefault(), { signal: controller.signal });
-  resolveHtmlResources(root, { signal: controller.signal,
+  let controller = htmlResourceControllers.get(root);
+  if (!controller) {
+    controller = new AbortController();
+    htmlResourceControllers.set(root, controller);
+    root.addEventListener('submit', event => event.preventDefault(), { signal: controller.signal });
+  }
+  const signal = controller.signal;
+  resolveHtmlResources(root, { signal,
     resolve: resolveConfiguredImageSrc,
-    commit: apply => { if (!controller.signal.aborted && root.isConnected) apply(); } });
+    commit: apply => { if (!signal.aborted && root.isConnected) apply(); } });
 }
 
 function disposeHtmlResources(root: HTMLElement): void {
@@ -793,9 +806,35 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
       other.block.detailsCollapsed === this.block.detailsCollapsed;
   }
 
+  private prepareDetails(contentRoot: ParentNode, root: HTMLElement, view: EditorView): void {
+    const details = contentRoot.querySelector<HTMLDetailsElement>(':scope > details');
+    const summary = details?.querySelector<HTMLElement>(':scope > summary');
+    if (summary && !summary.querySelector(':scope > .meo-md-details-summary-label')) {
+      const label = document.createElement('span'); label.className = 'meo-md-details-summary-label';
+      label.append(...Array.from(summary.childNodes));
+      const icon = document.createElement('span'); icon.className = 'meo-md-details-summary-icon';
+      icon.setAttribute('aria-hidden', 'true'); summary.append(icon, label);
+    }
+    if (details && this.block.detailsCollapsed !== null) {
+      details.open = !this.block.detailsCollapsed;
+      if (boundHtmlDetails.has(details)) return;
+      boundHtmlDetails.add(details);
+      details.addEventListener('toggle', () => {
+        if (!details.isConnected || !root.contains(details)) return;
+        const widget = htmlBlockWidgets.get(root);
+        if (!widget) return;
+        const currentBlock = currentHtmlBlock(view, widget.block.source, widget.block.startLine);
+        if (!currentBlock) return;
+        const collapsed = getDetailsBlocks(view.state).find(block => block.anchorFrom === currentBlock.from)?.collapsed;
+        if (collapsed !== undefined && details.open !== !collapsed) toggleDetailsBlock(view, currentBlock.from);
+      });
+    }
+  }
+
   toDOM(view: EditorView): HTMLElement {
     const root = document.createElement('div');
     root.className = 'meo-md-html-block';
+    htmlBlockWidgets.set(root, this);
     root.dataset.meoRenderedBlockKind = 'html';
     root.dataset.meoRenderedBlockStartLine = String(this.block.startLine);
     root.dataset.meoRenderedBlockEndLine = String(this.block.endLine);
@@ -825,39 +864,19 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     root.appendChild(contentRoot);
     attachHtmlResources(root);
 
-    const details = contentRoot.querySelector<HTMLDetailsElement>(':scope > details');
-    const summary = details?.querySelector<HTMLElement>(':scope > summary') ?? null;
-    if (summary) {
-      const label = document.createElement('span');
-      label.className = 'meo-md-details-summary-label';
-      label.append(...Array.from(summary.childNodes));
-      const icon = document.createElement('span');
-      icon.className = 'meo-md-details-summary-icon';
-      icon.setAttribute('aria-hidden', 'true');
-      summary.append(icon, label);
-    }
-    if (details && this.block.detailsCollapsed !== null) {
-      details.open = !this.block.detailsCollapsed;
-      details.addEventListener('toggle', () => {
-        const currentBlock = currentHtmlBlock(view, this.block.source, this.block.startLine);
-        if (!currentBlock) return;
-        const collapsed = getDetailsBlocks(view.state)
-          .find((block) => block.anchorFrom === currentBlock.from)?.collapsed;
-        if (collapsed === undefined || details.open === !collapsed) return;
-        toggleDetailsBlock(view, currentBlock.from);
-      });
-    }
+    this.prepareDetails(contentRoot, root, view);
 
     // Wait until pointerup/click so native dragging can select rendered text.
     // Interactive HTML keeps its own reading action and never opens source.
     root.addEventListener('pointerdown', event => {
-      if (event.button === 0 && this.editing) event.preventDefault();
+      if (event.button === 0 && htmlBlockWidgets.get(root)?.editing) event.preventDefault();
     });
     bindHtmlReadingClick(root, event => {
       const target = event.target instanceof Element ? event.target : null;
-      if (this.editing
+      const widget = htmlBlockWidgets.get(root)!;
+      if (widget.editing
         || target?.closest('summary, button, a, input, select, textarea, label, audio, video, .meo-md-html-comment, .meo-md-image')) return;
-      const currentBlock = currentHtmlBlock(view, this.block.source, this.block.startLine);
+      const currentBlock = currentHtmlBlock(view, widget.block.source, widget.block.startLine);
       if (!currentBlock) return;
       const line = Number(target?.closest<HTMLElement>('[data-meo-html-source-line]')?.dataset.meoHtmlSourceLine);
       const anchor = Number.isInteger(line) && line > 0 && line <= view.state.doc.lines
@@ -875,6 +894,48 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     return root;
   }
 
+  updateDOM(root: HTMLElement, view: EditorView): boolean {
+    const previous = htmlBlockWidgets.get(root);
+    if (!previous || !this.hasSameUiLanguageEpoch(previous)) return false;
+    htmlBlockWidgets.set(root, this);
+    root.dataset.meoRenderedBlockStartLine = String(this.block.startLine);
+    root.dataset.meoRenderedBlockEndLine = String(this.block.endLine);
+    root.classList.toggle('meo-md-html-live-result', this.editing);
+    let label = root.querySelector<HTMLElement>(':scope > .meo-md-html-result-status');
+    if (this.editing && !label) {
+      label = root.ownerDocument.createElement('span'); label.className = 'meo-md-html-result-status';
+      label.textContent = getUiStrings(view.state.facet(uiLanguageFacet)).preview; root.prepend(label);
+    } else if (!this.editing) label?.remove();
+    const current = root.querySelector<HTMLElement>(':scope > .meo-md-html-content')!;
+    if (previous.block.source !== this.block.source) {
+      const next = root.ownerDocument.createElement('div');
+      const content = createSanitizedHtml(this.block.source, false, view.state.facet(uiLanguageFacet), view, this.block.from, this.block.startLine);
+      if (content) next.append(content);
+      this.prepareDetails(next, root, view);
+      updateHtmlContentDom(current, next, element => {
+        if (element.classList.contains('meo-md-image')) disposeImagePresentations(element);
+        if (element instanceof HTMLMediaElement) { element.pause(); element.removeAttribute('src'); element.load(); }
+      });
+      const first = current.firstElementChild;
+      root.style.textAlign = normalizeHtmlAlign(first?.getAttribute('align') ?? null) ?? '';
+      attachHtmlResources(root);
+    } else if (previous.block.startLine !== this.block.startLine) {
+      const delta = this.block.startLine - previous.block.startLine;
+      for (const element of current.querySelectorAll<HTMLElement>('[data-meo-html-source-line]')) {
+        element.dataset.meoHtmlSourceLine = String(Number(element.dataset.meoHtmlSourceLine) + delta);
+      }
+    }
+    this.prepareDetails(current, root, view);
+    const details = current.querySelector<HTMLDetailsElement>(':scope > details');
+    if (details && this.block.detailsCollapsed !== null) details.open = !this.block.detailsCollapsed;
+    this.height.observe(root, view, () => {
+      const layout = htmlTableLayouts.get(root);
+      if (layout) layout.refresh();
+      else if (current.querySelector('table')) htmlTableLayouts.set(root, createPreviewTableLayoutController(root.ownerDocument, current));
+    });
+    return true;
+  }
+
   ignoreEvent(): boolean {
     return true;
   }
@@ -882,6 +943,7 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
   destroy(dom: HTMLElement): void {
     htmlTableLayouts.get(dom)?.dispose();
     htmlTableLayouts.delete(dom);
+    htmlBlockWidgets.delete(dom);
     this.height.destroy(dom);
     disposeHtmlResources(dom);
     disposeImagePresentations(dom);

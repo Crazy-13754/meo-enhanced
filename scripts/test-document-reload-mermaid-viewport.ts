@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
+import { checkHtmlDocumentReload } from './html-document-reload';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-reload-mermaid-viewport-'));
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
 
   const browser = await launchTestBrowser();
   try {
+    await checkHtmlDocumentReload(browser, path.join(tempDir, 'bundle.js'));
     const page = await browser.newPage();
     await page.setViewport({ width: 920, height: 520, deviceScaleFactor: 1 });
     await page.setContent('<!doctype html><body><div id="app"></div></body>');

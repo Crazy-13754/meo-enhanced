@@ -854,6 +854,9 @@ export class ImageWidget extends WidgetType {
 
 /** Disposes nested image projections before an owning widget replaces their DOM. */
 export function disposeImagePresentations(root: ParentNode): void {
+  if (root instanceof HTMLElement && root.classList.contains('meo-md-image')) {
+    root.dispatchEvent(new Event(IMAGE_PRESENTATION_DISPOSE_EVENT));
+  }
   for (const image of root.querySelectorAll<HTMLElement>('.meo-md-image')) {
     image.dispatchEvent(new Event(IMAGE_PRESENTATION_DISPOSE_EVENT));
   }

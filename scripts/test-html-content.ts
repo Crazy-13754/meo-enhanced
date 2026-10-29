@@ -5,6 +5,7 @@ import { collectRenderableHtmlBlocks } from '../webview/src/helpers/htmlContent'
 import { getDetailsBlocks, detailsBlockStateExtensions, detailsBlockLiveExtensions, toggleDetailsBlock } from '../webview/src/helpers/detailsBlocks';
 
 import assert from 'node:assert/strict';
+import { checkHtmlContentLifecycle } from './html-content-lifecycle';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -649,7 +650,7 @@ async function checkHtmlEditingTools(page: Page): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  if (!['--format-only', '--expansion-only', '--pointer-only', '--selection-only'].some(flag => process.argv.includes(flag))) await checkHtmlStyleRendering();
+  if (!['--format-only', '--expansion-only', '--pointer-only', '--selection-only', '--lifecycle-only'].some(flag => process.argv.includes(flag))) await checkHtmlStyleRendering();
   if (process.argv.includes('--styles-only')) return;
   checkExport();
   const plain = '<div id="one" title="long title" style="color:red"><p>Hello <strong>world</strong>.</p></div>';
@@ -668,6 +669,10 @@ async function main(): Promise<void> {
   assert.ok(build.success, build.logs.map(String).join('\n'));
   const browser = await launchTestBrowser();
   try {
+    if (!['--format-only', '--expansion-only', '--pointer-only', '--selection-only'].some(flag => process.argv.includes(flag))) {
+      await checkHtmlContentLifecycle(browser, fs.readFileSync(path.join(tempDir, 'bundle.js'), 'utf8'));
+      if (process.argv.includes('--lifecycle-only')) return;
+    }
     const page = await browser.newPage();
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(String(error)));
