@@ -414,6 +414,13 @@ empty border/background visibility, nested padded table containers, actual
 loaded image fitting/position/radii and width-only aspect ratios, source
 preservation and unchanged HTML node identity after prose input. GitHub's separate
 filter remains unchanged. Screenshots are saved under `.local/html-style-audit/`.
+`bun scripts/test-preview-table-layout-production.ts --live-update-only` isolates
+Live HTML table input stability. Caption/cell typing and undo/redo check every
+sampled layout and actual compositor PNG column widths, including rowspan/colspan.
+Ordinary and optimized fixtures verify the real Worker and derived-work budget,
+unrelated node reuse, source preservation, mode remount, hidden-table reveal and
+pending-update disposal. The full table-layout owner includes these checks;
+screenshots are saved under `.local/html-table-update-audit/`.
 The HTML content checks
 verify pasted HTML opens source without reformatting or moving the native caret,
 including trailing blank lines, hidden fragments, sibling blocks and history.

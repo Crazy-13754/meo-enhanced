@@ -26,12 +26,17 @@ export class RenderedBlockPreviewHeight {
     if (this.identity === previous.identity) this.measurement = previous.measurement;
   }
 
-  observe(shell: HTMLElement, view: EditorView): void {
+  observe(shell: HTMLElement, view: EditorView, prepareLayout?: () => void): void {
     if (typeof ResizeObserver === 'undefined') return;
     this.destroy(shell);
     const measurement = this.measurement;
     const observer = new ResizeObserver(() => {
       if (!shell.isConnected) return;
+      // A newly attached result must finish its own layout before either the
+      // browser paints it or CodeMirror accepts its height. Frame callbacks may
+      // already be running when a deferred presentation mounts this widget.
+      prepareLayout?.();
+      prepareLayout = undefined;
       const height = shell.getBoundingClientRect().height;
       if (height <= 0 || measurement.height === height) return;
       measurement.height = height;

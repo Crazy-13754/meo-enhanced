@@ -732,9 +732,8 @@ export function enterHtmlSource(view: EditorView, block: HtmlEditingRange, ancho
   view.focus();
 }
 
-type HtmlTableLayout = { frame: number | null; controller: PreviewTableLayoutController | null };
 // CodeMirror may retain a widget's DOM while replacing its equal value object.
-const htmlTableLayouts = new WeakMap<HTMLElement, HtmlTableLayout>();
+const htmlTableLayouts = new WeakMap<HTMLElement, PreviewTableLayoutController>();
 const htmlResourceControllers = new WeakMap<HTMLElement, AbortController>();
 
 function attachHtmlResources(root: HTMLElement): void {
@@ -866,19 +865,13 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
       event.preventDefault();
       enterHtmlSource(view, currentBlock, anchor, event.clientY);
     });
-    this.height.observe(root, view);
-    if (contentRoot.querySelector('table')) {
-      // The widget is not mounted during toDOM. Its natural table geometry is
-      // meaningful only after CodeMirror attaches it; dispose with this widget.
-      const layout: HtmlTableLayout = { frame: null, controller: null };
-      htmlTableLayouts.set(root, layout);
-      layout.frame = requestAnimationFrame(() => {
-        layout.frame = null;
-        if (htmlTableLayouts.get(root) === layout && root.isConnected) {
-          layout.controller = createPreviewTableLayoutController(root.ownerDocument, contentRoot);
-        }
-      });
-    }
+    const hasTable = contentRoot.querySelector('table') !== null;
+    // toDOM runs before attachment, and a deferred update can already be inside
+    // a frame callback. Use the existing size observation to fit before paint,
+    // rather than expose native auto-layout until another animation frame.
+    this.height.observe(root, view, hasTable ? () => {
+      htmlTableLayouts.set(root, createPreviewTableLayoutController(root.ownerDocument, contentRoot));
+    } : undefined);
     return root;
   }
 
@@ -887,9 +880,7 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
   }
 
   destroy(dom: HTMLElement): void {
-    const layout = htmlTableLayouts.get(dom);
-    if (layout && layout.frame !== null) cancelAnimationFrame(layout.frame);
-    layout?.controller?.dispose();
+    htmlTableLayouts.get(dom)?.dispose();
     htmlTableLayouts.delete(dom);
     this.height.destroy(dom);
     disposeHtmlResources(dom);

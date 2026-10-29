@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { launchTestBrowser, closeTestBrowser } from './browser-test-helpers';
 import exportRuntime from '../src/export/runtime';
+import { checkHtmlTableLiveUpdates } from './html-table-live-updates';
 
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-preview-table-layout-'));
 const entry = path.join(temporary, 'entry.ts');
@@ -11,6 +12,10 @@ fs.writeFileSync(entry, `
   import { createPreviewTableLayoutController } from ${JSON.stringify(path.resolve(import.meta.dir, '../webview/src/helpers/previewTableLayout.ts'))};
   import { createEditor } from ${JSON.stringify(path.resolve(import.meta.dir, './test-editor-factory.ts'))};
   import { applyBuiltInVisualBaseline } from ${JSON.stringify(path.resolve(import.meta.dir, '../webview/src/helpers/theme.ts'))};
+  import { enterHtmlSource } from ${JSON.stringify(path.resolve(import.meta.dir, '../webview/src/helpers/htmlContent.ts'))};
+  import { usesLargeDocumentDerivedWorkBudget } from ${JSON.stringify(path.resolve(import.meta.dir, '../webview/src/editor/liveInputDerivedWork.ts'))};
+  import { undo, redo } from ${JSON.stringify(Bun.resolveSync('@codemirror/commands', import.meta.dir))};
+  Object.assign(window, { enterHtmlSource, usesTableDerivedBudget: usesLargeDocumentDerivedWorkBudget, undoTableInput: undo, redoTableInput: redo });
   (window as any).createWidthEditor = createEditor;
   (window as any).applyTableTheme = applyBuiltInVisualBaseline;
   (window as any).startTables = () => {
@@ -30,6 +35,10 @@ try {
   const browser = await launchTestBrowser();
   let primaryError: unknown;
   try {
+    const worker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
+    assert.ok(worker.success, worker.logs.map(String).join('\n'));
+    await checkHtmlTableLiveUpdates(browser, await build.outputs[0].text(), await worker.outputs[0].text());
+    if (!process.argv.includes('--live-update-only')) {
     for (const width of [280, 640, 1100]) {
       for (const theme of ['light', 'dark'] as const) {
         const page = await browser.newPage();
@@ -139,13 +148,16 @@ try {
         await page.close();
       }
     }
+    }
   } catch (error) {
     primaryError = error;
   } finally {
     if (primaryError === undefined) await closeTestBrowser(browser);
     else await closeTestBrowser(browser, primaryError);
   }
-  console.log('Table layout: batched reads/writes, compact columns, Markdown/HTML, merged cells, Live/Source round trips and theme/container fitting passed');
+  if (!process.argv.includes('--live-update-only')) {
+    console.log('Table layout: batched reads/writes, compact columns, Markdown/HTML, merged cells, Live/Source round trips and theme/container fitting passed');
+  }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }
