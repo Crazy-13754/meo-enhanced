@@ -3,7 +3,7 @@ import type { Browser } from 'puppeteer-core';
 
 /** Full bootstrap, toolbar confirmation, Host reload response and presentation acknowledgement. */
 export async function checkHtmlDocumentReload(browser: Browser, bundlePath: string): Promise<void> {
-  const disk = '<div>\n<p>Paragraph **bold**.</p>\n\n- Markdown list\n\n</div>\n\n## Next heading\n\n<svg width="300" height="140" viewBox="0 0 300 140"><text x="10" y="30">Image</text></svg>\n\nAfter.';
+  const disk = '<div>\n<p>Paragraph **bold**.</p>\n\n- Markdown list\n\n</div>\n\n## Next heading\n\n$$\nx^2 + 1\n$$\n\n<svg width="300" height="140" viewBox="0 0 300 140"><text x="10" y="30">Image</text></svg>\n\nAfter.';
   const page = await browser.newPage(), errors: string[] = [];
   page.on('pageerror', error => errors.push(String(error)));
   try {
@@ -47,7 +47,8 @@ export async function checkHtmlDocumentReload(browser: Browser, bundlePath: stri
       await page.click('[data-action="discard"]'); await page.click('[data-action="discard"]');
       await page.waitForFunction(count => (window as any).htmlReloadCompleted === count + 1, {}, before);
       await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-source-invalid').length === 0
-        && document.querySelectorAll('.meo-md-html-content svg[viewBox]').length === 1);
+        && document.querySelectorAll('.meo-md-html-content svg[viewBox]').length === 1
+        && document.querySelectorAll('.meo-md-math-fenced-display').length === 1);
       assert.equal(await page.evaluate(() => (window as any).__viewportTestText()), disk);
       assert.equal(await page.evaluate(() => (window as any).htmlReloadRequests), before + 1, 'One confirmed toolbar reload is sufficient');
       assert.equal(await page.$$eval('.meo-md-html-source-range', nodes => nodes.some(node => node.textContent?.includes('## Next heading'))), false);

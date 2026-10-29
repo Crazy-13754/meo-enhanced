@@ -167,7 +167,7 @@ export async function checkHtmlContentLifecycle(browser: Browser, bundle: string
       await page.keyboard.down('Control'); await page.click('.meo-md-html-live-result a'); await page.keyboard.up('Control');
       assert.deepEqual(await page.evaluate(() => (window as any).htmlLifecycleLinks), ['https://example.com/new'], 'Removing href retires the old navigation action');
       // Multiple disjoint edits become one synchronization envelope on reload.
-      const disk = '<div>\nParagraph **bold**.\n\n- Markdown list\n\n</div>\n\n## Next heading\n\n<svg width="300" height="140" viewBox="0 0 300 140"><text x="10" y="30">Image</text></svg>\n\nAfter.\n\n' + tail;
+      const disk = '<div>\nParagraph **bold**.\n\n- Markdown list\n\n</div>\n\n## Next heading\n\n$$\nx^2 + 1\n$$\n\n<svg width="300" height="140" viewBox="0 0 300 140"><text x="10" y="30">Image</text></svg>\n\nAfter.\n\n' + tail;
       await page.evaluate(text => {
         const g = window as any, editor = g.htmlLifecycleEditor;
         editor.setText(text, true); g.HtmlContentHarness.enterHtmlSource(editor.view, { from: text.indexOf('<svg'), to: text.indexOf('</svg>') + 6 }, text.indexOf('Edited image') + 3);
@@ -176,7 +176,8 @@ export async function checkHtmlContentLifecycle(browser: Browser, bundle: string
         await page.evaluate(text => (window as any).htmlLifecycleEditor.setText(text, true), disk);
         await page.evaluate(() => (window as any).htmlLifecycleEditor.whenVisiblePresentationReady(2500));
         await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-source-invalid').length === 0
-          && document.querySelectorAll('.meo-md-html-content svg[viewBox]').length === 1);
+          && document.querySelectorAll('.meo-md-html-content svg[viewBox]').length === 1
+          && document.querySelectorAll('.meo-md-math-fenced-display').length === 1);
         const scope = await page.evaluate(() => {
           const g = window as any, view = g.htmlLifecycleEditor.view, range = g.HtmlContentHarness.getHtmlEditingRange(view.state);
           return { source: range ? view.state.doc.sliceString(range.from, range.to) : null,

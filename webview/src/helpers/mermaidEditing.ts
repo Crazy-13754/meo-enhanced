@@ -12,7 +12,7 @@ import {
 import { getMermaidDiagramPresentationFactory } from '../editor/mermaidDiagramPresentation';
 import { UiLanguageSensitiveWidget, uiLanguageFacet } from '../editor/uiLanguage';
 import { setLivePointerSelectionActiveEffect, sourcePresentationSelection } from '../editor/livePointerSelection';
-import { supersedeLiveInputDerivedWork, isLiveInputDerivedWorkRefresh } from '../editor/liveInputDerivedWork';
+import { supersedeLiveInputDerivedWork, isLiveInputDerivedWorkRefresh, usesLargeDocumentDerivedWorkBudget } from '../editor/liveInputDerivedWork';
 import { isCompleteMarkdownStructure } from '../editor/markdownStructure';
 import { resolvedSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
 import { isExternalDocumentPresentation } from '../editor/externalDocumentPresentation';
@@ -474,7 +474,7 @@ export function addMermaidToolbar(
 }
 
 type PreviewElement = HTMLElement & {
-  mermaidPreview?: { widget: MermaidDiagramWidget; timer?: number; source: string; viewport: MermaidViewportState };
+  mermaidPreview?: { widget: MermaidDiagramWidget; timer?: number; source: string; startLine: number; endLine: number; viewport: MermaidViewportState };
 };
 /** The same preview action is used in document flow and opaque floating chrome. */
 export function createMermaidPreviewHeading(view: EditorView, anchor: number): HTMLElement {
@@ -575,7 +575,7 @@ export class MermaidSourcePreviewWidget extends UiLanguageSensitiveWidget {
       uiLanguage: view.state.facet(uiLanguageFacet)
     });
     root.append(label, widget.toDOM(view));
-    root.mermaidPreview = { widget, source: this.source, viewport: this.viewport };
+    root.mermaidPreview = { widget, source: this.source, startLine: this.startLine, endLine: this.endLine, viewport: this.viewport };
     return root;
   }
   updateDOM(root: PreviewElement, view: EditorView): boolean {
@@ -583,27 +583,33 @@ export class MermaidSourcePreviewWidget extends UiLanguageSensitiveWidget {
     const preview = root.mermaidPreview;
     // Replacing the entire fenced block creates a new camera, even at the same position.
     if (!preview || preview.viewport !== this.viewport) return false;
+    preview.startLine = this.startLine;
+    preview.endLine = this.endLine;
     root.dataset.meoMermaidAnchor = String(this.anchor);
     root.querySelector<HTMLElement>('.meo-native-source-preview-label')!.dataset.meoMermaidAnchor = String(this.anchor);
     updateMermaidLayoutButton(root.querySelector<HTMLButtonElement>('.meo-mermaid-layout-btn')!, view,
       view.state.field(mermaidEditingStateField).narrow || view.dom.clientWidth < MERMAID_SIDE_MIN_WIDTH);
     if (preview.source === this.source) {
-      preview.widget.updateSource(this.source, this.startLine, this.endLine);
+      if (preview.timer === undefined) preview.widget.updateSource(this.source, this.startLine, this.endLine);
       return true;
     }
     preview.source = this.source;
     root.dataset.meoMermaidRendering = 'true';
     clearTimeout(preview.timer);
+    // Large-document input already coalesces derived work through its quiet
+    // window. Accept that source without a second debounce on the retained SVG.
     preview.timer = window.setTimeout(() => {
       preview.timer = undefined;
-      preview.widget.updateSource(preview.source, this.startLine, this.endLine);
+      if (root.mermaidPreview !== preview || !root.isConnected) return;
+      preview.widget.updateSource(preview.source, preview.startLine, preview.endLine);
       delete root.dataset.meoMermaidRendering;
-    }, 80);
+    }, usesLargeDocumentDerivedWorkBudget(view.state) ? 0 : 80);
     return true;
   }
   destroy(root: PreviewElement): void {
     clearTimeout(root.mermaidPreview?.timer);
     root.mermaidPreview?.widget.destroy();
+    delete root.mermaidPreview;
   }
   ignoreEvent(): boolean {
     return true;

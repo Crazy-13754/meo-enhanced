@@ -426,6 +426,11 @@ one confirmed reload must retire stale source bounds and duplicate previews.
 and Worker-backed documents, keeps accepted diagrams through pending syntax,
 checks actual compositor frames and verifies selection/removal cleanup before its
 existing slow-render, cache, error, theme and stale-result scenarios.
+Its accepted-source probe verifies that optimized documents do not incur a
+second typing debounce, ordinary batches survive no-op refreshes, and delayed
+presentation uses the latest mapped source lines. Native input bursts retain
+bounded render counts on both size paths; latency comparisons use a fixed graph,
+viewport and warm-up with separate scheduling/render/commit measurements.
 
 `bun scripts/test-preview-table-layout-production.ts --live-update-only` isolates
 Live HTML table input stability. Caption/cell typing and undo/redo check every
