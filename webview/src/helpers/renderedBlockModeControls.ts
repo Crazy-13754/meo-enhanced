@@ -5,6 +5,35 @@ import { measureFixedContainingBlockMapping } from '../editor/fixedChromeDomGeom
 import { projectFixedChromeGeometry, type FixedChromeRect } from '../editor/fixedChromeGeometry';
 import { focusRenderedBlockAction } from './renderedBlockActionFocus';
 
+/** The untransformed canvas clipped by its reading surface and sticky chrome. */
+export function measureMermaidPreviewViewport(
+  root: HTMLElement,
+  scroller = root.closest<HTMLElement>('.cm-scroller')
+): FixedChromeRect | null {
+  const win = root.ownerDocument.defaultView!;
+  const diagram = root.getBoundingClientRect();
+  let left = Math.max(0, diagram.left), right = Math.min(win.innerWidth, diagram.right);
+  let top = Math.max(0, diagram.top), bottom = Math.min(win.innerHeight, diagram.bottom);
+  if (scroller) {
+    const viewport = scroller.getBoundingClientRect();
+    const sx = viewport.width / Math.max(1, scroller.offsetWidth);
+    const sy = viewport.height / Math.max(1, scroller.offsetHeight);
+    left = Math.max(left, viewport.left + scroller.clientLeft * sx);
+    right = Math.min(right, viewport.left + (scroller.clientLeft + scroller.clientWidth) * sx);
+    top = Math.max(top, viewport.top + scroller.clientTop * sy);
+    bottom = Math.min(bottom, viewport.top + (scroller.clientTop + scroller.clientHeight) * sy);
+  }
+  const pane = root.closest<HTMLElement>('.meo-rendered-block-preview-pane');
+  if (pane) {
+    const bounds = pane.getBoundingClientRect();
+    left = Math.max(left, bounds.left); right = Math.min(right, bounds.right);
+    top = Math.max(top, bounds.top); bottom = Math.min(bottom, bounds.bottom);
+  }
+  const header = root.closest('.cm-editor')?.querySelector<HTMLElement>('.meo-block-sticky-header:not([hidden])');
+  if (header) top = Math.max(top, header.getBoundingClientRect().bottom);
+  return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top } : null;
+}
+
 /** A single preview-owned group follows the visible diagram, outside document layout.
  * Both normal and split previews use these same controls and zoom state. */
 export function mountMermaidPreviewControls(root: HTMLElement, controls: HTMLElement, editor?: EditorView): () => void {
@@ -27,27 +56,10 @@ export function mountMermaidPreviewControls(root: HTMLElement, controls: HTMLEle
         observedAncestors.add(parent);
       }
     }
-    const diagram = root.getBoundingClientRect();
-    const scroller = editor?.scrollDOM ?? root.closest<HTMLElement>('.cm-scroller');
-    let left = Math.max(0, diagram.left), right = Math.min(win.innerWidth, diagram.right);
-    let top = Math.max(0, diagram.top), bottom = Math.min(win.innerHeight, diagram.bottom);
-    if (scroller) {
-      const viewport = scroller.getBoundingClientRect();
-      const sx = viewport.width / Math.max(1, scroller.offsetWidth);
-      const sy = viewport.height / Math.max(1, scroller.offsetHeight);
-      left = Math.max(left, viewport.left + scroller.clientLeft * sx);
-      right = Math.min(right, viewport.left + (scroller.clientLeft + scroller.clientWidth) * sx);
-      top = Math.max(top, viewport.top + scroller.clientTop * sy);
-      bottom = Math.min(bottom, viewport.top + (scroller.clientTop + scroller.clientHeight) * sy);
-    }
-    const pane = root.closest<HTMLElement>('.meo-rendered-block-preview-pane');
-    if (pane) {
-      const bounds = pane.getBoundingClientRect();
-      left = Math.max(left, bounds.left); right = Math.min(right, bounds.right);
-      top = Math.max(top, bounds.top); bottom = Math.min(bottom, bounds.bottom);
-    }
-    const header = root.closest('.cm-editor')?.querySelector<HTMLElement>('.meo-block-sticky-header:not([hidden])');
-    if (header) top = Math.max(top, header.getBoundingClientRect().bottom);
+    const viewport = measureMermaidPreviewViewport(root, editor?.scrollDOM);
+    if (!viewport) return null;
+    const { left, top, width: visibleWidth, height: visibleHeight } = viewport;
+    const right = left + visibleWidth, bottom = top + visibleHeight;
     const bounds = controls.getBoundingClientRect();
     const twoRows = controls.dataset.meoControlsColumns === '2';
     const sx = bounds.width / (twoRows ? 55 : 105), sy = bounds.height / (twoRows ? 51 : 28);

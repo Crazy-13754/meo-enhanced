@@ -1,7 +1,7 @@
 import { createElement, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { suppressRenderedBlockPointerFocus } from './renderedBlockActionFocus';
-import { stepVisualZoom } from './visualZoom';
+import { stepVisualZoom, visualZoomPanAtPoint } from './visualZoom';
 
 export type MermaidFullscreenExitCause =
   | 'user-close' | 'escape' | 'dispose' | 'replacement' | 'mode' | 'external' | 'theme';
@@ -48,17 +48,15 @@ export function openMermaidFullscreen(options: {
     if (closed) return;
     const scale = baseScale * zoom;
     svgWrapper.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
-    const svg = svgWrapper.querySelector('svg');
-    if (!svg) return;
-    const viewport = container.getBoundingClientRect();
-    const diagram = svg.getBoundingClientRect();
-    const correction = (start: number, end: number, low: number, high: number) => {
-      if (end - start >= high - low) return start > low ? low - start : end < high ? high - end : 0;
-      return start < low ? low - start : end > high ? high - end : 0;
-    };
-    panX += correction(diagram.left, diagram.right, viewport.left, viewport.right);
-    panY += correction(diagram.top, diagram.bottom, viewport.top, viewport.bottom);
-    svgWrapper.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  };
+  const changeZoom = (direction: 1 | -1, pointer?: WheelEvent) => {
+    const next = stepVisualZoom(zoom, direction, pointer ? 'wheel' : 'button');
+    const bounds = container.getBoundingClientRect();
+    const point = pointer ? { x: pointer.clientX, y: pointer.clientY }
+      : { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    ({ panX, panY } = visualZoomPanAtPoint(svgWrapper, { zoom, panX, panY }, next, point));
+    zoom = next;
+    applyTransform();
   };
   const fit = () => {
     if (closed) return;
@@ -84,8 +82,8 @@ export function openMermaidFullscreen(options: {
     controls.append(button);
     return button;
   };
-  addButton(ZoomIn, strings.zoomIn, () => { zoom = stepVisualZoom(zoom, 1); applyTransform(); });
-  addButton(ZoomOut, strings.zoomOut, () => { zoom = stepVisualZoom(zoom, -1); applyTransform(); });
+  addButton(ZoomIn, strings.zoomIn, () => changeZoom(1));
+  addButton(ZoomOut, strings.zoomOut, () => changeZoom(-1));
   addButton(RotateCcw, strings.resetZoom, fit);
   const exit = addButton(X, strings.exitFullscreen, () => viewer.close('user-close'));
   exit.classList.add('meo-mermaid-exit-btn');
@@ -142,13 +140,7 @@ export function openMermaidFullscreen(options: {
   container.addEventListener('pointercancel', release, { signal });
   container.addEventListener('wheel', event => {
     event.preventDefault();
-    const next = stepVisualZoom(zoom, event.deltaY > 0 ? -1 : 1, 'wheel');
-    const ratio = next / zoom;
-    const rect = container.getBoundingClientRect();
-    const x = event.clientX - (rect.left + rect.width / 2), y = event.clientY - (rect.top + rect.height / 2);
-    panX = x - (x - panX) * ratio; panY = y - (y - panY) * ratio;
-    zoom = next;
-    applyTransform();
+    changeZoom(event.deltaY > 0 ? -1 : 1, event);
   }, { signal, passive: false });
   document.addEventListener('keydown', event => {
     if (event.key === 'Tab' || event.key === 'Enter' || event.key === ' ') pointerDriven = false;

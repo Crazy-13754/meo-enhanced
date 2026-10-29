@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { launchTestBrowser } from './browser-test-helpers';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-image-layout-'));
@@ -378,20 +379,37 @@ async function main() {
     await page.mouse.move(viewerPoint.x + 40, viewerPoint.y + 25, { steps: 4 });
     await page.mouse.up();
     assert.deepEqual(await transform(), { zoom: 1.25, x: 40, y: 25 });
+    const imagePointAt = (x?: number, y?: number) => page.$eval('.meo-md-image-fullscreen-img', (image, x, y) => {
+      const rect = image.getBoundingClientRect();
+      const viewport = image.parentElement!.getBoundingClientRect();
+      return { x: ((x ?? viewport.left + viewport.width / 2) - rect.left) / rect.width,
+        y: ((y ?? viewport.top + viewport.height / 2) - rect.top) / rect.height };
+    }, x, y);
+    const assertImagePoint = (actual: { x: number; y: number }, expected: { x: number; y: number }, message: string) => {
+      assert.ok(Math.hypot(actual.x - expected.x, actual.y - expected.y) < 0.00001,
+        `${message}: ${JSON.stringify({ actual, expected })}`);
+    };
+    const centerPoint = await imagePointAt();
+    await page.click('.meo-md-image-fullscreen button[data-tooltip="Zoom in"]');
+    assertImagePoint(await imagePointAt(), centerPoint, 'Image buttons keep the viewport center on the same content after panning');
+    await page.click('.meo-md-image-fullscreen button[data-tooltip="Zoom out"]');
+    const wheelPoint = await imagePointAt(480, 300);
+    await page.mouse.move(480, 300);
     await page.mouse.wheel({ deltaY: 120 });
     await page.waitForFunction(() =>
       Math.abs(new DOMMatrix(getComputedStyle(document.querySelector('.meo-md-image-fullscreen-img')!).transform).a - 1.25 / 1.1) < 0.00001);
+    assertImagePoint(await imagePointAt(480, 300), wheelPoint, 'Image wheel keeps the content under the pointer fixed');
     await page.mouse.wheel({ deltaY: -120 });
     await page.waitForFunction(() =>
       Math.abs(new DOMMatrix(getComputedStyle(document.querySelector('.meo-md-image-fullscreen-img')!).transform).a - 1.25) < 0.00001);
+    const beforeRepeatedZoom = await imagePointAt();
     await page.$eval('.meo-md-image-fullscreen-controls', controls => {
       const buttons = controls.querySelectorAll<HTMLButtonElement>('button');
       for (let i = 0; i < 15; i++) buttons[0]!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     });
     const enlarged = await transform();
     assert.ok(Math.abs(enlarged.zoom - 1.25 ** 16) < 0.0001, 'Image zoom continues proportionally beyond 4x');
-    assert.equal(enlarged.x, 40, 'Image zoom preserves the existing pan behavior');
-    assert.equal(enlarged.y, 25);
+    assertImagePoint(await imagePointAt(), beforeRepeatedZoom, 'Repeated image zoom preserves the viewport anchor');
     await page.$eval('.meo-md-image-fullscreen-controls', controls => {
       const buttons = controls.querySelectorAll<HTMLButtonElement>('button');
       for (let i = 0; i < 16; i++) buttons[1]!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
@@ -410,12 +428,40 @@ async function main() {
     assert.equal(limits.minimum, 0.25, 'The existing image minimum is unchanged');
     await page.click('.meo-md-image-fullscreen button[data-tooltip="Reset zoom"]');
     assert.deepEqual(await transform(), { zoom: 1, x: 0, y: 0 });
+    await page.mouse.move(600, 450);
+    await page.mouse.down();
+    await page.mouse.move(2000, 1450, { steps: 5 });
+    await page.mouse.up();
+    assert.deepEqual(await transform(), { zoom: 1, x: 1400, y: 1000 }, 'Images can be freely moved offscreen');
+    await page.click('.meo-md-image-fullscreen button[data-tooltip="Reset zoom"]');
+    assert.deepEqual(await transform(), { zoom: 1, x: 0, y: 0 }, 'Reset recovers an offscreen image');
     await page.keyboard.press('Escape');
     assert.equal(await page.$('.meo-md-image-fullscreen-scrim'), null);
     await page.click(openViewer);
     await page.click('.meo-md-image-fullscreen button[data-tooltip="Exit fullscreen"]');
     assert.equal(await page.$('.meo-md-image-fullscreen-scrim'), null);
     assert.equal(await page.evaluate(() => (window as any).__imageLayoutEditor.view.state.doc.toString()), beforeViewer);
+    const largeSource = beforeViewer + '\nTail paragraph\n'.repeat(2400);
+    assert.equal(assessLargeDocument(largeSource).boundedEditorWork, true);
+    await page.evaluate(text => {
+      const editor = (window as any).__imageLayoutEditor;
+      editor.view.dispatch({ changes: { from: editor.getText().length, insert: text } });
+    }, largeSource.slice(beforeViewer.length));
+    await page.waitForFunction(() => (window as any).TableStabilityHarness.usesLargeDocumentDerivedWorkBudget(
+      (window as any).__imageLayoutEditor.view.state));
+    await page.click(openViewer);
+    await page.waitForSelector('.meo-md-image-fullscreen-img');
+    await page.mouse.move(600, 450);
+    await page.mouse.down();
+    await page.mouse.move(680, 510, { steps: 4 });
+    await page.mouse.up();
+    const optimizedPoint = await imagePointAt();
+    await page.click('.meo-md-image-fullscreen button[data-tooltip="Zoom in"]');
+    assertImagePoint(await imagePointAt(), optimizedPoint, 'Optimized documents retain the same viewport zoom anchor');
+    fs.mkdirSync(path.join(repoRoot, '.local', 'visual-zoom-acceptance'), { recursive: true });
+    await page.screenshot({ path: path.join(repoRoot, '.local', 'visual-zoom-acceptance', 'image-fullscreen.png') });
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(() => (window as any).__imageLayoutEditor.getText()), largeSource);
     console.log('image layout checks passed');
   } finally {
     releaseImage();

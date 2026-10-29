@@ -15,10 +15,10 @@ import type {
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { openMermaidFullscreen, type MermaidFullscreenViewer, type MermaidFullscreenExitCause } from './mermaidFullscreen';
 import { focusRenderedBlockAction } from './renderedBlockActionFocus';
-import { mountMermaidPreviewControls } from './renderedBlockModeControls';
+import { measureMermaidPreviewViewport, mountMermaidPreviewControls } from './renderedBlockModeControls';
 import { estimateBlockWidgetHeight } from '../editor/blockWidgetHeight';
 import { usesLargeDocumentDerivedWorkBudget } from '../editor/liveInputDerivedWork';
-import { stepVisualZoom } from './visualZoom';
+import { stepVisualZoom, visualZoomPanAtPoint } from './visualZoom';
 
 declare global {
   interface Window {
@@ -963,57 +963,11 @@ export class MermaidDiagramWidget extends WidgetType {
       }
     }
     this.applyTransform(svgWrapper);
-    if (currentPresentation) this.keepDiagramInReach(container, svgWrapper, view);
 
     const controls = this.createZoomControls(svgWrapper);
     container.appendChild(controls);
     this.embeddedControlsCleanup = mountMermaidPreviewControls(container, controls, view);
     this.attachEmbeddedInteractions(container, svgWrapper);
-  }
-
-  private keepDiagramInReach(container: HTMLElement, wrapper: HTMLElement, view?: EditorView): void {
-    if (!this.panX && !this.panY) return;
-    const read = () => {
-      if (!wrapper.isConnected || this.fullscreenSession || (!this.panX && !this.panY)) return null;
-      const svg = wrapper.querySelector('svg');
-      if (!svg) return null;
-      const bounds = container.getBoundingClientRect();
-      let content = svg.getBoundingClientRect();
-      try {
-        const box = svg.getBBox();
-        const matrix = svg.getScreenCTM();
-        if (matrix && box.width > 0 && box.height > 0) {
-          const points = [new DOMPoint(box.x, box.y), new DOMPoint(box.x + box.width, box.y),
-            new DOMPoint(box.x, box.y + box.height), new DOMPoint(box.x + box.width, box.y + box.height)]
-            .map(point => point.matrixTransform(matrix));
-          const left = Math.min(...points.map(point => point.x));
-          const top = Math.min(...points.map(point => point.y));
-          content = new DOMRect(left, top, Math.max(...points.map(point => point.x)) - left,
-            Math.max(...points.map(point => point.y)) - top);
-        }
-      } catch {
-        // Detached or not-yet-measurable SVGs can still use their viewport box.
-      }
-      if (bounds.width <= 0 || bounds.height <= 0 || content.width <= 0 || content.height <= 0) return null;
-      const scaleX = bounds.width / (container.offsetWidth || bounds.width);
-      const scaleY = bounds.height / (container.offsetHeight || bounds.height);
-      const visible = 24;
-      // Do not recenter after ordinary edits. Move the minimum distance only
-      // when the entire diagram has fallen outside the newly sized viewport.
-      const dx = content.right <= bounds.left ? bounds.left + visible - content.right
-        : content.left >= bounds.right ? bounds.right - visible - content.left : 0;
-      const dy = content.bottom <= bounds.top ? bounds.top + visible - content.bottom
-        : content.top >= bounds.bottom ? bounds.bottom - visible - content.top : 0;
-      return { dx: dx / scaleX, dy: dy / scaleY };
-    };
-    const write = (correction: ReturnType<typeof read>) => {
-      if (!correction || !wrapper.isConnected) return;
-      this.panX += correction.dx;
-      this.panY += correction.dy;
-      this.applyTransform(wrapper);
-    };
-    if (view) view.requestMeasure({ key: wrapper, read, write });
-    else requestAnimationFrame(() => write(read()));
   }
 
   attachEmbeddedInteractions(container: HTMLElement, svgWrapper: HTMLElement): void {
@@ -1408,26 +1362,17 @@ export class MermaidDiagramWidget extends WidgetType {
 
   setZoom(
     svgContainer: HTMLElement,
-    newZoom: number,
-    centerX: number | null = null,
-    centerY: number | null = null
+    newZoom: number
   ): void {
-    if (centerX !== null && centerY !== null) {
-      const rect = svgContainer.getBoundingClientRect();
-      const parent = svgContainer.parentElement;
-      if (!parent) {
-        throw new Error('Mermaid zoom target must be mounted');
-      }
-      const containerRect = parent.getBoundingClientRect();
-
-      const pointX = centerX - (rect.left - containerRect.left);
-      const pointY = centerY - (rect.top - containerRect.top);
-
-      const scale = newZoom / this.zoom;
-      this.panX = pointX - (pointX - this.panX) * scale;
-      this.panY = pointY - (pointY - this.panY) * scale;
-    }
-
+    const parent = svgContainer.parentElement;
+    if (!parent) return;
+    const viewport = measureMermaidPreviewViewport(parent);
+    if (!viewport) return;
+    const pan = visualZoomPanAtPoint(svgContainer, this.viewportState, newZoom, {
+      x: viewport.left + viewport.width / 2, y: viewport.top + viewport.height / 2
+    });
+    this.panX = pan.panX;
+    this.panY = pan.panY;
     this.zoom = newZoom;
     this.applyTransform(svgContainer);
   }

@@ -16,6 +16,7 @@ import { createTableCommandTargetRegistry } from '../webview/src/editor/tableCom
 import { installCausalFrameSettlement } from './causal-frame-settlement';
 import { applyUiTheme } from '../webview/src/helpers/uiTheme';
 import { createWidgetRemountProbe } from './widget-remount-test-helpers';
+import { usesLargeDocumentDerivedWorkBudget } from '../webview/src/editor/liveInputDerivedWork';
 
 const getTableProvenanceSnapshot = () => {
   const view = EditorView.findFromDOM(document.querySelector('.cm-editor')!);
@@ -29,6 +30,7 @@ const getTableProvenanceSnapshot = () => {
 
 (globalThis as typeof globalThis & {
   TableStabilityHarness?: {
+    usesLargeDocumentDerivedWorkBudget: typeof usesLargeDocumentDerivedWorkBudget;
     applyUiTheme: typeof applyUiTheme;
     createEditor: typeof createEditor;
     createWidgetRemountProbe: typeof createWidgetRemountProbe;
@@ -45,6 +47,7 @@ const getTableProvenanceSnapshot = () => {
     createTableCommandTargetRegistry: typeof createTableCommandTargetRegistry;
   };
 }).TableStabilityHarness = {
+  usesLargeDocumentDerivedWorkBudget,
   applyUiTheme,
   createEditor,
   createWidgetRemountProbe,

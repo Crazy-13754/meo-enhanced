@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { assertReadableMermaidTasks } from './mermaid-contrast-helpers';
 import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 
 const build = await Bun.build({ entrypoints: ['scripts/test-block-sticky-header-production-entry.ts'], target: 'browser', format: 'iife' });
 assert.ok(build.success, build.logs.map(String).join('\n'));
@@ -26,19 +27,66 @@ try {
   const settle = () => page.evaluate(async () => {
     for (let i = 0; i < 10; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   });
-  const mount = async (tall: boolean, longSource = false) => {
-    await page.evaluate(({ tall, longSource }) => {
+  const mount = async (tall: boolean, longSource = false, large = false) => {
+    const text = 'Before\n\n```mermaid\nflowchart TD\nA[' + (tall ? 'tall' : 'short') + '] --> B\n'
+      + (longSource ? Array.from({ length: 80 }, (_, i) => '%% source ' + i).join('\n') + '\n' : '') + '```\n\n'
+      + Array.from({ length: 80 }, (_, i) => 'Paragraph ' + i).join('\n\n')
+      + (large ? '\nTail paragraph\n'.repeat(2400) : '');
+    assert.equal(assessLargeDocument(text).boundedEditorWork, large, 'Fixture selects the intended production policy');
+    await page.evaluate(text => {
       const host = window as any;
       host.controlsEditor?.destroy(); document.querySelector('#app')!.replaceChildren();
       host.controlsEditor = host.BlockStickyHeaderHarness.createEditor({ parent: document.querySelector('#app'),
-        text: 'Before\n\n```mermaid\nflowchart TD\nA[' + (tall ? 'tall' : 'short') + '] --> B\n'
-          + (longSource ? Array.from({ length: 80 }, (_, i) => '%% source ' + i).join('\n') + '\n' : '') + '```\n\n'
-          + Array.from({ length: 80 }, (_, i) => 'Paragraph ' + i).join('\n\n'),
+        text,
         initialMode: 'live', uiLanguage: 'zh-CN', sourceLineNumbers: 'on', onApplyChanges() {} });
-    }, { tall, longSource });
+    }, text);
     await page.waitForSelector('.meo-mermaid-block svg'); await settle();
+    assert.equal(await page.evaluate(() => (window as any).MermaidEditingHarness.usesLargeDocumentDerivedWorkBudget(
+      (window as any).controlsEditor.view.state)), large, 'The actual renderer uses the intended work budget');
   };
   const dock = '.meo-mermaid-preview-controls:not(.is-outside-viewport)';
+  const assertZoomAnchor = async (context: string) => {
+    await page.waitForSelector('.meo-mermaid-block svg', { timeout: 5000 }).catch(async cause => {
+      const state = await page.evaluate(() => ({
+        scroll: (window as any).controlsEditor.view.scrollDOM.scrollTop,
+        selection: (window as any).controlsEditor.view.state.selection.toJSON(),
+        blocks: Array.from(document.querySelectorAll('[class*="mermaid"], .meo-rendered-block-preview-pane'), node => ({
+          class: node.className, rect: node.getBoundingClientRect().toJSON()
+        })).slice(0, 12)
+      }));
+      throw new Error(context + ': missing visible diagram ' + JSON.stringify(state), { cause });
+    });
+    const before = await page.evaluate(() => {
+      const root = document.querySelector('.meo-mermaid-block')!;
+      const svg = root.querySelector<SVGSVGElement>('svg')!;
+      const scroller = root.closest('.cm-scroller')!;
+      const rects = [root, scroller, root.closest('.meo-rendered-block-preview-pane')].filter(Boolean)
+        .map(node => node!.getBoundingClientRect());
+      const header = root.closest('.cm-editor')!.querySelector('.meo-block-sticky-header:not([hidden])')?.getBoundingClientRect();
+      const left = Math.max(0, ...rects.map(r => r.left)), right = Math.min(innerWidth, ...rects.map(r => r.right));
+      const top = Math.max(0, header?.bottom ?? 0, ...rects.map(r => r.top)), bottom = Math.min(innerHeight, ...rects.map(r => r.bottom));
+      const x = (left + right) / 2, y = (top + bottom) / 2;
+      const point = new DOMPoint(x, y).matrixTransform(svg.getScreenCTM()!.inverse());
+      const view = (window as any).controlsEditor.view;
+      (window as any).__zoomSvg = svg;
+      return { x, y, point: { x: point.x, y: point.y }, scroll: scroller.scrollTop,
+        layout: root.getBoundingClientRect().toJSON(), selection: view.state.selection.toJSON(), text: view.state.doc.toString() };
+    }).catch(cause => { throw new Error(context + ': visible zoom fixture', { cause }); });
+    await page.click(dock + ' button:first-child'); await settle();
+    const after = await page.evaluate(point => {
+      const root = document.querySelector('.meo-mermaid-block')!, svg = root.querySelector<SVGSVGElement>('svg')!;
+      const screen = new DOMPoint(point.x, point.y).matrixTransform(svg.getScreenCTM()!);
+      const view = (window as any).controlsEditor.view;
+      return { x: screen.x, y: screen.y, scroll: root.closest('.cm-scroller')!.scrollTop,
+        layout: root.getBoundingClientRect().toJSON(), selection: view.state.selection.toJSON(), text: view.state.doc.toString(),
+        sameSvg: svg === (window as any).__zoomSvg };
+    }, before.point);
+    assert.ok(Math.hypot(after.x - before.x, after.y - before.y) < 1,
+      `${context}: zoom keeps the visible center fixed ${JSON.stringify({ before: { x: before.x, y: before.y }, after: { x: after.x, y: after.y } })}`);
+    for (const key of ['scroll', 'layout', 'selection', 'text'] as const) assert.deepEqual(after[key], before[key], context + ': stable ' + key);
+    assert.equal(after.sameSvg, true, context + ': zoom reuses the rendered SVG');
+    await page.click(dock + ' button:nth-child(3)'); await settle();
+  };
   const assertPosition = async (context: string) => {
     await page.mouse.move(0, 0);
     await settle();
@@ -63,6 +111,12 @@ try {
     assert.ok(Math.abs(bounds.rect.right - (bounds.right - 6)) < 2, `${context}: right ${JSON.stringify(bounds)}`);
     assert.ok(Math.abs(bounds.rect.bottom - (bounds.bottom - 6)) < 2, `${context}: bottom ${JSON.stringify(bounds)}`);
     assert.ok(bounds.rect.left >= bounds.left && bounds.rect.top >= bounds.top, `${context}: controls stay inside the visible diagram`);
+    await page.waitForFunction(selector => {
+      const controls = document.querySelector<HTMLElement>(selector)!;
+      let opacity = 1;
+      for (let node: Element | null = controls; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+      return opacity === (controls.closest('.meo-mermaid-editing-preview') ? 1 : 0);
+    }, { timeout: 2000 }, dock);
     const appearance = await page.$eval(dock, controls => {
       let opacity = 1;
       for (let node: Element | null = controls; node; node = node.parentElement) {
@@ -145,6 +199,7 @@ try {
   for (const scrollTop of [0, 260, 700, 1300]) {
     await page.evaluate(scrollTop => { (window as any).controlsEditor.view.scrollDOM.scrollTop = scrollTop; }, scrollTop);
     await settle(); await assertPosition(`tall/${scrollTop}`);
+    await assertZoomAnchor(`ordinary tall/${scrollTop}`);
   }
   assert.equal(await page.$$eval('.meo-block-sticky-header:not([hidden]) .meo-mermaid-toolbar > button, .meo-block-sticky-header:not([hidden]) .meo-mermaid-toolbar > [role="button"]', nodes => nodes.length), 4);
   const before = await page.evaluate(() => { const editor = (window as any).controlsEditor; return {
@@ -161,7 +216,7 @@ try {
   assert.ok(await page.$('.meo-mermaid-fullscreen-scrim')); assert.equal(await page.$(dock), null);
   await page.keyboard.press('Escape'); await settle(); await assertPosition('fullscreen return');
   await page.evaluate(() => { document.querySelector<HTMLElement>('#app')!.style.transform = 'scale(0.85)'; document.querySelector<HTMLElement>('#app')!.style.transformOrigin = 'top left'; });
-  await settle(); await assertPosition('transformed host');
+  await settle(); await assertPosition('transformed host'); await assertZoomAnchor('transformed host');
   await page.evaluate(() => { document.querySelector<HTMLElement>('#app')!.style.transform = ''; }); await settle();
   await page.evaluate(() => { (window as any).controlsEditor.view.scrollDOM.scrollTop = 0; }); await settle();
   await page.setViewport({ width: 220, height: 650 }); await settle();
@@ -179,6 +234,7 @@ try {
   await page.$eval('.meo-block-sticky-header .meo-mermaid-mode-btn', node => (node as HTMLElement).click()); await settle();
   await page.evaluate(() => { (window as any).controlsEditor.view.scrollDOM.scrollTop = 600; }); await settle();
   await assertPosition('tall split');
+  await assertZoomAnchor('ordinary split');
   await page.screenshot({ path: '.local/mermaid-controls/split-dark.png' });
   await page.evaluate(() => {
     const app = document.querySelector<HTMLElement>('#app')!;
@@ -193,6 +249,7 @@ try {
   });
   assert.ok(alignment <= 1, `Inline preview stays aligned when its editor is scaled: ${alignment}`);
   await assertPosition('transformed inline block');
+  await assertZoomAnchor('transformed inline block');
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('#app')!.style.transform = '';
     (window as any).controlsEditor.view.requestMeasure();
@@ -294,6 +351,30 @@ try {
   assert.equal(await page.$eval('.meo-mermaid-inline-preview .meo-mermaid-layout-btn', node => node === document.activeElement), true,
     'Leaving the sticky row returns focus to its ordinary layout action without scrolling');
   assert.deepEqual(errors, []);
+  await page.setViewport({ width: 1050, height: 650 });
+  await mount(true, true, true);
+  await page.evaluate(() => { (window as any).controlsEditor.view.scrollDOM.scrollTop = 700; }); await settle();
+  await assertZoomAnchor('optimized reading');
+  await page.$eval('.meo-mermaid-mode-btn', node => (node as HTMLElement).click()); await settle();
+  for (const layout of ['side', 'stacked']) {
+    if (!!await page.$('.meo-mermaid-inline-preview') !== (layout === 'side')) {
+      await page.$eval('.meo-mermaid-layout-btn', node => (node as HTMLElement).click()); await settle();
+    }
+    await page.evaluate(layout => {
+      const editor = (window as any).controlsEditor;
+      if (layout === 'side') editor.view.scrollDOM.scrollTop = 600;
+      else {
+        const text = editor.getText(), closing = text.indexOf('\n```', text.indexOf('```mermaid') + 10) + 1;
+        editor.scrollToLine(editor.view.state.doc.lineAt(closing).number, 'start');
+      }
+    }, layout); await settle();
+    await assertZoomAnchor('optimized ' + layout);
+    await page.evaluate(() => { document.querySelector<HTMLElement>('#app')!.style.zoom = '0.9'; }); await settle();
+    await assertZoomAnchor('optimized CSS zoom ' + layout);
+    await page.evaluate(() => { document.querySelector<HTMLElement>('#app')!.style.zoom = ''; }); await settle();
+  }
+  fs.mkdirSync('.local/visual-zoom-acceptance', { recursive: true });
+  await page.screenshot({ path: '.local/visual-zoom-acceptance/mermaid-visible-center.png' });
   await page.evaluate(() => (window as any).controlsEditor.destroy());
   assert.equal(await page.$('.meo-mermaid-preview-controls'), null, 'Disposal removes the group');
   // Real width-dependent SVG layout and very wide diagrams need more than a
@@ -363,7 +444,7 @@ try {
   }
   assert.deepEqual(errors, []);
   await page.evaluate(() => (window as any).controlsEditor.destroy());
-  console.log('Mermaid visible controls passed: reading/editing states, current labels and fixed width, short/tall/scroll/split/narrow/transform/fullscreen/hidden/disposal and layout stability');
+  console.log('Mermaid visible controls passed: visible-center zoom in ordinary/optimized reading and both editing layouts, CSS zoom/transform, stable source/scroll/SVG, short/tall/narrow/fullscreen/hidden/disposal and layout stability');
 } catch (error) {
   primary = error;
 } finally {

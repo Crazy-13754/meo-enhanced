@@ -14,7 +14,7 @@ import type {
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { encodeMarkdownPath } from '../../../src/foundation/linkDestination';
 import { isWikiImageTarget, parseWikiReference, wikiImageSrc, wikiTargetFromImageSrc, WIKI_IMAGE_SCHEME } from '../../../src/foundation/wikiReference';
-import { stepVisualZoom } from './visualZoom';
+import { stepVisualZoom, visualZoomPanAtPoint } from './visualZoom';
 import { getEnclosingSourceLinkHref, hrefFromSourceLinkNode, isPrimaryModifierPointerClick } from './linkNavigation';
 
 const wikiImageIssues = new Map<string, string>();
@@ -693,8 +693,13 @@ export class ImageWidget extends WidgetType {
     const applyTransform = () => {
       image.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
     };
-    const changeZoom = (direction: 1 | -1, input: 'button' | 'wheel' = 'button') => {
-      zoom = stepVisualZoom(zoom, direction, input);
+    const changeZoom = (direction: 1 | -1, pointer?: WheelEvent) => {
+      const next = stepVisualZoom(zoom, direction, pointer ? 'wheel' : 'button');
+      const bounds = viewer.getBoundingClientRect();
+      const point = pointer ? { x: pointer.clientX, y: pointer.clientY }
+        : { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+      ({ panX, panY } = visualZoomPanAtPoint(image, { zoom, panX, panY }, next, point));
+      zoom = next;
       applyTransform();
     };
 
@@ -769,7 +774,7 @@ export class ImageWidget extends WidgetType {
     };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      changeZoom(event.deltaY > 0 ? -1 : 1, 'wheel');
+      changeZoom(event.deltaY > 0 ? -1 : 1, event);
     };
 
     viewer.addEventListener('pointerdown', onPointerDown);

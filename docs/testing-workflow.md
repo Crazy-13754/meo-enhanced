@@ -493,8 +493,15 @@ It also belongs to `test:rendered-source` and saves visual evidence under
 
 `scripts/test-mermaid-viewport-persistence.ts` and `scripts/test-image-layout.ts`
 also verify proportional button/wheel zoom beyond the former 4x limit, inverse
-steps, retained minimum, reset and unchanged camera/layout behavior. The Mermaid
-contract saves a production-rendered zoom screenshot under `.local/visual-zoom-acceptance/`.
+steps, retained minimum, viewport-center button anchors after panning, pointer
+wheel anchors, unrestricted offscreen movement and reset recovery. Fullscreen
+return and content updates retain the appropriate camera without moving the document.
+`scripts/test-mermaid-visible-controls.ts` checks visible-canvas anchors with
+partial clipping and sticky headers, both editing layouts, host transforms and
+CSS zoom. Ordinary and optimized fixtures assert the production size policy and
+actual derived-work budget, unchanged source/selection/scroll and SVG reuse.
+The image contract also repeats the anchor check after growth into the optimized
+path. These contracts save visual evidence under `.local/visual-zoom-acceptance/`.
 
 The Mermaid/formula inner-source matrix and findings are in
 [testing-rendered-block-source.md](testing-rendered-block-source.md). Run

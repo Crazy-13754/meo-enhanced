@@ -39,6 +39,15 @@ try {
     const matrix = new DOMMatrix(getComputedStyle(node).transform);
     return { zoom: matrix.a, panX: matrix.e, panY: matrix.f };
   });
+  const pointAt = (selector: string, x: number, y: number) => page.$eval(selector, (node, x, y) => {
+    const svg = node.querySelector('svg') as SVGSVGElement;
+    const point = new DOMPoint(x, y).matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: point.x, y: point.y };
+  }, x, y);
+  const assertPoint = (actual: { x: number; y: number }, expected: { x: number; y: number }, message: string) => {
+    assert.ok(Math.hypot(actual.x - expected.x, actual.y - expected.y) < 0.001,
+      `${message}: ${JSON.stringify({ actual, expected })}`);
+  };
   const cycle = async () => {
     await page.$eval('.meo-mermaid-mode-btn', node => (node as HTMLElement).click());
     await settle();
@@ -62,22 +71,28 @@ try {
   await page.mouse.down();
   await page.mouse.move(rect.x + rect.width / 2 + 36, rect.y + rect.height / 2 + 24, { steps: 4 });
   await page.mouse.up();
-  const before = await camera();
+  let before = await camera();
   assert.deepEqual(before, { zoom: 1.25, panX: 36, panY: 24 });
   stage = 'proportional embedded zoom';
   const layoutBeforeZoom = await page.$eval('.meo-mermaid-block', node => node.getBoundingClientRect().toJSON());
+  const anchor = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  const originalPoint = await pointAt(wrapper, anchor.x, anchor.y);
   await page.$eval(dock, controls => {
     const buttons = controls.querySelectorAll<HTMLButtonElement>('button');
     for (let i = 0; i < 15; i++) buttons[0]!.click();
   });
   assert.ok(Math.abs((await camera()).zoom - 1.25 ** 16) < 0.0001, 'Embedded Mermaid zoom continues beyond 4x');
+  assertPoint(await pointAt(wrapper, anchor.x, anchor.y), originalPoint, 'Embedded zoom keeps the visible center on the same diagram point after panning');
   assert.deepEqual(await page.$eval('.meo-mermaid-block', node => node.getBoundingClientRect().toJSON()), layoutBeforeZoom,
     'Zoom does not change document block geometry');
   await page.$eval(dock, controls => {
     const buttons = controls.querySelectorAll<HTMLButtonElement>('button');
     for (let i = 0; i < 15; i++) buttons[1]!.click();
   });
-  assert.deepEqual(await camera(), before, 'Inverse zoom steps preserve the embedded camera');
+  const inverse = await camera();
+  assert.ok(Math.abs(inverse.zoom - before.zoom) < 0.00000001, 'Inverse steps restore the embedded zoom');
+  assertPoint({ x: inverse.panX, y: inverse.panY }, { x: before.panX, y: before.panY }, 'Inverse zoom steps preserve the embedded camera');
+  before = inverse;
   await page.evaluate(()=>{const e=(window as any).viewportEditor;const pos=e.getText().indexOf('\n```',e.getText().indexOf('```mermaid')+10);e.view.dispatch({selection:{anchor:pos}});e.view.focus();});
   await page.evaluate(()=>{const e=(window as any).viewportEditor;e.pastePlainText('\nC[changed]');});
   await waitForSource('flowchart LR\nA[original] --> B\nC[changed]');
@@ -123,6 +138,27 @@ try {
     return { zoom: matrix.a, x: matrix.e, y: matrix.f };
   });
   const fittedCamera = await fullscreenCamera();
+  stage = 'fullscreen free pan and zoom anchors';
+  await page.mouse.move(525, 325);
+  await page.mouse.down();
+  await page.mouse.move(1925, 1025, { steps: 5 });
+  await page.mouse.up();
+  assertPoint(await fullscreenCamera(), { x: 1400, y: 700 }, 'Fullscreen panning is unrestricted even when the fitted diagram leaves the canvas');
+  const fullscreenWrapper = '.meo-mermaid-fullscreen .meo-mermaid-svg-wrapper';
+  const fullscreenPoint = await pointAt(fullscreenWrapper, 525, 325);
+  await page.click('.meo-mermaid-fullscreen-controls button:first-child');
+  assertPoint(await pointAt(fullscreenWrapper, 525, 325), fullscreenPoint, 'Fullscreen buttons preserve the viewport center after panning');
+  const pointerPoint = await pointAt(fullscreenWrapper, 390, 240);
+  const beforeWheel = (await fullscreenCamera()).zoom;
+  await page.mouse.move(390, 240);
+  await page.mouse.wheel({ deltaY: -120 });
+  await page.waitForFunction(expected => {
+    const node = document.querySelector('.meo-mermaid-fullscreen .meo-mermaid-svg-wrapper')!;
+    return Math.abs(new DOMMatrix(getComputedStyle(node).transform).a - expected) < 0.00001;
+  }, {}, beforeWheel * 1.1);
+  assertPoint(await pointAt(fullscreenWrapper, 390, 240), pointerPoint, 'Fullscreen wheel preserves the pointer anchor without boundary correction');
+  await page.click('.meo-mermaid-fullscreen-controls button:nth-child(3)');
+  assert.deepEqual(await fullscreenCamera(), fittedCamera, 'Reset brings an offscreen diagram back into view');
   await page.$eval('.meo-mermaid-fullscreen-controls', controls => {
     for (let i = 0; i < 16; i++) controls.querySelector<HTMLButtonElement>('button')!.click();
   });
@@ -220,7 +256,7 @@ try {
   }, { timeout: 4000 });
   await settle();
   assert.deepEqual(await camera(), { zoom: 1, panX: 0, panY: 0 }, 'Replacing the entire block creates a fresh camera even with identical source');
-  stage = 'offscreen content correction';
+  stage = 'offscreen content persistence';
   await page.$eval(dock + ' button:first-child', node => (node as HTMLElement).click());
   const nextRect = await page.$eval('.meo-mermaid-block', node => node.getBoundingClientRect().toJSON());
   await page.mouse.move(nextRect.x + 30, nextRect.y + nextRect.height / 2);
@@ -230,19 +266,19 @@ try {
   assert.deepEqual(await camera(), { zoom: 1.25, panX: 500, panY: 0 });
   await replaceSource('pie\n"tiny": 100');
   await waitForSource('pie\n"tiny": 100');
-  const corrected = await camera();
-  assert.equal(corrected.zoom, 1.25, 'A smaller diagram retains zoom');
-  assert.ok(corrected.panX > 0 && corrected.panX < 500, `Only fully offscreen content is brought back into reach: ${JSON.stringify(corrected)}`);
-  assert.equal(corrected.panY, 0, 'Correction leaves the visible axis alone');
+  const offscreen = await camera();
+  assert.deepEqual(offscreen, { zoom: 1.25, panX: 500, panY: 0 }, 'Smaller content retains the camera even when entirely offscreen');
   await replaceSource('pie\n"tiny": 90\n"Other": 10');
   await waitForSource('pie\n"tiny": 90\n"Other": 10');
-  assert.deepEqual(await camera(), corrected, 'The corrected view persists and ordinary updates do not recenter');
+  assert.deepEqual(await camera(), offscreen, 'Ordinary updates do not recenter offscreen content');
   stage = 'document Source/Live';
   await page.evaluate(() => (window as any).viewportEditor.setMode('source'));
   await settle();
   await page.evaluate(() => (window as any).viewportEditor.setMode('live'));
   await waitForSource('pie\n"tiny": 90\n"Other": 10');
-  assert.deepEqual(await camera(), corrected, 'Document mode reconfiguration retains the session camera');
+  assert.deepEqual(await camera(), offscreen, 'Document mode reconfiguration retains the session camera');
+  await page.$eval(dock + ' button:nth-child(3)', node => (node as HTMLElement).click());
+  assert.deepEqual(await camera(), { zoom: 1, panX: 0, panY: 0 }, 'Reset recovers offscreen embedded content');
   stage = 'real Mermaid runtime';
   await page.evaluate(() => (window as any).viewportEditor.destroy());
   await page.addScriptTag({ path: 'webview/dist/mermaid.min.js' });
@@ -265,7 +301,8 @@ try {
   await page.mouse.move(realRect.x + realRect.width / 2 + 36, realRect.y + realRect.height / 2 + 24, { steps: 4 });
   await page.mouse.up();
   const realCamera = await camera();
-  assert.deepEqual(realCamera, before);
+  assert.equal(realCamera.zoom, 1.25);
+  assertPoint({ x: realCamera.panX, y: realCamera.panY }, { x: 36, y: 24 }, 'Actual Mermaid drag retains its displacement');
   await page.evaluate(()=>{const e=(window as any).viewportEditor;const pos=e.getText().indexOf('\n```',e.getText().indexOf('```mermaid')+10);e.view.dispatch({selection:{anchor:pos}});e.view.focus();});
   await page.keyboard.type('\nC --> E[Added node]', { delay: 60 });
   await page.waitForFunction(() => document.querySelector('.meo-mermaid-editing-preview .meo-mermaid-svg-wrapper')?.textContent?.includes('Added node'), { timeout: 15000 });
