@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { inspectHtmlStyle, sanitizeHtmlStyle } from '../src/shared/htmlPolicy';
+import { inspectHtmlStyle, sanitizeHtmlStyle, sanitizeHtmlStylesheet } from '../src/shared/htmlPolicy';
 
 export function checkHtmlStylePolicy(): void {
   const supported: Record<string, string[]> = {
@@ -28,6 +28,11 @@ export function checkHtmlStylePolicy(): void {
     'object-position': ['right top', '25% 75%', 'center'], 'aspect-ratio': ['16 / 9', '1', 'auto 4 / 3'],
     color: ['#1234', 'rgba(10, 20, 30, .5)', 'hsl(120deg 50% 20% / .2)', 'currentColor'],
     'background-color': ['transparent'], background: ['#fff'],
+    display: ['flex', 'grid', 'flow-root'], gap: ['12px', '1em 2em'],
+    'grid-template-columns': ['repeat(2, minmax(0, 1fr))'], 'align-items': ['center'],
+    'flex-wrap': ['wrap'], 'box-shadow': ['0 2px 4px #3338'],
+    'background-image': ['linear-gradient(90deg, red, blue)'],
+    '--custom': ['12px'],
   };
   let checks = 0;
   for (const [name, values] of Object.entries(supported)) for (const value of [...values, 'inherit', 'initial', 'unset']) {
@@ -41,13 +46,21 @@ export function checkHtmlStylePolicy(): void {
     'text-decoration:none underline', 'border-spacing:2px -1px', 'aspect-ratio:1/0',
     'object-position:left right', 'font-family:url(https://example.com/font)', 'color:rgb(bad)',
     'background:url(https://example.com/image)', 'color:var(--vscode-editor-foreground)',
-    'width:calc(100% - 1px)', 'margin:clamp(0px,1vw,10px)', 'color:red !important', 'color:r\\65 d']) {
+    'color:red !important', 'color:r\\65 d', 'background-image:url(javascript:alert(1))']) {
     const result = inspectHtmlStyle(source);
     assert.equal(result.style, '', source); assert.equal(result.invalid.length, 1, source); checks += 1;
   }
-  for (const name of ['position', 'left', 'z-index', 'animation', 'transition', 'filter', 'background-image', 'table-layout', '--custom', 'constructor', '__proto__']) {
+  for (const name of ['animation', 'transition', 'filter', 'table-layout', '--vscode-test', '--meo-test', 'constructor', '__proto__']) {
     assert.deepEqual(inspectHtmlStyle(`${name}:bad`).unsupported, [name]); checks += 1;
   }
+  for (const source of ['width:calc(100% - 1px)', 'margin:clamp(0px,1vw,10px)', 'color:var(--custom)']) {
+    assert.ok(inspectHtmlStyle(source).style, source);
+  }
+  assert.equal(inspectHtmlStyle('--Brand:red;color:var(--Brand)').style, '--Brand: red; color: var(--Brand)', 'CSS custom property names are case-sensitive');
+  const sheet = sanitizeHtmlStylesheet('@import "https://example.invalid/leak.css"; @font-face{font-family:Leak;src:url(x)} .note{display:flex;gap:12px;color:red} @media(min-width:1px){.note{padding:4px}} .bad{background:url(javascript:alert(1))}');
+  assert.match(sheet, /^@scope /); assert.match(sheet, /display:flex;gap:12px;color:red/); assert.match(sheet, /@media/);
+  assert.doesNotMatch(sheet, /@import|@font-face|javascript:|url\(/);
+  assert.match(sanitizeHtmlStylesheet('.body,[data-name="body"]{color:red}'), /\.body,\[data-name="body"\]/, 'root rewriting must retain class and attribute selectors');
   const ordered = 'border: 1px solid red; border-left: 4px dashed blue; border: 2px dotted green; border-top-width: 5px';
   const border = inspectHtmlStyle(ordered);
   assert.equal(border.style, ordered, 'duplicate declarations must retain their cascade position');

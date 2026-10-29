@@ -7,8 +7,10 @@ import exportRuntime from '../src/export/runtime';
 import { renderMarkdownToHtml } from '../src/export/renderMarkdown';
 import { decodeInitMessage } from '../src/protocol/readyInit';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
+import { htmlCompatibilityFixture, htmlCompatibilityImage, htmlCompatibilityDoubleImage, checkHtmlCompatibilityExport } from './html-compatibility-fixture';
 
 const fixture = `Before witness.
+${htmlCompatibilityFixture}
 
 <section id="styled-box" style="border:3px solid #3b82f6;border-left:7px dashed #a855f7;border-radius:12px;padding:12px 16px;margin:8px auto;width:360px;max-width:95%;box-sizing:border-box;background:rgba(59,130,246,.12)">
 <p id="styled-type" style="font-family:'Example; Family',serif;font-size:18px;font-weight:450;line-height:1.6;letter-spacing:.5px;word-spacing:2px;text-indent:1em;text-transform:uppercase;text-decoration:underline wavy #3b82f6 2px;text-underline-offset:3px;overflow-wrap:anywhere;tab-size:4">Document formatting</p>
@@ -43,6 +45,7 @@ async function frames(page: import('puppeteer-core').Page, count = 8): Promise<v
 
 export async function checkHtmlStyleRendering(): Promise<void> {
   checkHtmlStylePolicy();
+  checkHtmlCompatibilityExport();
   for (const target of ['html', 'pdf', 'docx'] as const) {
     const html = renderMarkdownToHtml({ markdownText: fixture, markdownFilePath: '/fixture/html-styles.md', target }).html;
     assert.match(html, /border:3px solid #3b82f6/); assert.match(html, /font-weight:450/);
@@ -56,13 +59,16 @@ export async function checkHtmlStyleRendering(): Promise<void> {
   const build = await Bun.build({entrypoints:['scripts/test-preview-reading-surface-production-entry.ts'],target:'browser',format:'iife'});
   assert.ok(build.success, build.logs.map(String).join('\n'));
   const bundle = await build.outputs[0]!.text();
+  const workerBuild = await Bun.build({entrypoints:['webview/src/markdownParseWorker.ts'],target:'browser',format:'iife'});
+  assert.ok(workerBuild.success, workerBuild.logs.map(String).join('\n'));
+  const workerBundle = await workerBuild.outputs[0]!.text();
   fs.mkdirSync('.local/html-style-audit', {recursive:true});
   const browser = await launchTestBrowser();
   let failure: unknown;
   try {
     for (const large of [false, true]) for (const surface of ['live', 'preview', 'source-preview'] as const) {
       for (const appearance of large ? ['light'] : ['light', 'dark']) {
-        const page = await browser.newPage(), errors: string[] = [];
+        const page = await browser.newPage(), errors: string[] = [], imageRequests: string[] = [];
         const documents = new Map<string, ReturnType<typeof createPreviewDocument>>();
         let previewSource = '';
         page.on('pageerror', error => errors.push(String(error)));
@@ -70,7 +76,24 @@ export async function checkHtmlStyleRendering(): Promise<void> {
           await page.setViewport({width:1200,height:900});
           await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
           await page.addStyleTag({path:'webview/src/styles.css'});
+          await page.evaluate(code => {
+            document.body.dataset.meoMarkdownWorkerSrc = URL.createObjectURL(new Blob([code], {type:'text/javascript'}));
+            const NativeWorker = Worker;
+            (window as any).__htmlStyleWorkerBlocks = 0;
+            window.Worker = class extends NativeWorker {
+              constructor(url: string | URL, options?: WorkerOptions) {
+                super(url,options);
+                this.addEventListener('message', event => { if (event.data?.kind === 'blocks') (window as any).__htmlStyleWorkerBlocks++; });
+              }
+            };
+          },workerBundle);
           await page.exposeFunction('__htmlStyleHost', async (message: any) => {
+            if (message.type === 'resolveImageSrc') {
+              imageRequests.push(message.url);
+              return {type:'resolvedImageSrc',requestId:message.requestId,
+                result:{ok:true,value:{resolvedUrl:String(message.url).includes('compat-picture')
+                  ? String(message.url).includes('-2x') ? htmlCompatibilityDoubleImage : htmlCompatibilityImage : message.url}}};
+            }
             if (message.type === 'requestPreviewDocument') return {type:'previewDocumentResult',requestId:message.requestId,documentId:message.documentId,
               result:{ok:true,value:await documents.get(message.documentId)!.run(message.operation)}};
             if (message.type !== 'requestPreviewRender') return null;
@@ -82,7 +105,10 @@ export async function checkHtmlStyleRendering(): Promise<void> {
           });
           await page.addScriptTag({content:`window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.__htmlStyleHost(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent('message',{data:response}));});}});`});
           await page.addScriptTag({content:bundle});
-          const text = fixture + (large ? '\nUnchanged background paragraph with enough text to exceed the automatic large document threshold.\n'.repeat(15000) : '');
+          const sheet = fixture.match(/<style>[\s\S]*?<\/style>/)![0];
+          const text = large ? fixture.replace(sheet, '')
+            + '\nUnchanged background paragraph with enough text to exceed the automatic large document threshold.\n'.repeat(15000)
+            + '\n' + sheet : fixture;
           assert.equal(assessLargeDocument(text).windowedPreview, large,
             'The paired fixtures must straddle the real Preview policy boundary');
           const init = {
@@ -106,11 +132,18 @@ export async function checkHtmlStyleRendering(): Promise<void> {
             return Boolean(doc?.querySelector('#styled-box') && doc.querySelector('#empty-border') && doc.querySelector('#empty-background'));
           }, {}, surface === 'live');
           await frames(page, 12);
+          await page.waitForFunction(live => {
+            const doc = live ? document : document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+            const stylesReady = !live || [...document.querySelectorAll('.cm-editor > style')].some(style => style.textContent?.includes('.compat-grid'));
+            return Boolean(stylesReady && doc?.getElementById('compat-structure') && doc.getElementById('compat-inline') && doc.getElementById('compat-mixed') && doc.getElementById('compat-paint'));
+          }, {}, surface === 'live');
           if (surface !== 'live') assert.equal(documents.size > 0, large,
             'The production request must use the expected full or windowed Preview path');
+          if (large && surface === 'live') assert.ok(await page.evaluate(() => (window as any).__htmlStyleWorkerBlocks > 0),
+            'Optimized Live must receive its stylesheet through the real Markdown context worker');
           await page.waitForFunction(live => {
             const doc = live ? document : document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-            return ['styled-image','styled-ratio-image'].every(id => {
+            return ['styled-image','styled-ratio-image','compat-picture'].every(id => {
               const node = doc.getElementById(id)!;
               const image = (node.tagName === 'IMG' ? node : node.querySelector('img.meo-md-image-img')) as HTMLImageElement | null;
               return image?.complete && image.naturalWidth > 0;
@@ -139,6 +172,29 @@ export async function checkHtmlStyleRendering(): Promise<void> {
               warnings:[...doc.querySelectorAll<HTMLElement>('.meo-md-html-warning:not([hidden])')].map(node=>node.dataset.tooltip)};
           }, surface === 'live');
           const label = `${large?'large':'small'}/${surface}/${appearance}`;
+          const compatibility = await page.evaluate(live => {
+            const doc = live ? document : document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+            const grid = doc.getElementById('compat-structure')!;
+            const style = doc.defaultView!.getComputedStyle(grid);
+            const flex = doc.defaultView!.getComputedStyle(doc.getElementById('compat-flex')!);
+            const picture = doc.getElementById('compat-picture') as HTMLImageElement;
+            return {grid:style.display,gap:style.gap,color:style.color,flex:flex.display,
+              aria:grid.getAttribute('aria-label'),data:grid.getAttribute('data-kind'),
+              svg:doc.getElementById('compat-svg')!.namespaceURI,
+              gradient:Boolean(doc.querySelector('#compat-svg linearGradient')),
+              math:doc.getElementById('compat-math')!.namespaceURI,
+              check:{checked:(doc.getElementById('compat-check') as HTMLInputElement).checked,disabled:(doc.getElementById('compat-check') as HTMLInputElement).disabled},
+              formAction:doc.getElementById('compat-form')!.getAttribute('action'),
+              picture:{complete:picture.complete,width:picture.naturalWidth,source:Boolean(picture.parentElement?.querySelector('source[srcset]'))},
+              media:['compat-audio','compat-video'].map(id => Boolean(doc.getElementById(id)?.hasAttribute('controls'))),
+              textShadow:doc.defaultView!.getComputedStyle(doc.querySelector('#compat-text-shadow h1')!).textShadow,
+              paint:doc.getElementById('compat-paint')?.getBoundingClientRect().height,
+              mixed:doc.querySelector('#compat-mixed strong')?.textContent,
+              outerBorder:getComputedStyle(document.getElementById('app')!).borderTopWidth};
+          }, surface === 'live');
+          assert.deepEqual(compatibility, {grid:'grid',gap:'6px',color:'rgb(12, 90, 140)',flex:'flex',aria:'HTML example',data:'example',
+            svg:'http://www.w3.org/2000/svg',gradient:true,math:'http://www.w3.org/1998/Math/MathML',check:{checked:true,disabled:true},formAction:null,
+            picture:{complete:true,width:1,source:true},media:[true,true],textShadow:'rgb(255, 0, 0) 5px 5px 5px',paint:12,mixed:'Mixed Markdown',outerBorder:'0px'}, `${label}: common HTML content must render on every surface`);
           assert.deepEqual(result.box,{border:'3px',left:'7px',style:'dashed',radius:'12px',padding:'12px',sizing:'border-box'},label);
           assert.match(result.type.family,/Example; Family/,label);
           assert.equal(result.type.weight,'450',label); assert.equal(result.type.line,'28.8px',label);
@@ -171,11 +227,33 @@ export async function checkHtmlStyleRendering(): Promise<void> {
               const doc = live ? document : document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
               return Object.entries((window as any).__htmlStyleNodes).every(([key,node])=>node === doc.getElementById(({box:'styled-box',type:'styled-type',table:'styled-table',border:'empty-border'} as any)[key]));
             },surface === 'live'),`${label}: unrelated prose replaced HTML nodes`);
+            await page.evaluate(() => {
+              const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
+              const text = view.state.doc.toString(), from = text.indexOf('gap:6px');
+              if (from < 0) throw new Error('Missing author stylesheet');
+              view.dispatch({changes:{from:from+4,to:from+5,insert:'10'},selection:{anchor:0},userEvent:'input.type'});
+            });
+            await page.waitForFunction(live => {
+              const doc = live ? document : document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+              const node = doc?.getElementById('compat-structure');
+              return node && doc!.defaultView!.getComputedStyle(node).gap === '10px';
+            },{},surface === 'live');
+            await page.evaluate(() => {
+              const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
+              const text = view.state.doc.toString(), from = text.indexOf('<style>'), end = text.indexOf('</style>',from)+8;
+              view.dispatch({changes:{from,to:end,insert:''},selection:{anchor:0},userEvent:'input.type'});
+            });
+            await page.waitForFunction(live => {
+              const doc = live ? document : document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+              const node = doc?.getElementById('compat-structure');
+              return node && doc!.defaultView!.getComputedStyle(node).display === 'block';
+            },{},surface === 'live');
           }
           assert.deepEqual(errors,[],label);
           console.log(`PASS HTML styles ${label}: computed styles, empty paint, source preservation and unrelated DOM reuse`);
         } catch(error) {
-          console.error('HTML style case failed', {large,surface,appearance,errors}, await page.evaluate(() => ({
+          console.error('HTML style case failed', {large,surface,appearance,errors,imageRequests}, await page.evaluate(() => ({
+            pictures:[...document.querySelectorAll('picture img,picture source')].map(node=>({html:node.outerHTML,src:(node as HTMLImageElement).currentSrc,width:(node as HTMLImageElement).naturalWidth})),
             ids:[...document.querySelectorAll('[id]')].map(node=>node.id).filter(id=>/style|empty|hidden|border/.test(id)),
             html:[...document.querySelectorAll('.meo-md-html-content,.meo-md-html-invisible-source-text')].map(node=>node.outerHTML.slice(0,1500)),
             notice:document.querySelector('.meo-editor-notice')?.textContent,

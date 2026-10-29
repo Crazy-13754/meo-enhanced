@@ -402,6 +402,12 @@ IME ownership, shared placement and bilingual light/dark/narrow screenshots unde
 `bun scripts/test-html-content.ts --styles-only` isolates the shared style-policy
 and production rendering checks. Its imported style-policy suite covers valid and
 invalid values, duplicate/shorthand order, logical sides and incomplete declarations.
+The same focused contract includes the common HTML compatibility fixture:
+document/inline semantics, scoped styles, grid/flex and custom properties,
+static SVG/MathML, native controls/media, loaded pictures and CommonMark containers.
+Both normal and windowed Preview retain the document stylesheet independently
+of the source block's mounted state; Live uses the existing complete-context
+worker on optimized documents. Preserve GitHub's captured compatibility corpus.
 Its production Webview checks cover Live, standalone Preview and Source side Preview,
 light/dark ordinary documents and documents above 1 MiB, computed formatting,
 empty border/background visibility, nested padded table containers, actual

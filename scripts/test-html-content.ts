@@ -39,6 +39,13 @@ console.log('HTML cache context probe passed');
 }
 
 const repoRoot = path.resolve(import.meta.dir, '..');
+{
+  const doc = '<hr>\nRaw text\n\n**Markdown paragraph**\n\n<div>Separate HTML</div>';
+  const state = EditorState.create({doc,extensions:[editorMarkdownLanguage,detailsBlockStateExtensions()]});
+  ensureSyntaxTree(state,state.doc.length,1000);
+  assert.deepEqual(collectRenderableHtmlBlocks(state).map(block=>block.source), ['<hr>','<div>Separate HTML</div>'],
+    'A complete void HTML root must not absorb intervening Markdown into the next HTML block');
+}
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-html-content-'));
 const artifacts = path.join(repoRoot, '.local', 'html-fragment-acceptance');
 fs.mkdirSync(artifacts, { recursive: true });
@@ -503,7 +510,7 @@ async function checkHtmlEditingTools(page: Page): Promise<void> {
       platform: 'other', requestSave() {}, openFindPanel() {}, requestMode() {}
     }), true);
   });
-  const fragment = '<div id="format-target" class="custom" onclick="alert(1)" style="color:red;padding:8px;border:1px solid red;opacity:2"><p>Hello <strong>world</strong>.</p><a href="javascript:alert(1)">link</a></div>';
+  const fragment = '<div id="format-target" class="custom" data-meo-reserved="invalid" onclick="alert(1)" style="color:red;padding:8px;border:1px solid red;opacity:2"><p>Hello <strong>world</strong>.</p><a href="javascript:alert(1)">link</a></div>';
   const text = `Intro.\n\n${fragment}\n\nAfter unchanged.`;
   for (const language of ['zh-CN', 'en']) {
     await page.evaluate(({ text, language }) => {
@@ -521,8 +528,9 @@ async function checkHtmlEditingTools(page: Page): Promise<void> {
       hidden: (element as HTMLElement).hidden, label: (element as HTMLElement).dataset.tooltip
     }));
     assert.equal(tooltip.hidden, false);
-    for (const name of ['class', 'onclick', 'opacity', 'href']) assert.ok(tooltip.label?.includes(name), name);
-    assert.doesNotMatch(tooltip.label!, /\b(?:padding|border)\b/, 'accepted formatting must not be reported as filtered');
+    for (const name of ['data-meo-reserved', 'onclick', 'opacity', 'href']) assert.ok(tooltip.label?.includes(name), name);
+    assert.doesNotMatch(tooltip.label!, /\b(?:class|padding|border)\b/, 'accepted attributes and formatting must not be reported as filtered');
+    assert.ok(await page.$eval('#format-target', node=>node.classList.contains('custom')), 'An author class remains in the rendered result');
     assert.deepEqual(await page.$eval('#format-target', node => {
       const style = getComputedStyle(node); return { padding: style.paddingTop, border: style.borderTopWidth };
     }), { padding: '8px', border: '1px' });

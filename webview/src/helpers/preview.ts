@@ -52,7 +52,8 @@ import { fallbackPreviewFonts, type PreviewFont } from '../../../src/foundation/
 import { createSegmentedControl } from '../adapters/segmentedControl';
 import { createPreviewPresetInfo } from '../adapters/previewPresetInfo';
 import type { PreviewPresetDiagnostic } from '../../../src/foundation/previewPresets';
-import { resolveEmbeddedImageSrc } from './images';
+import { resolveEmbeddedImageSrc, resolveConfiguredImageSrc } from './images';
+import { resolveHtmlResources } from './htmlResources';
 import { githubPictureMedia } from '../../../src/shared/githubPicture';
 import {
   createPreviewTableLayoutController,
@@ -1616,6 +1617,7 @@ export function createPreviewController({
       commitFrame = frameDocument.defaultView?.requestAnimationFrame(flushCommits) ?? null;
       if (commitFrame === null) flushCommits();
     };
+    resolveHtmlResources(frameDocument, { signal: abortController.signal, resolve: resolveConfiguredImageSrc, commit: enqueueCommit });
     for (const source of frameDocument.querySelectorAll<HTMLSourceElement>('picture source[data-meo-deferred-image-srcset]')) {
       const rawSrc = source.getAttribute('data-meo-deferred-image-srcset') ?? '';
       source.removeAttribute('data-meo-deferred-image-srcset');
@@ -3934,6 +3936,7 @@ function bindPreviewLinks(
   };
 
   frameDocument.addEventListener('click', activateLink, { capture: true, signal });
+  frameDocument.addEventListener('submit', event => event.preventDefault(), { capture: true, signal });
   frameDocument.addEventListener('auxclick', activateLink, { capture: true, signal });
   frameDocument.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {

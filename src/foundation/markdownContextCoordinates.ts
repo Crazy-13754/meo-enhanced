@@ -48,6 +48,7 @@ export function mapMarkdownContextCoordinates(before: MarkdownSourceFacts, chang
     code: before.code.map(fence => ({ ...fence, anchor: from(fence.anchor), start: from(fence.start), end: to(fence.end),
       endLineFrom: from(fence.endLineFrom), contentFrom: from(fence.contentFrom), contentTo: to(fence.contentTo) })),
     blocks: before.blocks && {
+      htmlStyles: before.blocks.htmlStyles,
       blocks: before.blocks.blocks.map(item => item.htmlFrom === undefined ? item : ({ ...item, htmlFrom: from(item.htmlFrom) })),
       literals: before.blocks.literals.map(range => ({ ...range, from: from(range.from), to: to(range.to),
         ...(range.htmlCode ? { htmlCode: { from: from(range.htmlCode.from), to: to(range.htmlCode.to) } } : {}) })),

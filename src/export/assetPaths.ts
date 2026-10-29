@@ -11,6 +11,8 @@ const REMOTE_OR_INLINE_RE = /^(?:https?:|data:|blob:)/i;
 type ExportImageTarget = 'html' | 'pdf' | 'docx';
 
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogv': 'video/ogg', '.vtt': 'text/vtt',
   '.avif': 'image/avif',
   '.bmp': 'image/bmp',
   '.gif': 'image/gif',

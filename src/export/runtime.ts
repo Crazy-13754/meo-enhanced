@@ -144,9 +144,9 @@ export function preparePreviewDocument(options: PreviewDocumentOptions, windowed
     ...(definition.custom ? { presetRevision: definition.custom.revision } : {}),
     styles: {
       dark: buildPresetPreviewStyles(preset, environment, 'dark', options.contentWidth, definition)
-        + (windowed ? windowedPreviewStyles : ''),
+        + (windowed ? windowedPreviewStyles : '') + prepared.authorStyles,
       light: buildPresetPreviewStyles(preset, environment, 'light', options.contentWidth, definition)
-        + (windowed ? windowedPreviewStyles : '')
+        + (windowed ? windowedPreviewStyles : '') + prepared.authorStyles
     }
   };
   return {

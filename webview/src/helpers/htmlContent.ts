@@ -11,7 +11,7 @@ import {
   type DecorationSet
 } from '@codemirror/view';
 import { IterMode, type SyntaxNodeRef, type Tree } from '@lezer/common';
-import { markdownStructureIdentity } from '../editor/markdownStructure';
+import { markdownStructureIdentity, isCompleteMarkdownStructure } from '../editor/markdownStructure';
 import { invertedEffects, isolateHistory } from '@codemirror/commands';
 import { parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
@@ -25,8 +25,11 @@ import {
   inspectHtmlStyle,
   normalizeHtmlAlign,
   supportedHtmlBlockTags,
-  supportedHtmlTags
+  supportedHtmlTags, supportedInlineHtmlTags, normalizeHtmlAttribute, isHtmlUrlAttribute
 } from '../../../src/shared/htmlPolicy';
+import { createHtmlDocumentStyles, collectHtmlDocumentStyles, readHtmlDocumentStyles } from './htmlDocumentStyles';
+import { usesBackgroundMarkdownStructure } from '../editor/backgroundMarkdownStructure';
+import { resolveHtmlResources } from './htmlResources';
 import { scanHtmlTags, splitHtmlBlockFragments } from '../../../src/foundation/htmlSyntax';
 import { renderHtmlMarkdown } from '../../../src/shared/htmlMarkdown';
 import { createOpenLinkButton } from './linkOpenButton';
@@ -34,7 +37,7 @@ import { isPrimaryModifierPointerClick } from './linkNavigation';
 import { currentSyntaxTree, resolvedSyntaxTree, resolvedSyntaxTreeAt } from './markdownSyntax';
 import { indexSourceRanges } from './sourceRangeIndex';
 import { getViewportController } from './viewportController';
-import { ImageWidget, disposeImagePresentations } from './images';
+import { ImageWidget, disposeImagePresentations, resolveConfiguredImageSrc } from './images';
 import { getImagePresentationFactory } from '../editor/imagePresentation';
 import { getDetailsBlocks, toggleDetailsBlock } from './detailsBlocks';
 import { UiLanguageSensitiveWidget, uiLanguageFacet } from '../editor/uiLanguage';
@@ -69,6 +72,7 @@ const renderableHtmlBlockCache = new WeakMap<EditorState['doc'], {
   tabSize: number;
   details: ReturnType<typeof getDetailsBlocks>;
   blocks: RenderableHtmlBlock[];
+  styles: string | undefined;
 }>();
 
 type HtmlCommentRange = { from: number; to: number };
@@ -107,7 +111,7 @@ function isSupportedHtmlWithComments(source: string): boolean {
   return masked !== null && isSupportedHtmlSource(masked.source);
 }
 
-function htmlHasVisibleContent(source: string): boolean {
+function htmlHasVisibleContent(source: string, styled = false): boolean {
   const transparent = (color: string): boolean => color.toLowerCase() === 'transparent'
     || /^#[\da-f]{3}0$/i.test(color) || /^#[\da-f]{6}00$/i.test(color)
     || /^(?:rgba|hsla)\([^)]*,\s*0(?:\.0+)?%?\s*\)$/i.test(color)
@@ -117,6 +121,7 @@ function htmlHasVisibleContent(source: string): boolean {
   type Paint = { visible: boolean; layout: boolean };
   const paint = (node: ChildNode, ink = true, font = true, shown = true,
     inherited: Readonly<Record<string, string>> = {}, direction: 'ltr' | 'rtl' = 'ltr'): Paint => {
+    if ('name' in node && ['style', 'script'].includes(node.name)) return { visible: false, layout: false };
     if (node.type === 'comment') return { visible: shown && font, layout: font };
     if (node.type === 'text') {
       const layout = Boolean(node.data.trim()) && font;
@@ -145,14 +150,15 @@ function htmlHasVisibleContent(source: string): boolean {
     const display = style.display?.toLowerCase() || (supportedHtmlBlockTags.has(node.name) ? 'block' : 'inline');
     style.display = display;
     const children = node.children.map(child => paint(child, color, textSize, visibility, style, direction));
-    const media = ['img', 'hr', 'br', 'table', 'li'].includes(node.name);
+    const media = ['img', 'hr', 'br', 'table', 'li', 'svg', 'audio', 'video', 'input', 'button', 'select', 'textarea', 'meter', 'progress'].includes(node.name)
+      || styled && Boolean(node.attribs.class?.trim());
     const borders = ['top', 'right', 'bottom', 'left'].map(side => {
       const kind = style[`border-${side}-style`]?.toLowerCase() ?? 'none';
       const width = style[`border-${side}-width`] ?? 'medium';
       const layout = kind !== 'none' && kind !== 'hidden' && (/^(?:thin|medium|thick)$/i.test(width) || parseFloat(width) > 0);
       return { layout, visible: layout && hasInk(style[`border-${side}-color`] ?? 'currentcolor', color) };
     });
-    const blockBox = display === 'block' || display === 'inline-block';
+    const blockBox = !['inline', 'contents', 'none'].includes(display);
     const paddedWidth = ['padding-left', 'padding-right'].some(name => parseFloat(style[name] ?? '0') > 0);
     const sizedBox = (blockBox && Math.max(parseFloat(style.height ?? style['block-size'] ?? '0') || 0, parseFloat(style['min-height'] ?? style['min-block-size'] ?? '0') || 0) > 0
       || ['padding-top', 'padding-bottom'].some(name => parseFloat(style[name] ?? '0') > 0)
@@ -249,12 +255,14 @@ const htmlSourceEditingHistory = invertedEffects.of(transaction => transaction.d
 
 export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = resolvedSyntaxTree(state), scope?: { from: number; to: number }): RenderableHtmlBlock[] {
   const details = getDetailsBlocks(state);
+  const styles = readHtmlDocumentStyles(state.doc, tree) ?? (!usesBackgroundMarkdownStructure(state) && isCompleteMarkdownStructure(tree, state.doc.length)
+    ? collectHtmlDocumentStyles(state.doc, tree) : undefined);
   const cached = scope ? undefined : renderableHtmlBlockCache.get(state.doc);
   if (cached && cached.tree === markdownStructureIdentity(tree) && cached.tabSize === state.tabSize
-    && cached.details === details) return cached.blocks;
+    && cached.details === details && cached.styles === styles) return cached.blocks;
   const blocks: RenderableHtmlBlock[] = [];
   let detailsByAnchor: Map<number, ReturnType<typeof getDetailsBlocks>[number]> | undefined;
-  const nodes: Array<{ from: number; to: number; standalone?: boolean }> = [];
+  const nodes: Array<{ from: number; to: number; standalone?: boolean; bridged?: boolean; tags?: string }> = [];
   tree.iterate({ ...scope, enter(node: SyntaxNodeRef) {
     if (node.name === 'HTMLBlock') nodes.push({ from: node.from, to: node.to });
     else if (node.name === 'Paragraph') {
@@ -269,16 +277,21 @@ export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = res
       if (fragments.length && !source.slice(cursor).trim()) nodes.push({ from: node.from, to: node.to, standalone: true });
     }
   } });
-  // Adjacent raw HTML tokens separated only by blank lines still form one HTML
-  // fragment. Markdown paragraphs between them keep their CommonMark ownership.
+  // Balance actual HTML tokens across Markdown paragraphs. The shared renderer
+  // keeps the intervening source's CommonMark ownership; tags in fenced/inline
+  // code cannot close this source container.
   const groups: typeof nodes = [];
   for (const node of nodes) {
     const previous = groups.at(-1);
-    if (previous && !previous.standalone && !node.standalone && !state.doc.sliceString(previous.to, node.from).trim()) {
-      const source = state.doc.sliceString(previous.from, previous.to);
+    if (previous && !previous.standalone && !node.standalone) {
+      const source = previous.tags ?? state.doc.sliceString(previous.from, previous.to);
       const fragments = splitHtmlBlockFragments(source);
-      const incomplete = !fragments.length || Boolean(source.slice(fragments.at(-1)!.to).trim());
+      const tail = source.slice(fragments.at(-1)?.to ?? 0);
+      const incomplete = !fragments.length || scanHtmlTags(tail).some(tag => !tag.closing && !tag.selfClosing);
       if (incomplete && supportedHtmlTags.has(getHtmlRootTagName(source) ?? '')) {
+        const gap = state.doc.sliceString(previous.to, node.from);
+        previous.bridged ||= Boolean(gap.trim());
+        previous.tags = source + state.doc.sliceString(node.from, node.to);
         previous.to = node.to;
         continue;
       }
@@ -289,7 +302,8 @@ export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = res
     const parsedSource = state.doc.sliceString(node.from, node.to);
     const masked = maskHtmlComments(parsedSource);
     if (!masked) continue;
-    const fragments = splitHtmlBlockFragments(masked.source);
+    const fragments = node.bridged && splitHtmlBlockFragments(node.tags ?? '').length
+      ? [{ from: 0, to: masked.source.length }] : splitHtmlBlockFragments(masked.source);
     // A single rendered source line cannot host two independent block widgets.
     for (let index = 1; index < fragments.length; index++) {
       const previous = fragments[index - 1], current = fragments[index];
@@ -301,10 +315,10 @@ export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = res
     for (const fragment of fragments) {
       const source = parsedSource.slice(fragment.from, fragment.to);
       if (!(node.standalone ? isSupportedHtmlSource : isSupportedHtmlBlockSource)(masked.source.slice(fragment.from, fragment.to))) continue;
-      const visible = htmlHasVisibleContent(renderHtmlMarkdown(source));
+      const visible = htmlHasVisibleContent(renderHtmlMarkdown(source), Boolean(styles));
       // Inline tags retain ordinary line editing, even when alone in a
       // paragraph. Only an invisible standalone fragment needs a source row.
-      if (node.standalone && visible) continue;
+      if (node.standalone && visible && !supportedHtmlBlockTags.has(getHtmlRootTagName(source) ?? '')) continue;
       const from = node.from + fragment.from, to = node.from + fragment.to;
       detailsByAnchor ??= new Map(details.map(block => [block.anchorFrom, block] as const));
       const detailsBlock = detailsByAnchor.get(from) ?? null;
@@ -320,7 +334,7 @@ export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = res
     }
   }
   blocks.sort((left, right) => left.from - right.from);
-  if (!scope) renderableHtmlBlockCache.set(state.doc, { tree: markdownStructureIdentity(tree), tabSize: state.tabSize, details, blocks });
+  if (!scope) renderableHtmlBlockCache.set(state.doc, { tree: markdownStructureIdentity(tree), tabSize: state.tabSize, details, blocks, styles });
   return blocks;
 }
 
@@ -337,9 +351,13 @@ function sanitizeElementTree(root: ParentNode): HtmlContentIssue[] {
   const issues: HtmlContentIssue[] = [];
   for (const element of Array.from(root.querySelectorAll<HTMLElement>('*'))) {
     const tagName = element.tagName.toLowerCase();
+    if (tagName === 'style') { element.remove(); continue; }
     if (!supportedHtmlTags.has(tagName)) {
       issues.push({ kind: 'tag', name: tagName });
-      element.replaceWith(document.createTextNode(element.outerHTML));
+      const shell = (element.cloneNode(false) as Element).outerHTML;
+      const close = shell.lastIndexOf('</');
+      element.replaceWith(document.createTextNode(close < 0 ? shell : shell.slice(0, close)),
+        ...Array.from(element.childNodes), ...(close < 0 ? [] : [document.createTextNode(shell.slice(close))]));
       continue;
     }
     for (const attribute of Array.from(element.attributes)) {
@@ -349,11 +367,18 @@ function sanitizeElementTree(root: ParentNode): HtmlContentIssue[] {
         element.removeAttribute(attribute.name);
         continue;
       }
+      const normalized = normalizeHtmlAttribute(tagName, name, attribute.value);
+      if (normalized === null) {
+        issues.push({ kind: isHtmlUrlAttribute(name) ? 'url' : 'value', name: `${tagName}.${name}` });
+        element.removeAttribute(attribute.name);
+        continue;
+      }
+      if (normalized !== attribute.value) element.setAttribute(attribute.name, normalized);
       if ((name === 'href' || name === 'src') && !isSafeHtmlUrl(attribute.value, name)) {
         issues.push({ kind: 'url', name: `${tagName}.${name}` });
         element.removeAttribute(attribute.name);
       }
-      if (name === 'align') {
+      if (name === 'align' && ['p', 'div'].includes(tagName)) {
         const align = normalizeHtmlAlign(attribute.value);
         if (align) element.setAttribute('align', align);
         else {
@@ -545,15 +570,15 @@ function enhanceLinks(root: ParentNode, inline: boolean, uiLanguage: UiLanguage)
   for (const anchor of Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
     const href = anchor.getAttribute('href')?.trim() ?? '';
     if (!isSafeHtmlUrl(href, 'href') || !htmlHasVisibleContent(anchor.outerHTML)) continue;
-    const linkText = document.createElement('span');
-    linkText.className = 'meo-md-link meo-md-html-link';
+    const linkText = anchor;
+    linkText.classList.add('meo-md-link', 'meo-md-html-link');
+    linkText.draggable = false;
     linkText.dataset.meoLinkHref = href;
     linkText.dataset.tooltip = anchor.title || anchor.dataset.tooltip || '';
     linkText.dataset.tooltipKind = 'description';
     for (const name of ['id', 'title', 'style', 'hidden', 'lang', 'dir']) {
       if (anchor.hasAttribute(name)) linkText.setAttribute(name, anchor.getAttribute(name)!);
     }
-    linkText.append(...Array.from(anchor.childNodes));
     linkText.addEventListener('pointerdown', (event) => {
       if (event.button === 0 && isPrimaryModifierPointerClick(event)) {
         // Native selection can unmount inline HTML before the click arrives.
@@ -561,13 +586,13 @@ function enhanceLinks(root: ParentNode, inline: boolean, uiLanguage: UiLanguage)
       }
     });
     linkText.addEventListener('click', (event) => {
-      if (!isPrimaryModifierPointerClick(event)) return;
       event.preventDefault();
+      if (!isPrimaryModifierPointerClick(event)) return;
       linkText.dispatchEvent(new CustomEvent('meo-open-link', { bubbles: true, detail: { href } }));
     });
     const button = createOpenLinkButton(href, uiLanguage);
     button.classList.add(inline ? 'meo-md-html-inline-link-button' : 'meo-md-html-link-button');
-    anchor.replaceWith(linkText, button);
+    anchor.after(button);
   }
 }
 
@@ -576,6 +601,7 @@ function enhanceImages(
 ): void {
   const resolveSourceFrom = () => currentHtmlBlock(view, source, sourceStartLine)?.from ?? null;
   for (const image of Array.from(root.querySelectorAll<HTMLImageElement>('img[src]'))) {
+    if (image.closest('picture') || image.hasAttribute('srcset')) continue;
     const rawSrc = image.getAttribute('src')?.trim() ?? '';
     if (!isSafeHtmlUrl(rawSrc, 'src')) continue;
     const anchor = image.closest<HTMLAnchorElement>('a[href]');
@@ -596,8 +622,16 @@ function enhanceImages(
     );
     const container = widget.toDOM(view);
     container.classList.add('meo-md-html-image');
-    for (const name of ['id', 'hidden', 'lang', 'dir']) {
-      if (image.hasAttribute(name)) container.setAttribute(name, image.getAttribute(name)!);
+    const displayedImage = container.querySelector('img');
+    if (displayedImage) for (const attribute of Array.from(image.attributes)) {
+      if (attribute.name === 'class') displayedImage.classList.add(...image.classList);
+      else if (['title', 'loading', 'decoding'].includes(attribute.name) || /^(?:aria|data)-/.test(attribute.name)) displayedImage.setAttribute(attribute.name, attribute.value);
+    }
+    for (const name of ['id', 'hidden', 'lang', 'dir', 'class']) {
+      if (image.hasAttribute(name)) {
+        if (name === 'class') container.classList.add(...image.classList);
+        else container.setAttribute(name, image.getAttribute(name)!);
+      }
     }
     const style = image.getAttribute('style');
     if (style) {
@@ -655,6 +689,12 @@ function createSanitizedHtml(
     showHtmlComments(template.content, masked.comments, view, source, sourceFrom, inline, sourceStartLine);
   }
   if (view) enhanceImages(template.content, view, sourceFrom, sourceStartLine, source);
+  if (view) for (const element of template.content.querySelectorAll<HTMLElement>('audio,video,track,source,img[srcset],picture img')) {
+    for (const name of ['src', 'poster', 'srcset']) if (element.hasAttribute(name)) {
+      element.setAttribute(`data-meo-html-${name}`, element.getAttribute(name)!);
+      element.removeAttribute(name);
+    }
+  }
   enhanceLinks(template.content, inline, uiLanguage);
   return template.content;
 }
@@ -695,6 +735,26 @@ export function enterHtmlSource(view: EditorView, block: HtmlEditingRange, ancho
 type HtmlTableLayout = { frame: number | null; controller: PreviewTableLayoutController | null };
 // CodeMirror may retain a widget's DOM while replacing its equal value object.
 const htmlTableLayouts = new WeakMap<HTMLElement, HtmlTableLayout>();
+const htmlResourceControllers = new WeakMap<HTMLElement, AbortController>();
+
+function attachHtmlResources(root: HTMLElement): void {
+  const controller = new AbortController();
+  htmlResourceControllers.set(root, controller);
+  root.addEventListener('submit', event => event.preventDefault(), { signal: controller.signal });
+  resolveHtmlResources(root, { signal: controller.signal,
+    resolve: resolveConfiguredImageSrc,
+    commit: apply => { if (!controller.signal.aborted && root.isConnected) apply(); } });
+}
+
+function disposeHtmlResources(root: HTMLElement): void {
+  htmlResourceControllers.get(root)?.abort();
+  htmlResourceControllers.delete(root);
+  for (const media of root.querySelectorAll<HTMLMediaElement>('audio,video')) {
+    media.pause(); media.removeAttribute('src');
+    for (const source of media.querySelectorAll('source[src],track[src]')) source.removeAttribute('src');
+    media.load();
+  }
+}
 
 class HtmlBlockWidget extends UiLanguageSensitiveWidget {
   [mapLiveWidgetPositions](changes: ChangeDesc, state: EditorState): WidgetType {
@@ -764,6 +824,7 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
       contentRoot.appendChild(content);
     }
     root.appendChild(contentRoot);
+    attachHtmlResources(root);
 
     const details = contentRoot.querySelector<HTMLDetailsElement>(':scope > details');
     const summary = details?.querySelector<HTMLElement>(':scope > summary') ?? null;
@@ -796,7 +857,7 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     bindHtmlReadingClick(root, event => {
       const target = event.target instanceof Element ? event.target : null;
       if (this.editing
-        || target?.closest('summary, button, a, input, select, textarea, .meo-md-html-comment, .meo-md-image')) return;
+        || target?.closest('summary, button, a, input, select, textarea, label, audio, video, .meo-md-html-comment, .meo-md-image')) return;
       const currentBlock = currentHtmlBlock(view, this.block.source, this.block.startLine);
       if (!currentBlock) return;
       const line = Number(target?.closest<HTMLElement>('[data-meo-html-source-line]')?.dataset.meoHtmlSourceLine);
@@ -831,6 +892,7 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     layout?.controller?.dispose();
     htmlTableLayouts.delete(dom);
     this.height.destroy(dom);
+    disposeHtmlResources(dom);
     disposeImagePresentations(dom);
   }
 }
@@ -949,6 +1011,7 @@ class InlineHtmlWidget extends UiLanguageSensitiveWidget {
       this.source, true, view.state.facet(uiLanguageFacet), view, this.from, this.startLine
     );
     if (content) wrapper.appendChild(content);
+    attachHtmlResources(wrapper);
     const firstElement = wrapper.firstElementChild;
     if (firstElement) {
       const tagName = firstElement.tagName.toLowerCase();
@@ -962,6 +1025,7 @@ class InlineHtmlWidget extends UiLanguageSensitiveWidget {
   }
 
   destroy(dom: HTMLElement): void {
+    disposeHtmlResources(dom);
     disposeImagePresentations(dom);
   }
 }
@@ -982,7 +1046,7 @@ function addInlineHtmlDecorations(
       tagEnds.add(node.to);
     }
   } });
-  const inlineTags = new Set(['strong', 'b', 'em', 'i', 'del', 's', 'mark', 'code', 'span', 'sub', 'sup', 'u', 'a', 'ruby', 'abbr', 'q', 'small', 'img']);
+  const inlineTags = supportedInlineHtmlTags;
   const overlapsBlock = indexSourceRanges(blockRanges, 'overlaps');
   for (const line of documentLines(state.doc, scope ? state.doc.lineAt(scope.from).number : 1,
     scope ? state.doc.lineAt(scope.to).number : state.doc.lines)) {
@@ -1157,5 +1221,6 @@ const htmlSourceInputHandlers = Prec.highest(EditorView.domEventHandlers({
 
 export function htmlContentExtensions() {
   return [htmlEditingRangeField, htmlPasteSourceEditing, htmlSourceEditingHistory,
-    htmlEscapeKeymap, htmlBlockLineNumberMarker, htmlSourceInputHandlers];
+    htmlEscapeKeymap, htmlBlockLineNumberMarker, htmlSourceInputHandlers,
+    createHtmlDocumentStyles(resolvedSyntaxTree, usesBackgroundMarkdownStructure)];
 }

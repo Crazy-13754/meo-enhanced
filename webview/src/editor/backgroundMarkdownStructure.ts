@@ -127,7 +127,8 @@ function createBackgroundMarkdownStructure(uri: string, nodeSet: NodeSet, contex
                 const value = data.projectedFrom === undefined ? data.value : sourceContext.value.blocks;
                 if (data.projectedFrom !== undefined && (!flight.projected || data.projectedFrom !== flight.base || data.value !== undefined)
                   || !value || !Array.isArray(value.blocks) || !Array.isArray(value.math)
-                  || !Array.isArray(value.literals) || !Array.isArray(value.details)) throw new Error('Invalid Markdown block context');
+                  || !Array.isArray(value.literals) || !Array.isArray(value.details)
+                  || value.htmlStyles !== undefined && typeof value.htmlStyles !== 'string') throw new Error('Invalid Markdown block context');
                 sourceContext.value.blocks = value;
                 context.receive(accepted.doc, accepted.tree, flight.tabSize, { kind: 'blocks', value });
                 accepted.blocksTab = flight.tabSize;
@@ -263,6 +264,10 @@ export function isBackgroundMarkdownPreparationPending(state: EditorState): bool
 export function completedBackgroundMarkdownStructure(state: EditorState): Tree | undefined {
   const backend = state.facet(runtime);
   return backend && usesLargeDocumentDerivedWorkBudget(state) ? backend.read(state.doc).tree : undefined;
+}
+
+export function usesBackgroundMarkdownStructure(state: EditorState): boolean {
+  return state.facet(runtime) !== null && usesLargeDocumentDerivedWorkBudget(state);
 }
 
 /** The index is accepted with the same revision and immutable outer tree. */

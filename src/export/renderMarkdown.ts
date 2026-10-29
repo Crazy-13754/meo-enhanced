@@ -24,8 +24,10 @@ import {
   isSupportedHtmlSource,
   sanitizeHtmlStyle,
   htmlSanitizedStyleRules,
-  supportedHtmlTags
+  supportedHtmlTags, normalizeHtmlAttribute, mapHtmlSrcset, getHtmlTagNames,
+  renderedHtmlTagNames, canonicalHtmlTagName, canonicalHtmlAttributeName
 } from '../shared/htmlPolicy';
+import { inspectHtmlStylesheets } from '../shared/htmlStylesheet';
 import { splitHtmlBlockFragments } from '../foundation/htmlSyntax';
 import type { UiLanguage } from '../foundation/uiLanguage';
 import { getReadingUiStrings } from './readingUiLanguage';
@@ -47,6 +49,15 @@ const OPENING_KBD_TAG_RE = /^<kbd\b[^>]*>$/i;
 const CLOSING_KBD_TAG_RE = /^<\/kbd\s*>$/i;
 const DEFERRED_IMAGE_ATTRIBUTE = 'data-meo-deferred-image-src';
 const DEFERRED_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
+function renderedHtmlAttributes(trusted: Record<string, string[]>, github: boolean): Record<string, string[]> {
+  if (github) return trusted;
+  const result = { ...trusted };
+  for (const tag of renderedHtmlTagNames) {
+    result[tag] = [...new Set([...getSupportedHtmlAttributes(tag), ...(trusted[tag] ?? [])])];
+  }
+  return result;
+}
 
 // The Host is emitted as CommonJS. Its build retains only this synchronous,
 // data-only registry; grammar loading remains in the existing Shiki worker.
@@ -100,6 +111,7 @@ type ExportHeading = Readonly<{
 }>;
 
 export type MarkdownPresentation = Readonly<{
+  authorStyles: string;
   blocks: readonly MarkdownPresentationBlock[];
   hasMermaid: boolean;
   headings: readonly PreviewDocumentHeading[];
@@ -308,6 +320,8 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   const deferredInline = options.windowedPresentation
     ? prepareDeferredMarkdownInline(md, normalizedBody.markdown, environment, documentAnchors, generatedFootnoteTags) : undefined;
   const bodyTokens = deferredInline?.tokens ?? md.parse(normalizedBody.markdown, environment);
+  const authorStyles = github ? '' : bodyTokens.filter(node => node.type === 'html_block')
+    .map(node => inspectHtmlStylesheets(node.content).css).filter(Boolean).join('\n');
   hasMermaid ||= bodyTokens.some(node => node.type === 'fence'
     && (github ? node.info.trim().split(/\s+/)[0] : normalizeFenceLanguage(node.info)) === 'mermaid');
   const roots = markdownPresentationBlocks(bodyTokens, bodySourceLines,
@@ -337,7 +351,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   const html = sanitizeHtml(github ? replaceGithubEmoji(linkifyGithubFilteredHtml(addGithubDetailsSummary(stripGithubSelectMarkup(rawHtml))), deferImageSrc) : rawHtml, {
     allowedTags: [
       ...sanitizeHtml.defaults.allowedTags,
-      ...supportedHtmlTags,
+      ...(github ? [] : renderedHtmlTagNames),
       ...(github ? [...githubHtmlTags, 'input'] : []),
       'mark',
       'details',
@@ -370,7 +384,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
       'polygon',
       'polyline'
     ],
-    allowedAttributes: {
+    allowedAttributes: renderedHtmlAttributes({
       ...(github ? { input: ['type', 'disabled', 'checked', 'aria-label'] } : {}),
       ...(github ? Object.fromEntries(Object.entries(githubHtmlAttributes).filter(([tag]) => !['*', 'a', 'img', 'ol', 'th', 'td', 'p', 'div', 'span', 'details'].includes(tag))) : {}),
       ...(github ? { source: ['srcset', 'data-meo-deferred-image-srcset'] } : {}),
@@ -379,7 +393,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
       img: ['src', 'alt', 'title', 'width', 'height', 'loading', DEFERRED_IMAGE_ATTRIBUTE, ...(github ? githubHtmlAttributes.img : [])],
       ol: ['start', 'reversed', ...(github ? githubHtmlAttributes.ol : [])],
       li: ['value'],
-      '*': ['class', 'style', 'id', 'title', 'hidden', 'lang', 'dir', 'data-source-b64', 'data-meo-deferred-math', 'data-meo-container-part', 'data-meo-container-origin', 'data-meo-code-id', 'data-meo-code-digits', 'data-meo-code-offset', 'data-meo-code-part', 'data-meo-preview-table-widths', 'data-meo-preview-table-part', 'data-meo-preview-table-origin', 'data-source-line', 'data-source-end-line', 'aria-hidden', ...(github ? githubHtmlAttributes['*'] : [])],
+      '*': ['class', 'style', 'id', 'title', 'hidden', 'lang', 'dir', 'data-source-b64', 'data-meo-deferred-math', 'data-meo-container-part', 'data-meo-container-origin', 'data-meo-code-id', 'data-meo-code-digits', 'data-meo-code-offset', 'data-meo-code-part', 'data-meo-preview-table-widths', 'data-meo-preview-table-part', 'data-meo-preview-table-origin', 'data-source-line', 'data-source-end-line', 'aria-hidden', ...(!github ? ['aria-*', 'data-*'] : githubHtmlAttributes['*'])],
       span: ['class', 'style', 'title', 'role', 'aria-label', 'aria-hidden', 'data-line-number'],
       th: ['colspan', 'rowspan', 'scope', 'style'],
       td: ['colspan', 'rowspan', 'style'],
@@ -413,16 +427,17 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
       rect: ['x', 'y', 'width', 'height', 'rx', 'ry'],
       polygon: ['points'],
       polyline: ['points']
-    },
+    }, github),
     allowedSchemes: ['http', 'https', 'mailto', 'tel', 'file', 'data', 'meo-wiki'],
     allowedSchemesByTag: {
       img: ['http', 'https', 'file', 'data'],
       ...(github ? { srcset: ['http', 'https', 'file', 'data'] } : {})
     },
     allowProtocolRelative: github,
+    ...(!github ? { parser: { lowerCaseTags: false, lowerCaseAttributeNames: false }, parseStyleAttributes: false } : {}),
     ...(github ? { nonTextTags: ['script', 'style', 'textarea', 'option', 'video'] } : {}),
     ...(github ? { exclusiveFilter: (frame: sanitizeHtml.IFrame) => frame.tag === 'a' && !frame.attribs.href && !frame.attribs.id && !frame.attribs.name ? 'excludeTag' as const : false } : {}),
-    allowedStyles: {
+    allowedStyles: github ? {
       img: { width: [/^\d+px$/], height: [/^\d+px$/] },
       '*': {
         ...htmlSanitizedStyleRules,
@@ -446,7 +461,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
         'font-weight': [/^(?:normal|bold)$/i],
         'text-decoration': [/^underline$/i]
       }
-    },
+    } : undefined,
     transformTags: {
       ...(github ? { '*': (tagName: string, attribs: Record<string, string>) => ({
         tagName,
@@ -516,6 +531,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
       kind: 'footnotes', sourceCharacters: footnotes.reduce((sum, note) => sum + note.sourceCharacters, 0), sourceRanges });
   }
   return {
+    authorStyles,
     blocks,
     hasMermaid,
     headings: headings.map(heading => ({ ...heading })),
@@ -538,7 +554,8 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     },
     renderAll: () => {
       deferredInline?.prepareAll();
-      return sanitize(prefix + md.renderer.render(bodyTokens, md.options, environment) + preparedMarkdown.footnotesHtml);
+      const rendered = sanitize(prefix + md.renderer.render(bodyTokens, md.options, environment) + preparedMarkdown.footnotesHtml);
+      return authorStyles ? { ...rendered, html: `<style>${authorStyles}</style>${rendered.html}` } : rendered;
     }
   };
 }
@@ -613,13 +630,16 @@ function installSafeHtmlTransform(
     return true;
   });
   const allowedAttributes = Object.fromEntries(
-    [...supportedHtmlTags].map((tagName) => [tagName, getSupportedHtmlAttributes(tagName)
+    renderedHtmlTagNames.map((tagName) => [tagName, getSupportedHtmlAttributes(tagName)
       .filter(attribute => preserveSourceStyles || !['style', 'class', 'id'].includes(attribute))])
   );
   allowedAttributes.img = [...allowedAttributes.img, DEFERRED_IMAGE_ATTRIBUTE];
   const safeHtmlSanitizerOptions: NonNullable<Parameters<typeof sanitizeHtml>[1]> = {
-    allowedTags: [...supportedHtmlTags],
+    allowedTags: renderedHtmlTagNames,
     allowedAttributes,
+    disallowedTagsMode: 'escape',
+    nonTextTags: [],
+    parser: { lowerCaseTags: false, lowerCaseAttributeNames: false },
     allowedSchemes: ['http', 'https', 'mailto', 'tel', 'file', 'data'],
     allowedSchemesByTag: {
       img: ['http', 'https', 'file', 'data']
@@ -627,30 +647,44 @@ function installSafeHtmlTransform(
     allowProtocolRelative: false,
     transformTags: {
       '*': (tagName, attribs) => {
-        const attributes = { ...attribs };
+        const attributes: Record<string, string> = {};
+        for (const [name, value] of Object.entries(attribs)) {
+          const normalized = normalizeHtmlAttribute(tagName, name, value);
+          if (normalized !== null) attributes[canonicalHtmlAttributeName(name)] = normalized;
+        }
         if (attributes.hidden === '') attributes.hidden = 'hidden';
         if ('style' in attributes) {
           const style = sanitizeHtmlStyle(attributes.style);
           if (style) attributes.style = style;
           else delete attributes.style;
         }
-        return { tagName, attribs: attributes };
-      },
-      a: (tagName, attribs) => ({ tagName, attribs: { ...attribs, ...(attribs.href ? { href: normalizeLinkDestination(attribs.href) } : {}) } }),
-      img: (tagName, attribs) => {
-        const rewritten = attribs.src ? rewriteImageSrc(attribs.src) : null;
-        return {
-          tagName,
-          attribs: {
-            ...attribs,
-            ...(rewritten ? { src: rewritten.src } : {}),
-            ...(rewritten?.deferredSrc ? { [DEFERRED_IMAGE_ATTRIBUTE]: rewritten.deferredSrc } : {})
-          }
-        };
+        if (tagName.toLowerCase() === 'a' && attributes.href) attributes.href = normalizeLinkDestination(attributes.href);
+        if (attributes.srcset) {
+          const raw = attributes.srcset;
+          const rewritten = mapHtmlSrcset(raw, url => rewriteImageSrc(url).src);
+          if (mapHtmlSrcset(raw, url => rewriteImageSrc(url).deferredSrc ?? '').length) {
+            attributes['data-meo-html-srcset'] = raw;
+            delete attributes.srcset;
+          } else attributes.srcset = rewritten;
+        }
+        for (const name of ['src', 'poster']) if (attributes[name]) {
+          const rewritten = rewriteImageSrc(attributes[name]!);
+          if (rewritten.deferredSrc) {
+            const ordinaryImage = tagName.toLowerCase() === 'img' && name === 'src' && !attributes['data-meo-html-srcset'];
+            attributes[ordinaryImage ? DEFERRED_IMAGE_ATTRIBUTE : `data-meo-html-${name}`] = rewritten.deferredSrc;
+            if (ordinaryImage) attributes[name] = rewritten.src; else delete attributes[name];
+          } else attributes[name] = rewritten.src;
+        }
+        return { tagName: canonicalHtmlTagName(tagName), attribs: attributes };
       }
     }
   };
   const sanitizeRawSource = (source: string, tokenType: string): string => {
+    source = inspectHtmlStylesheets(source).html;
+    if (!source.trim()) return '';
+    if (isSupportedHtmlSource(source) && getHtmlTagNames(source).some(tag => !supportedHtmlTags.has(tag))) {
+      return sanitizeHtml(source, safeHtmlSanitizerOptions);
+    }
     if (tokenType === 'html_block' && isSupportedHtmlSource(source)) {
       // A GFM HTML container can span multiple Markdown tokens. Sanitizing each
       // block as a balanced document closes <details> before its Markdown body.
@@ -664,7 +698,7 @@ function installSafeHtmlTransform(
       };
       const parser = new Parser({
         onopentag: (_name, _attributes, implied) => { if (!implied) append(sanitizeRawSource(source.slice(parser.startIndex, parser.endIndex + 1), 'html_inline')); },
-        onclosetag: (_name, implied) => { if (!implied) append(source.slice(parser.startIndex, parser.endIndex + 1)); },
+        onclosetag: (name, implied) => { if (!implied) append(`</${canonicalHtmlTagName(name)}>`); },
         ontext: append,
         oncomment: () => append(''),
         onprocessinginstruction: () => append(''),
@@ -721,7 +755,7 @@ function installSafeHtmlTransform(
 
     const trimmed = source.trim();
     const closingTag = /^<\/\s*([a-z][a-z\d-]*)\s*>$/i.exec(trimmed);
-    if (closingTag) return `</${closingTag[1].toLowerCase()}>`;
+    if (closingTag) return `</${canonicalHtmlTagName(closingTag[1]!)}>`;
 
     const openingTag = /^<\s*([a-z][a-z\d-]*)\b[^>]*>$/i.exec(trimmed);
     if (!openingTag || /<\/\s*[a-z]/i.test(trimmed)) {

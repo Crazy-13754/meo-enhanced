@@ -55,6 +55,7 @@ export interface MarkdownDetailsBlock {
 }
 export type MarkdownPresentationContext = {
   blocks: DiscoveredMarkdownBlock[]; literals: MarkdownLiteralRange[]; math: MarkdownMathRange[]; details: MarkdownDetailsBlock[];
+  htmlStyles?: string;
 };
 
 export type MarkdownSourceFacts = {

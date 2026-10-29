@@ -1,4 +1,4 @@
-const voidHtmlTags = new Set(['br', 'col', 'hr', 'img']);
+const voidHtmlTags = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 
 export interface HtmlTagToken {
   from: number;

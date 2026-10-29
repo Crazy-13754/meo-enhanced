@@ -8,6 +8,7 @@ import { adoptDetailsBlockContext, extractDetailsBlocks } from './helpers/markdo
 import { adoptDocumentMathRanges, collectDocumentMathRanges } from './helpers/displayMathBlocks';
 import { adoptMarkdownLiteralRanges, collectMarkdownLiteralRanges } from './helpers/markdownLiteralRanges';
 import { adoptCodeFenceSource, readCodeFenceSource } from './helpers/codeFenceSource';
+import { collectHtmlDocumentStyles, adoptHtmlDocumentStyles } from './helpers/htmlDocumentStyles';
 
 /** A read-only worker context uses the completed outer tree. No View, history,
  * mounted language or DOM is constructed, and no EditorState crosses the wire. */
@@ -23,7 +24,7 @@ export function prepareMarkdownDocumentContext(doc: Text, tree: Tree, tabSize: n
     ...primary,
     blocks: () => withMarkdownSyntaxSnapshot(state, tree, () => ({ blocks: prepareLiveBlockContext(state, tree),
       literals: [...collectMarkdownLiteralRanges(state, tree)], math: collectDocumentMathRanges(state, tree),
-      details: extractDetailsBlocks(state, tree) }))
+      details: extractDetailsBlocks(state, tree), htmlStyles: collectHtmlDocumentStyles(doc, tree) }))
   };
 }
 
@@ -38,5 +39,6 @@ export function adoptMarkdownDocumentContext(doc: Text, tree: Tree, tabSize: num
     adoptMarkdownLiteralRanges(tree, part.value.literals);
     adoptDocumentMathRanges(doc, tree, tabSize, part.value.math);
     adoptDetailsBlockContext(doc, tree, tabSize, part.value.details);
+    adoptHtmlDocumentStyles(doc, tree, part.value.htmlStyles ?? '');
   }
 }

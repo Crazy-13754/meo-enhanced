@@ -1054,6 +1054,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     const csp = [
       "default-src 'none'",
       `img-src ${webview.cspSource} https: http: data: blob:`,
+      `media-src ${webview.cspSource} https: http: data: blob:`,
       `font-src ${webview.cspSource} data:`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
       `connect-src ${webview.cspSource}`,

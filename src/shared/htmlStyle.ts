@@ -1,3 +1,5 @@
+import { parse, type Container } from 'postcss';
+
 type StyleValidator = (value: string) => boolean;
 export type HtmlStyleInspection = {
   style: string;
@@ -100,6 +102,10 @@ const listPosition = keywords('inside outside');
 const sides = ['top', 'right', 'bottom', 'left'];
 const logicalSides: Record<string, string> = { 'block-start': 'top', 'block-end': 'bottom', 'inline-start': 'left', 'inline-end': 'right' };
 const margin: StyleValidator = value => value.toLowerCase() === 'auto' || length(value, true, true);
+const safeValue: StyleValidator = value => value.length > 0 && !/[\\{}<>\u0000]/.test(value)
+  && !/(?:url|expression|image-set|paint)\s*\(|@|(?:--(?:meo|vscode)-)/i.test(value);
+const calculation: StyleValidator = value => /^(?:calc|min|max|clamp|var)\(/i.test(value) && safeValue(value)
+  && split(value, ' ') !== null;
 const rules: Record<string, StyleValidator> = {
   color, background: color, 'background-color': color,
   'font-family': value => {
@@ -128,7 +134,7 @@ const rules: Record<string, StyleValidator> = {
   'overflow-wrap': keywords('normal break-word anywhere'), 'word-break': keywords('normal break-all keep-all break-word'),
   'hyphens': keywords('none manual auto'),
   'tab-size': value => length(value, false) || scalar(value) && +value >= 0,
-  display: keywords('none block inline inline-block'), visibility: keywords('visible hidden collapse'),
+  display: keywords('none block inline inline-block flow-root flex inline-flex grid inline-grid contents table inline-table table-row table-cell table-row-group table-header-group table-footer-group table-column table-column-group table-caption list-item'), visibility: keywords('visible hidden collapse'),
   opacity: value => scalar(value) && +value >= 0 && +value <= 1 || percent(value) && +value.slice(0, -1) >= 0 && +value.slice(0, -1) <= 100,
   'box-sizing': keywords('content-box border-box'),
   'list-style-type': listType, 'list-style-position': listPosition,
@@ -158,6 +164,20 @@ const rules: Record<string, StyleValidator> = {
     return Boolean(values?.length && values.length <= 2 && values.every(sequence(value => length(value), 4)));
   }
 };
+// Values for these browser-native layout/paint properties stay declarations,
+// rather than becoming a second CSS layout engine in either renderer.
+for (const name of ('flex flex-basis flex-grow flex-shrink flex-direction flex-wrap flex-flow order gap row-gap column-gap '
+  + 'align-content align-items align-self justify-content justify-items justify-self place-content place-items place-self '
+  + 'grid grid-template grid-template-columns grid-template-rows grid-template-areas grid-auto-columns grid-auto-rows grid-auto-flow '
+  + 'grid-area grid-column grid-row grid-column-start grid-column-end grid-row-start grid-row-end '
+  + 'box-shadow text-shadow background-image background-size background-position background-repeat background-clip background-origin '
+  + 'outline outline-width outline-style outline-color outline-offset float clear columns column-count column-width column-rule '
+  + 'break-before break-after break-inside page-break-before page-break-after page-break-inside '
+  + 'cursor user-select appearance accent-color caret-color color-scheme fill stroke stroke-width fill-opacity stroke-opacity text-anchor').split(' ')) rules[name] = safeValue;
+rules.position = keywords('static relative absolute sticky');
+for (const name of ['top', 'right', 'bottom', 'left', 'inset', 'inset-inline', 'inset-block']) rules[name] = safeValue;
+rules['z-index'] = value => value === 'auto' || /^-?\d+$/.test(value);
+rules.background = value => color(value) || /gradient\(/i.test(value) && safeValue(value);
 for (const axis of ['width', 'height', 'inline-size', 'block-size']) {
   for (const prefix of ['', 'min-', 'max-']) rules[prefix + axis] = value => length(value)
     || keywords(`${prefix === 'max-' ? 'none' : 'auto'} min-content max-content fit-content`)(value);
@@ -203,8 +223,8 @@ function boxProjection(properties: Record<string, string>, name: string, value: 
   const names = targets(edge[1] ?? '');
   if (edge[2]) distribute(names, wide.test(value) ? [value] : split(value, ' ')!, 'border', `-${edge[2]}`);
   else {
-    const components = wide.test(value) ? { width: value, style: value, color: value } : border(value)!;
-    for (const [kind, component] of Object.entries(components)) distribute(names, [component], 'border', `-${kind}`);
+    const components = wide.test(value) ? { width: value, style: value, color: value } : border(value);
+    if (components) for (const [kind, component] of Object.entries(components)) distribute(names, [component], 'border', `-${kind}`);
   }
 }
 
@@ -218,9 +238,11 @@ export function inspectHtmlStyle(source: string, direction: 'ltr' | 'rtl' = 'ltr
   for (const declaration of split(withoutComments, ';') ?? [withoutComments]) {
     const colon = declaration.indexOf(':');
     if (colon < 0) { if (declaration.trim()) invalid.add(declaration.trim().split(/\s+/)[0]!); continue; }
-    const name = declaration.slice(0, colon).trim().toLowerCase(), value = declaration.slice(colon + 1).trim();
-    const validate = Object.hasOwn(rules, name) ? rules[name] : undefined;
-    if (validate && !/[!\\{}<>\u0000]/.test(value) && (wide.test(value) || validate(value))) {
+    const rawName = declaration.slice(0, colon).trim();
+    const name = rawName.startsWith('--') ? rawName : rawName.toLowerCase(), value = declaration.slice(colon + 1).trim();
+    const custom = /^--[a-z][\w-]*$/i.test(name) && !/^--(?:meo|vscode)-/i.test(name);
+    const validate = custom ? safeValue : Object.hasOwn(rules, name) ? rules[name] : undefined;
+    if (validate && !/[!\\{}<>\u0000]/.test(value) && (wide.test(value) || validate(value) || calculation(value))) {
       declarations.push(`${name}: ${value}`);
       boxProjection(properties, name, value, direction);
     } else (validate ? invalid : unsupported).add(name);
@@ -229,3 +251,34 @@ export function inspectHtmlStyle(source: string, direction: 'ltr' | 'rtl' = 'ltr
 }
 
 export function sanitizeHtmlStyle(source: string): string { return inspectHtmlStyle(source).style; }
+
+/** Native CSS scope limits author selectors to document content, including
+ * styles whose source block is outside a virtualized reading window. */
+export function sanitizeHtmlStylesheet(source: string): string {
+  try {
+    const sheet = parse(source);
+    const clean = (container: Container): void => {
+      for (const node of [...(container.nodes ?? [])]) {
+        if (node.type === 'comment') node.remove();
+        else if (node.type === 'atrule') {
+          if (!/^(?:media|supports|container)$/i.test(node.name) || !node.nodes
+            || /[{}<>\\]|url\s*\(/i.test(node.params)) node.remove();
+          else clean(node);
+        } else if (node.type === 'rule') {
+          if (/[{}<>\\]|@|:host|::slotted/i.test(node.selector)) { node.remove(); continue; }
+          node.selector = node.selector.replace(/:root\b|(^|[\s>,+~(])(?:html|body)(?=$|[\s>,+~.#[:)])/g,
+            (_match, prefix: string | undefined) => `${prefix ?? ''}:scope`)
+            .replace(/:scope(?:\s*>\s*|\s+):scope/g, ':scope');
+          clean(node);
+          if (!node.nodes?.length) node.remove();
+        } else if (node.type === 'decl') {
+          const accepted = inspectHtmlStyle(`${node.prop}:${node.value}`).style;
+          if (!accepted || node.important) node.remove();
+        }
+      }
+    };
+    clean(sheet);
+    const css = sheet.toString();
+    return css.trim() ? `@scope (.meo-export-doc, .cm-content) to (.meo-md-html-source-range, .meo-md-html-invisible-source, .meo-md-html-result-status) {${css}}` : '';
+  } catch { return ''; }
+}
