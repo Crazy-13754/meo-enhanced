@@ -1522,7 +1522,10 @@ The same script pairs ordinary and production-windowed Source previews for
 position-overlay continuity: list typing retains the mounted overlay in every
 sampled input/compositor frame; held render responses, selection changes and
 source-line shifts retain the accepted reading revision until the new mapping
-commits. Unmapped gaps, hidden comments, removed text and unloaded window bands
+commits. An initially offscreen image with known dimensions pairs both paths;
+every input frame compares the highlight with its actual target, catching an
+upstream placeholder reset even when the text's reading position stays stable.
+Unmapped gaps, hidden comments, removed text and unloaded window bands
 hide the overlay, while mapped empty code lines and new cursor destinations
 remain valid. Both paths keep one overlay and full Preview hides it.
 `scripts/test-viewport-controller.ts` also checks one-shot semantic mapping with

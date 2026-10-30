@@ -2257,8 +2257,10 @@ export function createPreviewController({
         onRendered?.({ skipLinkedViewportProjection: preserveViewport });
         schedulePaintReady();
       };
-      finishRender();
+      // A morph resets deferred image attributes. Restore known dimensions
+      // before accepting source geometry, even while the bitmap is offscreen.
       attachDeferredImages(frameDocument);
+      finishRender();
       if (payload.hasMermaid) {
         void previewMermaidRenderer.render(
           frameDocument,

@@ -17,7 +17,9 @@ let primaryError: unknown;
 let previewRenderGate: Promise<void> | null = null;
 try {
   for (const windowed of [false, true]) {
-    await assertMarkerContinuity(await browser.newPage(), await build.outputs[0]!.text(), windowed);
+    for (const imageAbove of [true, false]) {
+      await assertMarkerContinuity(await browser.newPage(), await build.outputs[0]!.text(), windowed, imageAbove);
+    }
   }
   const page = await browser.newPage();
   await page.setViewport({ width: 1100, height: 720 });
@@ -571,11 +573,15 @@ try {
 
 console.log('Source position marker checks passed');
 
-async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundle: string, windowed: boolean): Promise<void> {
-  const text = '# Position continuity\n\n- Typing target.\n- Neighbor item.\n\nFollowing paragraph.\n\n```text\nAlpha\n\nOmega\n```\n\n<!-- Hidden navigation target -->\n\n'
+async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundle: string, windowed: boolean, imageAbove: boolean): Promise<void> {
+  const prefix = imageAbove ? Array.from({ length: 40 }, (_, index) => `Before image ${index}: upstream context.\n\n`).join('')
+    + '![Offscreen image](marker-image.svg)\n\n'
+    + Array.from({ length: 40 }, (_, index) => `After image ${index}: upstream context.\n\n`).join('') : '';
+  const lineOffset = prefix.split('\n').length - 1;
+  const text = prefix + '# Position continuity\n\n- Typing target.\n- Neighbor item.\n\nFollowing paragraph.\n\n```text\nAlpha\n\nOmega\n```\n\n<!-- Hidden navigation target -->\n\n'
     + Array.from({ length: windowed ? 5000 : 10 }, (_, index) => `Paragraph ${index} with stable reading context.\n\n`).join('');
   assert.equal(assessLargeDocument(text).windowedPreview, windowed);
-  const label = windowed ? 'windowed' : 'ordinary';
+  const label = `${windowed ? 'windowed' : 'ordinary'}${imageAbove ? ', image above' : ''}`;
   const documents = new Map<string, ReturnType<typeof createPreviewDocument>>();
   let renderGate: Promise<void> | null = null;
   let releaseRender: (() => void) | undefined;
@@ -584,6 +590,8 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
   try {
     await page.setViewport({ width: 1100, height: 720 });
     await page.exposeFunction('__markerContinuityHost', async (message: any) => {
+      if (message.type === 'resolveImageSrc') return { type: 'resolvedImageSrc', requestId: message.requestId, result: { ok: true,
+        value: { resolvedUrl: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="361" height="190"><rect width="361" height="190" fill="#789"/></svg>') } } };
       if (message.type === 'applyChanges') return { type: 'applied', version: message.baseVersion + 1 };
       if (message.type === 'requestPreviewRender') {
         await renderGate;
@@ -603,19 +611,24 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
     await page.addStyleTag({ path: 'webview/src/styles.css' });
     await page.addScriptTag({ content: `window.__markerMessages=[];window.acquireVsCodeApi=()=>({getState(){return {}},setState(){},postMessage(message){window.__markerMessages.push(message.type);window.__markerContinuityHost(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent('message',{data:response}));});}});` });
     await page.addScriptTag({ content: bundle });
-    await page.evaluate(text => window.dispatchEvent(new MessageEvent('message', { data: {
+    await page.evaluate(({ text, imageAbove }) => window.dispatchEvent(new MessageEvent('message', { data: {
       type: 'init', documentId: 'file:///marker-continuity.md', text, version: 1, savedRevision: { version: 1, text },
       diagnostics: [], mode: 'source', uiLanguage: 'en', sourceLineNumbers: 'on', previewAppearance: 'dark',
       previewFontFamily: '', previewSourceColoring: true, editorAppearance: 'dark', editorFontSizeMode: 'auto', editorFontSize: 14,
       gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit',
       fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false,
       findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260,
-      restoreReadingPositionOnOpen: false, vscodeTheme: null
-    } })), text);
+      restoreReadingPositionOnOpen: false, vscodeTheme: null,
+      imageIntrinsicSizes: imageAbove ? [{ src: 'marker-image.svg', width: 361, height: 190 }] : []
+    } })), { text, imageAbove });
     await page.waitForFunction(() => {
       const button = document.querySelector<HTMLElement>('.source-preview-button');
       return button?.offsetParent !== null && button && getComputedStyle(button).visibility === 'visible';
     });
+    if (imageAbove) {
+      await page.locator('.line-jump-input').fill(String(3 + lineOffset));
+      await page.keyboard.press('Enter');
+    }
     await page.click('.source-preview-button');
     await page.waitForFunction(windowed => {
       const host = document.querySelector<HTMLElement>('.preview-host');
@@ -623,12 +636,15 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
       return host?.inert === false && getComputedStyle(host).visibility !== 'hidden'
         && doc?.body.textContent?.includes('Typing target.') && Boolean(doc.querySelector('[data-meo-preview-document]')) === windowed;
     }, {}, windowed);
+    if (imageAbove && !windowed) assert.ok(await page.evaluate(() => [...document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.images]
+      .some(image => image.hasAttribute('data-meo-deferred-image-src') && image.width === 361 && image.height === 190 && image.naturalWidth <= 1)),
+    'the upstream image must retain known dimensions without loading its offscreen bitmap');
     const selectLine = async (line: number) => {
       await page.evaluate(line => {
         const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
         view.dispatch({ selection: { anchor: view.state.doc.line(line).to } });
         view.focus();
-      }, line);
+      }, line + lineOffset);
       await page.evaluate(async () => { for (let n = 0; n < 3; n++) await new Promise(requestAnimationFrame); });
     };
     const markerSnapshot = () => page.evaluate(() => {
@@ -642,7 +658,7 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
     await page.evaluate(() => {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
       const marker = (window as any).__markerWitness = doc.querySelector('.meo-preview-source-position-marker');
-      const probe = (window as any).__markerProbe = { running: true, missing: 0, removed: 0, frames: 0 };
+      const probe = (window as any).__markerProbe = { running: true, missing: 0, removed: 0, frames: 0, misaligned: 0, deltas: [] as number[] };
       const observer = new MutationObserver(records => {
         for (const record of records) for (const node of record.removedNodes)
           if (node === marker || node.contains(marker)) probe.removed++;
@@ -652,6 +668,9 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
       const sample = () => {
         probe.frames++;
         if (!marker.isConnected || (marker as HTMLElement).hidden) probe.missing++;
+        const target = [...doc.querySelectorAll('li')].find(element => element.textContent?.includes('Typing target.'));
+        const delta = target ? marker.getBoundingClientRect().top - target.getBoundingClientRect().top : Infinity;
+        if (Math.abs(delta) > 0.5) { probe.misaligned++; probe.deltas.push(delta); }
         if (probe.running) requestAnimationFrame(sample);
       };
       sample();
@@ -694,10 +713,11 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
     const probe = await page.evaluate(() => {
       const probe = (window as any).__markerProbe;
       probe.running = false; probe.observer.disconnect();
-      return { removed: probe.removed, missing: probe.missing, frames: probe.frames };
+      return { removed: probe.removed, missing: probe.missing, frames: probe.frames, misaligned: probe.misaligned, deltas: probe.deltas };
     });
     assert.equal(probe.removed, 0, `${label}: updating list text must not discard the accepted position overlay`);
     assert.equal(probe.missing, 0, `${label}: every input frame retains the position highlight`);
+    assert.equal(probe.misaligned, 0, `${label}: every input frame highlights the actual item ${JSON.stringify(probe.deltas)}`);
     assert.ok(probe.frames > 10);
     assert.deepEqual(await markerSnapshot(), before, `${label}: typing retains the same visible position overlay and geometry`);
     assert.ok(paints.length >= 2, `${label}: compositor evidence is required`);
@@ -744,24 +764,24 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
       {}, requestsBeforeLineShift);
     assert.deepEqual(await markerSnapshot(), before, `${label}: inserting a source line retains the old accepted coordinates until commit`);
     resumeRender();
-    await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
-      .querySelector<HTMLElement>('.meo-preview-source-position-marker')?.dataset.meoSourcePositionLine === '4');
-    assert.deepEqual(await markerSnapshot(), { ...before, line: 4 }, `${label}: the same visible block accepts its shifted source line atomically`);
+    await page.waitForFunction(line => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
+      .querySelector<HTMLElement>('.meo-preview-source-position-marker')?.dataset.meoSourcePositionLine === String(line), {}, before.line + 1);
+    assert.deepEqual(await markerSnapshot(), { ...before, line: before.line + 1 }, `${label}: the same visible block accepts its shifted source line atomically`);
     await page.evaluate(() => {
       const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
       view.dispatch({ changes: { from: 0, to: 1, insert: '' } });
     });
-    await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
-      .querySelector<HTMLElement>('.meo-preview-source-position-marker')?.dataset.meoSourcePositionLine === '3');
+    await page.waitForFunction(line => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
+      .querySelector<HTMLElement>('.meo-preview-source-position-marker')?.dataset.meoSourcePositionLine === String(line), {}, before.line);
 
     // Removing the current block really removes its mapping on acceptance.
     const requestsBeforeRemoval = await requestCount();
     holdRender();
-    await page.evaluate(() => {
+    await page.evaluate(line => {
       const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
-      const line = view.state.doc.line(3);
-      view.dispatch({ changes: { from: line.from, to: line.to, insert: '' }, selection: { anchor: line.from } });
-    });
+      const target = view.state.doc.line(line);
+      view.dispatch({ changes: { from: target.from, to: target.to, insert: '' }, selection: { anchor: target.from } });
+    }, 3 + lineOffset);
     await page.waitForFunction(before => (window as any).__markerMessages.filter((type: string) => type === 'requestPreviewRender').length > before,
       {}, requestsBeforeRemoval);
     assert.equal((await markerSnapshot()).hidden, false, `${label}: the old reading DOM remains highlighted until replacement`);
