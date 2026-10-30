@@ -1,4 +1,5 @@
 import { countColumn, type EditorState } from '@codemirror/state';
+import { markdownTaskMarkerPattern } from '../../../src/foundation/markdownTaskList';
 import { syntaxTree } from '@codemirror/language';
 import type { SyntaxNode } from '@lezer/common';
 import { parseFootnotes } from './footnotes';
@@ -10,6 +11,7 @@ export { getCodeContainerColumns, getCodeBlockLastLine, getCodeBlockSourceLines,
 export const liveBlockIndentProperty = '--meo-live-block-indent';
 
 export type TaskListIndent = MarkdownTaskIndent;
+const taskPrefixPadding = new RegExp(String.raw`^[ \t]+(?=${markdownTaskMarkerPattern}[ \t])`);
 
 /** A checkbox replaces the list marker as well as [ ]. Descendants must use
  * that same visual width without changing Markdown's source indentation. */
@@ -24,7 +26,7 @@ export function getLiveTaskListIndent(state: EditorState, from: number, node: Sy
     const markerLine = state.doc.lineAt(mark.from);
     if (markerLine.number === line.number) continue;
     const end = mark.to - markerLine.from;
-    const padding = /^[ \t]+(?=\[[ xX~\-]\][ \t])/.exec(markerLine.text.slice(end))?.[0];
+    const padding = taskPrefixPadding.exec(markerLine.text.slice(end))?.[0];
     if (!padding) continue;
     checkboxes += 1;
     // One source column remains as the checkbox-to-body gap.

@@ -5078,29 +5078,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   transform: rotate(45deg);
 }
 
-.cm-editor .meo-task-checkbox.is-inprogress::after {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--meo-semantic-taskCheckboxCheck);
-  font-size: 12px;
-  line-height: 1;
-  content: '◐';
-  font-weight: 500;
-}
-
-.cm-editor .meo-task-checkbox.is-dropped::after {
-  content: '';
-  position: absolute;
-  left: 3px;
-  right: 3px;
-  top: 50%;
-  border-top: 2px solid var(--meo-semantic-taskCheckboxCheck);
-  transform: translateY(-50%);
-}
-
 .cm-editor .meo-task-checkbox:focus {
   outline: none;
 }
@@ -5126,31 +5103,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor.meo-mode-live .meo-task-complete .meo-md-tag {
   color: var(--meo-semantic-taskCompleteForeground) !important;
   -webkit-text-fill-color: var(--meo-semantic-taskCompleteForeground) !important;
-  text-decoration-color: currentColor !important;
-}
-
-.cm-editor.meo-mode-live .meo-task-dropped,
-.cm-editor.meo-mode-live .meo-task-dropped *,
-.cm-editor.meo-mode-live .meo-task-dropped.meo-md-strong,
-.cm-editor.meo-mode-live .meo-task-dropped.meo-md-em,
-.cm-editor.meo-mode-live .meo-task-dropped.meo-md-strike,
-.cm-editor.meo-mode-live .meo-task-dropped.meo-md-inline-code,
-.cm-editor.meo-mode-live .meo-task-dropped.meo-md-tag,
-.cm-editor.meo-mode-live .meo-md-strong.meo-task-dropped,
-.cm-editor.meo-mode-live .meo-md-em.meo-task-dropped,
-.cm-editor.meo-mode-live .meo-md-strike.meo-task-dropped,
-.cm-editor.meo-mode-live .meo-md-inline-code.meo-task-dropped,
-.cm-editor.meo-mode-live .meo-md-inline-code.meo-task-dropped *,
-.cm-editor.meo-mode-live .meo-md-tag.meo-task-dropped,
-.cm-editor.meo-mode-live .meo-task-dropped .meo-md-strong,
-.cm-editor.meo-mode-live .meo-task-dropped .meo-md-em,
-.cm-editor.meo-mode-live .meo-task-dropped .meo-md-strike,
-.cm-editor.meo-mode-live .meo-task-dropped .meo-md-inline-code,
-.cm-editor.meo-mode-live .meo-task-dropped .meo-md-inline-code *,
-.cm-editor.meo-mode-live .meo-task-dropped .meo-md-tag {
-  color: var(--meo-semantic-taskDroppedForeground) !important;
-  -webkit-text-fill-color: var(--meo-semantic-taskDroppedForeground) !important;
-  text-decoration: line-through !important;
   text-decoration-color: currentColor !important;
 }
 

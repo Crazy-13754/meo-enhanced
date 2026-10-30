@@ -2482,6 +2482,12 @@ continuous row/column operations. Each table column structure must retain its
 accepted widths from the first observed frame, with source/DOM row parity.
 `--action=checkbox` narrows that slice to task interaction. History may deliberately
 reveal a changed source marker; direct task toggles must keep their control mounted.
+`test-live-composite-lists.ts --tasks-only` checks the two task states, uppercase
+`[X]`, literal `[~]` / `[-]` text, table-cell lists, native clicks, undo/redo and
+Source/Live roundtrips in light/dark ordinary and optimized documents. It asserts
+both the production size assessment and the active derived-work budget. Set
+`MEO_TEST_SCREENSHOTS` to capture the reading surfaces. The full list/browser
+suites retain this slice through the script's default invocation.
 `test-complex-input-presentation.ts --only=tokens` uses the actual Markdown Worker
 to type consecutive characters in Markdown/TypeScript fences in small and large
 documents. Each key must inherit the preceding accepted token's color and weight,

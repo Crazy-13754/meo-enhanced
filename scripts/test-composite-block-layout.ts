@@ -262,8 +262,8 @@ async function verifyCodeContainerLayouts(browser: Awaited<ReturnType<typeof lau
   const examples = [
     {name:'task fence',parent:'- [ ] Item',prefix:'  ',kind:'fenced'},
     {name:'quote/task fence',parent:'> - [x] Item',prefix:'>   ',kind:'fenced'},
-    {name:'footnote/task/quote fence',parent:'Reference[^n].\n\n[^n]: Definition\n\n    - [~] Item\n\n      > Explanation',prefix:'      > ',kind:'fenced'},
-    {name:'task indented',parent:'- [-] Item',prefix:'      ',kind:'indented'},
+    {name:'footnote/task/quote fence',parent:'Reference[^n].\n\n[^n]: Definition\n\n    - [x] Item\n\n      > Explanation',prefix:'      > ',kind:'fenced'},
+    {name:'task indented',parent:'- [ ] Item',prefix:'      ',kind:'indented'},
     {name:'root fence',parent:'',prefix:'',kind:'fenced'},
     {name:'indented opening fence',parent:'',prefix:'  ',kind:'fenced'},
     {name:'quote with indented opening fence',parent:'> Explanation',prefix:'>   ',kind:'fenced'},

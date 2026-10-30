@@ -1,10 +1,12 @@
 import { matchInlineScript } from '../../../src/foundation/inlineScript';
+import { markdownTaskMarkerPattern } from '../../../src/foundation/markdownTaskList';
 import { EditorSelection, type EditorState, type TransactionSpec } from '@codemirror/state';
 import type { Tree } from '@lezer/common';
 import { syntaxTree } from '@codemirror/language';
 import { isSuggestionAddress } from '../application/inputSuggestions';
 import { indentedCodeBlockAt } from './codeBlockSource';
 export type MarkdownInputContext = 'block' | 'inline' | 'heading' | 'excluded';
+const listPrefix = new RegExp(String.raw`^(?:[-+*]|\d+[.)])[ \t]+(?:${markdownTaskMarkerPattern}[ \t]+)?`);
 
 /** Literal comment markers in code cannot affect later prose comment operations. */
 export function markdownCodeRanges(tree: Tree): { from: number; to: number }[] {
@@ -50,7 +52,7 @@ export function blockInsertion(state: EditorState, from: number, to: number, blo
   const line = state.doc.lineAt(from);
   if (state.doc.lineAt(to).number !== line.number) return null;
   const rawPrefix = /^[ \t]*(?:>[ \t]*)*/.exec(line.text)?.[0] ?? '';
-  const marker = /^(?:[-+*]|\d+[.)])[ \t]+(?:\[[ xX~\-]\][ \t]+)?/.exec(line.text.slice(rawPrefix.length))?.[0] ?? '';
+  const marker = listPrefix.exec(line.text.slice(rawPrefix.length))?.[0] ?? '';
   const insidePrefix = from < line.from + rawPrefix.length + marker.length;
   const firstPrefix = insidePrefix ? '' : rawPrefix + marker;
   const baseMarker = /^(?:[-+*]|\d+[.)])[ \t]+/.exec(marker)?.[0] ?? '';

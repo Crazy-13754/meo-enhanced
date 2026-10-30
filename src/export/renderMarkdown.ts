@@ -1,4 +1,5 @@
 import { markdownHeadingAnchor } from '../foundation/markdownHeadingAnchor';
+import { markdownTaskMarkerPattern } from '../foundation/markdownTaskList';
 import { normalizeLinkDestination, isLocalFileLinkDestination } from '../foundation/linkDestination';
 import { splitMarkdownTableRow } from '../foundation/markdownTableRow';
 import * as path from 'node:path';
@@ -45,6 +46,7 @@ import { installWikiReferenceTransform } from './wikiReferences';
 import type { ResolvedWikiResources } from '../foundation/wikiReference';
 import { addGithubDetailsSummary, createGithubHtmlSanitizer, githubHtmlAttributes, githubHtmlTags, installGithubInlineRules, isGithubImageSource, isGithubLink, linkifyGithubFilteredHtml, replaceGithubEmoji, stripGithubSelectMarkup } from './githubReadme';
 
+const taskContentPrefix = new RegExp(String.raw`^${markdownTaskMarkerPattern}\s+`);
 const OPENING_KBD_TAG_RE = /^<kbd\b[^>]*>$/i;
 const CLOSING_KBD_TAG_RE = /^<\/kbd\s*>$/i;
 const DEFERRED_IMAGE_ATTRIBUTE = 'data-meo-deferred-image-src';
@@ -1244,7 +1246,7 @@ function installTaskListTransform(md: MarkdownIt, github = false): void {
       }
       current.firstInlineHandled = true;
 
-      const match = (github ? /^\[([ xX])\]\s+/ : /^\[([ xX~\-])\]\s+/).exec(token.content ?? '');
+      const match = taskContentPrefix.exec(token.content ?? '');
       if (!match) {
         continue;
       }
@@ -1281,12 +1283,6 @@ function taskStatusClassFromMarker(marker: string): string {
   const normalized = marker.toLowerCase();
   if (normalized === 'x') {
     return 'is-done';
-  }
-  if (normalized === '~') {
-    return 'is-inprogress';
-  }
-  if (normalized === '-') {
-    return 'is-dropped';
   }
   return 'is-todo';
 }

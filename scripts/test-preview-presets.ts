@@ -10,15 +10,18 @@ const environment = { previewFontFamily: 'Comic Sans MS', previewSourceColoring:
 const render = (markdownText: string, preset: 'default' | 'github-readme' = 'github-readme') => exportRuntime.renderPreviewDocument({
   markdownText, sourceDocumentPath: 'C:/tmp/preset.md', uiLanguage: 'zh-CN', styleEnvironment: environment, preset
 });
-const text = 'first\nsecond\n\n==highlight== H~2~O x^2^\n\n- [x] done\n- [~] doing\n- [-] cancelled\n\n<!-- secret note -->';
+const text = 'first\nsecond\n\n==highlight== H~2~O x^2^\n\n- [ ] todo\n- [x] done\n- [X] upper\n- [~] doing\n- [-] cancelled\n\n<!-- secret note -->';
 const github = render(text);
 const original = render(text, 'default');
 assert.ok(original.html.includes('<br'));
 assert.ok(!github.html.includes('<br'));
 assert.ok(original.html.includes('<mark>highlight</mark>') && original.html.includes('<sub>2</sub>'));
 assert.ok(github.html.includes('==highlight== H<del>2</del>O x^2^'));
-assert.equal((github.html.match(/meo-export-task-checkbox/g) ?? []).length, 1);
+assert.equal((github.html.match(/meo-export-task-checkbox/g) ?? []).length, 3);
 assert.equal((original.html.match(/meo-export-task-checkbox/g) ?? []).length, 3);
+for (const rendered of [github, original]) {
+  assert.ok(rendered.html.includes('[~] doing') && rendered.html.includes('[-] cancelled'), 'extended markers remain ordinary list text');
+}
 assert.ok(!github.html.includes('secret note'));
 assert.ok(original.html.includes('secret note'));
 assert.ok(!github.styles.light.includes('Comic Sans MS'));
@@ -196,5 +199,22 @@ for (const preset of previewPresets) {
   assert.equal(padding.at(-1), '0', `${preset.id}: screen padding does not double PDF margins`);
   const html = await exportRuntime.renderExportHtmlDocument({ ...options, target: 'html' });
   assert.ok(!html.htmlDocument.includes('@page { size: A4; margin: 20mm;'), 'HTML retains its screen layout');
+}
+for (const preset of ['default', 'github-readme'] as const) {
+  for (const target of ['html', 'pdf', 'docx'] as const) {
+    const taskText = '- [ ] todo\n- [x] done\n- [X] upper\n- [~] doing\n- [-] cancelled\n\n| Task |\n| --- |\n| - [~] cell doing<br>- [-] cell cancelled |';
+    const readingSnapshot = { snapshotId: 'task-states', text: taskText, appearance: 'light' as const, uiLanguage: 'en' as const, environment, preset };
+    const exported = await exportRuntime.renderExportHtmlDocument({
+      readingSnapshot, target, sourceDocumentPath: 'C:/tmp/tasks.md', outputFilePath: `C:/tmp/tasks.${target}`,
+      title: 'Task states', baseHref: '', mermaidRuntimeSrc: '', shikiLanguageAssetsRoot: ''
+    });
+    const html = exported.htmlDocument;
+    assert.equal((html.match(/<(?:span|input)\b[^>]*class="meo-export-task-checkbox\b/g) ?? []).length, 3, `${preset}/${target}: only two task states`);
+    for (const literal of ['[~] doing', '[-] cancelled', '[~] cell doing', '[-] cell cancelled']) {
+      assert.ok(html.includes(literal), `${preset}/${target}: preserve ${literal}`);
+    }
+    assert.ok(!html.includes('is-inprogress') && !html.includes('is-dropped'), `${preset}/${target}: retired styles are absent`);
+    assert.equal(readingSnapshot.text, taskText, `${preset}/${target}: source remains unchanged`);
+  }
 }
 console.log('Preview preset rendering, capabilities and protocol tests passed.');

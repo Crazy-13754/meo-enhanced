@@ -1,5 +1,25 @@
 import { EditorState } from '@codemirror/state';
-import { orderedListRenumberTransactionFilter, listMarkerData } from '../webview/src/helpers/listMarkers';
+import assert from 'node:assert/strict';
+import { orderedListRenumberTransactionFilter, listMarkerData, continuedListMarker } from '../webview/src/helpers/listMarkers';
+
+for (const prefix of ['- ', '+ ', '* ', '1. ', '1) ']) {
+  for (const [marker, status] of [[' ', 'todo'], ['x', 'done'], ['X', 'done']]) {
+    const text = `${prefix}[${marker}] task`;
+    const parsed = listMarkerData(text)!;
+    assert.equal(parsed.isTask, true, text);
+    assert.equal(parsed.taskStatus, status, text);
+    assert.equal(text.slice(parsed.toOffset), 'task', text);
+    assert.equal(continuedListMarker(text), `${prefix.startsWith('1') ? '2' + prefix.slice(1) : prefix}[ ] `, text);
+  }
+  for (const marker of ['~', '-', '/']) {
+    const text = `${prefix}[${marker}] literal`;
+    const parsed = listMarkerData(text)!;
+    assert.equal(parsed.isTask, false, text);
+    assert.equal(parsed.taskStatus, undefined, text);
+    assert.equal(text.slice(parsed.toOffset), `[${marker}] literal`, text);
+    assert.equal(continuedListMarker(text), prefix.startsWith('1') ? '2' + prefix.slice(1) : prefix, text);
+  }
+}
 
 const state = EditorState.create({
   doc: '1. First\n99. Second\n3. Third\n  4. Nested first\n  5. Nested second',

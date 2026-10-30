@@ -58,6 +58,8 @@ CSS 通过 `github-readme/styles.js` 和 `reading/styles.js` 的 Bun 文本导�
 
 ## GitHub README 的范围
 
+任务列表在 Live、Preview 和导出中只识别 `[ ]`（未完成）与 `[x]` / `[X]`（已完成）。`[~]`、`[-]` 等其他标记按普通列表文字保留，不转换或迁移文档原文。
+
 样式来自社区项目 [github-markdown-css](https://github.com/sindresorhus/github-markdown-css)，固定为 5.9.0，提交 `265b22aa79815418195f453352456d5784bb7580`。保存上游原始 CSS 与许可证，分发声明在根目录 `THIRD_PARTY_NOTICES.md`；适配规则单独存放，便于更新和比较。
 
 本地渲染调整了普通换行、扩展标记、任务列表、顶层 Alerts、重复标题锚点、Frontmatter 表格和 HTML 样式属性。GitHub 的任务列表使用禁用的原生勾选框，脚注使用原生有序列表；跨 Markdown 块的 HTML 容器保持开闭结构，折叠内容中的 Markdown 正常渲染。GitHub 表格保留原生布局和局部横向滚动；默认预览继续使用原有压缩列宽。切换时不复用默认表格测量出的列宽，并保留源码对应的阅读位置。代码使用 Shiki 的 `github-light-default` / `github-dark-default` 主题，不使用 MEO 括号彩虹配色。系统字体回退和本地语法词法器可能产生细微差别。

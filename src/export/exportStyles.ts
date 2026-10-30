@@ -650,36 +650,8 @@ ol ol {
   transform: rotate(45deg);
 }
 
-.meo-export-task-checkbox.is-inprogress::after,
-.meo-export-task-checkbox.is-dropped::after {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--meo-fg);
-  font-size: 12px;
-  line-height: 1;
-}
-
-.meo-export-task-checkbox.is-inprogress::after {
-  content: '◐';
-  font-weight: 500;
-}
-
-.meo-export-task-checkbox.is-dropped::after {
-  content: '-';
-  font-weight: 700;
-}
-
 .meo-export-task-text.is-done {
   color: var(--meo-muted);
-}
-
-.meo-export-task-text.is-dropped {
-  color: var(--meo-muted);
-  text-decoration: line-through;
-  text-decoration-color: currentColor;
 }
 
 a {
@@ -764,7 +736,7 @@ sup > a[id^="fnref-"],
 }
 
 strong, b { color: ${previewAppearanceIsDark ? darkDefaultStrongForeground : 'inherit'}; }
-:is(h1, h2, h3, h4, h5, h6, a, strong, b, .meo-export-task-text.is-done, .meo-export-task-text.is-dropped) :is(strong, b) { color: inherit; }
+:is(h1, h2, h3, h4, h5, h6, a, strong, b, .meo-export-task-text.is-done) :is(strong, b) { color: inherit; }
 ${buildMarkdownInlineStyleCss({
   emphasis: 'em', strong: 'strong', strikethrough: 's, del',
   subscript: 'sub', superscript: 'sup:not(:has(> a[id^="fnref-"]))'

@@ -1,4 +1,5 @@
 import { documentLines } from './documentLines';
+import { markdownTaskMarkerPattern } from '../../../src/foundation/markdownTaskList';
 import type { ChangeDesc } from '@codemirror/state';
 import { mapLiveWidgetPositions } from '../editor/liveWidgetPositions';
 import {
@@ -35,7 +36,7 @@ interface ListMarkerData {
   taskStatus?: TaskStatus;
 }
 
-type TaskStatus = 'todo' | 'inprogress' | 'done' | 'dropped';
+type TaskStatus = 'todo' | 'done';
 type OrderedDisplayIndex = string | number | null;
 
 interface ListIndentStyle {
@@ -71,9 +72,8 @@ interface ListTextDeletion {
 const sourceListMarkerDeco = Decoration.mark({ class: 'meo-md-list-prefix' });
 const sourceTaskBracketDeco = Decoration.mark({ class: 'meo-md-task-bracket' });
 const taskCompleteDeco = Decoration.mark({ class: 'meo-task-complete' });
-const taskDroppedDeco = Decoration.mark({ class: 'meo-task-dropped' });
 const listItemRegex = /^(\s*)(?:[-+*]|\d+[.)])(?:\s+|$)/;
-const listMarkerRegex = /^(\s*)(?:([-+*])|(\d+)([.)]))(?:\s+(?:\[([ xX~\-])\]\s+)?|$)/;
+const listMarkerRegex = new RegExp(String.raw`^(\s*)(?:([-+*])|(\d+)([.)]))(?:\s+(?:${markdownTaskMarkerPattern}\s+)?|$)`);
 const TWO_SPACE_INDENT = '  ';
 const FOUR_SPACE_INDENT = '    ';
 const TAB_INDENT = '\t';
@@ -99,18 +99,6 @@ const listIndentStyle = {
 };
 
 const defaultListIndentStyle = listIndentStyle.twoSpaces;
-const taskStatusByMarker: Record<string, TaskStatus> = {
-  x: 'done',
-  '~': 'inprogress',
-  '-': 'dropped',
-  ' ': 'todo'
-};
-const taskStatusClassByStatus: Record<TaskStatus, string> = {
-  todo: 'is-todo',
-  inprogress: 'is-inprogress',
-  done: 'is-done',
-  dropped: 'is-dropped'
-};
 
 function forEachSelectionLine(state: EditorState, callback: (line: Line) => void): void {
   const seen = new Set<number>();
@@ -375,11 +363,11 @@ function parseListMarkerParts(lineText: string): ParsedListMarkerParts | null {
 }
 
 function taskStatusFromMarker(markerChar: string): TaskStatus {
-  return taskStatusByMarker[markerChar.toLowerCase()] ?? 'todo';
+  return markerChar.toLowerCase() === 'x' ? 'done' : 'todo';
 }
 
 function taskStatusCssClass(status: TaskStatus): string {
-  return taskStatusClassByStatus[status];
+  return `is-${status}`;
 }
 
 function buildListMarkerText(
@@ -638,10 +626,10 @@ export function addListMarkerDecoration(
       }).range(options?.showTaskListMarker ? bracketStart : indentEnd, markerTo)
     );
 
-    if (taskStatus === 'done' || taskStatus === 'dropped') {
+    if (taskStatus === 'done') {
       const textStart = line.from + marker.toOffset;
       if (textStart < line.to) {
-        builder.push((taskStatus === 'done' ? taskCompleteDeco : taskDroppedDeco).range(textStart, line.to));
+        builder.push(taskCompleteDeco.range(textStart, line.to));
       }
     }
   } else if (markerEnd > indentEnd) {

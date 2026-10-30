@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { launchTestBrowser } from './browser-test-helpers';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 
 const root = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-composite-lists-'));
@@ -20,6 +21,89 @@ const source = [
   '> - > 1. same-line quoted ordered'
 ].join('\n');
 
+async function assertTwoStateTasks(page: import('puppeteer-core').Page): Promise<void> {
+  const taskSource = [
+    '- [ ] Pending', '- [x] Completed', '- [X] Uppercase',
+    '- [~] Progress', '- [-] Dropped', '> - [~] Quoted',
+    '1. [-] Ordered', '- parent', '  - [~] Nested', '',
+    '| Tasks |', '| --- |',
+    '| - [ ] Cell pending<br>- [x] Cell done<br>- [X] Cell upper<br>- [~] Cell progress<br>- [-] Cell dropped |',
+    '', 'After'
+  ].join('\n');
+  await page.setViewport({ width: 1000, height: 1000 });
+  for (const large of [false, true]) {
+    const text = taskSource + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
+    assert.equal(assessLargeDocument(text).boundedEditorWork, large);
+    for (const appearance of ['light', 'dark']) {
+      const label = `${appearance}/${large ? 'optimized' : 'ordinary'}`;
+      await page.setContent('<!doctype html><style>html,body,#tasks{height:100%;margin:0}</style><div id="tasks"></div>');
+      await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
+      await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+      const budget = await page.evaluate(({ text, appearance, caret }) => {
+        document.documentElement.dataset.editorAppearance = appearance;
+        const harness = (window as any).ListEditingHarness;
+        harness.applyBuiltInVisualBaseline(appearance);
+        const editor = harness.createEditor({
+          parent: document.getElementById('tasks')!, text, initialMode: 'live',
+          uiLanguage: appearance === 'light' ? 'zh-CN' : 'en', onApplyChanges() {}
+        });
+        (window as any).__taskStateEditor = editor;
+        editor.view.dispatch({ selection: { anchor: caret } });
+        return harness.usesLargeDocumentDerivedWorkBudget(editor.view.state);
+      }, { text, appearance, caret: taskSource.length });
+      assert.equal(budget, large, `${label}: production derived-work budget`);
+      const waitForTasks = () => page.waitForFunction(() => {
+        const host = document.getElementById('tasks')!;
+        return host.querySelectorAll('.meo-task-checkbox:not(:disabled)').length === 3
+          && host.querySelectorAll('.meo-task-checkbox:disabled').length === 3;
+      });
+      await waitForTasks();
+      const rendered = await page.evaluate(() => {
+        const host = document.getElementById('tasks')!;
+        return {
+          text: (window as any).__taskStateEditor.getText(), visible: host.textContent,
+          checked: Array.from(host.querySelectorAll<HTMLInputElement>('.meo-task-checkbox'), box => box.checked),
+          retiredStates: host.querySelectorAll('.is-inprogress, .is-dropped, .meo-task-dropped').length
+        };
+      });
+      assert.equal(rendered.text, text, `${label}: rendering preserves source`);
+      assert.deepEqual(rendered.checked, [false, true, true, false, true, true], label);
+      assert.equal(rendered.retiredStates, 0, label);
+      for (const literal of ['[~] Progress', '[-] Dropped', '[~] Quoted', '[-] Ordered', '[~] Nested', '[~] Cell progress', '[-] Cell dropped']) {
+        assert.ok(rendered.visible?.includes(literal), `${label}: visible literal ${literal}`);
+      }
+      if (process.env.MEO_TEST_SCREENSHOTS) {
+        fs.mkdirSync(process.env.MEO_TEST_SCREENSHOTS, { recursive: true });
+        await page.screenshot({ path: path.join(process.env.MEO_TEST_SCREENSHOTS, `task-states-${appearance}-${large ? 'optimized' : 'ordinary'}.png`) });
+      }
+      await page.click('#tasks .meo-task-checkbox:not(:disabled)');
+      const checkedText = text.replace('- [ ] Pending', '- [x] Pending');
+      await page.waitForFunction(expected => (window as any).__taskStateEditor.getText() === expected, {}, checkedText);
+      assert.equal(await page.evaluate(async () => {
+        const editor = (window as any).__taskStateEditor;
+        await editor.undo();
+        return editor.getText();
+      }), text, `${label}: undo preserves literal markers`);
+      assert.equal(await page.evaluate(async () => {
+        const editor = (window as any).__taskStateEditor;
+        await editor.redo();
+        return editor.getText();
+      }), checkedText, `${label}: redo`);
+      await page.evaluate(() => (window as any).__taskStateEditor.setMode('source'));
+      await page.waitForSelector('#tasks .meo-mode-source');
+      assert.equal(await page.evaluate(() => (window as any).__taskStateEditor.getText()), checkedText, `${label}: Source preserves source`);
+      // History can restore a caret inside the marker, where Live intentionally reveals source.
+      await page.evaluate(caret => (window as any).__taskStateEditor.view.dispatch({ selection: { anchor: caret } }), taskSource.length);
+      await page.evaluate(() => (window as any).__taskStateEditor.setMode('live'));
+      await waitForTasks();
+      await page.click('#tasks .meo-task-checkbox:not(:disabled)');
+      await page.waitForFunction(expected => (window as any).__taskStateEditor.getText() === expected, {}, text);
+      await page.evaluate(() => (window as any).__taskStateEditor.destroy());
+    }
+  }
+  console.log('two-state tasks: ordinary/optimized, light/dark, literal markers, table cells, click, history and mode roundtrip passed');
+}
+
 async function main(): Promise<void> {
   const build = await Bun.build({
     entrypoints: [path.join(root, 'scripts', 'test-list-editing-entry.ts')],
@@ -32,6 +116,10 @@ async function main(): Promise<void> {
 
   const browser = await launchTestBrowser();
   try {
+    if (process.argv.includes('--tasks-only')) {
+      await assertTwoStateTasks(await browser.newPage());
+      return;
+    }
     const page = await browser.newPage();
     await page.setContent('<!doctype html><div id="host"></div><div id="order-host"></div><div id="table-host"></div><div id="nested-table-host"></div><div id="edit-host"></div>');
     await page.addStyleTag({ path: path.join(root, 'webview', 'src', 'styles.css') });
@@ -526,6 +614,7 @@ async function main(): Promise<void> {
     assert.equal(editedQuoteTable.text, editedSource);
     assert.equal(editedQuoteTable.undone, quoteTable.expectedSource);
     assert.equal(editedQuoteTable.redone, editedSource);
+    await assertTwoStateTasks(await browser.newPage());
     console.log('live composite list checks passed');
   } finally {
     await browser.close();

@@ -1,4 +1,5 @@
 import { editorScrollIntoView } from '../editor/scrollEffects';
+import { markdownTaskMarkerPattern } from '../../../src/foundation/markdownTaskList';
 import { tableHeaderFitsStickyViewport } from '../editor/tableStickyHeaderPolicy';
 import { createTableRowWindow, type TableRowWindow } from '../editor/tableRowWindow';
 import { blockInsertion, type MarkdownInputContext } from '../editor/blockInsertion';
@@ -301,6 +302,7 @@ interface TableSearchMatchRange {
   end: number;
 }
 
+const taskContentPrefix = new RegExp(String.raw`^${markdownTaskMarkerPattern}[ \t]+`);
 const sourceTableHeaderLineDeco = Decoration.line({ class: 'meo-md-source-table-header-line' });
 const sourceTableHeaderCellDeco = Decoration.mark({ class: 'meo-md-source-table-header-cell' });
 const tableDelimiterRegex = /^\s*\|?\s*[:]?\-+[:]?\s*(\|\s*[:]?\-+[:]?\s*)*\|?$/;
@@ -1988,10 +1990,9 @@ function appendTableCellRenderedPreview(
   const appendTaskContent = (
     parent: HTMLElement, content: string, from: number, nestedListOnLine: boolean
   ) => {
-    const task = /^\[([ xX~\-])\][ \t]+/.exec(content);
+    const task = taskContentPrefix.exec(content);
     if (task && parent instanceof HTMLLIElement) {
-      const status = task[1].toLowerCase() === 'x' ? 'done'
-        : task[1] === '~' ? 'inprogress' : task[1] === '-' ? 'dropped' : 'todo';
+      const status = task[1].toLowerCase() === 'x' ? 'done' : 'todo';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.disabled = true;

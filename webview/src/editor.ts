@@ -1,4 +1,5 @@
 import { readDocumentTextProjection } from './application/documentTextProjection';
+import { markdownTaskMarkerPattern } from '../../src/foundation/markdownTaskList';
 import { editorScrollIntoView } from './editor/scrollEffects';
 import { markdownSyntaxPublication } from './editor/markdownSyntaxPublication';
 import { editorViewportBounds } from './editor/editorViewportBounds';
@@ -299,9 +300,9 @@ const activeSearchMatchStyle = 'color: var(--meo-semantic-searchMatchActiveForeg
 const searchMatchMark = Decoration.mark({ class: 'meo-search-match', attributes: { style: searchMatchStyle } });
 const activeSearchMatchMark = Decoration.mark({ class: 'meo-search-match meo-search-match-active', attributes: { style: activeSearchMatchStyle } });
 const tableSearchStateEventName = 'meo-search-state-change';
-const existingListMarkerRegex = /^(\s*)([-+*]\s+\[[ xX~\-]\]|[-+*]|\d+[.)])\s+/;
+const existingListMarkerRegex = new RegExp(String.raw`^(\s*)([-+*]\s+${markdownTaskMarkerPattern}|[-+*]|\d+[.)])\s+`);
 const existingHeadingMarkerRegex = /^(\s*)(#{1,6})\s+/;
-const existingTaskMarkerRegex = /^[-+*]\s+\[[ xX~\-]\]/;
+const existingTaskMarkerRegex = new RegExp(String.raw`^[-+*]\s+${markdownTaskMarkerPattern}`);
 const codeBlockAncestorNames = new Set(['FencedCode', 'CodeBlock']);
 
 const setSearchAnchorEffect = StateEffect.define<SearchMatchRange | null>();
