@@ -24,8 +24,6 @@ Each built-in style has an importable folder containing `preset.jsonc` and every
 | [Typora Whitey](examples/whitey/) | Light, dark | `default` + `common.css`, theme CSS |
 | [Obsidian Minimal](examples/obsidian-minimal/) | Light, dark | `default` + `common.css`, theme CSS |
 
-CSS examples retain their selected base renderer. The built-in Typora presets additionally display frontmatter as YAML, following their upstream themes; importing their CSS examples on the `default` base retains Default's property representation.
-
 Copy the entire folder, edit `id`, localized `name`, and CSS, then import it using the quick-start steps. This creates a custom copy without replacing a built-in preset. Default and GitHub theme files provide override entry points; the extension supplies their base CSS. The Default copy uses fixed base colors. The GitHub copy inherits reading styles, while Markdown support follows custom preset rules.
 
 The two floating buttons, options panel, and dropdown lists in Source's side preview follow the preview document colors. Standalone Preview toolbars and menus continue to follow the editor theme. Tooltips use the same style in every location.

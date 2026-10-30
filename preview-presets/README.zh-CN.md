@@ -24,8 +24,6 @@
 | [Typora Whitey](examples/whitey/) | 浅色、深色 | `default` + `common.css`、主题 CSS |
 | [Obsidian Minimal](examples/obsidian-minimal/) | 浅色、深色 | `default` + `common.css`、主题 CSS |
 
-CSS 示例保留所选基础渲染器。内置 Typora 预设还会按上游主题以 YAML 呈现 frontmatter；将它们的 CSS 示例导入到 `default` 基础上时，仍使用默认的属性呈现。
-
 复制所需的整个文件夹，修改 `id`、中英文 `name` 与 CSS，再按“快速开始”导入。导入的是自定义副本，不会替换内置预设。默认与 GitHub 示例的主题文件提供覆写入口，基础 CSS 由扩展继承；默认副本使用固定的基础配色，GitHub 副本继承阅读外观，Markdown 支持范围仍按自定义预设规则处理。
 
 Source 分栏预览中的两个浮动按钮、选项菜单和下拉列表随预览文档配色更新；独立 Preview 的工具栏与菜单继续跟随编辑器主题。气泡提示在所有位置使用统一样式。

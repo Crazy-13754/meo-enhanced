@@ -128,8 +128,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
 
 /** Parse global Markdown context once. HTML generation is a separate, demand-driven step. */
 export function prepareMarkdownPresentation(options: RenderMarkdownOptions): MarkdownPresentation {
-  const preset = options.presetDefinition ?? getPreviewPreset(options.preset);
-  const github = preset.renderer === 'github-readme';
+  const github = (options.presetDefinition ?? getPreviewPreset(options.preset)).renderer === 'github-readme';
   const uiStrings = getReadingUiStrings(options.uiLanguage ?? 'en');
   let hasMermaid = false;
   let hasMath = false;
@@ -153,9 +152,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   );
   const originalSourceLines = String(options.markdownText ?? '').split(/\r?\n/);
   const normalized = { markdown: String(options.markdownText ?? ''), sourceLines: originalSourceLines.map((_, index) => index + 1) };
-  const extractedFrontmatter = extractExportFrontmatter(normalized, uiStrings.properties,
-    preset.id === 'whitey' || preset.id === 'newsprint' ? 'yaml'
-      : preset.id === 'obsidian-minimal' ? 'minimal' : 'properties');
+  const extractedFrontmatter = extractExportFrontmatter(normalized, uiStrings.properties);
   const shouldEnableMathTransform = extractedFrontmatter.body.markdown.includes('$');
 
   const md = new MarkdownIt({

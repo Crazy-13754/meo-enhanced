@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import postcss from 'postcss';
-import { DomUtils, parseDocument } from 'htmlparser2';
-import { createPreviewDocument } from '../src/export/previewDocument';
 import exportRuntime from '../src/export/runtime';
 import { decodePreviewRenderRequest, decodePreviewRenderResponse } from '../src/protocol/previewRender';
 import { decodePreviewPresetState, getPresetInitialAppearance, getPreviewPreset, isPreviewPresetId, previewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
@@ -127,46 +125,6 @@ for (const preset of previewPresets) {
   }
 }
 const readingText = '# Reading\n\n中文正文与 **bold**。\n第二行\n\n==highlight== H~2~O\n\n<!-- reading comment -->\n\n```ts\nconst value = 42;\n```';
-const yamlContent = ['title: "A: <em>& value</em>"', 'tags: [one, "two three"]', 'summary: |',
-  '  Line one', '  Line two', '# YAML comment', 'object:', '  nested: yes', 'empty:'].join('\n');
-const yamlDocument = `---\n${yamlContent}\n---\n\n# Body`;
-for (const id of ['whitey', 'newsprint'] as const) {
-  const options = { markdownText: yamlDocument, sourceDocumentPath: 'C:/tmp/frontmatter.md', uiLanguage: 'en' as const, preset: id };
-  const preview = exportRuntime.renderPreviewDocument(options);
-  const checkYaml = (html: string) => {
-    const document = parseDocument(html);
-    const yaml = DomUtils.findOne(element => element.name === 'pre' && element.attribs.class?.includes('meo-export-frontmatter-yaml'), document.children);
-    assert.ok(yaml, `${id}: upstream presentation is a YAML text block`);
-    assert.equal(DomUtils.textContent(yaml), yamlContent, `${id}: preserve quotes, indentation, arrays, comments and empty values exactly`);
-    assert.equal(DomUtils.findAll(element => element.name === 'em', yaml.children).length, 0, 'YAML content cannot introduce HTML');
-    assert.equal(DomUtils.findAll(element => /meo-export-frontmatter-(?:header|pill)\b/.test(element.attribs.class ?? ''), document.children).length, 0, 'Typora frontmatter has no property labels or tag pills');
-  };
-  checkYaml(preview.html);
-  for (const target of ['html', 'pdf'] as const) {
-    const exported = await exportRuntime.renderExportHtmlDocument({
-      readingSnapshot: { snapshotId: `yaml-${id}`, text: yamlDocument, appearance: 'light', uiLanguage: 'en', environment: {}, preset: id },
-      sourceDocumentPath: options.sourceDocumentPath, outputFilePath: `C:/tmp/frontmatter.${target}`, target,
-      title: 'Frontmatter', baseHref: '', mermaidRuntimeSrc: '', shikiLanguageAssetsRoot: ''
-    });
-    checkYaml(exported.htmlDocument);
-  }
-  const windowed = createPreviewDocument(`yaml-${id}`, { ...options,
-    markdownText: `${yamlDocument}\n\n${'## Section\n\nOrdinary body text.\n\n'.repeat(1_000)}` });
-  try {
-    checkYaml(windowed.open(1).document.chunks[0]!.html);
-    const search = await windowed.run({ kind: 'search', query: 'Line two', caseSensitive: true, wholeWord: false, selectIndex: 0 });
-    assert.equal(search.kind, 'search');
-    if (search.kind === 'search') { assert.equal(search.total, 1); assert.equal(search.active?.line, 6, 'YAML search retains its original source line'); }
-    const copied = await windowed.run({ kind: 'copy', from: { block: 0, offset: 0 }, to: { block: 0, offset: yamlContent.length } });
-    assert.equal(copied.kind, 'copy');
-    if (copied.kind === 'copy') assert.equal(copied.text, yamlContent, 'Windowed copying uses the visible YAML exactly once');
-  } finally { windowed.dispose(); }
-  const invalid = exportRuntime.renderPreviewDocument({ ...options, markdownText: '---\ntitle: [broken\n---\n\n# Body' });
-  assert.ok(invalid.html.includes('meo-export-frontmatter-source') && invalid.html.includes('title: [broken'), 'Malformed YAML remains visible as source');
-}
-const minimalProperties = exportRuntime.renderPreviewDocument({ markdownText: yamlDocument, sourceDocumentPath: 'C:/tmp/frontmatter.md', uiLanguage: 'en', preset: 'obsidian-minimal' });
-assert.ok(minimalProperties.html.includes('meo-export-frontmatter-property-icon') && minimalProperties.html.includes('meo-export-frontmatter-header'));
-assert.ok(!render(yamlDocument, 'default').html.includes('meo-export-frontmatter-property-icon'), 'Default retains its existing property representation');
 const defaultReading = render(readingText, 'default');
 for (const id of ['default', 'github-readme', 'newsprint', 'whitey', 'obsidian-minimal'] as const) {
   for (const editorFontSizePx of [14, 20]) {
