@@ -165,7 +165,12 @@ export function preparePreviewDocument(options: PreviewDocumentOptions, windowed
   };
 }
 
-const sourceFootnoteStyles = `.meo-export-doc section.footnotes.meo-preview-source-footnote{margin:1em 0;padding:.5em 0;border-top:0}`;
+const sourceFootnoteStyles = `
+.meo-export-doc section.footnotes.meo-preview-source-footnote{margin:1em 0;padding:.5em 0;border-top:0}
+.meo-export-doc section.meo-preview-source-footnote:has(+section.meo-preview-source-footnote){margin-bottom:0;padding-bottom:0}
+.meo-export-doc section.meo-preview-source-footnote+section.meo-preview-source-footnote{margin-top:.45em;padding-top:0}
+.meo-export-doc section.meo-preview-source-footnote>.footnotes-list{margin-block:0}
+`;
 
 const windowedPreviewStyles = `
 .meo-export-doc [data-meo-container-part]:not([data-meo-container-part="end"]){margin-bottom:0}

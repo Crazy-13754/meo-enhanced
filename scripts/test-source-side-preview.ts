@@ -6,6 +6,49 @@ import exportRuntime from '../src/export/runtime';
 import { createPreviewDocument } from '../src/export/previewDocument';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
 
+async function assertSourceFootnoteSpacing(page: import('puppeteer-core').Page): Promise<void> {
+  try {
+    await page.setViewport({ width: 700, height: 780 });
+    for (const preset of ['default', 'github-readme'] as const) for (const appearance of ['light', 'dark'] as const)
+      for (const windowed of [false, true]) {
+        const prefix = Array.from({ length: windowed ? 5_000 : 2 }, (_, index) => `Paragraph ${index}.\n\n`).join('');
+        const markdownText = 'References[^a] and[^b] and[^c].\n\n' + prefix
+          + '[^a]: First paragraph.\n\n    Second paragraph.\n\n[^b]: Adjacent short note.\n[^c]: Another adjacent note.\n\nAfter notes.\n';
+        assert.equal(assessLargeDocument(markdownText).windowedPreview, windowed);
+        const options = { markdownText, sourceDocumentPath: '/fixture/spacing.md', uiLanguage: 'en' as const, preset };
+        let reference: { gaps: number[]; paragraphGap: number } | undefined;
+        for (const layout of ['full', 'side'] as const) {
+          const parsed = windowed ? createPreviewDocument(`spacing-${layout}`, { ...options, layout }) : undefined;
+          try {
+            const value = parsed ? parsed.open(markdownText.split('\n').findIndex(line => line.startsWith('[^a]:')) + 1)
+              : exportRuntime.renderPreviewDocument({ ...options, layout });
+            const html = 'document' in value ? value.document.chunks.map(chunk => chunk.html).join('') : value.html;
+            await page.setContent(`<!doctype html><html data-meo-preview-preset="${preset}"><style>${value.styles[appearance]}</style><body><main class="meo-export-doc markdown-body">${html}</main></body></html>`);
+            const geometry = await page.evaluate(() => {
+              const notes = Array.from(document.querySelectorAll<HTMLElement>('.footnote-item'));
+              const paragraph = (note: HTMLElement, last = false) => { const items = note.querySelectorAll('p'); return items[last ? items.length - 1 : 0]!.getBoundingClientRect(); };
+              const a = paragraph(notes[0]!), b = paragraph(notes[0]!, true), c = paragraph(notes[1]!), d = paragraph(notes[2]!);
+              return { gaps: [c.top - b.bottom, d.top - c.bottom], paragraphGap: b.top - a.bottom,
+                fontSize: parseFloat(getComputedStyle(notes[1]!).fontSize) };
+            });
+            if (layout === 'full') reference = geometry;
+            else {
+              assert.ok(reference);
+              assert.ok(geometry.gaps.every((gap: number, index: number) => gap >= -1 && gap <= reference.gaps[index] + 1),
+                `${preset}/${appearance}/${windowed}: adjacent definitions must use note-list spacing, not repeated section padding: ${JSON.stringify({ geometry, reference })}`);
+              assert.ok(geometry.paragraphGap > geometry.fontSize / 2, 'a multi-paragraph definition retains its paragraph break');
+              assert.ok(Math.abs(geometry.paragraphGap - reference.paragraphGap) <= 1, 'same-note paragraph spacing remains unchanged');
+              if (process.env.MEO_TEST_SCREENSHOTS) {
+                await mkdir(process.env.MEO_TEST_SCREENSHOTS, { recursive: true });
+                await page.screenshot({ path: path.join(process.env.MEO_TEST_SCREENSHOTS, `footnote-spacing-${preset}-${appearance}-${windowed}.png`) });
+              }
+            }
+          } finally { parsed?.dispose(); }
+        }
+      }
+  } finally { await page.close(); }
+}
+
 async function assertContinuousSourceScroll(page: import('puppeteer-core').Page): Promise<void> {
   const before = await page.$eval('.cm-content', element => {
     const view = (element as any).cmTile.root.view;
@@ -836,6 +879,8 @@ if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
 let primaryError: unknown;
 try {
+  await assertSourceFootnoteSpacing(await browser.newPage());
+  if (!process.argv.includes('--footnote-spacing-only')) {
   if (!process.argv.includes('--footnotes-only') && !process.argv.includes('--collapsed-only')) {
   const page = await browser.newPage();
   const waitForFunction = page.waitForFunction.bind(page);
@@ -2845,6 +2890,7 @@ try {
   for (const disclosure of ['single', 'nested'] as const) {
     await assertFootnoteLinkedScroll(await browser.newPage(), await build.outputs[0]!.text(), false, disclosure);
     await assertFootnoteLinkedScroll(await browser.newPage(), await build.outputs[0]!.text(), true, disclosure);
+  }
   }
 } catch (error) {
   primaryError = error;
