@@ -28,6 +28,20 @@ Copy the entire folder, edit `id`, localized `name`, and CSS, then import it usi
 
 The two floating buttons, options panel, and dropdown lists in Source's side preview follow the preview document colors. Standalone Preview toolbars and menus continue to follow the editor theme. Tooltips use the same style in every location.
 
+### Frontmatter / Properties
+
+Newsprint, Whitey, and Minimal are style adaptations built on MEO's document structure. The configuration's `source` records the typography and palette reference; frontmatter uses MEO's Properties key/value presentation, with the appearance defined by this project's adaptations.
+
+| Style | Properties appearance |
+| --- | --- |
+| Typora Newsprint | Warm gray fill, square outline, horizontal rules, and serif typography. Light only. |
+| Typora Whitey | A paper-colored property area bounded by fine top and bottom rules, with neutral property colors in both themes. |
+| Obsidian Minimal | A subtly filled rounded card, muted keys, and lightweight tags. |
+
+Whitey and Minimal use the same subtle 1px horizontal rule below the Properties heading and between top-level properties, preserving an open two-column layout. Multiline values and arrays remain within one property group without internal dividers; wrapping in narrow panels does not add rules. Colors follow each preset's own light/dark palette, and Preview shares these styles with HTML/PDF exports.
+
+Open the [frontmatter display example](examples/frontmatter.md) and switch between these three presets in Preview to compare them. The importable CSS examples track the built-in styles. To update an older imported copy, import it again with the same ID and confirm the update.
+
 ## Manage presets
 
 - Built-in presets are always enabled and cannot be removed.
@@ -158,6 +172,8 @@ Put layout in the common file and colors in the theme files:
 
 `--meo-bg` sets the background of the preview canvas, document, and exported page. `--meo-fg` sets document text, and `--meo-code-bg` sets code block backgrounds for the Default base. Other available variables include `--meo-heading`, `--meo-link`, `--meo-muted`, and `--meo-border`. For the GitHub base, override local styles such as code backgrounds directly with `.meo-export-doc pre` or `.meo-export-doc th`. Its upstream variables are defined on `.markdown-body`, so root variables may not override them.
 
+The Properties area supports `--meo-frontmatter-bg`, `--meo-frontmatter-border`, `--meo-frontmatter-key-bg`, `--meo-frontmatter-key`, `--meo-frontmatter-value`, and `--meo-frontmatter-pill-bg` for its background, border, key-column background, keys, values, and tag fill. Whitey and Minimal mix the property border and background at 70%/30% for their subtle rules, keeping them in the outline's color family.
+
 | Content | Recommended selectors |
 | --- | --- |
 | Document, paragraphs, headings | `.meo-export-doc`, `.meo-export-doc p`, `.meo-export-doc h1` through `h6` |
@@ -165,6 +181,8 @@ Put layout in the common file and colors in the theme files:
 | Inline code, code blocks | `.meo-export-doc code`, `.meo-export-doc pre` |
 | Code line text | `.meo-export-doc .meo-export-code-line-source` |
 | Tables, images | `.meo-export-doc table` / `th` / `td` / `img` |
+| Properties container, heading, top-level rows | `.meo-export-doc .meo-export-frontmatter`, `.meo-export-doc .meo-export-frontmatter-header`, `.meo-export-doc .meo-export-frontmatter-line` |
+| Property keys, value groups, tags | `.meo-export-doc .meo-export-frontmatter-key-cell`, `.meo-export-doc .meo-export-frontmatter-value-group`, `.meo-export-doc .meo-export-frontmatter-pill` |
 | Exported table of contents | `.meo-export-doc .meo-export-toc` / `.meo-export-toc-title` / `.meo-export-toc-link` |
 | Formula and diagram containers | `.meo-export-doc .meo-export-math-display`, `.meo-export-doc .meo-export-mermaid` |
 

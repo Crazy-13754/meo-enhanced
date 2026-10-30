@@ -28,6 +28,20 @@
 
 Source 分栏预览中的两个浮动按钮、选项菜单和下拉列表随预览文档配色更新；独立 Preview 的工具栏与菜单继续跟随编辑器主题。气泡提示在所有位置使用统一样式。
 
+### Frontmatter / Properties
+
+Newsprint、Whitey 和 Minimal 是基于 MEO 文档结构制作的风格适配。配置中的 `source` 记录排版与配色的参考来源；frontmatter 统一使用 MEO 的 Properties 键值展示，属性区的外观属于本项目的适配约定。
+
+| 风格 | Properties 外观 |
+| --- | --- |
+| Typora Newsprint | 暖灰底、直角外框和横向分隔线，沿用衬线字体；仅提供浅色。 |
+| Typora Whitey | 背景融入纸面，以顶部和底部细线界定属性区；浅深色都使用中性属性配色。 |
+| Obsidian Minimal | 淡底圆角卡片、弱化的键名文字和轻量标签。 |
+
+Whitey 和 Minimal 在 Properties 标题下方及各顶层属性之间使用相同的 1px 淡横线，保留开放的两列布局。多行值和数组属于同一属性组，内部保持连续；窄面板中的换行也不会增加分隔线。配色分别跟随预设自身的浅／深色方案，Preview 与 HTML/PDF 导出使用相同样式。
+
+可打开 [frontmatter 展示示例](examples/frontmatter.md)，在 Preview 中切换这三套预设进行对照。对应示例 CSS 与内置样式同步；已导入的旧副本需要使用相同 ID 重新导入，确认更新后才会采用新样式。
+
 ## 管理预设
 
 - 内置预设始终启用，不能移除。
@@ -158,6 +172,8 @@ Source 分栏预览中的两个浮动按钮、选项菜单和下拉列表随预�
 
 `--meo-bg` 同时决定预览画布、正文及导出页面底色。`--meo-fg` 决定正文文字，`--meo-code-bg` 用于默认基础的代码块。还可使用 `--meo-heading`、`--meo-link`、`--meo-muted`、`--meo-border`。GitHub 基础的代码背景等局部样式可通过 `.meo-export-doc pre`、`.meo-export-doc th` 等直接覆盖；其上游变量定义在 `.markdown-body` 中，根变量不一定能覆盖这些局部变量。
 
+Properties 属性区可使用 `--meo-frontmatter-bg`、`--meo-frontmatter-border`、`--meo-frontmatter-key-bg`、`--meo-frontmatter-key`、`--meo-frontmatter-value` 和 `--meo-frontmatter-pill-bg` 分别设置背景、边线、键名列背景、键名、值和标签底色。Whitey 与 Minimal 的淡横线由属性边线和属性背景按 70%／30% 混合，保留与外框一致的色系。
+
 | 内容 | 推荐选择器 |
 | --- | --- |
 | 正文、段落、标题 | `.meo-export-doc`、`.meo-export-doc p`、`.meo-export-doc h1` 至 `h6` |
@@ -165,6 +181,8 @@ Source 分栏预览中的两个浮动按钮、选项菜单和下拉列表随预�
 | 行内代码、代码块 | `.meo-export-doc code`、`.meo-export-doc pre` |
 | 代码行文字 | `.meo-export-doc .meo-export-code-line-source` |
 | 表格、图片 | `.meo-export-doc table` / `th` / `td` / `img` |
+| Properties 容器、标题、顶层属性行 | `.meo-export-doc .meo-export-frontmatter`、`.meo-export-doc .meo-export-frontmatter-header`、`.meo-export-doc .meo-export-frontmatter-line` |
+| 属性键名列、值分组、标签 | `.meo-export-doc .meo-export-frontmatter-key-cell`、`.meo-export-doc .meo-export-frontmatter-value-group`、`.meo-export-doc .meo-export-frontmatter-pill` |
 | 导出正文目录 | `.meo-export-doc .meo-export-toc` / `.meo-export-toc-title` / `.meo-export-toc-link` |
 | 公式、图表容器 | `.meo-export-doc .meo-export-math-display`、`.meo-export-doc .meo-export-mermaid` |
 
