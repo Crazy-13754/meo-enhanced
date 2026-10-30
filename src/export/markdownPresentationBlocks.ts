@@ -30,8 +30,12 @@ export function markdownPresentationBlocks(tokens: readonly MarkdownNode[], sour
         sourceEndLine = Math.max(sourceEndLine, sourceLines[Math.max(node.map[0], node.map[1] - 1)] ?? node.map[1]);
       }
       sourceCharacters += node.content.length;
+      if (node.meta?.meoSourceFootnote) {
+        sourceEndLine = Math.max(sourceEndLine, node.meta.meoSourceFootnote.sourceEndLine);
+        sourceCharacters += node.meta.meoSourceFootnote.sourceCharacters;
+      }
     }
-    blocks.push({ index: blocks.length, from, to, kind: tokens[from]?.type ?? 'empty',
+    blocks.push({ index: blocks.length, from, to, kind: tokens[from]?.meta?.meoSourceFootnote ? 'source-footnote' : tokens[from]?.type ?? 'empty',
       sourceLine: Number.isFinite(sourceLine) ? sourceLine : 1,
       sourceEndLine: Math.max(Number.isFinite(sourceLine) ? sourceLine : 1, sourceEndLine), sourceCharacters });
     from = to;

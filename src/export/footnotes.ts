@@ -2,7 +2,10 @@ import path from 'node:path';
 import type { SourceMappedMarkdown } from './sourceMappedMarkdown';
 import { collectMarkdownCodeLines, inspectMarkdownCodeLines, type MarkdownCodeLineInspection } from './markdownCodeLines';
 
+export const sourceFootnoteMarker = '<!--meo-source-footnote-->';
+
 export type PrepareMarkdownWithFootnotesOptions = {
+  sourcePositions?: boolean;
   target: 'html' | 'pdf' | 'docx';
   outputFilePath?: string;
   renderMarkdown: (markdownText: string) => string;
@@ -26,6 +29,7 @@ export type PreparedMarkdownWithFootnotes = {
   bodyCodeLines?: ReadonlySet<number>;
   footnotesHtml: string;
   footnotes: readonly Readonly<{ sourceLine: number; sourceEndLine: number; sourceCharacters: number; render(): string }>[];
+  sourceFootnotes?: ReadonlyMap<number, Readonly<{ sourceEndLine: number; sourceCharacters: number; render(): string }>>;
 };
 
 type ExportFootnoteDefinition = {
@@ -44,7 +48,7 @@ export function prepareMarkdownWithFootnotes(
   options: PrepareMarkdownWithFootnotesOptions
 ): PreparedMarkdownWithFootnotes {
   if (!source.markdown.includes('[^')) return { body: source, footnotes: [], footnotesHtml: '' };
-  const extracted = extractExportFootnotes(source);
+  const extracted = extractExportFootnotes(source, options.sourcePositions === true);
   const numberByLabel = new Map<string, number>();
   const referenceCountsByLabel = new Map<string, number>();
   const hrefPrefix = getInternalDocumentHrefPrefix(options);
@@ -119,6 +123,17 @@ export function prepareMarkdownWithFootnotes(
       sourceCharacters: footnote.contentMarkdown.length,
       render: () => renderFootnoteItemHtml(footnote, hrefPrefix, options, (render ??= prepare())().trim()) };
   });
+  let sourceFootnotes: PreparedMarkdownWithFootnotes['sourceFootnotes'];
+  if (options.sourcePositions) {
+    const preparedByLine = new Map(prepared.map((note, index) => [note.sourceLine, { note, number: footnotes[index]!.number! }]));
+    sourceFootnotes = new Map(extracted.definitions.map(definition => {
+      const prepared = preparedByLine.get(definition.sourceLine);
+      return [definition.sourceLine, { sourceEndLine: definition.sourceEndLine, sourceCharacters: definition.contentMarkdown.length,
+        render: () => prepared
+          ? `<section class="footnotes meo-preview-source-footnote" data-source-line="${definition.sourceLine}" data-source-end-line="${definition.sourceEndLine}">`
+            + `<ol class="footnotes-list" start="${prepared.number}">${prepared.note.render()}</ol></section>` : '' }] as const;
+    }));
+  }
 
   return {
     body: {
@@ -127,6 +142,7 @@ export function prepareMarkdownWithFootnotes(
     },
     bodyCodeLines: body.codeLines,
     footnotes: prepared,
+    sourceFootnotes,
     get footnotesHtml() { return renderFootnotesHtml(prepared, options); }
   };
 }
@@ -140,7 +156,7 @@ function getInternalDocumentHrefPrefix(options: PrepareMarkdownWithFootnotesOpti
   return fileName ? encodeURIComponent(fileName) : '';
 }
 
-function extractExportFootnotes(source: SourceMappedMarkdown): {
+function extractExportFootnotes(source: SourceMappedMarkdown, sourcePositions: boolean): {
   bodyLines: string[];
   bodySourceLines: number[];
   definitions: ExportFootnoteDefinition[];
@@ -151,6 +167,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown): {
   const consumedLineNumbers = new Set<number>();
   const definitions: ExportFootnoteDefinition[] = [];
   const definitionByLabel = new Map<string, ExportFootnoteDefinition>();
+  const definitionStarts = new Set<number>();
   const inspection = inspectMarkdownCodeLines(source.markdown);
   const codeLines = inspection.codeLines;
 
@@ -172,6 +189,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown): {
 
     consumedLineNumbers.add(index);
     const definitionStartIndex = index;
+    definitionStarts.add(index);
     const contentLines = [line.slice(markerMatch[0].length)];
     let continuationBaseline: 2 | 4 | null = null;
 
@@ -211,12 +229,24 @@ function extractExportFootnotes(source: SourceMappedMarkdown): {
     definitionByLabel.set(normalizedLabel, definition);
   }
 
+  const bodyLines: string[] = [], bodySourceLines: number[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    if (sourcePositions && definitionStarts.has(index)) {
+      // A block boundary keeps neighboring prose separate after extracting a
+      // definition. Only slots at real definition source lines may render notes.
+      bodyLines.push('', sourceFootnoteMarker, '');
+      bodySourceLines.push(...Array<number>(3).fill(source.sourceLines[index] ?? index + 1));
+    }
+    if (!consumedLineNumbers.has(index)) {
+      bodyLines.push(lines[index]!); bodySourceLines.push(source.sourceLines[index] ?? index + 1);
+    }
+  }
   return {
-    bodyLines: lines.filter((_, index) => !consumedLineNumbers.has(index)),
-    bodySourceLines: source.sourceLines.filter((_, index) => !consumedLineNumbers.has(index)),
+    bodyLines,
+    bodySourceLines,
     definitions,
     definitionByLabel,
-    bodyInspection: inspection.withoutLines(consumedLineNumbers)
+    bodyInspection: sourcePositions && definitionStarts.size ? inspectMarkdownCodeLines(bodyLines.join('\n')) : inspection.withoutLines(consumedLineNumbers)
   };
 }
 

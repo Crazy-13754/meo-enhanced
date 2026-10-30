@@ -24,7 +24,7 @@ try {
       result: {
         ok: true,
         value: exportRuntime.renderPreviewDocument({
-          markdownText: message.text,
+          layout: message.layout, markdownText: message.text,
           sourceDocumentPath: 'C:/tmp/source-position-marker.md',
           uiLanguage: message.uiLanguage,
           styleEnvironment: message.environment

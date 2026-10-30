@@ -2,8 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { HostToWebviewMessage } from '../src/protocol/messages';
-import type { PreviewRenderResponse } from '../src/protocol/previewRender';
+import { decodePreviewRenderRequest, type PreviewRenderResponse } from '../src/protocol/previewRender';
 import { createPreviewWebviewAdapter } from '../webview/src/adapters/previewWebviewAdapter';
+
+{
+  const request = { type: 'requestPreviewRender', requestId: 'layout', text: 'note', uiLanguage: 'en', environment: { previewFontFamily: '' } };
+  for (const layout of ['side', 'full']) assert.equal(decodePreviewRenderRequest({ ...request, layout })?.layout, layout);
+  assert.equal(decodePreviewRenderRequest({ ...request, layout: 'unknown' }), null);
+  assert.equal(decodePreviewRenderRequest(request)?.layout, undefined);
+}
 
 const calls: Array<{ type: string; [key: string]: unknown }> = [];
 let appearance: 'dark' | 'light' = 'dark';

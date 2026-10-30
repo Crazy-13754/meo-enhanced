@@ -1324,6 +1324,8 @@ export function createPreviewController({
     active: false
   };
   let latestPayload: PreviewRenderValue | null = null;
+  let latestAcceptedLayout: 'side' | 'full' = 'full';
+  let pendingLayout: 'side' | 'full' = 'full';
   const previewRenderTransport = createPreviewRenderTransport((message) => vscode.postMessage(message));
   const previewDocumentTransport = createPreviewDocumentTransport(message => vscode.postMessage(message));
   let previewViewport: ReturnType<typeof createPreviewViewport> | null = null;
@@ -1993,6 +1995,7 @@ export function createPreviewController({
     cancelFrameWrite = null;
     appearanceRetention?.release();
     const payload = latestPayload;
+    const layout = latestAcceptedLayout;
     cancelHighlightFrame();
     commitPendingCodeHighlight = null;
     const reusableDocument = activeFrameDocument === frame.contentDocument ? activeFrameDocument : null;
@@ -2050,6 +2053,7 @@ export function createPreviewController({
       frameEvents = new AbortController();
       const signal = frameEvents.signal;
       frameRenderedText = renderedText;
+      frameDocument.documentElement.dataset.meoPreviewLayout = layout;
       frameDocument.documentElement.dataset.meoPreviewLargeDocument = String(assessLargeDocument(renderedText).windowedPreview);
       // A logical window already bounds mounted DOM. CSS skipping inside that
       // window would measure 90/120px placeholders during an input handoff,
@@ -2585,11 +2589,13 @@ export function createPreviewController({
 
   const performRequestRender = (
     text: string,
-    { force = false, preserveViewport = false, preserveFrame = false }: {
+    { force = false, preserveViewport = false, preserveFrame = false, layout = sourcePreviewControls ? 'side' : 'full', prepareOnly = false }: {
       background?: boolean;
       force?: boolean;
       preserveViewport?: boolean;
       preserveFrame?: boolean;
+      layout?: 'side' | 'full';
+      prepareOnly?: boolean;
     } = {}
   ): Promise<void> => {
     if (disposed) return Promise.resolve();
@@ -2598,8 +2604,15 @@ export function createPreviewController({
     // authorize reuse, both while srcdoc loads and after it becomes readable.
     const canReuseAcceptedPayload = !force && latestPayload !== null
       && latestAcceptedRequestGeneration === requestGeneration
+      && latestAcceptedLayout === layout
       && text === latestAcceptedText
       && !(latestPayload.document && document.body.classList.contains('vscode-using-screen-reader'));
+    if (canReuseAcceptedPayload && prepareOnly) return Promise.resolve();
+    if (canReuseAcceptedPayload && frameRenderedText === text
+      && frame.contentDocument?.documentElement.dataset.meoPreviewLayout !== layout) {
+      renderFrame(text, true);
+      return Promise.resolve();
+    }
     if (canReuseAcceptedPayload && text === loadingFrameText) return Promise.resolve();
     if (canReuseAcceptedPayload
       && text === frameRenderedText
@@ -2609,7 +2622,7 @@ export function createPreviewController({
       schedulePaintReady();
       return Promise.resolve();
     }
-    if (!force && hasPendingRequest && text === pendingText) {
+    if (!force && hasPendingRequest && text === pendingText && pendingLayout === layout) {
       setStatus(null);
       return Promise.resolve();
     }
@@ -2624,6 +2637,7 @@ export function createPreviewController({
         : null;
     }
     hasPendingRequest = true;
+    pendingLayout = layout;
     pendingText = text;
     updateViewportAlignment();
     setStatus(null);
@@ -2634,6 +2648,7 @@ export function createPreviewController({
       preset: presetPreference,
       ...(getPreviewPreset(presetPreference).custom ? { presetRevision: getPreviewPreset(presetPreference).custom!.revision } : {}),
       contentWidth: contentWidthPreference,
+      layout,
       ...(!document.body.classList.contains('vscode-using-screen-reader') && assessLargeDocument(text).windowedPreview
         ? { window: { anchorLine: getCurrentPendingExternalViewportRestore()?.line
           ?? getTopVisiblePosition()?.topLine ?? sourcePositionMarkerState.line } } : {})
@@ -2680,8 +2695,10 @@ export function createPreviewController({
       presetRenderErrors.delete(presetPreference);
       updatePresetInfo();
       latestPayload = value;
+      latestAcceptedLayout = layout;
       latestAcceptedText = requestText;
       setStatus(null);
+      if (prepareOnly) return;
       // An appearance-only refresh must not strand source still waiting on tokens.
       if (
         preserveFrame && activeFrameDocument && frameRenderedText === requestText
@@ -2964,7 +2981,7 @@ export function createPreviewController({
     if (entries !== readingSourceMapInput) {
       readingSourceMapInput = entries;
       const footnotes = new Set(entries.filter(entry =>
-        entry.element.closest('section.footnotes, [data-meo-preview-footnotes]')));
+        entry.element.closest('section.footnotes:not(.meo-preview-source-footnote), [data-meo-preview-footnotes]')));
       let bodyLastLine = 0;
       for (const entry of entries) if (!footnotes.has(entry)) bodyLastLine = Math.max(bodyLastLine, entry.end);
       readingSourceMap = entries.filter(entry => !footnotes.has(entry) || entry.start >= bodyLastLine);
@@ -3307,12 +3324,6 @@ export function createPreviewController({
     getReadingSourceMap();
     return !source?.exact || readingSourceElements.has(source.exact.element);
   };
-  const sourceFootnoteAtLine = (line: number): HTMLElement | null => {
-    const source = findSourceProjection(line);
-    const item = (source?.exact ?? source?.before)?.element.closest<HTMLElement>('.footnote-item') ?? null;
-    const range = item && getSourceRange(item);
-    return range && line >= range.start && line <= range.end ? item : null;
-  };
   const getTopVisiblePosition = (viewportOffset = 0, linked = false): {
     topLine: number;
     topLineOffset: number;
@@ -3493,7 +3504,7 @@ export function createPreviewController({
   // Relocated footnotes keep their source positions for navigation, but cannot
   // describe which body chapters are visible in the reading viewport.
   const getOutlineSourceMap = () => getVisualSourceMap().filter(entry =>
-    !entry.element.closest('section.footnotes, [data-meo-preview-footnotes]'));
+    !entry.element.closest('section.footnotes:not(.meo-preview-source-footnote), [data-meo-preview-footnotes]'));
   const getVisibleDocumentRange = () => {
     const viewportHeight = frame.contentWindow?.innerHeight ?? host.clientHeight;
     const viewportTop = getFrameDocument()?.scrollingElement?.scrollTop ?? 0;
@@ -3593,6 +3604,9 @@ export function createPreviewController({
       widthSelectControl.close();
     },
     requestRender,
+    // Prepare a destination while the current full Preview still covers the
+    // editor. The existing atomic mode reveal commits it at the final width.
+    prepareLayout: (text: string, layout: 'side' | 'full') => performRequestRender(normalizeDocumentText(text), { layout, prepareOnly: true }),
     preload: (text: string) => requestRender(text, { background: true }),
     acceptRenderResponse,
     acceptDocumentResponse: (message: PreviewDocumentResponse) => disposed ? false : previewDocumentTransport.accept(message),
@@ -3640,6 +3654,16 @@ export function createPreviewController({
     },
     refreshTheme,
     setSourcePreviewControls: (active: boolean, scrollSyncEnabled = true) => {
+      if (sourcePreviewControls !== active) {
+        // Layout changes footnote order even when the Draft is unchanged.
+        // Retire old payloads and requests before the lifecycle activates it.
+        if (latestAcceptedLayout !== (active ? 'side' : 'full')
+          || latestAcceptedRequestGeneration !== requestGeneration) {
+          requestGeneration += 1;
+          hasPendingRequest = false;
+        }
+        cancelPaintReady();
+      }
       sourcePreviewControls = active;
       synchronizedScrolling = scrollSyncEnabled;
       updateViewportAlignment();
@@ -3716,7 +3740,8 @@ export function createPreviewController({
     restoreTopVisiblePosition,
     restoreLinkedPosition: (position: PreviewViewportPosition, isCurrent: () => boolean) =>
       restoreTopVisiblePosition(position, isCurrent, true),
-    isCurrentDocument: () => frameRenderedText !== null && isCurrentText?.(frameRenderedText) !== false,
+    isCurrentDocument: () => frameRenderedText !== null && isCurrentText?.(frameRenderedText) !== false
+      && getFrameDocument()?.documentElement.dataset.meoPreviewLayout === (sourcePreviewControls ? 'side' : 'full'),
     revealSourcePosition: (line: number, isCurrent: () => boolean) => {
       if (isCurrent()) previewScrollRange?.interrupt();
       const current = previewViewport, generation = frameGeneration;
@@ -3733,12 +3758,6 @@ export function createPreviewController({
       } else reveal();
     },
     isSourceLineRendered: (line: number) => !previewViewport || previewViewport.containsLine(line),
-    isLinkedSourceLine,
-    isSameSourceFootnote: (fromLine: number, line: number) => {
-      if (previewViewport) return previewViewport.isSameFootnote(fromLine, line);
-      const item = sourceFootnoteAtLine(fromLine);
-      return item !== null && item === sourceFootnoteAtLine(line);
-    },
     captureLinkedGeometry: () => {
       // Unmounted block heights are estimates. They cannot define a global
       // pixel-to-pixel map; the controller must use versioned source anchors.

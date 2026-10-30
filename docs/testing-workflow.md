@@ -937,28 +937,20 @@ navigation. `test-viewport-controller.ts` separately changes estimated Source
 prefix and line heights while retaining the same fractional reading point; both
 scroll owners must use current local geometry without remeasuring the full map.
 The `--footnotes-only` slice of `test-source-side-preview.ts` pairs ordinary and
-actually windowed documents. Native forward/reverse wheels across relocated
-definitions must never visit the footer; exact Source clicks and subsequent edits
-retain their note, and a new Source wheel resumes body reading without changing
-the caret. It also checks Preview-driven footer reading, repeated-reference links
-and backlinks, independent scrolling with sync off, and a cold footnote response
-released after a newer Source gesture. `MEO_TEST_SCREENSHOTS` optionally captures
-the editing and resumed-reading surfaces. The slice remains part of the full
-owning suite; `test-preview-rendering.ts` separately retains exact definition and
-continuation lookups while distinguishing naturally authored tail definitions.
-The same slice exercises native forward/reverse keyboard exits without a Source
-scroll, Shift selection across the boundary, retained same-note/separator reading,
-and programmatic selection/select-all negative controls. Undo/redo keeps the note
-comparison until a new navigation or wheel. Its windowed case holds a cold body
-request while later keys cross a separator; only the latest target may reveal.
-Controller contracts separately cover direct note-to-note navigation, stale
-revision coalescing, asynchronous completion, and cancellation by newer gestures
-or disabling sync. The pending reveal remains owned until its actual completion.
-The browser contract prints frame-interval diagnostics for this bounded scenario;
-these are not native VS Code latency guarantees.
+actually windowed documents. Native forward/reverse wheels traverse definitions
+in source order; clicks, definition edits and undo/redo retain their content.
+References and backlinks keep their target, and sync-off panes remain independent.
+Source/Live-to-full-Preview round trips map the current definition to its endnote
+and back; body reading wins over an old definition caret. A delayed full-layout
+response must yield to a newer side-layout intent. Actual requests identify their
+layout and windowed path. `MEO_TEST_SCREENSHOTS` optionally captures both layouts.
+`test-preview-rendering.ts` independently checks source-order side notes, shared
+numbering/backlinks, complete reference-ordered endnotes and exact windowed
+continuation lookup. Mode switches retain the same semantic reading anchor;
+they do not enable global keyboard following or per-footnote handoff state.
 
 The same suite's `--collapsed-only` slice starts fresh ordinary and windowed
-Source/Preview sessions around closed disclosures followed by relocated notes.
+Source/Preview sessions around closed disclosures followed by source-positioned notes.
 It samples painted paragraph positions through trusted reverse/forward wheels,
 including nested raw HTML disclosures without their own source-line attributes.
 Nonzero suppressed-body rectangles must never become reading coordinates;

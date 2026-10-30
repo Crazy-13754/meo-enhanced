@@ -102,6 +102,7 @@ async function renderExportHtmlDocument(
 }
 
 export type PreviewDocumentOptions = {
+  layout?: 'side' | 'full';
   wikiResources?: ResolvedWikiResources;
   markdownText: string;
   sourceDocumentPath: string;
@@ -125,6 +126,7 @@ export function preparePreviewDocument(options: PreviewDocumentOptions, windowed
     ...resolvePreviewPresetSettings(preset, options.styleEnvironment ?? { previewFontFamily: '' }, definition)
   };
   const prepared = prepareMarkdownPresentation({
+    sourceFootnotes: options.layout === 'side',
     wikiResources: options.wikiResources,
     markdownText: options.markdownText,
     markdownFilePath: options.sourceDocumentPath,
@@ -144,9 +146,9 @@ export function preparePreviewDocument(options: PreviewDocumentOptions, windowed
     ...(definition.custom ? { presetRevision: definition.custom.revision } : {}),
     styles: {
       dark: buildPresetPreviewStyles(preset, environment, 'dark', options.contentWidth, definition)
-        + (windowed ? windowedPreviewStyles : '') + prepared.authorStyles,
+        + (windowed ? windowedPreviewStyles : '') + sourceFootnoteStyles + prepared.authorStyles,
       light: buildPresetPreviewStyles(preset, environment, 'light', options.contentWidth, definition)
-        + (windowed ? windowedPreviewStyles : '') + prepared.authorStyles
+        + (windowed ? windowedPreviewStyles : '') + sourceFootnoteStyles + prepared.authorStyles
     }
   };
   return {
@@ -162,6 +164,8 @@ export function preparePreviewDocument(options: PreviewDocumentOptions, windowed
     }
   };
 }
+
+const sourceFootnoteStyles = `.meo-export-doc section.footnotes.meo-preview-source-footnote{margin:1em 0;padding:.5em 0;border-top:0}`;
 
 const windowedPreviewStyles = `
 .meo-export-doc [data-meo-container-part]:not([data-meo-container-part="end"]){margin-bottom:0}

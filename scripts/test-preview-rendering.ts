@@ -12,6 +12,43 @@ import { prepareMarkdownWithFootnotes } from '../src/export/footnotes';
 import MarkdownIt from 'markdown-it';
 import { readFileSync } from 'node:fs';
 
+for (const preset of ['default', 'github-readme'] as const) {
+  for (const markdownText of [
+    'Text[^n].\n[^n]: **Note** with [link][target].\n\nAfter.\n\n[target]: https://example.com\n',
+    '<details open>\n<summary>Notes</summary>\n\nText[^n].\n\n[^n]: Note in disclosure.\n\nAfter.\n\n</details>\n',
+    'Text[^n].\n\n```md\n[^literal]: Protected code.\n```\n\n[^unused]: Unreferenced note.\n\n[^n]: Referenced note[^other].\n\n[^other]: Nested reference.\n\nAfter.\n'
+  ]) {
+    const options = { markdownText, markdownFilePath: '/fixture/notes.md', target: 'html' as const, preset, sourceFootnotes: true };
+    const complete = renderMarkdownToHtml(options).html;
+    const lazy = prepareMarkdownPresentation({ ...options, windowedPresentation: true });
+    assert.equal(lazy.renderAll().html, complete, `${preset}: source-positioned notes retain lazy rendering semantics`);
+    assert.equal(lazy.blocks.map(block => lazy.renderBlock(block.index).html).join(''), complete,
+      `${preset}: individual source-positioned blocks retain complete content`);
+    assert.ok(!complete.includes('Unreferenced note.'), 'unused definitions retain their existing hidden policy');
+  }
+  const markdownText = 'Reference[^second] and[^first], again[^second].\n\nBefore.\n\n[^first]: First definition.\n    Continuation.\n\nBetween.\n\n[^second]: Second definition.\n\nAfter.\n';
+  const options = { markdownText, sourceDocumentPath: '/fixture/notes.md', uiLanguage: 'en' as const, preset };
+  const side = exportRuntime.renderPreviewDocument({ ...options, layout: 'side' }).html;
+  const full = exportRuntime.renderPreviewDocument(options).html;
+  assert.ok(side.indexOf('First definition.') < side.indexOf('Between.')
+    && side.indexOf('Between.') < side.indexOf('Second definition.') && side.indexOf('Second definition.') < side.indexOf('After.'),
+  `${preset}: side Preview retains definition source order`);
+  assert.ok(full.indexOf('After.') < full.indexOf('Second definition.') && full.indexOf('Second definition.') < full.indexOf('First definition.'),
+    `${preset}: full Preview retains reference-ordered endnotes`);
+  assert.match(side, /id="fn-2"[^>]*data-source-line="5" data-source-end-line="7"/);
+  assert.match(side, /id="fnref-1-2"/);
+  const parsed = createPreviewDocument('source-footnotes', { ...options, layout: 'side' });
+  try {
+    const blocks = parsed.open(1).document.blocks;
+    assert.ok(blocks.every((block, index) => !index || block.sourceLine >= blocks[index - 1]!.sourceLine));
+    for (const line of [5, 6]) {
+      const index = previewBlockAtLine(blocks, line)!;
+      assert.equal(blocks[index]!.kind, 'source-footnote');
+      assert.equal(previewBlockAtLine(blocks, line, true), index, 'side definitions belong to continuous reading');
+    }
+  } finally { parsed.dispose(); }
+}
+
 {
   const text = 'Reference[^middle] and[^end].\n\nBefore.\n\n[^middle]: Moved note.\n    Continued note.\n\nAfter.\n\n[^end]: Natural tail note.\n';
   const parsed = createPreviewDocument('footnote-reading-flow', { markdownText: text, sourceDocumentPath: '/fixture/notes.md', uiLanguage: 'en' });

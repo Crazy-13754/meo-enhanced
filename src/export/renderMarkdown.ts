@@ -9,7 +9,7 @@ import { Parser, parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
 import { isLocalImageSrc, rewriteExportImageSrc, rewriteExportLinkHref } from './assetPaths';
 import { extractExportFrontmatter } from './frontmatter';
-import { prepareMarkdownWithFootnotes } from './footnotes';
+import { prepareMarkdownWithFootnotes, sourceFootnoteMarker } from './footnotes';
 import type { SourceMappedMarkdown } from './sourceMappedMarkdown';
 import { installMathTransform } from './mathTransform';
 import { collectMarkdownCodeLines } from './markdownCodeLines';
@@ -72,6 +72,8 @@ const viewportCodeLanguages = new Set([...languageNames, ...languageAliasNames])
 export type RenderMarkdownTarget = 'html' | 'pdf' | 'docx';
 
 export type RenderMarkdownOptions = {
+  /** Side Preview keeps definitions in the source reading flow. */
+  sourceFootnotes?: boolean;
   wikiResources?: ResolvedWikiResources;
   markdownText: string;
   markdownFilePath: string;
@@ -293,6 +295,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   md.renderer.rules.fence = renderCodeBlock;
   md.renderer.rules.code_block = renderCodeBlock;
   const preparedMarkdown = prepareMarkdownWithFootnotes(extractedFrontmatter.body, {
+    sourcePositions: options.sourceFootnotes,
     githubStyle: github,
     deferDefinitionPreparation: options.windowedPresentation === true,
     onFenceInfo: info => { hasMermaid ||= (github ? info.trim().split(/\s+/)[0] : normalizeFenceLanguage(info)) === 'mermaid'; },
@@ -322,6 +325,16 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   const deferredInline = options.windowedPresentation
     ? prepareDeferredMarkdownInline(md, normalizedBody.markdown, environment, documentAnchors, generatedFootnoteTags) : undefined;
   const bodyTokens = deferredInline?.tokens ?? md.parse(normalizedBody.markdown, environment);
+  if (preparedMarkdown.sourceFootnotes) {
+    for (const node of bodyTokens) {
+      if (node.type !== 'html_block' || node.content.trim() !== sourceFootnoteMarker || !node.map) continue;
+      const slot = preparedMarkdown.sourceFootnotes.get(bodySourceLines[node.map[0]]!);
+      if (slot) node.meta = { ...node.meta, meoSourceFootnote: slot };
+    }
+    const renderHtml = md.renderer.rules.html_block!;
+    md.renderer.rules.html_block = (nodes, index, ...args) => nodes[index]!.meta?.meoSourceFootnote?.render()
+      ?? renderHtml(nodes, index, ...args);
+  }
   const authorStyles = github ? '' : bodyTokens.filter(node => node.type === 'html_block')
     .map(node => inspectHtmlStylesheets(node.content).css).filter(Boolean).join('\n');
   hasMermaid ||= bodyTokens.some(node => node.type === 'fence'
@@ -520,7 +533,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     index: block.index + prefixBlocks.length, sourceLine: block.sourceLine, sourceEndLine: block.sourceEndLine,
     kind: block.kind, sourceCharacters: block.sourceCharacters
   }))];
-  const footnotes = preparedMarkdown.footnotes;
+  const footnotes = options.sourceFootnotes ? [] : preparedMarkdown.footnotes;
   const splitFootnotes = options.windowedPresentation === true && footnotes.length > 1;
   if (splitFootnotes) for (const footnote of footnotes) {
     blocks.push({ index: blocks.length, sourceLine: footnote.sourceLine, sourceEndLine: footnote.sourceEndLine,
@@ -556,7 +569,8 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     },
     renderAll: () => {
       deferredInline?.prepareAll();
-      const rendered = sanitize(prefix + md.renderer.render(bodyTokens, md.options, environment) + preparedMarkdown.footnotesHtml);
+      const rendered = sanitize(prefix + md.renderer.render(bodyTokens, md.options, environment)
+        + (options.sourceFootnotes ? '' : preparedMarkdown.footnotesHtml));
       return authorStyles ? { ...rendered, html: `<style>${authorStyles}</style>${rendered.html}` } : rendered;
     }
   };

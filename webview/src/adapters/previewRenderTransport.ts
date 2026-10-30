@@ -2,11 +2,8 @@ import {
   PREVIEW_RENDER_TIMEOUT_MS,
   type PreviewRenderRequest,
   type PreviewRenderResolution,
-  type PreviewRenderResponse,
-  type PreviewStyleEnvironment
+  type PreviewRenderResponse
 } from '../../../src/protocol/previewRender';
-import type { PreviewPresetId, PreviewContentWidth } from '../../../src/foundation/previewPresets';
-import type { UiLanguage } from '../../../src/foundation/uiLanguage';
 
 type PendingRequest = {
   resolve: (result: PreviewRenderResolution) => void;
@@ -20,7 +17,7 @@ export type PreviewRenderTransportOptions = {
 };
 
 export type PreviewRenderTransport = {
-  render(request: { readonly text: string; readonly uiLanguage: UiLanguage; readonly environment: PreviewStyleEnvironment; readonly preset?: PreviewPresetId; readonly presetRevision?: string; readonly contentWidth?: PreviewContentWidth; readonly window?: { readonly anchorLine: number } }): Promise<PreviewRenderResolution>;
+  render(request: Omit<PreviewRenderRequest, 'type' | 'requestId'>): Promise<PreviewRenderResolution>;
   accept(response: PreviewRenderResponse): boolean;
   cancelAll(message?: string): void;
 };

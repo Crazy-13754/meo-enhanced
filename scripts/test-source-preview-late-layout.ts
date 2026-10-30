@@ -43,7 +43,7 @@ const assertLateLayout = async (imageInside: boolean): Promise<void> => {
       result: {
         ok: true,
         value: exportRuntime.renderPreviewDocument({
-          markdownText: message.text,
+          layout: message.layout, markdownText: message.text,
           sourceDocumentPath: 'C:/tmp/source-preview-late-layout.md',
           uiLanguage: message.uiLanguage,
           styleEnvironment: message.environment

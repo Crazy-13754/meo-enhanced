@@ -22,6 +22,7 @@ export type PreviewRenderRequest = {
   readonly preset?: PreviewPresetId;
   readonly presetRevision?: string;
   readonly contentWidth?: PreviewContentWidth;
+  readonly layout?: 'side' | 'full';
   readonly window?: { readonly anchorLine: number };
 };
 
@@ -59,6 +60,7 @@ export function decodePreviewRenderRequest(value: unknown): PreviewRenderRequest
     || (value.preset !== undefined && !isPreviewPresetId(value.preset))
     || (value.presetRevision !== undefined && (typeof value.presetRevision !== 'string' || !/^[a-f0-9]{64}$/.test(value.presetRevision)))
     || (value.contentWidth !== undefined && value.contentWidth !== 'responsive' && value.contentWidth !== 'reference')
+    || (value.layout !== undefined && value.layout !== 'side' && value.layout !== 'full')
     || (value.window !== undefined && (!isRecord(value.window) || !Number.isSafeInteger(value.window.anchorLine)
       || Number(value.window.anchorLine) < 1))) return null;
   const environment = decodeEditorStyleEnvironment(value.environment);
@@ -69,6 +71,7 @@ export function decodePreviewRenderRequest(value: unknown): PreviewRenderRequest
     text: value.text,
     uiLanguage: value.uiLanguage,
     environment,
+    ...(value.layout === undefined ? {} : { layout: value.layout as 'side' | 'full' }),
     ...(value.window === undefined ? {} : { window: value.window as { anchorLine: number } }),
     ...(value.presetRevision === undefined ? {} : { presetRevision: value.presetRevision as string }),
     ...(value.preset === undefined ? {} : { preset: value.preset as PreviewPresetId }),

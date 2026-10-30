@@ -77,10 +77,6 @@ export interface PreviewViewportSurface {
   isCurrentDocument?(): boolean;
   /** Explicit Source navigation reveals its block once, after its reading DOM is ready. */
   revealSourcePosition?(line: number, isCurrent: () => boolean): void | Promise<void>;
-  /** Whether an explicit source target also belongs to continuous reading. */
-  isLinkedSourceLine?(line: number): boolean;
-  /** Definition identity includes its paragraphs and continuation lines. */
-  isSameSourceFootnote?(fromLine: number, line: number): boolean;
   /** A mounted unchanged glyph is more precise than an estimated source range. */
   captureVisualReadingAnchor?(viewportRatio?: number): (() => boolean) | null;
   captureTopVisiblePosition(viewportOffset?: number): {
@@ -437,13 +433,12 @@ export class ViewportController {
   private linkedViewportMapRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   private linkedInteractionUntil = Number.NEGATIVE_INFINITY;
   private linkedPreviewAttentionHeld = false;
-  private linkedPreviewAttentionOutsideFlow = false;
   private linkedSemanticOrigin: {
     sourceTop: number;
     point?: { sourceOffset: number; previewOffset: number };
   } | null = null;
   private linkedProjectionPending = false;
-  private pendingLinkedSourceReveal: { line: number; fromLine?: number; started?: boolean; isCurrent: () => boolean } | null = null;
+  private pendingLinkedSourceReveal: { line: number; started?: boolean; isCurrent: () => boolean } | null = null;
   private previewPresentationDepth = 0;
   private readonly getMode: () => 'live' | 'source';
   private readonly previewSurface: PreviewViewportSurface | null;
@@ -962,7 +957,6 @@ export class ViewportController {
     if (this.destroyed || this.linkedPreviewEnabled === enabled) return;
     this.linkedPreviewEnabled = enabled;
     this.linkedSemanticOrigin = null;
-    this.linkedPreviewAttentionOutsideFlow = false;
     this.linkedProjectionPending = false;
     this.pendingLinkedSourceReveal = null;
     if (!enabled) this.linkedPreviewAttentionHeld = false;
@@ -1001,15 +995,11 @@ export class ViewportController {
     this.linkedProjectionGeneration += 1;
   }
 
-  navigateLinkedSourcePosition(line: number, fromLine: number): void {
-    if (this.linkedPreviewAttentionOutsideFlow || this.pendingLinkedSourceReveal) this.locateLinkedSourcePosition(line, fromLine);
-  }
-
-  locateLinkedSourcePosition(line: number, fromLine?: number): void {
+  locateLinkedSourcePosition(line: number): void {
     if (this.destroyed || !this.linkedPreviewEnabled || !this.previewSurface?.revealSourcePosition) return;
     this.holdLinkedPreviewAttention();
     const projection = this.linkedProjectionGeneration, navigation = this.navigationGeneration;
-    this.pendingLinkedSourceReveal = { line, fromLine, isCurrent: () => !this.destroyed && this.linkedPreviewEnabled
+    this.pendingLinkedSourceReveal = { line, isCurrent: () => !this.destroyed && this.linkedPreviewEnabled
       && projection === this.linkedProjectionGeneration && navigation === this.navigationGeneration };
     this.presentLinkedSourceReveal();
   }
@@ -1021,20 +1011,9 @@ export class ViewportController {
     if (!reveal.isCurrent()) { this.pendingLinkedSourceReveal = null; return; }
     if (reveal.started) return;
     if (this.previewSurface?.isCurrentDocument?.() === false) return;
-    // Same-definition movement and neutral separators retain the current view.
-    // Keep separators pending so later keys can replace an unfinished body reveal.
-    if (reveal.fromLine !== undefined && !this.view.state.doc.line(reveal.line).text.trim()) return;
-    if (reveal.fromLine !== undefined && this.previewSurface?.isSameSourceFootnote?.(reveal.fromLine, reveal.line)
-      && this.previewSurface.isSourceLineRendered?.(reveal.line) !== false) {
-      this.pendingLinkedSourceReveal = null;
-      return;
-    }
-    this.linkedPreviewAttentionOutsideFlow = this.previewSurface?.isLinkedSourceLine?.(reveal.line) === false;
     reveal.started = true;
     const complete = () => { if (this.pendingLinkedSourceReveal === reveal) this.pendingLinkedSourceReveal = null; };
     const completion = this.previewSurface?.revealSourcePosition?.(reveal.line, reveal.isCurrent);
-    // A cold body target still belongs to this navigation. Further keys must
-    // replace it until its window is ready, even after leaving the footnote.
     if (completion && typeof completion.then === 'function') void completion.then(complete, complete);
     else complete();
   }
@@ -1347,27 +1326,17 @@ export class ViewportController {
 
   private releaseLinkedPreviewAttention(resumeReadingFlow = false): void {
     if (resumeReadingFlow) this.pendingLinkedSourceReveal = null;
-    const outsideReadingFlow = resumeReadingFlow && this.linkedPreviewAttentionOutsideFlow;
-    if (!this.linkedPreviewAttentionHeld && !outsideReadingFlow) return;
+    if (!this.linkedPreviewAttentionHeld) return;
     this.linkedPreviewAttentionHeld = false;
     this.linkedProjectionGeneration += 1;
     this.linkedViewportMapDirty = true;
     // Resume from the pair the user was actually reading. Releasing an input
     // hold is not itself a new scroll and must not snap to the pre-edit map.
-    if (outsideReadingFlow) {
-      // A clicked relocated definition can intentionally show the footer while
-      // Source remains in the body. The next gesture resumes the ordinary map;
-      // pinning that exceptional pair would flatten every following body block.
-      this.linkedViewportPosition = null;
-      this.linkedSemanticOrigin = null;
-      this.linkedPreviewAttentionOutsideFlow = false;
-    } else {
-      if (this.previewSurface?.readScrollTop) this.linkedViewportPosition = {
-        source: this.view.scrollDOM.scrollTop, preview: this.previewSurface.readScrollTop()
-      };
-      this.rebaseLinkedSemanticOrigin(this.view.scrollDOM.scrollTop);
-    }
-    this.rebuildLinkedViewportMap(!outsideReadingFlow);
+    if (this.previewSurface?.readScrollTop) this.linkedViewportPosition = {
+      source: this.view.scrollDOM.scrollTop, preview: this.previewSurface.readScrollTop()
+    };
+    this.rebaseLinkedSemanticOrigin(this.view.scrollDOM.scrollTop);
+    this.rebuildLinkedViewportMap(true);
   }
 
   /** Windowed Preview has no exact global pixel map. Retain the current pair
@@ -2812,11 +2781,10 @@ export class ViewportController {
   }
 
   /** Reserves currentness for one navigation intent without disturbing the active viewport owner. */
-  beginNavigationReveal({ preserveLinkedPreviewAttention = false }: { preserveLinkedPreviewAttention?: boolean } = {}): () => boolean {
+  beginNavigationReveal(): () => boolean {
     this.clearNavigationReveals();
     this.releaseLinkedPreviewAttention();
     this.linkedSemanticOrigin = null;
-    if (!preserveLinkedPreviewAttention) this.linkedPreviewAttentionOutsideFlow = false;
     this.nativeInputViewport.release();
     this.modeTransitionChain = null;
     // An explicit newer navigation supersedes an absolute scroll lock left by

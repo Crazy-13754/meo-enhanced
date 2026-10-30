@@ -3120,8 +3120,6 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     previewViewportSurface: {
       isCurrentDocument: () => previewController.isCurrentDocument(),
       revealSourcePosition: (line, isCurrent) => previewController.revealSourcePosition(line, isCurrent),
-      isLinkedSourceLine: line => previewController.isLinkedSourceLine(line),
-      isSameSourceFootnote: (fromLine, line) => previewController.isSameSourceFootnote(fromLine, line),
       restoreLinkedPosition: (position, isCurrent) => previewController.restoreLinkedPosition(position, isCurrent),
       captureVisualReadingAnchor: ratio => previewController.captureVisualReadingAnchor(ratio),
       isInteracting: () => previewController.isViewportInteracting(),
@@ -3245,6 +3243,8 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
           consume: false
         });
         (editor.view as typeof editor.view & { measure(flush?: boolean): void }).measure(false);
+        await previewController.prepareLayout(getCurrentEditorText(), 'side');
+        if (!isCurrent()) return;
       }
       const preparingAtomicSourcePreview = mode === 'source' && pendingSourcePreviewReveal !== null;
       if (preparingAtomicSourcePreview) {

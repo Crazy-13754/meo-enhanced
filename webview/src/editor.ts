@@ -2753,16 +2753,7 @@ export function createEditor({
           suppressSelectionMenuForNativeHtml = false;
           syncSelectionClass();
           emitSelectionChange();
-          // Native cursor/selection commands request a reveal and carry the
-          // plain select event. Pointer, search, history and select-all differ.
-          const navigation = currentMode === 'source' && !update.docChanged && update.view.hasFocus
-            && update.startState.selection.main.head !== update.state.selection.main.head
-            && update.transactions.some(transaction => transaction.selection && transaction.scrollIntoView
-              && transaction.annotation(Transaction.userEvent) === 'select');
           emitSourcePositionChange(update.view.hasFocus);
-          if (navigation) viewportController?.navigateLinkedSourcePosition(
-            update.state.doc.lineAt(update.state.selection.main.head).number,
-            update.startState.doc.lineAt(update.startState.selection.main.head).number);
         } else if (update.docChanged) {
           emitSourcePositionChange(update.view.hasFocus);
         } else if (update.viewportChanged) {
@@ -3061,7 +3052,7 @@ export function createEditor({
       // bounded scrollToLine observation before the native transaction can
       // replace a rendered target and schedule its own history reveal.
       interactionContinuity?.cancel();
-      viewportController.beginNavigationReveal({ preserveLinkedPreviewAttention: true });
+      viewportController.beginNavigationReveal();
       const beforeDocument = view.state.doc;
       try {
         const applied = direction === 'undo' ? undo(view) : redo(view);

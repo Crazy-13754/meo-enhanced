@@ -32,7 +32,7 @@ try {
     return {
       type: 'previewRenderResult', requestId: message.requestId,
       result: { ok: true, value: exportRuntime.renderPreviewDocument({
-        markdownText: message.text, sourceDocumentPath: 'C:/tmp/source-mermaid-updates.md',
+        layout: message.layout, markdownText: message.text, sourceDocumentPath: 'C:/tmp/source-mermaid-updates.md',
         uiLanguage: message.uiLanguage, styleEnvironment: message.environment
       }) }
     };

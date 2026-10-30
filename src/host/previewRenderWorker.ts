@@ -16,6 +16,7 @@ export type BackgroundPreviewOptions = Readonly<{
   preset?: PreviewPresetId;
   presetDefinition?: PreviewPresetDefinition;
   contentWidth?: PreviewContentWidth;
+  layout?: 'side' | 'full';
   wikiResources?: ResolvedWikiResources;
 }>;
 

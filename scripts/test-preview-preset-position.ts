@@ -66,7 +66,7 @@ try {
       nextResponseGate = undefined;
       if (gate) { gate.requested = true; await gate.promise; }
       const options = {
-        markdownText: message.text, sourceDocumentPath: 'C:/tmp/preset-position.md', uiLanguage: message.uiLanguage,
+        layout: message.layout, markdownText: message.text, sourceDocumentPath: 'C:/tmp/preset-position.md', uiLanguage: message.uiLanguage,
         styleEnvironment: message.environment, preset: message.preset,
         presetDefinition: message.preset === custom.id ? library.get(custom.id) : undefined
       };

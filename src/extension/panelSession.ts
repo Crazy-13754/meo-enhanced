@@ -167,6 +167,7 @@ type PanelSessionControllerParams = {
     preset?: import('../foundation/previewPresets').PreviewPresetId;
     presetRevision?: string;
     contentWidth?: import('../foundation/previewPresets').PreviewContentWidth;
+    layout?: 'side' | 'full';
     window?: { documentId: string; anchorLine: number };
   }) => Promise<PreviewRenderResult>;
   operatePreviewDocument?: (documentId: string, operation: PreviewDocumentOperation) => Promise<PreviewDocumentResult>;
@@ -1013,6 +1014,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
             preset: raw.preset,
             presetRevision: raw.presetRevision,
             contentWidth: raw.contentWidth,
+            layout: raw.layout,
             ...(raw.window ? { window: { documentId: raw.requestId, anchorLine: raw.window.anchorLine } } : {})
           });
           response = {
