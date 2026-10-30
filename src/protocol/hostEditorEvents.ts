@@ -6,6 +6,7 @@ export type HostEditorEvent =
   | { readonly type: 'wikiCandidatesChanged' }
   | { readonly type: 'focusEditor' }
   | { readonly type: 'hostWindowFocusChanged'; readonly focused: boolean }
+  | { readonly type: 'documentSaveStateChanged'; readonly isDirty: boolean }
   | { readonly type: 'webviewVisibilityChanged'; readonly visible: boolean }
   | {
       readonly type: 'externalFileStatusChanged';
@@ -33,6 +34,8 @@ function isOffset(value: unknown): value is number {
 export function decodeHostEditorEvent(value: unknown): HostEditorEvent | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null;
   switch (value.type) {
+    case 'documentSaveStateChanged':
+      return typeof value.isDirty === 'boolean' ? { type: value.type, isDirty: value.isDirty } : null;
     case 'wikiResourcesChanged':
       return { type: 'wikiResourcesChanged' };
     case 'localLinkResourcesChanged':

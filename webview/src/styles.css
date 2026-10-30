@@ -2189,6 +2189,32 @@ button:focus-visible > .menu-switch {
   padding: 0;
 }
 
+.format-button[data-action='save'] {
+  position: relative;
+  --meo-save-badge-surface: var(--meo-ui-surface);
+}
+
+.format-button[data-action='save']:hover:not(:disabled) {
+  --meo-save-badge-surface: var(--meo-ui-surface-hover);
+}
+
+.format-button[data-action='save']:active:not(:disabled) {
+  --meo-save-badge-surface: var(--meo-ui-surface-pressed);
+}
+
+.format-button[data-action='save'].has-unsaved-changes::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--meo-ui-danger);
+  box-shadow: 0 0 0 2px var(--meo-save-badge-surface);
+  pointer-events: none;
+}
+
 .format-button,
 .heading-dropdown-option {
   color: var(--meo-ui-text);

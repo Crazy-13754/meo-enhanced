@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { launchTestBrowser } from './browser-test-helpers';
 import runtime from '../src/export/runtime';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 
 const build = await Bun.build({ entrypoints: ['scripts/test-settings-window-production-entry.ts'], target: 'browser', format: 'iife' });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
@@ -15,13 +16,30 @@ try {
     for (const language of ['en', 'zh-CN']) {
       const page = await browser.newPage();
       const errors: string[] = [];
+      let hostVersion = 1;
+      let hostText = original;
+      let diskText = original;
       page.on('pageerror', error => errors.push(String(error)));
       await page.setViewport({ width: 1200, height: 760 });
       await page.setContent(`<!doctype html><style>html,body,#app{height:100%;margin:0}</style><body class="vscode-${theme}"><div id="app"></div></body>`);
       await page.addStyleTag({ path: 'webview/src/styles.css' });
       await page.addStyleTag({ content: `:root{--vscode-font-family:Arial;--vscode-editor-font-family:monospace;--vscode-editor-font-size:14px;--vscode-editor-background:${theme === 'dark' ? '#202124' : '#ffffff'};--vscode-editor-foreground:${theme === 'dark' ? '#dddddd' : '#222222'};--vscode-foreground:${theme === 'dark' ? '#dddddd' : '#222222'};--vscode-editorWidget-background:${theme === 'dark' ? '#28292c' : '#f3f3f3'}}` });
       await page.exposeFunction('__toolbarHost', (message: any) => {
-        if (message.type === 'applyChanges') return { type: 'applied', version: message.baseVersion + 1 };
+        if (message.type === 'applyChanges') {
+          for (const change of [...message.changes].reverse()) {
+            hostText = hostText.slice(0, change.from) + change.insert + hostText.slice(change.to);
+          }
+          hostVersion += 1;
+          return [{ type: 'applied', version: hostVersion },
+            { type: 'documentSaveStateChanged', isDirty: hostText !== diskText }];
+        }
+        if (message.type === 'saveDocumentRevision') {
+          assert.equal(message.revision.text, hostText);
+          diskText = hostText;
+          return [{ type: 'saveDocumentRevisionResult', requestId: message.requestId,
+            result: { ok: true, value: { revision: { version: hostVersion, text: hostText } } } },
+            { type: 'documentSaveStateChanged', isDirty: false }];
+        }
         if (message.type === 'saveDocumentCopy') return { type: 'documentCopyResult', requestId: message.requestId, result: { ok: true, value: { status: 'saved' } } };
         if (message.type !== 'requestPreviewRender') return null;
         return { type: 'previewRenderResult', requestId: message.requestId, result: { ok: true, value: runtime.renderPreviewDocument({
@@ -29,7 +47,7 @@ try {
           styleEnvironment: message.environment, preset: message.preset
         }) } };
       });
-      await page.addScriptTag({ content: `window.__toolbarMessages=[];window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.__toolbarMessages.push(message);window.__toolbarHost(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent('message',{data:response}));});}});` });
+      await page.addScriptTag({ content: `window.__toolbarMessages=[];window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){window.__toolbarMessages.push(message);window.__toolbarHost(message).then(response=>{for(const data of Array.isArray(response)?response:[response])if(data)window.dispatchEvent(new MessageEvent('message',{data}));});}});` });
       await page.addScriptTag({ content: bundle });
       await page.evaluate(({ original, theme, language }) => window.dispatchEvent(new MessageEvent('message', { data: {
         type: 'init', documentId: 'file:///notes/toolbar.md', text: original, version: 1, savedRevision: { version: 1, text: original },
@@ -54,6 +72,47 @@ try {
       assert.equal(await page.$eval('[data-action="redo"]', button => (button as HTMLButtonElement).disabled), true);
       assert.equal(await page.$eval('[data-action="saveAs"]', button => button.getAttribute('aria-label')), language === 'en' ? 'Save as…' : '另存为…');
       assert.equal(await page.$eval('[data-action="saveAs"]', button => (button as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Shift + S');
+      const saveSelector = '[data-action="save"]';
+      const waitUnsaved = (unsaved: boolean) => page.waitForFunction(unsaved =>
+        document.querySelector('[data-action="save"]')?.classList.contains('has-unsaved-changes') === unsaved, {}, unsaved);
+      await waitUnsaved(false);
+      const publishHostDirty = (isDirty: boolean) => page.evaluate(isDirty =>
+        window.dispatchEvent(new MessageEvent('message', { data: { type: 'documentSaveStateChanged', isDirty } })), isDirty);
+      await publishHostDirty(true);
+      await waitUnsaved(true);
+      assert.equal(await read(), original, 'the badge follows Host dirty state, independently of content comparison');
+      await publishHostDirty(false);
+      await waitUnsaved(false);
+      const saveBounds = await page.$eval(saveSelector, button => {
+        const rect = button.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      });
+      await page.screenshot({ path: `${directory}/save-clean-${theme}-${language}.png`, clip: { x: 0, y: 0, width: 380, height: 70 } });
+      await edit('\nUnsaved indicator');
+      await waitUnsaved(true);
+      assert.equal(await page.$eval(saveSelector, button => button.getAttribute('aria-label')),
+        language === 'en' ? 'Save · Unsaved changes' : '保存 · 有未保存的更改');
+      assert.deepEqual(await page.$eval(saveSelector, button => {
+        const rect = button.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }), saveBounds, 'the indicator must not change toolbar geometry');
+      await page.hover(saveSelector);
+      await page.waitForSelector('.meo-tooltip.is-visible');
+      await page.screenshot({ path: `${directory}/save-dirty-${theme}-${language}.png`, clip: { x: 0, y: 0, width: 380, height: 110 } });
+      await page.click(saveSelector);
+      await waitUnsaved(false);
+      await page.waitForFunction(language => document.querySelector('.meo-tooltip.is-visible .meo-tooltip-text')?.textContent ===
+        (language === 'en' ? 'Save' : '保存'), {}, language);
+      assert.equal(diskText, await read());
+      await page.click('[data-action="undo"]');
+      await waitUnsaved(true);
+      await page.click('[data-action="redo"]');
+      await waitUnsaved(false);
+      await page.click('[data-action="undo"]');
+      await waitUnsaved(true);
+      diskText = hostText;
+      await publishHostDirty(false);
+      await waitUnsaved(false);
+      assert.equal(diskText, original, 'Host auto-save clears the badge without a toolbar request');
+      assert.equal(await read(), original);
       await page.focus('.editor-host > .cm-editor .cm-content');
       await page.keyboard.down('Control'); await page.keyboard.down('Shift'); await page.keyboard.press('s');
       await page.keyboard.up('Shift'); await page.keyboard.up('Control');
@@ -71,9 +130,12 @@ try {
         input.focus(); input.value = 'First pending cell'; input.dispatchEvent(new Event('input', { bubbles: true }));
       });
       await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="undo"]')!.disabled);
+      assert.equal(await page.$eval(saveSelector, button => button.classList.contains('has-unsaved-changes')), false,
+        'transient table input does not invent a separate dirty state before reaching VS Code');
       await page.click('[data-action="undo"]');
       await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="redo"]')!.disabled);
       assert.equal(await read(), original, 'pending cells must enable Undo even without earlier document history');
+      await waitUnsaved(false);
       for (const mode of ['source', 'live']) {
         await page.click(`[data-mode="${mode}"]`);
         await page.waitForFunction(mode => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === mode, {}, mode);
@@ -247,6 +309,35 @@ try {
       await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-root')?.dataset.mode === 'preview');
       assert.equal(await page.$eval('[data-action="undo"]', button => (button as HTMLButtonElement).disabled), true);
       assert.equal(await page.$eval('[data-action="redo"]', button => (button as HTMLButtonElement).disabled), true);
+      if (theme === 'dark' && language === 'zh-CN') {
+        const largeText = original + '\n\n' + 'Bounded document paragraph.\n\n'.repeat(12_000);
+        assert.equal(assessLargeDocument(largeText).boundedEditorWork, true);
+        hostText = diskText = largeText;
+        hostVersion += 1;
+        await page.evaluate(({ text, version }) => {
+          for (const data of [{ type: 'docChanged', version, text },
+            { type: 'documentSaveStateChanged', isDirty: false }]) {
+            window.dispatchEvent(new MessageEvent('message', { data }));
+          }
+        }, { text: largeText, version: hostVersion });
+        await page.click('[data-mode="source"]');
+        await page.waitForFunction(() => {
+          const harness = (window as any).EditingSettingsHarness;
+          const view = harness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+          return view && harness.usesLargeDocumentDerivedWorkBudget(view.state)
+            && view.state.doc.length > 300_000;
+        });
+        await waitUnsaved(false);
+        await edit('\nLarge unsaved change');
+        await waitUnsaved(true);
+        await page.click(saveSelector);
+        await waitUnsaved(false);
+        assert.equal(diskText, largeText + '\nLarge unsaved change');
+        await page.click('[data-action="undo"]');
+        await waitUnsaved(true);
+        await page.click('[data-action="redo"]');
+        await waitUnsaved(false);
+      }
       assert.deepEqual(errors, []);
       await page.close();
     }

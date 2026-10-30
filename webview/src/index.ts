@@ -875,9 +875,15 @@ saveBtn.type = 'button';
 saveBtn.className = 'format-button';
 saveBtn.dataset.action = 'save';
 saveBtn.dataset.tooltipCommand = 'save';
+saveBtn.dataset.tooltipLiveUpdate = 'true';
 saveBtn.dataset.tooltip = activeUiStrings.save;
 saveBtn.setAttribute('aria-label', activeUiStrings.saveDocument);
 saveBtn.appendChild(createCodicon('save'));
+const refreshSaveButton = (unsaved = saveBtn.classList.contains('has-unsaved-changes')): void => {
+  saveBtn.classList.toggle('has-unsaved-changes', unsaved);
+  saveBtn.dataset.tooltip = unsaved ? activeUiStrings.saveUnsavedChanges : activeUiStrings.save;
+  saveBtn.setAttribute('aria-label', unsaved ? activeUiStrings.saveUnsavedChanges : activeUiStrings.saveDocument);
+};
 
 const saveAsBtn = document.createElement('button');
 saveAsBtn.type = 'button';
@@ -1261,8 +1267,7 @@ const applyUiLanguage = (language: UiLanguage): void => {
   tableBtn.dataset.tooltip = strings.table;
   lineJumpInput.placeholder = strings.line;
   lineJumpInput.setAttribute('aria-label', strings.goToLine);
-  saveBtn.dataset.tooltip = strings.save;
-  saveBtn.setAttribute('aria-label', strings.saveDocument);
+  refreshSaveButton();
   for (const [button, text] of [[saveAsBtn, strings.saveAs], [undoBtn, strings.undo], [redoBtn, strings.redo]] as const) {
     button.dataset.tooltip = text;
     button.setAttribute('aria-label', text);
@@ -3738,6 +3743,10 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'documentSaveStateChanged') {
+    refreshSaveButton(message.isDirty);
+    return;
+  }
   if (message.type === 'imageIntrinsicSizes') {
     if (message.documentId === imageDimensionDocumentId) acceptImageIntrinsicSizes(message.entries);
     return;

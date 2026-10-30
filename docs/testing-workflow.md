@@ -1028,6 +1028,11 @@ have one owner; closed-panel failures retain native feedback.
 `scripts/test-document-toolbar.ts` exercises the production toolbar order,
 Live/Source undo/redo, pending native table cells, Save As snapshots and retries,
 Preview restrictions, user shortcut hints and light/dark Chinese/English layouts.
+The save badge projects the Host document's dirty flag, including dirty-only
+events, native auto-save and undo/redo back to saved content. It retains toolbar
+geometry and live tooltip updates; transient cell input does not maintain a
+second dirty state. The save/undo/redo check also activates and asserts the
+production large-document work budget.
 Narrow layouts use the existing overflow menu. Host API contracts and browser
 clicks are separate evidence; native dialogs and final installed-VSIX replacement
 still require native acceptance.

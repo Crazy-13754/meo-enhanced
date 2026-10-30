@@ -15,6 +15,13 @@ import { respondToDocumentSessionRequest } from '../src/host/documentSessionRequ
 
 const revision = { version: 4, text: 'accepted' };
 
+const saveState = { type: 'documentSaveStateChanged', isDirty: false };
+assert.deepEqual(decodeHostToWebviewMessage(saveState), saveState);
+for (const invalid of [{ ...saveState, isDirty: 'false' }, { ...saveState, isDirty: 1 },
+  { type: saveState.type }]) {
+  assert.equal(decodeHostToWebviewMessage(invalid), null);
+}
+
 const saveRequest = {
   type: 'saveDocumentRevision' as const,
   requestId: 'document-session-1',

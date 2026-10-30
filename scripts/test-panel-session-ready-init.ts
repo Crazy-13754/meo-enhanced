@@ -14,7 +14,18 @@ const document = createPanelSessionTestDocument(
   createPanelSessionTestUri('C:/preview-startup.md'),
   '# Preview startup\r\n\r\nBody'
 );
-mock.module('vscode', () => createPanelSessionVscodeMock(document));
+let emitSaveStateChange: () => void = () => undefined;
+let emitSave: () => void = () => undefined;
+mock.module('vscode', () => createPanelSessionVscodeMock(document, {
+  onDidChangeTextDocument(listener) {
+    emitSaveStateChange = () => listener({ document, contentChanges: [] } as never);
+    return panelSessionDisposable();
+  },
+  onDidSaveTextDocument(listener) {
+    emitSave = () => listener(document as never);
+    return panelSessionDisposable();
+  }
+}));
 
 const [{ createPanelSessionController }, { createPendingDraftRecovery }] = await Promise.all([
   import('../src/extension/panelSession'),
@@ -86,6 +97,23 @@ releaseDiskRead?.();
 await Promise.all(readyMessages);
 assert.equal(messages.filter((message) => message.type === 'init').length, 1,
   'concurrent ready messages must share one pending init');
+assert.ok(messages.some(message => message.type === 'documentSaveStateChanged'
+  && message.isDirty === document.isDirty));
+document.isDirty = false;
+emitSaveStateChange();
+await Bun.sleep(0);
+assert.deepEqual(messages.filter(message => message.type === 'documentSaveStateChanged').at(-1), {
+  type: 'documentSaveStateChanged', isDirty: false
+}, 'a dirty-only transition (including undo) must publish without text edits');
+document.isDirty = true;
+emitSaveStateChange();
+await Bun.sleep(0);
+assert.equal(messages.filter(message => message.type === 'documentSaveStateChanged').at(-1)?.isDirty, true);
+document.isDirty = false;
+emitSave();
+await Bun.sleep(0);
+assert.equal(messages.filter(message => message.type === 'documentSaveStateChanged').at(-1)?.isDirty, false,
+  'native saves must publish their actual dirty flag');
 await controller.handleMessage({ type: 'ready' });
 const initMessages = messages.filter((message) => message.type === 'init');
 assert.equal(initMessages.length, 2, 'a later ready must retry an init lost during Webview startup');

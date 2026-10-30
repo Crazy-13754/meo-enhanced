@@ -567,6 +567,15 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     return postToWebview(message);
   };
 
+  let publishedIsDirty: boolean | undefined;
+  const publishSaveState = (force = false): void => {
+    if (!initDelivered) return;
+    const isDirty = document.isDirty;
+    if (!force && publishedIsDirty === isDirty) return;
+    publishedIsDirty = isDirty;
+    runBackground(postToWebview({ type: 'documentSaveStateChanged', isDirty }), 'documentSaveStateChanged');
+  };
+
   const sendApplied = async (version: number): Promise<boolean> => {
     const message: AppliedMessage = {
       type: 'applied',
@@ -629,6 +638,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           }
           await viewNavigation.ready({ preserveInitialView: saveAsViewState !== null });
         }
+        publishSaveState(true);
       } finally {
         initDelivery = null;
       }
@@ -1157,6 +1167,8 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
 
+    publishSaveState();
+
     if (!event.document.isDirty) {
       publishExternalFileStatus('current');
     }
@@ -1176,6 +1188,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     if (savedDocument.uri.toString() !== documentKey) {
       return;
     }
+    publishSaveState();
     publishExternalFileStatus('current');
     runBackground(enqueue(async () => {
       await sendDocChanged();
