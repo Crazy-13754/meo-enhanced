@@ -7,8 +7,7 @@
 }
 .meo-export-doc .meo-export-frontmatter { padding: 8px 0; }
 .meo-export-doc .meo-export-frontmatter-header { padding: 4px 14px 8px; font-weight: 500; }
-.meo-export-doc .meo-export-frontmatter-line { border-top: 0; padding: 4px 14px; }
-.meo-export-doc .meo-export-frontmatter-line + .meo-export-frontmatter-line { border-top: 1px solid color-mix(in srgb, var(--meo-frontmatter-border) 70%, var(--meo-frontmatter-bg)); }
+.meo-export-doc .meo-export-frontmatter-line { border-top: 1px solid color-mix(in srgb, var(--meo-frontmatter-border) 70%, var(--meo-frontmatter-bg)); padding: 4px 14px; }
 .meo-export-doc .meo-export-frontmatter-line.is-property { padding: 0 14px 0 0; }
 .meo-export-doc .meo-export-frontmatter-key-cell { padding: 4px 8px 4px 14px; border-right: 0; }
 .meo-export-doc .meo-export-frontmatter-line.is-property > :is(.meo-export-frontmatter-value, .meo-export-frontmatter-value-group) { padding: 4px 0 4px 8px; }

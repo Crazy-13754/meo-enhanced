@@ -92,8 +92,7 @@
 .meo-export-doc .meo-export-frontmatter { margin-bottom: 2em; padding: 10px 0 12px; border-width: 1px 0; border-radius: 0; }
 .meo-export-doc .meo-export-frontmatter-header { padding: 4px 0 8px; color: var(--meo-frontmatter-key); font-weight: 400; }
 .meo-export-doc .meo-export-frontmatter-header-icon { display: none; }
-.meo-export-doc .meo-export-frontmatter-line { border-top: 0; padding: 4px 0; }
-.meo-export-doc .meo-export-frontmatter-line + .meo-export-frontmatter-line { border-top: 1px solid color-mix(in srgb, var(--meo-frontmatter-border) 70%, var(--meo-frontmatter-bg)); }
+.meo-export-doc .meo-export-frontmatter-line { border-top: 1px solid color-mix(in srgb, var(--meo-frontmatter-border) 70%, var(--meo-frontmatter-bg)); padding: 4px 0; }
 .meo-export-doc .meo-export-frontmatter-line.is-property { padding: 0; }
 .meo-export-doc .meo-export-frontmatter-key-cell { padding: 4px 12px 4px 0; border-right: 0; }
 .meo-export-doc .meo-export-frontmatter-line.is-property > :is(.meo-export-frontmatter-value, .meo-export-frontmatter-value-group) { padding: 4px 0 4px 12px; }
