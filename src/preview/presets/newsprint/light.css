@@ -18,18 +18,11 @@
 .meo-export-doc blockquote { border-left-width: 4px; font-style: italic; }
 .meo-export-doc .meo-export-code-block-wrap > pre.meo-export-code-block { border: 0; border-radius: 0; }
 .meo-export-doc tbody tr:nth-child(even) { background: color-mix(in srgb, var(--meo-code-bg) 45%, var(--meo-bg)); }
-/* A compact, ruled information panel on the same warm paper. */
-:root {
-  --meo-frontmatter-bg: color-mix(in srgb, var(--meo-fg) 3%, var(--meo-bg));
-  --meo-frontmatter-border: color-mix(in srgb, var(--meo-fg) 18%, var(--meo-bg));
-  --meo-frontmatter-key-bg: transparent;
-  --meo-frontmatter-pill-bg: color-mix(in srgb, var(--meo-fg) 8%, var(--meo-bg));
+/* Typora's pre.md-meta-block sits directly on the paper, without a panel.
+ * https://github.com/typora/typora-default-themes/blob/master/themes/newsprint.css */
+.meo-export-doc :is(.meo-export-frontmatter-yaml, .meo-export-frontmatter-source) {
+  min-height: 1.875rem; margin: 1em 0 1.5em 1em; padding: 0;
+  border: 0; border-radius: 0; background: transparent; color: #555555;
+  font-family: var(--meo-font-code); font-size: 0.875em; font-weight: 400; line-height: 1.714285;
+  white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.meo-export-doc .meo-export-frontmatter { border-radius: 0; }
-.meo-export-doc .meo-export-frontmatter-header { padding: 6px 12px; }
-.meo-export-doc .meo-export-frontmatter-header-icon { display: none; }
-.meo-export-doc .meo-export-frontmatter-line { padding: 4px 12px; }
-.meo-export-doc .meo-export-frontmatter-line.is-property { padding: 0 12px 0 0; }
-.meo-export-doc .meo-export-frontmatter-key-cell { padding: 4px 10px 4px 12px; border-right: 0; }
-.meo-export-doc .meo-export-frontmatter-line.is-property > :is(.meo-export-frontmatter-value, .meo-export-frontmatter-value-group) { padding: 4px 0 4px 12px; }
-.meo-export-doc .meo-export-frontmatter-pill { border-radius: 2px; }

@@ -1,4 +1,5 @@
 import { sliceSourceMappedMarkdown, type SourceMappedMarkdown } from './sourceMappedMarkdown';
+import { Calendar, Hash, Link, List, SquareCheck, Tags, Text } from 'lucide';
 import {
   findYamlMappingSeparator,
   isYamlFrontmatterValid,
@@ -33,7 +34,7 @@ type RenderedFrontmatterProperty = {
 
 type FrontmatterValueKind = 'string' | 'number' | 'literal' | 'link' | 'comment';
 
-export function extractExportFrontmatter(source: SourceMappedMarkdown, propertiesLabel: string): ExtractedExportFrontmatter {
+export function extractExportFrontmatter(source: SourceMappedMarkdown, propertiesLabel: string, presentation: 'properties' | 'yaml' | 'minimal' = 'properties'): ExtractedExportFrontmatter {
   const lines = String(source.markdown ?? '').split(/\r?\n/);
   if (lines.length < 2) {
     return { frontmatterHtml: '', body: source };
@@ -60,12 +61,15 @@ export function extractExportFrontmatter(source: SourceMappedMarkdown, propertie
   }
 
   return {
-    frontmatterHtml: renderFrontmatterHtml(
-      lines.slice(1, closingLineIndex),
-      source.sourceLines[0] ?? 1,
-      source.sourceLines[closingLineIndex] ?? closingLineIndex + 1,
-      propertiesLabel
-    ),
+    frontmatterHtml: presentation === 'yaml'
+      ? `<pre class="meo-export-frontmatter meo-export-frontmatter-yaml" data-source-line="${source.sourceLines[0] ?? 1}" data-source-end-line="${source.sourceLines[closingLineIndex] ?? closingLineIndex + 1}">${escapeHtml(lines.slice(1, closingLineIndex).join('\n'))}</pre>`
+      : renderFrontmatterHtml(
+          lines.slice(1, closingLineIndex),
+          source.sourceLines[0] ?? 1,
+          source.sourceLines[closingLineIndex] ?? closingLineIndex + 1,
+          propertiesLabel,
+          presentation === 'minimal'
+        ),
     body: sliceSourceMappedMarkdown(source, closingLineIndex + 1)
   };
 }
@@ -80,12 +84,12 @@ function findFrontmatterClosingLine(lines: string[]): number {
   return -1;
 }
 
-function renderFrontmatterHtml(contentLines: string[], sourceLine: number, sourceEndLine: number, propertiesLabel: string): string {
+function renderFrontmatterHtml(contentLines: string[], sourceLine: number, sourceEndLine: number, propertiesLabel: string, propertyIcons: boolean): string {
   const renderedBlocks: string[] = [];
   for (let index = 0; index < contentLines.length;) {
     const line = contentLines[index] ?? '';
     const property = yamlIndentationWidth(line) === 0
-      ? renderFrontmatterPropertyParts(line)
+      ? renderFrontmatterPropertyParts(line, propertyIcons)
       : null;
     if (!property) {
       const renderedLine = renderFrontmatterLineHtml(line);
@@ -157,7 +161,7 @@ function renderFrontmatterLineHtml(line: string): RenderedFrontmatterLine {
   };
 }
 
-function renderFrontmatterPropertyParts(line: string): RenderedFrontmatterProperty | null {
+function renderFrontmatterPropertyParts(line: string, propertyIcons = false): RenderedFrontmatterProperty | null {
   const offsets = yamlFrontmatterFieldOffsets(line);
   if (!offsets) return null;
   const beforeKey = line.slice(0, offsets.keyFromOffset);
@@ -167,6 +171,7 @@ function renderFrontmatterPropertyParts(line: string): RenderedFrontmatterProper
   return {
     keyHtml: [
       '<span class="meo-export-frontmatter-key-cell">',
+      propertyIcons ? renderPropertyIcon(key, value, Boolean(arrayItems)) : '',
       beforeKey ? `<span class="meo-export-frontmatter-prefix" aria-hidden="true">${escapeHtml(beforeKey)}</span>` : '',
       `<span class="meo-export-frontmatter-key">${escapeHtml(key)}</span>`,
       '</span>'
@@ -176,6 +181,17 @@ function renderFrontmatterPropertyParts(line: string): RenderedFrontmatterProper
       : renderFrontmatterValueHtml(value),
     hasValue: value.length > 0
   };
+}
+
+function renderPropertyIcon(key: string, value: string, array: boolean): string {
+  const name = key.replace(/^['"]|['"]$/g, '');
+  const kind = classifyFrontmatterValue(value);
+  const icon = name === 'tags' ? Tags : array || !value ? List
+    : /^\d{4}-\d{2}-\d{2}(?:\b|T)/.test(value) ? Calendar
+    : /^(?:true|false)$/i.test(value) ? SquareCheck
+    : kind === 'number' ? Hash : kind === 'link' ? Link : Text;
+  const shapes = icon.map(([tag, attributes]) => `<${tag} ${Object.entries(attributes).map(([name, value]) => `${name}="${escapeHtml(String(value))}"`).join(' ')}></${tag}>`).join('');
+  return `<svg class="meo-export-frontmatter-property-icon" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${shapes}</svg>`;
 }
 
 function renderFrontmatterContinuationHtml(line: string): string {

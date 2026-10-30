@@ -67,16 +67,25 @@
 @media (max-width: 600px) {
   .meo-export-doc { padding: 24px 20px 48px; }
 }
-/* A quiet property list with no internal grid or separate key surface. */
+/* Obsidian Properties: compact rows on the document, without a card or row dividers.
+ * https://github.com/kepano/obsidian-minimal/blob/master/src/scss/app/metadata.scss */
 :root {
-  --meo-frontmatter-bg: color-mix(in srgb, var(--meo-fg) 2%, var(--meo-bg));
-  --meo-frontmatter-border: color-mix(in srgb, var(--meo-fg) 12%, var(--meo-bg));
+  --meo-frontmatter-bg: transparent;
+  --meo-frontmatter-border: transparent;
   --meo-frontmatter-key-bg: transparent;
-  --meo-frontmatter-pill-bg: color-mix(in srgb, var(--meo-fg) 7%, var(--meo-bg));
+  --meo-frontmatter-pill-bg: transparent;
 }
-.meo-export-doc .meo-export-frontmatter { padding: 8px 0; }
-.meo-export-doc .meo-export-frontmatter-header { padding: 4px 14px 8px; font-weight: 500; }
-.meo-export-doc .meo-export-frontmatter-line { border-top: 0; padding: 4px 14px; }
-.meo-export-doc .meo-export-frontmatter-line.is-property { padding: 0 14px 0 0; }
-.meo-export-doc .meo-export-frontmatter-key-cell { padding: 4px 8px 4px 14px; border-right: 0; }
+.meo-export-doc .meo-export-frontmatter { --meo-properties-key-width: 9em; margin-bottom: 1.5em; padding: 0; border: 0; border-radius: 0; font-size: 0.875em; line-height: 1.5; }
+.meo-export-doc .meo-export-frontmatter-header { min-height: 0; padding: 0 0 10px; color: var(--meo-fg); font-weight: 600; }
+.meo-export-doc .meo-export-frontmatter-header > span:last-child { font-size: inherit; }
+.meo-export-doc .meo-export-frontmatter-header-icon { display: none; }
+.meo-export-doc .meo-export-frontmatter-line { border-top: 0; padding: 4px 0; }
+.meo-export-doc .meo-export-frontmatter-line.is-property { padding: 0; }
+.meo-export-doc .meo-export-frontmatter-key-cell { display: flex; align-items: baseline; gap: 6px; padding: 4px 8px 4px 0; border-right: 0; }
+.meo-export-doc .meo-export-frontmatter-property-icon { flex: none; align-self: flex-start; margin-top: 3px; color: var(--meo-muted); }
+.meo-export-doc .meo-export-frontmatter-key { min-width: 0; font-weight: 400; }
+.meo-export-doc .meo-export-frontmatter-pill { border: 1px solid var(--meo-border); color: var(--meo-muted); }
 .meo-export-doc .meo-export-frontmatter-line.is-property > :is(.meo-export-frontmatter-value, .meo-export-frontmatter-value-group) { padding: 4px 0 4px 8px; }
+@media (max-width: 600px) {
+  .meo-export-doc .meo-export-frontmatter { --meo-properties-key-width: min(9em, 35%); }
+}
