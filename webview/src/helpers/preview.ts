@@ -340,7 +340,8 @@ function morphPreviewMain(
   pendingCodeBlocks: readonly PreviewCodeBlockUpdate[] | undefined,
   isCurrent: () => boolean,
   retainTableColumns = true,
-  sourceRevision?: { before: string | null; after: string; mapSourceLine?: PreviewSourceLineMapper }
+  sourceRevision?: { before: string | null; after: string; mapSourceLine?: PreviewSourceLineMapper },
+  retainedPositionMarker?: HTMLElement | null
 ): PreviewCodeBlockUpdate[] {
   const updates: PreviewCodeBlockUpdate[] = pendingCodeBlocks ? [...pendingCodeBlocks] : [];
   let presentationKeys = new WeakMap<Node, string>();
@@ -404,6 +405,12 @@ function morphPreviewMain(
         const block = element.getAttribute('data-meo-preview-block');
         const line = element.getAttribute('data-source-line');
         return block !== null ? `preview-block:${block}:${element.tagName}:${line ?? ''}` : undefined;
+      },
+      onBeforeNodeDiscarded(node) {
+        // The position overlay belongs to this reading document, not its
+        // rendered Markdown. Keep it mounted while its owner accepts the new
+        // source mapping (which can still hide an unmapped destination).
+        return node !== retainedPositionMarker;
       },
       onBeforeElUpdated(fromElement, toElement) {
         if (frameDocument.documentElement.dataset.meoPreviewLargeDocument === 'true'
@@ -2293,7 +2300,8 @@ export function createPreviewController({
           pendingCodeBlocks,
           () => !disposed && isSourceColoringEnabled() && loadGeneration === frameGeneration,
           (reusableDocument.documentElement.dataset.meoPreviewPreset ?? 'default') === (payload.preset ?? 'default'),
-          { before: previousRenderedText, after: renderedText, mapSourceLine }
+          { before: previousRenderedText, after: renderedText, mapSourceLine },
+          sourcePositionMarkerState.visible ? sourcePositionMarker : null
         );
         if (deferredCodeBlocks.length > 0) {
           commitPendingCodeHighlight = () => {
@@ -3113,7 +3121,7 @@ export function createPreviewController({
     if (!frameDocument || !scrollElement) return null;
     const source = findSourceProjection(line);
     const entry = source?.exact;
-    if (!entry) return null;
+    if (!entry?.rendered || entry.bottom <= entry.top || entry.element.hasAttribute('data-meo-preview-gap')) return null;
     const contentLeft = getPreviewContentLeft(frameDocument, scrollElement);
     if (contentLeft === null) return null;
     const computedLineHeight = Number.parseFloat(

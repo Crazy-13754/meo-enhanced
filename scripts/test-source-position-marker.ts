@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
 import exportRuntime from '../src/export/runtime';
+import { createPreviewDocument } from '../src/export/previewDocument';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
+import sharp from 'sharp';
 
 const build = await Bun.build({
   entrypoints: ['scripts/test-settings-window-production-entry.ts'],
@@ -13,6 +16,9 @@ const browser = await launchTestBrowser();
 let primaryError: unknown;
 let previewRenderGate: Promise<void> | null = null;
 try {
+  for (const windowed of [false, true]) {
+    await assertMarkerContinuity(await browser.newPage(), await build.outputs[0]!.text(), windowed);
+  }
   const page = await browser.newPage();
   await page.setViewport({ width: 1100, height: 720 });
   await page.exposeFunction('__renderSourcePositionPreview', async (message: any) => {
@@ -564,3 +570,228 @@ try {
 }
 
 console.log('Source position marker checks passed');
+
+async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundle: string, windowed: boolean): Promise<void> {
+  const text = '# Position continuity\n\n- Typing target.\n- Neighbor item.\n\nFollowing paragraph.\n\n```text\nAlpha\n\nOmega\n```\n\n<!-- Hidden navigation target -->\n\n'
+    + Array.from({ length: windowed ? 5000 : 10 }, (_, index) => `Paragraph ${index} with stable reading context.\n\n`).join('');
+  assert.equal(assessLargeDocument(text).windowedPreview, windowed);
+  const label = windowed ? 'windowed' : 'ordinary';
+  const documents = new Map<string, ReturnType<typeof createPreviewDocument>>();
+  let renderGate: Promise<void> | null = null;
+  let releaseRender: (() => void) | undefined;
+  const holdRender = () => { renderGate = new Promise(resolve => { releaseRender = resolve; }); };
+  const resumeRender = () => { releaseRender?.(); renderGate = null; };
+  try {
+    await page.setViewport({ width: 1100, height: 720 });
+    await page.exposeFunction('__markerContinuityHost', async (message: any) => {
+      if (message.type === 'applyChanges') return { type: 'applied', version: message.baseVersion + 1 };
+      if (message.type === 'requestPreviewRender') {
+        await renderGate;
+        assert.equal(Boolean(message.window), windowed, `${label}: production Preview policy`);
+        const options = { layout: message.layout, markdownText: message.text, sourceDocumentPath: '/fixture/marker.md',
+          uiLanguage: message.uiLanguage, styleEnvironment: message.environment };
+        const parsed = windowed ? createPreviewDocument(message.requestId, options) : undefined;
+        if (parsed) documents.set(message.requestId, parsed);
+        return { type: 'previewRenderResult', requestId: message.requestId, result: { ok: true,
+          value: parsed ? parsed.open(message.window.anchorLine) : exportRuntime.renderPreviewDocument(options) } };
+      }
+      if (message.type === 'requestPreviewDocument') return { type: 'previewDocumentResult', requestId: message.requestId,
+        documentId: message.documentId, result: { ok: true, value: await documents.get(message.documentId)!.run(message.operation) } };
+      return null;
+    });
+    await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
+    await page.addStyleTag({ path: 'webview/src/styles.css' });
+    await page.addScriptTag({ content: `window.__markerMessages=[];window.acquireVsCodeApi=()=>({getState(){return {}},setState(){},postMessage(message){window.__markerMessages.push(message.type);window.__markerContinuityHost(message).then(response=>{if(response)window.dispatchEvent(new MessageEvent('message',{data:response}));});}});` });
+    await page.addScriptTag({ content: bundle });
+    await page.evaluate(text => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', documentId: 'file:///marker-continuity.md', text, version: 1, savedRevision: { version: 1, text },
+      diagnostics: [], mode: 'source', uiLanguage: 'en', sourceLineNumbers: 'on', previewAppearance: 'dark',
+      previewFontFamily: '', previewSourceColoring: true, editorAppearance: 'dark', editorFontSizeMode: 'auto', editorFontSize: 14,
+      gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit',
+      fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false,
+      findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260,
+      restoreReadingPositionOnOpen: false, vscodeTheme: null
+    } })), text);
+    await page.waitForFunction(() => {
+      const button = document.querySelector<HTMLElement>('.source-preview-button');
+      return button?.offsetParent !== null && button && getComputedStyle(button).visibility === 'visible';
+    });
+    await page.click('.source-preview-button');
+    await page.waitForFunction(windowed => {
+      const host = document.querySelector<HTMLElement>('.preview-host');
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+      return host?.inert === false && getComputedStyle(host).visibility !== 'hidden'
+        && doc?.body.textContent?.includes('Typing target.') && Boolean(doc.querySelector('[data-meo-preview-document]')) === windowed;
+    }, {}, windowed);
+    const selectLine = async (line: number) => {
+      await page.evaluate(line => {
+        const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
+        view.dispatch({ selection: { anchor: view.state.doc.line(line).to } });
+        view.focus();
+      }, line);
+      await page.evaluate(async () => { for (let n = 0; n < 3; n++) await new Promise(requestAnimationFrame); });
+    };
+    const markerSnapshot = () => page.evaluate(() => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      const marker = doc.querySelector<HTMLElement>('.meo-preview-source-position-marker')!;
+      const rect = marker.getBoundingClientRect();
+      return { hidden: marker.hidden, line: Number(marker.dataset.meoSourcePositionLine), top: rect.top, height: rect.height,
+        connected: marker === (window as any).__markerWitness, duplicates: doc.querySelectorAll('.meo-preview-source-position-marker').length };
+    });
+    await selectLine(3);
+    await page.evaluate(() => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      const marker = (window as any).__markerWitness = doc.querySelector('.meo-preview-source-position-marker');
+      const probe = (window as any).__markerProbe = { running: true, missing: 0, removed: 0, frames: 0 };
+      const observer = new MutationObserver(records => {
+        for (const record of records) for (const node of record.removedNodes)
+          if (node === marker || node.contains(marker)) probe.removed++;
+      });
+      observer.observe(doc.querySelector('main')!, { childList: true, subtree: true });
+      probe.observer = observer;
+      const sample = () => {
+        probe.frames++;
+        if (!marker.isConnected || (marker as HTMLElement).hidden) probe.missing++;
+        if (probe.running) requestAnimationFrame(sample);
+      };
+      sample();
+    });
+    const before = await markerSnapshot();
+    assert.equal(before.hidden, false);
+    const pixelPoint = await page.evaluate(() => {
+      const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!;
+      const rect = frame.contentDocument!.querySelector('.meo-preview-source-position-marker')!.getBoundingClientRect();
+      const frameRect = frame.getBoundingClientRect();
+      return { x: Math.floor(frameRect.right - 25), y: Math.floor(frameRect.top + rect.top + rect.height / 2) };
+    });
+    const pixelColor = async (bytes: Buffer | Uint8Array) => {
+      const { data, info } = await sharp(bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      assert.ok(pixelPoint.x >= 0 && pixelPoint.x < info.width && pixelPoint.y >= 0 && pixelPoint.y < info.height);
+      const offset = (pixelPoint.y * info.width + pixelPoint.x) * info.channels;
+      return [...data.subarray(offset, offset + 3)];
+    };
+    const baseline = await pixelColor(await page.screenshot());
+    const expectedColor = await page.evaluate(() => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      const canvas = doc.createElement('canvas'), context = canvas.getContext('2d')!;
+      context.fillStyle = doc.defaultView!.getComputedStyle(doc.querySelector('.meo-preview-source-position-marker')!).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+    });
+    assert.deepEqual(baseline, expectedColor, `${label}: the sampled pixel must actually paint the position background`);
+    const client = await page.createCDPSession();
+    const paints: string[] = [];
+    client.on('Page.screencastFrame', event => { paints.push(event.data); void client.send('Page.screencastFrameAck', { sessionId: event.sessionId }); });
+    await client.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
+    try {
+      await page.keyboard.type('xy', { delay: 450 });
+      await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.body.textContent?.includes('Typing target.xy'));
+      await page.evaluate(async () => { for (let n = 0; n < 3; n++) await new Promise(requestAnimationFrame); });
+    } finally {
+      await client.send('Page.stopScreencast');
+      await client.detach();
+    }
+    const probe = await page.evaluate(() => {
+      const probe = (window as any).__markerProbe;
+      probe.running = false; probe.observer.disconnect();
+      return { removed: probe.removed, missing: probe.missing, frames: probe.frames };
+    });
+    assert.equal(probe.removed, 0, `${label}: updating list text must not discard the accepted position overlay`);
+    assert.equal(probe.missing, 0, `${label}: every input frame retains the position highlight`);
+    assert.ok(probe.frames > 10);
+    assert.deepEqual(await markerSnapshot(), before, `${label}: typing retains the same visible position overlay and geometry`);
+    assert.ok(paints.length >= 2, `${label}: compositor evidence is required`);
+    for (const paint of paints) assert.deepEqual(await pixelColor(Buffer.from(paint, 'base64')), baseline, `${label}: every painted input frame retains the background`);
+
+    // A new cursor destination owns visibility; whitespace is not itself a rule:
+    // an empty code line renders, whereas a gap and a hidden comment do not.
+    // Markdown's final list item includes its trailing blank in its block range.
+    // The separate gap before the fence has no such rendered owner.
+    await selectLine(7);
+    assert.equal((await markerSnapshot()).hidden, true, `${label}: an unmapped blank line hides the overlay`);
+    await selectLine(10);
+    assert.equal((await markerSnapshot()).hidden, false, `${label}: an empty code line still has a rendered target`);
+    await selectLine(14);
+    assert.equal((await markerSnapshot()).hidden, true, `${label}: a hidden comment has no rendered target`);
+    await selectLine(4);
+    const neighbor = await markerSnapshot();
+    assert.equal(neighbor.hidden, false);
+    assert.equal(neighbor.connected, true);
+    assert.ok(neighbor.top > before.top, `${label}: navigation moves the retained overlay to the new item`);
+
+    await selectLine(3);
+    const requestCount = () => page.evaluate(() => (window as any).__markerMessages.filter((type: string) => type === 'requestPreviewRender').length);
+    const requestsBeforeTyping = await requestCount();
+    holdRender();
+    await page.keyboard.type('z');
+    await page.waitForFunction(before => (window as any).__markerMessages.filter((type: string) => type === 'requestPreviewRender').length > before,
+      {}, requestsBeforeTyping);
+    assert.deepEqual(await markerSnapshot(), before, `${label}: a pending render retains the accepted highlight`);
+    await selectLine(7);
+    assert.deepEqual(await markerSnapshot(), before, `${label}: stale source coordinates cannot retarget the accepted reading revision`);
+    resumeRender();
+    await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.body.textContent?.includes('Typing target.xyz'));
+    assert.equal((await markerSnapshot()).hidden, true, `${label}: the latest unmapped selection wins when the pending revision is accepted`);
+    await selectLine(3);
+
+    holdRender();
+    const requestsBeforeLineShift = await requestCount();
+    await page.evaluate(() => {
+      const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
+      view.dispatch({ changes: { from: 0, insert: '\n' } });
+    });
+    await page.waitForFunction(before => (window as any).__markerMessages.filter((type: string) => type === 'requestPreviewRender').length > before,
+      {}, requestsBeforeLineShift);
+    assert.deepEqual(await markerSnapshot(), before, `${label}: inserting a source line retains the old accepted coordinates until commit`);
+    resumeRender();
+    await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
+      .querySelector<HTMLElement>('.meo-preview-source-position-marker')?.dataset.meoSourcePositionLine === '4');
+    assert.deepEqual(await markerSnapshot(), { ...before, line: 4 }, `${label}: the same visible block accepts its shifted source line atomically`);
+    await page.evaluate(() => {
+      const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
+      view.dispatch({ changes: { from: 0, to: 1, insert: '' } });
+    });
+    await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
+      .querySelector<HTMLElement>('.meo-preview-source-position-marker')?.dataset.meoSourcePositionLine === '3');
+
+    // Removing the current block really removes its mapping on acceptance.
+    const requestsBeforeRemoval = await requestCount();
+    holdRender();
+    await page.evaluate(() => {
+      const view = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
+      const line = view.state.doc.line(3);
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: '' }, selection: { anchor: line.from } });
+    });
+    await page.waitForFunction(before => (window as any).__markerMessages.filter((type: string) => type === 'requestPreviewRender').length > before,
+      {}, requestsBeforeRemoval);
+    assert.equal((await markerSnapshot()).hidden, false, `${label}: the old reading DOM remains highlighted until replacement`);
+    resumeRender();
+    await page.waitForFunction(() => !document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.body.textContent?.includes('Typing target'));
+    assert.equal((await markerSnapshot()).hidden, true, `${label}: an accepted blank destination removes the highlight`);
+    assert.equal((await markerSnapshot()).duplicates, 1);
+    await selectLine(4);
+    assert.equal((await markerSnapshot()).hidden, false);
+    if (windowed) {
+      if (await page.$eval('.source-preview-scroll-sync-button', button => button.getAttribute('aria-pressed')) === 'true')
+        await page.click('.source-preview-scroll-sync-button');
+      assert.ok(await page.evaluate(() => [...document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
+        .querySelectorAll<HTMLElement>('[data-meo-preview-gap]')].some(gap => Number(gap.dataset.sourceLine) <= 4000 && Number(gap.dataset.sourceEndLine) >= 4000)),
+      'the offscreen destination must really be an unloaded Preview band');
+      await selectLine(4000);
+      assert.equal((await markerSnapshot()).hidden, true, 'an unloaded window gap is not rendered content to highlight');
+      await selectLine(4);
+      assert.equal((await markerSnapshot()).hidden, false, 'returning to mounted content restores the same overlay');
+    }
+    await page.click('button[data-mode="preview"]');
+    await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'preview'
+      && document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewLayout === 'full'
+      && document.querySelector<HTMLElement>('.preview-host')?.inert === false);
+    assert.equal(await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
+      .querySelector('.meo-preview-source-position-marker')), null, `${label}: full Preview releases the Source-only overlay`);
+    console.log(`Source position continuity (${label}): ${probe.frames} input frames, ${paints.length} compositor paints, mapped/empty destinations`);
+  } finally {
+    resumeRender();
+    for (const parsed of documents.values()) parsed.dispose();
+    await page.close();
+  }
+}

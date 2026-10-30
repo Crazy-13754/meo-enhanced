@@ -1518,6 +1518,13 @@ repeated activation, document boundaries, keyboard activation and anchored hints
 Stale Preview content disables alignment until the current render is ready;
 automatic sync resumes from the last explicit origin. Automatic sync and full
 Preview hide the pair. The previous moving locator and hover-block overlay are absent.
+The same script pairs ordinary and production-windowed Source previews for
+position-overlay continuity: list typing retains the mounted overlay in every
+sampled input/compositor frame; held render responses, selection changes and
+source-line shifts retain the accepted reading revision until the new mapping
+commits. Unmapped gaps, hidden comments, removed text and unloaded window bands
+hide the overlay, while mapped empty code lines and new cursor destinations
+remain valid. Both paths keep one overlay and full Preview hides it.
 `scripts/test-viewport-controller.ts` also checks one-shot semantic mapping with
 unequal content heights, fresh geometry, origin ownership, selection preservation
 and no background work or continuous projection while sync remains off.
