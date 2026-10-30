@@ -2488,6 +2488,10 @@ Source/Live roundtrips in light/dark ordinary and optimized documents. It assert
 both the production size assessment and the active derived-work budget. Set
 `MEO_TEST_SCREENSHOTS` to capture the reading surfaces. The full list/browser
 suites retain this slice through the script's default invocation.
+The same slice compares actual literal-marker colors in prose, quotes, bold and
+headings while preserving valid link colors and Source's native palette across
+mode changes. `test-document-fragment-link.ts` also checks a reference target
+published after an earlier partial syntax tree for the same document.
 `test-complex-input-presentation.ts --only=tokens` uses the actual Markdown Worker
 to type consecutive characters in Markdown/TypeScript fences in small and large
 documents. Each key must inherit the preceding accepted token's color and weight,

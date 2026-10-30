@@ -90,6 +90,7 @@ import {
 } from './helpers/footnotes';
 import { getLiveRenderedBlocks, projectUnchangedLiveRenderedBlocks, type LiveRenderedBlock } from './helpers/liveRenderedBlocks';
 import { findRawSourceUrlMatches, normalizeSourceHref } from './helpers/rawUrls';
+import { hrefFromSourceLinkNode } from './helpers/linkNavigation';
 import { trimDecoratedUrlRange } from './helpers/urlDecorationRange';
 import { createOpenLinkButton } from './helpers/linkOpenButton';
 import { getViewportController } from './helpers/viewportController';
@@ -209,6 +210,7 @@ const footnoteMarkerDeco = Decoration.mark({
   }
 });
 const footnoteLiteralDeco = Decoration.mark({ class: 'meo-md-footnote-literal' });
+const literalLinkDeco = Decoration.mark({ class: 'meo-md-literal-link' });
 const footnoteDefinitionContentDeco = Decoration.mark({ class: 'meo-md-footnote-definition-content' });
 const wikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker meo-md-link-marker meo-md-wiki-marker' });
 const activeWikiLinkMarkerDeco = Decoration.mark({ class: 'meo-md-marker-active meo-md-link-marker-active meo-md-wiki-marker' });
@@ -2116,7 +2118,8 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
         if (
           parentName === 'Link' &&
           node.to - node.from >= 2 &&
-          !isFootnoteDefinitionMarker(footnotes, node.from, node.to)
+          !isFootnoteDefinitionMarker(footnotes, node.from, node.to) &&
+          Boolean(hrefFromSourceLinkNode(state, node.node.parent))
         ) {
           const line = state.doc.lineAt(node.from);
           const markerDecoForLine = activeLines.has(line.number) ? activeLinkLabelBracketDeco : linkLabelBracketDeco;
@@ -2166,6 +2169,11 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
         if (addWikiLinkDecorations(ranges, state, node, activeLines)) {
           return;
         }
+        // Lezer also emits Link nodes for unresolved reference candidates such
+        // as [~], [-] and [label]. They are prose until a target resolves.
+        if (!findChildNode(node, 'URL') && !hrefFromSourceLinkNode(state, node.node)) {
+          addRange(ranges, node.from, node.to, literalLinkDeco);
+        }
         const emptyImageUrl = getEmptyImageLinkUrl(state, node);
         if (emptyImageUrl) {
           const line = state.doc.lineAt(node.from);
@@ -2209,6 +2217,9 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
         const line = state.doc.lineAt(node.from);
         const isActiveLine = activeLines.has(line.number);
         const imageSelection = overlapsSelection(state, node.from, node.to);
+        if (!findChildNode(node, 'URL') && !hrefFromSourceLinkNode(state, node.node)) {
+          addRange(ranges, node.from, node.to, literalLinkDeco);
+        }
 
         if (isActiveLine || imageSelection) {
           const { url, altText, linkUrl, width, height } = getImageData(state, node);

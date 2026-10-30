@@ -11,7 +11,7 @@ import { extractHeadings, resolvedSyntaxTree } from './markdownSyntax';
 import { isWikiLinkNode, parseWikiLinkData } from './wikiLinks';
 import { findRawSourceUrlMatches, linkSchemeRe, normalizeSourceHref } from './rawUrls';
 
-const linkReferenceCache = new WeakMap<object, Map<string, string>>();
+const linkReferenceCache = new WeakMap<object, { tree: Tree; links: Map<string, string> }>();
 type SourceHtmlLink = { from: number; to: number; href: string };
 const sourceHtmlLinkCache = new WeakMap<object, {
   tree: Tree;
@@ -130,13 +130,13 @@ function getReferenceLinkLabel(state: EditorState, linkNode: any): string {
 
 function getReferenceLinkMap(state: EditorState): Map<string, string> {
   const cacheKey = state.doc as unknown as object;
+  const tree = resolvedSyntaxTree(state);
   const cached = linkReferenceCache.get(cacheKey);
-  if (cached) {
-    return cached;
+  if (cached?.tree === tree) {
+    return cached.links;
   }
 
   const resolved = new Map<string, string>();
-  const tree = resolvedSyntaxTree(state);
   tree.iterate({
     enter(node: any) {
       if (node.name !== 'LinkReference') {
@@ -156,7 +156,7 @@ function getReferenceLinkMap(state: EditorState): Map<string, string> {
     }
   });
 
-  linkReferenceCache.set(cacheKey, resolved);
+  linkReferenceCache.set(cacheKey, { tree, links: resolved });
   return resolved;
 }
 

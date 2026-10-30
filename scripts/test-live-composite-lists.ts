@@ -26,6 +26,13 @@ async function assertTwoStateTasks(page: import('puppeteer-core').Page): Promise
     '- [ ] Pending', '- [x] Completed', '- [X] Uppercase',
     '- [~] Progress', '- [-] Dropped', '> - [~] Quoted',
     '1. [-] Ordered', '- parent', '  - [~] Nested', '',
+    '- [/] Slash', '- [!] Unsupported', '- [?] Question', '- [word] Label', '',
+    'Plain [label] (round) {curly} tail',
+    'Missing [label][ref] and ![alt] tail', '',
+    'Valid [inline](https://example.com) [Known][target] [defined] tail',
+    'Formatting **Bold [~] words** and `const [x] = [1]` tail', '',
+    '## Heading [-] headingwords', '',
+    '[target]: https://example.com/reference', '[defined]: https://example.com/defined', '',
     '| Tasks |', '| --- |',
     '| - [ ] Cell pending<br>- [x] Cell done<br>- [X] Cell upper<br>- [~] Cell progress<br>- [-] Cell dropped |',
     '', 'After'
@@ -43,6 +50,7 @@ async function assertTwoStateTasks(page: import('puppeteer-core').Page): Promise
         document.documentElement.dataset.editorAppearance = appearance;
         const harness = (window as any).ListEditingHarness;
         harness.applyBuiltInVisualBaseline(appearance);
+        document.documentElement.style.setProperty('--meo-token-link-color', '#0088ee');
         const editor = harness.createEditor({
           parent: document.getElementById('tasks')!, text, initialMode: 'live',
           uiLanguage: appearance === 'light' ? 'zh-CN' : 'en', onApplyChanges() {}
@@ -59,16 +67,49 @@ async function assertTwoStateTasks(page: import('puppeteer-core').Page): Promise
       });
       await waitForTasks();
       const rendered = await page.evaluate(() => {
-        const host = document.getElementById('tasks')!;
-        return {
-          text: (window as any).__taskStateEditor.getText(), visible: host.textContent,
-          checked: Array.from(host.querySelectorAll<HTMLInputElement>('.meo-task-checkbox'), box => box.checked),
-          retiredStates: host.querySelectorAll('.is-inprogress, .is-dropped, .meo-task-dropped').length
+        (window as any).__taskColorSnapshot = () => {
+          const host = document.getElementById('tasks')!;
+          const editor = (window as any).__taskStateEditor;
+          const colorAt = (at: number) => {
+            const node = editor.view.domAtPos(at, 1).node as Node;
+            const element = node instanceof HTMLElement ? node : node.parentElement!;
+            return { color: getComputedStyle(element).color, html: element.outerHTML };
+          };
+          const source = editor.getText() as string;
+          const literals = ['[~] Progress', '[-] Dropped', '[~] Quoted', '[-] Ordered', '[~] Nested',
+            '[/] Slash', '[!] Unsupported', '[?] Question', '[word] Label',
+            '[label] (round) {curly} tail', '[label][ref] and ![alt] tail', '[~] words', '[-] headingwords'];
+          return {
+            text: source, visible: host.textContent,
+            literalColors: literals.map(literal => {
+              const from = source.indexOf(literal), end = literal.lastIndexOf(' ');
+              return { literal, body: colorAt(from + literal.length - 1).color,
+                symbols: Array.from(literal.slice(0, end), (char, offset) => ({ char, ...colorAt(from + offset) })) };
+            }),
+            links: ['inline]', 'Known]', 'defined]'].map(text => colorAt(source.indexOf(text)).color),
+            body: colorAt(source.indexOf('Plain ')).color,
+            inlineHref: host.querySelector('.meo-md-link')?.getAttribute('data-meo-link-href'),
+            codeLiterals: host.querySelectorAll('.meo-md-inline-code .meo-md-literal-link').length,
+            checked: Array.from(host.querySelectorAll<HTMLInputElement>('.meo-task-checkbox'), box => box.checked),
+            retiredStates: host.querySelectorAll('.is-inprogress, .is-dropped, .meo-task-dropped').length
+          };
         };
+        return (window as any).__taskColorSnapshot();
       });
       assert.equal(rendered.text, text, `${label}: rendering preserves source`);
       assert.deepEqual(rendered.checked, [false, true, true, false, true, true], label);
       assert.equal(rendered.retiredStates, 0, label);
+      const assertLiteralColors = (sample: typeof rendered) => {
+        for (const item of sample.literalColors) {
+          for (const symbol of item.symbols) {
+            assert.equal(symbol.color, item.body, `${label}: ${item.literal} ${JSON.stringify(symbol)}`);
+          }
+        }
+        for (const color of sample.links) assert.notEqual(color, sample.body, `${label}: valid links retain their palette`);
+        assert.equal(sample.inlineHref, 'https://example.com', `${label}: valid link target`);
+        assert.equal(sample.codeLiterals, 0, `${label}: inline code is not prose`);
+      };
+      assertLiteralColors(rendered);
       for (const literal of ['[~] Progress', '[-] Dropped', '[~] Quoted', '[-] Ordered', '[~] Nested', '[~] Cell progress', '[-] Cell dropped']) {
         assert.ok(rendered.visible?.includes(literal), `${label}: visible literal ${literal}`);
       }
@@ -76,6 +117,15 @@ async function assertTwoStateTasks(page: import('puppeteer-core').Page): Promise
         fs.mkdirSync(process.env.MEO_TEST_SCREENSHOTS, { recursive: true });
         await page.screenshot({ path: path.join(process.env.MEO_TEST_SCREENSHOTS, `task-states-${appearance}-${large ? 'optimized' : 'ordinary'}.png`) });
       }
+      await page.evaluate(() => (window as any).__taskStateEditor.setMode('source'));
+      await page.waitForSelector('#tasks .meo-mode-source');
+      const nativeSourcePalette = await page.evaluate(() => (window as any).__taskColorSnapshot().literalColors
+        .map((item: any) => [item.body, ...item.symbols.map((symbol: any) => symbol.color)]));
+      await page.evaluate(() => (window as any).__taskStateEditor.setMode('live'));
+      await waitForTasks();
+      await page.evaluate(caret => (window as any).__taskStateEditor.view.dispatch({ selection: { anchor: caret } }), text.indexOf('[~] Progress') + 1);
+      assertLiteralColors(await page.evaluate(() => (window as any).__taskColorSnapshot()));
+      await page.evaluate(caret => (window as any).__taskStateEditor.view.dispatch({ selection: { anchor: caret } }), taskSource.length);
       await page.click('#tasks .meo-task-checkbox:not(:disabled)');
       const checkedText = text.replace('- [ ] Pending', '- [x] Pending');
       await page.waitForFunction(expected => (window as any).__taskStateEditor.getText() === expected, {}, checkedText);
@@ -92,10 +142,14 @@ async function assertTwoStateTasks(page: import('puppeteer-core').Page): Promise
       await page.evaluate(() => (window as any).__taskStateEditor.setMode('source'));
       await page.waitForSelector('#tasks .meo-mode-source');
       assert.equal(await page.evaluate(() => (window as any).__taskStateEditor.getText()), checkedText, `${label}: Source preserves source`);
+      const sourcePalette = await page.evaluate(() => (window as any).__taskColorSnapshot().literalColors
+        .map((item: any) => [item.body, ...item.symbols.map((symbol: any) => symbol.color)]));
+      assert.deepEqual(sourcePalette, nativeSourcePalette, `${label}: Source retains its native syntax palette`);
       // History can restore a caret inside the marker, where Live intentionally reveals source.
       await page.evaluate(caret => (window as any).__taskStateEditor.view.dispatch({ selection: { anchor: caret } }), taskSource.length);
       await page.evaluate(() => (window as any).__taskStateEditor.setMode('live'));
       await waitForTasks();
+      assertLiteralColors(await page.evaluate(() => (window as any).__taskColorSnapshot()));
       await page.click('#tasks .meo-task-checkbox:not(:disabled)');
       await page.waitForFunction(expected => (window as any).__taskStateEditor.getText() === expected, {}, text);
       await page.evaluate(() => (window as any).__taskStateEditor.destroy());

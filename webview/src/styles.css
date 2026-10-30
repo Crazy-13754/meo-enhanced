@@ -3183,6 +3183,12 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   text-underline-offset: 4px;
 }
 
+.cm-editor.meo-mode-live .meo-md-literal-link {
+  --meo-token-link-color: currentColor;
+  --meo-token-processingInstruction-color: currentColor;
+  --meo-token-labelName-color: currentColor;
+}
+
 /* Embedded links keep their own ink inside the heading's formatted text. */
 .cm-editor.meo-mode-live .cm-line:is(.meo-md-h1, .meo-md-h2, .meo-md-h3, .meo-md-h4, .meo-md-h5, .meo-md-h6) :is(.meo-md-link, .meo-md-link :is(.meo-md-heading-content, .meo-md-em, .meo-md-strong, .meo-md-strike, .meo-md-highlight, .meo-md-inline-code), .meo-md-footnote-ref) {
   color: var(--meo-ui-link) !important;

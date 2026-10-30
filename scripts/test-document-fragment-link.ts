@@ -1,6 +1,8 @@
-import { markdown } from '@codemirror/lang-markdown';
+import assert from 'node:assert/strict';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';
-import { findDocumentFragmentPosition } from '../webview/src/helpers/linkNavigation';
+import { findDocumentFragmentPosition, hrefFromSourceLinkNode } from '../webview/src/helpers/linkNavigation';
+import { withMarkdownSyntaxSnapshot } from '../webview/src/helpers/markdownSyntax';
 
 const documentText = [
   '# 表格宽度测试',
@@ -46,4 +48,12 @@ for (const [href, expected] of cases) {
   }
 }
 
+const referenceText = '[Known][target]\n\n[target]: https://example.com/reference';
+const referenceState = EditorState.create({ doc: referenceText, extensions: [markdown()] });
+const partial = markdownLanguage.parser.parse('[Known][target]');
+const complete = markdownLanguage.parser.parse(referenceText);
+const link = partial.topNode.firstChild!.firstChild!;
+assert.equal(withMarkdownSyntaxSnapshot(referenceState, partial, () => hrefFromSourceLinkNode(referenceState, link)), '');
+assert.equal(withMarkdownSyntaxSnapshot(referenceState, complete, () => hrefFromSourceLinkNode(referenceState, link)),
+  'https://example.com/reference', 'a later syntax publication must invalidate the same-document reference cache');
 console.log('document fragment link checks passed');
