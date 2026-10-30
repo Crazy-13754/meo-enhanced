@@ -11,6 +11,34 @@ import { getBuiltInVisuals } from '../src/shared/builtInVisualBaseline';
 import { prepareMarkdownWithFootnotes } from '../src/export/footnotes';
 import MarkdownIt from 'markdown-it';
 import { readFileSync } from 'node:fs';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
+
+for (const preset of ['default', 'github-readme'] as const) for (const layout of ['side', 'full'] as const) {
+  const markdownText = 'First reference[^n].\n\n' + Array.from({ length: 5_000 }, (_, index) => index === 3_000
+    ? '[^n]: Note with nested reference[^nested].\n\n' : index === 4_000 ? 'Repeated reference[^n].\n\n'
+      : `NAV-PROSE ${index} with enough ordinary source context to exercise actual windowed navigation and resource budgets.\n\n`).join('')
+    + '[^nested]: Nested note.\n';
+  assert.equal(assessLargeDocument(markdownText).windowedPreview, true);
+  const parsed = createPreviewDocument(`footnote-navigation-${layout}`, { markdownText, layout, preset, sourceDocumentPath: '/fixture/navigation.md', uiLanguage: 'en' });
+  const opened = parsed.open(1);
+  const prototype = Object.getPrototypeOf(new MarkdownIt().renderer);
+  const render = prototype.render;
+  let unrelatedRoots = 0;
+  prototype.render = function(nodes: any[], ...args: unknown[]) {
+    if (nodes.some(node => node.type === 'inline' && node.content.includes('NAV-PROSE'))) unrelatedRoots++;
+    return render.call(this, nodes, ...args);
+  };
+  try {
+    const lines = markdownText.split('\n');
+    for (const [anchor, source] of [['fn-1', '[^n]:'], ['fn-2', '[^nested]:'], ['fnref-1-2', 'Repeated reference'], ['fnref-2', '[^n]:']] as const) {
+      const line = lines.findIndex(value => value.startsWith(source)) + 1;
+      const result = await parsed.run({ kind: 'locate', anchor });
+      assert.deepEqual(result, { kind: 'locate', block: previewBlockAtLine(opened.document.blocks, line) });
+    }
+    console.log(`${preset}/${layout} footnote navigation: ${unrelatedRoots} unrelated body blocks rendered`);
+    assert.equal(unrelatedRoots, 0, 'known footnote targets use source identity without formatting unrelated prose');
+  } finally { prototype.render = render; parsed.dispose(); }
+}
 
 for (const preset of ['default', 'github-readme'] as const) {
   for (const markdownText of [

@@ -44,7 +44,12 @@ export function inspectMarkdownCodeLines(markdownText: string) {
     /** Reuse only independent whole-root removals. A retained blank before each
      * cut and unindented content after it prevent list/code continuation joins.
      * Ambiguous boundaries retain the caller's fresh-parse fallback. */
-    withoutLines(removed: ReadonlySet<number>): MarkdownCodeLineInspection | null {
+    withoutLines(removed: ReadonlySet<number>, markers?: ReadonlyMap<number, string>): MarkdownCodeLineInspection | null {
+      // Generated isolated comments occupy removed roots without introducing
+      // code or joining the retained neighbors. Other replacements reparse.
+      if (markers) for (const [line, marker] of markers) {
+        if (!removed.has(line) || !/^<!--[-\w: ]*-->$/.test(marker)) return null;
+      }
       if (removed.size === 0) return inspection;
       const cuts: [number, number][] = [];
       for (let line = 0; line < sourceLines.length; line++) {
@@ -74,13 +79,17 @@ export function inspectMarkdownCodeLines(markdownText: string) {
       }
       const lines: string[] = [];
       const mappedCode = new Set<number>(), mappedInline = new Map<number, number>(), mappedRows = new Set<number>();
-      for (let line = 0; line < sourceLines.length; line++) if (!removed.has(line)) {
-        const position = lines.length;
-        lines.push(sourceLines[line]!);
-        if (codeLines.has(line)) mappedCode.add(position);
-        const start = inlineStarts.get(line);
-        if (start !== undefined) mappedInline.set(position, start);
-        if (tableRows.has(line)) mappedRows.add(position);
+      for (let line = 0; line < sourceLines.length; line++) {
+        const marker = markers?.get(line);
+        if (marker !== undefined) lines.push('', marker, '');
+        if (!removed.has(line)) {
+          const position = lines.length;
+          lines.push(sourceLines[line]!);
+          if (codeLines.has(line)) mappedCode.add(position);
+          const start = inlineStarts.get(line);
+          if (start !== undefined) mappedInline.set(position, start);
+          if (tableRows.has(line)) mappedRows.add(position);
+        }
       }
       return createCodeLineInspection(lines, mappedCode, mappedInline, mappedRows);
     }

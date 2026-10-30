@@ -2175,6 +2175,7 @@ const presentPreviewSurface = (
   editorSurface.toggleAttribute('data-source-preview', split);
   sourcePreviewButton.classList.toggle('is-active', split);
   sourcePreviewButton.setAttribute('aria-pressed', split ? 'true' : 'false');
+  if (visible) previewController.setLayout(split ? 'side' : 'full');
   presentSourcePreviewControls();
   if (!fullPreview) previewOptionsMenu.close();
   previewOptionsPanel.classList.toggle('source-preview-more-panel', split);
@@ -3223,6 +3224,12 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
     presentModePreparation(mode);
     beginEditorLoading(mode);
     try {
+      if (mode === 'source' && deferEditorViewportUntilPreviewExit && pendingEditorViewportAfterPreviewExit) {
+        // Claim the destination before syntax preparation yields. A canceled
+        // full-layout response must not replace the retained side payload.
+        await previewController.prepareLayout(getCurrentEditorText(), 'side');
+        if (!isCurrent()) return;
+      }
       const prepared = mode === 'source'
         ? await preparingEditor.prepareSourceSyntax(isCurrent)
         : await preparingEditor.prepareLiveSyntax(isCurrent);
@@ -3243,8 +3250,6 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
           consume: false
         });
         (editor.view as typeof editor.view & { measure(flush?: boolean): void }).measure(false);
-        await previewController.prepareLayout(getCurrentEditorText(), 'side');
-        if (!isCurrent()) return;
       }
       const preparingAtomicSourcePreview = mode === 'source' && pendingSourcePreviewReveal !== null;
       if (preparingAtomicSourcePreview) {

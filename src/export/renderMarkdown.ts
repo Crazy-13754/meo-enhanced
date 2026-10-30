@@ -120,6 +120,7 @@ export type MarkdownPresentation = Readonly<{
   hasMermaid: boolean;
   headings: readonly PreviewDocumentHeading[];
   codeSources: readonly PreviewCodeSource[];
+  anchors: readonly Readonly<{ id: string; sourceLine: number }>[];
   renderBlock(index: number): RenderMarkdownResult;
   renderAll(): RenderMarkdownResult;
 }>;
@@ -294,12 +295,14 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   };
   md.renderer.rules.fence = renderCodeBlock;
   md.renderer.rules.code_block = renderCodeBlock;
+  const footnoteAnchors = options.windowedPresentation ? [] as Array<{ id: string; sourceLine: number }> : undefined;
   const preparedMarkdown = prepareMarkdownWithFootnotes(extractedFrontmatter.body, {
     sourcePositions: options.sourceFootnotes,
     githubStyle: github,
     deferDefinitionPreparation: options.windowedPresentation === true,
     onFenceInfo: info => { hasMermaid ||= (github ? info.trim().split(/\s+/)[0] : normalizeFenceLanguage(info)) === 'mermaid'; },
     onReferenceTags: (tags: readonly string[]) => tags.forEach(tag => generatedFootnoteTags.add(tag)),
+    onAnchor: footnoteAnchors ? (id, sourceLine) => footnoteAnchors.push({ id, sourceLine }) : undefined,
     target: options.target,
     outputFilePath: options.outputFilePath,
     renderMarkdown: (markdownText) => md.render(markdownText, github ? { meoGithubFootnote: true } : undefined),
@@ -551,6 +554,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     hasMermaid,
     headings: headings.map(heading => ({ ...heading })),
     codeSources: codeBands.sources,
+    anchors: footnoteAnchors ?? [],
     renderBlock(index) {
       if (!Number.isInteger(index) || index < 0 || index >= blocks.length) throw new RangeError('Unknown Markdown presentation block');
       if (prefixBlocks.length && index === 0) return sanitize(prefix);

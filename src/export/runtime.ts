@@ -157,6 +157,7 @@ export function preparePreviewDocument(options: PreviewDocumentOptions, windowed
     hasMermaid: prepared.hasMermaid,
     headings: prepared.headings,
     codeSources: prepared.codeSources,
+    anchors: prepared.anchors,
     renderBlock: prepared.renderBlock,
     renderAll: (): PreviewRenderResult => {
       const rendered = prepared.renderAll();

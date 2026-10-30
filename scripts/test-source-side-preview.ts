@@ -596,6 +596,40 @@ async function assertFootnoteLinkedScroll(page: import('puppeteer-core').Page, b
       assert.deepEqual(errors, [], label);
       return;
     }
+    const waitSideReady = () => page.waitForFunction(() => {
+      const host = document.querySelector<HTMLElement>('.preview-host')!;
+      const editor = document.querySelector<HTMLElement>('.editor-host')!;
+      return !host.hidden && !host.inert && getComputedStyle(host).visibility !== 'hidden'
+        && !editor.hidden && !editor.inert && !!document.querySelector('.cm-editor.meo-mode-source')
+        && document.querySelector<HTMLElement>('.editor-surface')!.hasAttribute('data-source-preview')
+        && document.querySelector<HTMLElement>('.preview-loading')?.hidden
+        && document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewLayout === 'side';
+    });
+    await waitSideReady();
+    const retainedRequests = layouts.length;
+    await page.evaluate(() => { (window as any).__retainedFootnoteMain = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector('main'); });
+    await page.click('.source-preview-button');
+    await page.waitForFunction(() => document.querySelector<HTMLElement>('.preview-host')!.hidden);
+    await page.click('.source-preview-button'); await waitSideReady();
+    console.log(`${label}: reopening unchanged side Preview made ${layouts.length - retainedRequests} render requests`);
+    assert.equal(layouts.length, retainedRequests, `${label}: hiding and reopening unchanged side Preview reuses its accepted presentation`);
+    assert.equal(await page.evaluate(() => (window as any).__retainedFootnoteMain === document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector('main')), true);
+    await page.click('button[data-mode="live"]');
+    await page.waitForFunction(() => !!document.querySelector('.cm-editor.meo-mode-live') && !document.querySelector<HTMLElement>('.editor-host')!.inert);
+    await page.click('button[data-mode="source"]'); await waitSideReady();
+    assert.equal(layouts.length, retainedRequests, `${label}: Live round trips do not change the retained side layout`);
+    const assertInterruptedLayoutReuse = async () => {
+      const sideRequests = layouts.filter(layout => layout === 'side').length;
+      holdFullRender = true;
+      await page.click('button[data-mode="preview"]');
+      await Promise.race([fullRequest, new Promise((_, reject) => setTimeout(() => reject(new Error('missing delayed layout render')), 3000))]);
+      await page.click('button[data-mode="source"]');
+      holdFullRender = false; releaseFullResponse(); await waitSideReady();
+      console.log(`${label}: canceling a full-layout switch made ${layouts.filter(layout => layout === 'side').length - sideRequests} replacement side requests`);
+      assert.equal(layouts.filter(layout => layout === 'side').length, sideRequests,
+        `${label}: canceling another layout retains the already accepted side presentation`);
+    };
+    if (process.argv.includes('--footnote-reuse-only')) { await assertInterruptedLayoutReuse(); return; }
     if (await page.$eval('.source-preview-scroll-sync-button', button => button.getAttribute('aria-pressed')) === 'true') {
       await page.click('.source-preview-scroll-sync-button');
     }
@@ -840,12 +874,8 @@ async function assertFootnoteLinkedScroll(page: import('puppeteer-core').Page, b
       return scroll.scrollTop / (scroll.scrollHeight - scroll.clientHeight);
     }) < .7, `${label}: current body reading wins over a stale footnote caret`);
     await page.click('button[data-mode="source"]'); await waitMode('source');
-    // Retire a delayed complete-layout response after a newer side-layout intent.
-    holdFullRender = true;
-    await page.click('button[data-mode="preview"]');
-    await Promise.race([fullRequest, new Promise((_, reject) => setTimeout(() => reject(new Error('missing delayed layout render')), 3000))]);
-    await page.click('button[data-mode="source"]');
-    holdFullRender = false; releaseFullResponse(); await waitMode('source');
+    // Retire a delayed complete-layout response while retaining the accepted side.
+    await assertInterruptedLayoutReuse();
     await clickSource(definitionLine); await noteVisible();
     assert.ok(layouts.includes('side') && layouts.includes('full'), `${label}: actual requests carry both layouts`);
     await capture('side-return');
@@ -881,7 +911,7 @@ let primaryError: unknown;
 try {
   await assertSourceFootnoteSpacing(await browser.newPage());
   if (!process.argv.includes('--footnote-spacing-only')) {
-  if (!process.argv.includes('--footnotes-only') && !process.argv.includes('--collapsed-only')) {
+  if (!process.argv.includes('--footnotes-only') && !process.argv.includes('--collapsed-only') && !process.argv.includes('--footnote-reuse-only')) {
   const page = await browser.newPage();
   const waitForFunction = page.waitForFunction.bind(page);
   page.waitForFunction = (async (predicate: any, options: any, ...args: any[]) => {
@@ -2887,7 +2917,7 @@ try {
     await assertFootnoteLinkedScroll(await browser.newPage(), await build.outputs[0]!.text(), false);
     await assertFootnoteLinkedScroll(await browser.newPage(), await build.outputs[0]!.text(), true);
   }
-  for (const disclosure of ['single', 'nested'] as const) {
+  if (!process.argv.includes('--footnote-reuse-only')) for (const disclosure of ['single', 'nested'] as const) {
     await assertFootnoteLinkedScroll(await browser.newPage(), await build.outputs[0]!.text(), false, disclosure);
     await assertFootnoteLinkedScroll(await browser.newPage(), await build.outputs[0]!.text(), true, disclosure);
   }

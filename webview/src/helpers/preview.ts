@@ -1136,6 +1136,7 @@ export function createPreviewController({
   let appearancePreference: PreviewAppearance = 'auto';
   let appearance: 'light' | 'dark' = 'dark';
   let sourcePreviewControls = false;
+  let previewLayout: 'side' | 'full' = 'full';
   let synchronizedScrolling = true;
   let sourceColoring = true;
   let showComments = false;
@@ -1275,7 +1276,8 @@ export function createPreviewController({
     updatePresetInfo();
   };
   let requestGeneration = 0;
-  let latestAcceptedRequestGeneration = -1;
+  let renderEnvironmentGeneration = 0;
+  let latestAcceptedEnvironmentGeneration = -1;
   let frameGeneration = 0;
   let mermaidPresentationGeneration = 0;
   let activeFrameDocument: Document | null = null;
@@ -1383,7 +1385,7 @@ export function createPreviewController({
       void requestRender(frameRenderedText, { force: true, preserveViewport: true });
       return;
     }
-    latestAcceptedRequestGeneration = -1;
+    latestAcceptedEnvironmentGeneration = -1;
     setStatus(uiStrings.previewFailed);
     logWebviewRenderError('preview.window', error);
   };
@@ -2589,7 +2591,7 @@ export function createPreviewController({
 
   const performRequestRender = (
     text: string,
-    { force = false, preserveViewport = false, preserveFrame = false, layout = sourcePreviewControls ? 'side' : 'full', prepareOnly = false }: {
+    { force = false, preserveViewport = false, preserveFrame = false, layout = previewLayout, prepareOnly = false }: {
       background?: boolean;
       force?: boolean;
       preserveViewport?: boolean;
@@ -2599,15 +2601,24 @@ export function createPreviewController({
     } = {}
   ): Promise<void> => {
     if (disposed) return Promise.resolve();
-    // DOM readiness is not cache validity: an older iframe may finish loading
-    // after a newer environment request fails. Only its accepted generation can
-    // authorize reuse, both while srcdoc loads and after it becomes readable.
+    if (force) renderEnvironmentGeneration += 1;
+    const environmentGeneration = renderEnvironmentGeneration;
+    // Reuse is tied to text, layout and rendering inputs. Canceling a request
+    // for another destination does not invalidate the last accepted payload;
+    // actual environment changes still retire it before any late frame loads.
     const canReuseAcceptedPayload = !force && latestPayload !== null
-      && latestAcceptedRequestGeneration === requestGeneration
+      && latestAcceptedEnvironmentGeneration === environmentGeneration
       && latestAcceptedLayout === layout
       && text === latestAcceptedText
       && !(latestPayload.document && document.body.classList.contains('vscode-using-screen-reader'));
-    if (canReuseAcceptedPayload && prepareOnly) return Promise.resolve();
+    if (canReuseAcceptedPayload && prepareOnly) {
+      if (hasPendingRequest && pendingLayout !== layout) {
+        requestGeneration += 1;
+        hasPendingRequest = false;
+        cancelPaintReady();
+      }
+      return Promise.resolve();
+    }
     if (canReuseAcceptedPayload && frameRenderedText === text
       && frame.contentDocument?.documentElement.dataset.meoPreviewLayout !== layout) {
       renderFrame(text, true);
@@ -2691,7 +2702,7 @@ export function createPreviewController({
           break;
         }
       }
-      latestAcceptedRequestGeneration = generation;
+      latestAcceptedEnvironmentGeneration = environmentGeneration;
       presetRenderErrors.delete(presetPreference);
       updatePresetInfo();
       latestPayload = value;
@@ -2747,7 +2758,7 @@ export function createPreviewController({
     const enabled = document.body.classList.contains('vscode-using-screen-reader');
     if (disposed || enabled === usingScreenReader) return;
     usingScreenReader = enabled;
-    if (host.hidden) { latestAcceptedRequestGeneration = -1; return; }
+    if (host.hidden) { renderEnvironmentGeneration += 1; requestGeneration += 1; hasPendingRequest = false; return; }
     const text = hasPendingRequest ? pendingText : latestAcceptedText;
     if (text !== null) void requestRender(text, { force: true, preserveViewport: true });
   });
@@ -3589,7 +3600,7 @@ export function createPreviewController({
     restorePresetState,
     updateCustomPresets,
     getPresetDiagnostics: () => presetDiagnostics,
-    invalidateRender: () => { requestGeneration += 1; cancelPaintReady(); },
+    invalidateRender: () => { renderEnvironmentGeneration += 1; requestGeneration += 1; cancelPaintReady(); },
     getPresetRevision: () => getPreviewPreset(presetPreference).custom?.revision,
     appearanceControl,
     fontFamilyControl,
@@ -3654,20 +3665,20 @@ export function createPreviewController({
     },
     refreshTheme,
     setSourcePreviewControls: (active: boolean, scrollSyncEnabled = true) => {
-      if (sourcePreviewControls !== active) {
-        // Layout changes footnote order even when the Draft is unchanged.
-        // Retire old payloads and requests before the lifecycle activates it.
-        if (latestAcceptedLayout !== (active ? 'side' : 'full')
-          || latestAcceptedRequestGeneration !== requestGeneration) {
-          requestGeneration += 1;
-          hasPendingRequest = false;
-        }
-        cancelPaintReady();
-      }
       sourcePreviewControls = active;
       synchronizedScrolling = scrollSyncEnabled;
       updateViewportAlignment();
       updateThemeToggle();
+    },
+    setLayout: (layout: 'side' | 'full') => {
+      if (previewLayout !== layout) {
+        // Retire the old destination's in-flight work. The last accepted
+        // payload remains reusable for its own layout and environment.
+        requestGeneration += 1;
+        hasPendingRequest = false;
+        cancelPaintReady();
+      }
+      previewLayout = layout;
     },
     refreshDocumentBackground: (refreshMermaid = false) => {
       const frameDocument = getFrameDocument();
@@ -3741,7 +3752,7 @@ export function createPreviewController({
     restoreLinkedPosition: (position: PreviewViewportPosition, isCurrent: () => boolean) =>
       restoreTopVisiblePosition(position, isCurrent, true),
     isCurrentDocument: () => frameRenderedText !== null && isCurrentText?.(frameRenderedText) !== false
-      && getFrameDocument()?.documentElement.dataset.meoPreviewLayout === (sourcePreviewControls ? 'side' : 'full'),
+      && getFrameDocument()?.documentElement.dataset.meoPreviewLayout === previewLayout,
     revealSourcePosition: (line: number, isCurrent: () => boolean) => {
       if (isCurrent()) previewScrollRange?.interrupt();
       const current = previewViewport, generation = frameGeneration;

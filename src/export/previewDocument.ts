@@ -99,6 +99,7 @@ export function createPreviewDocument(id: string, options: PreviewDocumentOption
   const atLine = (line: number): number | null => {
     return previewBlockAtLine(prepared.blocks, line);
   };
+  const footnoteTargets = new Map(prepared.anchors.map(anchor => [anchor.id, anchor.sourceLine]));
   const yieldWork = () => new Promise<void>(resolve => setImmediate(resolve));
   return {
     open(anchorLine: number) {
@@ -121,6 +122,8 @@ export function createPreviewDocument(id: string, options: PreviewDocumentOption
         if (search !== 0 && search !== searchGeneration) throw new Error('Preview operation superseded');
       };
       if (operation.kind === 'locate') {
+        const footnoteLine = footnoteTargets.get(operation.anchor!);
+        if (footnoteLine !== undefined) return { kind: 'locate', block: atLine(footnoteLine) };
         const heading = prepared.headings.find(heading => heading.id === operation.anchor);
         if (heading) return { kind: 'locate', block: atLine(heading.line) };
         for (const block of prepared.blocks) {
@@ -190,6 +193,6 @@ export function createPreviewDocument(id: string, options: PreviewDocumentOption
       }
       return { kind: 'search', total, active, blocks: counts };
     },
-    dispose() { disposed = true; cache.clear(); cacheBytes = 0; }
+    dispose() { disposed = true; cache.clear(); footnoteTargets.clear(); cacheBytes = 0; }
   };
 }

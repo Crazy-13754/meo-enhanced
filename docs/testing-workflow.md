@@ -948,6 +948,16 @@ layout and windowed path. `MEO_TEST_SCREENSHOTS` optionally captures both layout
 numbering/backlinks, complete reference-ordered endnotes and exact windowed
 continuation lookup. Mode switches retain the same semantic reading anchor;
 they do not enable global keyboard following or per-footnote handoff state.
+The `--footnote-spacing-only` slice compares adjacent-note geometry with endnotes
+in default/GitHub, light/dark and ordinary/windowed presentations, retaining
+paragraph breaks inside one definition. `--footnote-reuse-only` counts render
+requests through hide/reopen, Live/Source round trips and cancellation of a held
+full-layout response; retained contents and DOM must remain valid.
+`test-footnote-code-line-reuse.ts` bounds whole-document code scans and compares
+both removal and source-slot projections with independent parsing, including
+structural fallbacks. `test-preview-rendering.ts` checks that locating generated
+footnote references, definitions and nested references formats no unrelated body
+blocks in a production-windowed 5,000-paragraph document.
 
 The same suite's `--collapsed-only` slice starts fresh ordinary and windowed
 Source/Preview sessions around closed disclosures followed by source-positioned notes.

@@ -21,6 +21,8 @@ export type PrepareMarkdownWithFootnotesOptions = {
   githubStyle?: boolean;
   /** Identifies generated reference tags so GFM raw-HTML filtering keeps their anchors. */
   onReferenceTags?: (tags: readonly string[]) => void;
+  /** Windowed Preview can resolve generated targets before formatting blocks. */
+  onAnchor?: (id: string, sourceLine: number) => void;
 };
 
 export type PreparedMarkdownWithFootnotes = {
@@ -53,7 +55,7 @@ export function prepareMarkdownWithFootnotes(
   const referenceCountsByLabel = new Map<string, number>();
   const hrefPrefix = getInternalDocumentHrefPrefix(options);
   const pendingDefinitions: ExportFootnoteDefinition[] = [];
-  const renderReference = (rawLabel: string): string | null => {
+  const renderReference = (rawLabel: string, sourceLine: number): string | null => {
     const normalizedLabel = normalizeFootnoteLabel(rawLabel);
     const definition = extracted.definitionByLabel.get(normalizedLabel);
     if (!definition) {
@@ -73,6 +75,7 @@ export function prepareMarkdownWithFootnotes(
 
     const referenceId = nextCount === 1 ? `fnref-${footnoteNumber}` : `fnref-${footnoteNumber}-${nextCount}`;
     definition.referenceIds.push(referenceId);
+    options.onAnchor?.(referenceId, sourceLine);
 
     const supTag = '<sup class="footnote-ref">';
     const linkTag = `<a href="${escapeHtmlAttr(buildInternalAnchorHref(hrefPrefix, `fn-${footnoteNumber}`))}" id="${escapeHtmlAttr(referenceId)}">`;
@@ -83,14 +86,15 @@ export function prepareMarkdownWithFootnotes(
       '</sup>'
     ].join('');
   };
-  const rewriteReferences = (markdown: string, definition = false) => {
+  const rewriteReferences = (markdown: string, definition?: ExportFootnoteDefinition) => {
     const inspection = definition ? null : extracted.bodyInspection ?? inspectMarkdownCodeLines(markdown);
     const codeLines = inspection?.codeLines ?? collectMarkdownCodeLines(markdown,
       definition && !markdown.includes('<') ? options.onFenceInfo : undefined);
     let preservesCodeLines = inspection !== null;
     const rewritten = markdown.split('\n').map((line, index) => {
       if (codeLines.has(index)) return line;
-      return replaceFootnoteReferencesInLine(line, renderReference, (from, to, html) => {
+      const sourceLine = definition ? definition.sourceLine + index : extracted.bodySourceLines[index] ?? index + 1;
+      return replaceFootnoteReferencesInLine(line, label => renderReference(label, sourceLine), (from, to, html) => {
         if (preservesCodeLines) preservesCodeLines = inspection!.canInsertInlineHtmlAt(index, from, to, html);
       });
     }).join('\n');
@@ -104,13 +108,14 @@ export function prepareMarkdownWithFootnotes(
   // reachable definition is visited once, including cycles and newly cited notes.
   for (let index = 0; index < pendingDefinitions.length; index += 1) {
     const definition = pendingDefinitions[index];
-    definition.contentMarkdown = rewriteReferences(definition.contentMarkdown, true).markdown;
+    definition.contentMarkdown = rewriteReferences(definition.contentMarkdown, definition).markdown;
   }
 
   const footnotes = extracted.definitions
     .filter((definition) => definition.number !== null)
     .sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
   const prepared = footnotes.map(footnote => {
+    options.onAnchor?.(`fn-${footnote.number}`, footnote.sourceLine);
     const prepare = () => {
       const source = options.normalizeMarkdown(footnote.contentMarkdown);
       return options.prepareMarkdown?.(source) ?? (() => options.renderMarkdown(source));
@@ -167,7 +172,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown, sourcePositions: b
   const consumedLineNumbers = new Set<number>();
   const definitions: ExportFootnoteDefinition[] = [];
   const definitionByLabel = new Map<string, ExportFootnoteDefinition>();
-  const definitionStarts = new Set<number>();
+  const definitionStarts = new Map<number, string>();
   const inspection = inspectMarkdownCodeLines(source.markdown);
   const codeLines = inspection.codeLines;
 
@@ -189,7 +194,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown, sourcePositions: b
 
     consumedLineNumbers.add(index);
     const definitionStartIndex = index;
-    definitionStarts.add(index);
+    definitionStarts.set(index, sourceFootnoteMarker);
     const contentLines = [line.slice(markerMatch[0].length)];
     let continuationBaseline: 2 | 4 | null = null;
 
@@ -246,7 +251,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown, sourcePositions: b
     bodySourceLines,
     definitions,
     definitionByLabel,
-    bodyInspection: sourcePositions && definitionStarts.size ? inspectMarkdownCodeLines(bodyLines.join('\n')) : inspection.withoutLines(consumedLineNumbers)
+    bodyInspection: inspection.withoutLines(consumedLineNumbers, sourcePositions ? definitionStarts : undefined)
   };
 }
 

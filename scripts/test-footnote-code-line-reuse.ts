@@ -13,13 +13,17 @@ MarkdownIt.prototype.parse = function(source, environment) {
   return parse.call(this, source, environment);
 };
 try {
-  preparePreviewDocument({ markdownText: large, sourceDocumentPath: '/fixture/notes.md', uiLanguage: 'en' }, true);
-  assert.equal(wholeScans, 1, 'independent footnote removal and inline-only rewriting must share one global code scan');
+  for (const layout of ['full', 'side'] as const) {
+    wholeScans = 0;
+    preparePreviewDocument({ markdownText: large, sourceDocumentPath: '/fixture/notes.md', uiLanguage: 'en', layout }, true);
+    console.log(`Footnote ${layout} preparation: ${wholeScans} whole-document code scans`);
+    assert.equal(wholeScans, 1, `${layout}: independent definition projection and inline-only rewriting share one global code scan`);
+  }
 } finally { MarkdownIt.prototype.parse = parse; }
 
-const prepare = (markdown: string) => prepareMarkdownWithFootnotes({ markdown,
+const prepare = (markdown: string, sourcePositions = false) => prepareMarkdownWithFootnotes({ markdown,
   sourceLines: markdown.split('\n').map((_, index) => index + 1) }, {
-  target: 'html', renderMarkdown: text => text, normalizeMarkdown: text => text,
+  sourcePositions, target: 'html', renderMarkdown: text => text, normalizeMarkdown: text => text,
   backToReference: 'Back', backToNumberedReference: number => `Back ${number}`,
   backToReferenceOccurrence: (number, occurrence) => `Back ${number}/${occurrence}`
 });
@@ -52,8 +56,8 @@ const prefixes = ['', 'Prefix ', '# ', '# Prefix ', '> ', '> Prefix ', '- ', '- 
 const references = ['[^n]', '`[^n]`', '\\[^n]', '<span>[^n]</span>', '[link]: [^n]', '[^missing]', '[^n] and[^n]'];
 for (const prefix of prefixes) for (const reference of references) for (const following of [
   '\n```js\ncode\n```', '\n\n    ```js\n    code\n    ```', '\n---\n\n| A | B |\n| - | - |', '\n\n> ```js\n> code\n> ```'
-]) {
-  const result = prepare(`${prefix}${reference}${following}\n\n[^n]: Note before nested[^other].\n\n[^other]: Other.`);
+]) for (const sourcePositions of [false, true]) {
+  const result = prepare(`${prefix}${reference}${following}\n\n[^n]: Note before nested[^other].\n\n[^other]: Other.`, sourcePositions);
   if (result.bodyCodeLines) {
     reused++;
     assert.deepEqual([...result.bodyCodeLines], [...collectMarkdownCodeLines(result.body.markdown)], `${prefix}${reference}${following}`);
@@ -81,6 +85,13 @@ for (const left of blocks) for (const middle of blocks) for (const right of ['Af
     if (!projected) { removalFallbacks++; continue; }
     const body = lines.filter((_, index) => !removed.has(index)).join('\n');
     assert.deepEqual([...projected.codeLines], [...collectMarkdownCodeLines(body)], JSON.stringify({ left, middle, right, from, to }));
+    const marker = '<!--meo-source-footnote-->';
+    const marked = inspection.withoutLines(removed, new Map([[from, marker]]));
+    assert.ok(marked, 'an isolated marker retains a proven independent removal');
+    const markedBody = lines.flatMap((line, index) => [
+      ...(index === from ? ['', marker, ''] : []), ...(!removed.has(index) ? [line] : [])
+    ]).join('\n');
+    assert.deepEqual([...marked.codeLines], [...collectMarkdownCodeLines(markedBody)], 'source-slot projection matches independent parsing');
     removalChecks++;
   }
 }
