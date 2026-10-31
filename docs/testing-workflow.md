@@ -431,6 +431,12 @@ second typing debounce, ordinary batches survive no-op refreshes, and delayed
 presentation uses the latest mapped source lines. Native input bursts retain
 bounded render counts on both size paths; latency comparisons use a fixed graph,
 viewport and warm-up with separate scheduling/render/commit measurements.
+The same owner checks input quiet deadlines with a controlled clock: elapsed
+paint frames count toward the existing 120ms optimized-input window and the
+ordinary Mermaid batch window, rather than starting a second full pause. Use
+`bun scripts/test-mermaid-split-refresh.ts --quiet-deadlines-only` for that slice.
+`scripts/test-preview-webview-adapter.ts` bounds the default visible refresh wait
+to 80ms while retaining latest-input batching and one in-flight render.
 
 `bun scripts/test-preview-table-layout-production.ts --live-update-only` isolates
 Live HTML table input stability. Caption/cell typing and undo/redo check every

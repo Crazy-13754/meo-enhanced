@@ -12,7 +12,7 @@ import {
 import { getMermaidDiagramPresentationFactory } from '../editor/mermaidDiagramPresentation';
 import { UiLanguageSensitiveWidget, uiLanguageFacet } from '../editor/uiLanguage';
 import { setLivePointerSelectionActiveEffect, sourcePresentationSelection } from '../editor/livePointerSelection';
-import { supersedeLiveInputDerivedWork, isLiveInputDerivedWorkRefresh, usesLargeDocumentDerivedWorkBudget } from '../editor/liveInputDerivedWork';
+import { supersedeLiveInputDerivedWork, isLiveInputDerivedWorkRefresh, usesLargeDocumentDerivedWorkBudget, liveInputQuietDelay } from '../editor/liveInputDerivedWork';
 import { isCompleteMarkdownStructure } from '../editor/markdownStructure';
 import { resolvedSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
 import { isExternalDocumentPresentation } from '../editor/externalDocumentPresentation';
@@ -603,7 +603,7 @@ export class MermaidSourcePreviewWidget extends UiLanguageSensitiveWidget {
       if (root.mermaidPreview !== preview || !root.isConnected) return;
       preview.widget.updateSource(preview.source, preview.startLine, preview.endLine);
       delete root.dataset.meoMermaidRendering;
-    }, usesLargeDocumentDerivedWorkBudget(view.state) ? 0 : 80);
+    }, usesLargeDocumentDerivedWorkBudget(view.state) ? 0 : liveInputQuietDelay(view, 80));
     return true;
   }
   destroy(root: PreviewElement): void {

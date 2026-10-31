@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { launchTestBrowser } from './browser-test-helpers';
-import { checkMermaidInputContinuity } from './mermaid-input-continuity';
+import { checkLiveInputQuietDeadlines, checkMermaidInputContinuity } from './mermaid-input-continuity';
 
 // Exercise main-document source edits through the production editor. A held renderer
 // makes the old-diagram/loading transition observable without timing a CPU.
@@ -10,6 +10,8 @@ const build = await Bun.build({
 assert.ok(build.success, build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
 try {
+  await checkLiveInputQuietDeadlines(browser, await build.outputs[0].text());
+  if (!process.argv.includes('--quiet-deadlines-only')) {
   await checkMermaidInputContinuity(browser, await build.outputs[0].text());
   const page = await browser.newPage();
   await page.setViewport({ width: 1100, height: 720, deviceScaleFactor: 1 });
@@ -214,4 +216,5 @@ try {
   console.log(JSON.stringify({ foregroundPriority: priority }));
   assert.equal(priority.order[0], 'edit', 'Background retries must not start before the visible split edit');
   console.log('PASS Mermaid split refresh: old diagram, typing batch, cache, stale results, errors, theme, disposal');
+  }
 } finally { await browser.close(); }

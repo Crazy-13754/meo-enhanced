@@ -352,6 +352,9 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
   const runningFrameConsumers = new Set<object>();
   const frameConsumers = new Map<object, FrameConsumerRecord>();
   let disposed = false;
+  let lastInputAt: number | null = null;
+  const remainingQuietTime = (delayMs: number): number => lastInputAt === null
+    ? delayMs : Math.max(0, delayMs - (performance.now() - lastInputAt));
   // Keep a pressed widget button alive until its pointer gesture ends.
   // Primary input still commits; only the later full derived rebuild waits.
   const activePointers = new Set<number>();
@@ -660,6 +663,8 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
     const taskId = nextDeferredTaskId++;
     const task = { idleId: null as number | null, quietTimerId: null as number | null };
     deferredTasks.set(taskId, task);
+    // Painted text frames already consume part of the input quiet window.
+    // Keep its deadline instead of adding the entire pause after those frames.
     task.quietTimerId = window.setTimeout(() => {
       task.quietTimerId = null;
       if (!deferredTasks.has(taskId)) return;
@@ -670,7 +675,7 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
       task.idleId = canRequestIdle
         ? window.requestIdleCallback(run, { timeout: timeoutMs })
         : window.requestAnimationFrame(run);
-    }, LARGE_DOCUMENT_INPUT_QUIET_MS);
+    }, remainingQuietTime(LARGE_DOCUMENT_INPUT_QUIET_MS));
     return taskId;
   };
   const cancelLargeDocumentDeferred = (taskId: number): void => {
@@ -712,6 +717,7 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
     : createLiveInputDerivedWorkScheduler(schedulerOptions);
   let scheduler = createScheduler();
   return {
+    remainingQuietTime,
     request(key: object, operation: () => void) {
       requestConsumer(key, operation);
     },
@@ -740,6 +746,7 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
         scheduler = createScheduler();
       }
       for (const transaction of update.transactions) {
+        if (transaction.docChanged) lastInputAt = performance.now();
         const beginsComposition = transaction.effects.some((effect) => effect.is(beginLiveInputCompositionEffect));
         const changesComposition = transaction.effects.some((effect) => effect.is(changeLiveInputCompositionEffect));
         const completesComposition = transaction.effects.some((effect) => effect.is(completeLiveInputCompositionEffect));
@@ -788,6 +795,11 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
 const codeMirrorLiveInputDerivedWorkPlugin = ViewPlugin.define(
   createCodeMirrorLiveInputDerivedWorkPlugin
 );
+
+/** Count rendering/paint waits toward the same accepted input quiet window. */
+export function liveInputQuietDelay(view: EditorView, delayMs: number): number {
+  return view.plugin(codeMirrorLiveInputDerivedWorkPlugin)?.remainingQuietTime(delayMs) ?? delayMs;
+}
 
 export function beginLiveInputComposition(view: EditorView): void {
   if (!view.plugin(codeMirrorLiveInputDerivedWorkPlugin)) return;

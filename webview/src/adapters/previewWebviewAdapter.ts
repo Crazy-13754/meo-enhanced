@@ -67,7 +67,7 @@ export function createPreviewWebviewAdapter(
   let renderInFlight = false;
   let currentText: DocumentText | null = null;
   let renderInvalidated = false;
-  const refreshDelayMs = options.refreshDelayMs ?? 300;
+  const refreshDelayMs = options.refreshDelayMs ?? 80;
   const scheduleTimeout = options.scheduleTimeout ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
   const cancelTimeout = options.cancelTimeout ?? ((timeout) => globalThis.clearTimeout(timeout as ReturnType<typeof setTimeout>));
 

@@ -3,6 +3,63 @@ import sharp from 'sharp';
 import type { Browser } from 'puppeteer-core';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
 
+export async function checkLiveInputQuietDeadlines(browser: Browser, bundle: string): Promise<void> {
+  const worker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
+  assert.ok(worker.success);
+  for (const large of [true, false]) {
+    const page = await browser.newPage();
+    try {
+      await page.setViewport({ width: 1000, height: 800 });
+      await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
+      await page.addStyleTag({ path: 'webview/src/styles.css' });
+      await page.evaluate(code => { document.body.dataset.meoMarkdownWorkerSrc = URL.createObjectURL(new Blob([code], { type: 'text/javascript' })); }, await worker.outputs[0]!.text());
+      await page.addScriptTag({ content: bundle });
+      await page.evaluate(large => {
+        const w = window as any;
+        w.quietSources = [];
+        w.mermaid = { initialize() {}, async render(_id: string, source: string) {
+          w.quietSources.push(source);
+          return { svg: `<svg width="180" height="80" viewBox="0 0 180 80" data-quiet-source="${source}"><rect width="180" height="80"/></svg>` };
+        } };
+        w.quietEditor = w.MermaidEditingHarness.createEditor({ parent: document.getElementById('app'), initialMode: 'live',
+          text: 'Before\n\n```mermaid\nflowchart LR\nA[Alpha] --> B[End]\n```\n\nAfter\n\n'
+            + (large ? 'Background paragraph.\n\n'.repeat(2000) : '') });
+      }, large);
+      await page.waitForSelector('.meo-mermaid-block svg');
+      await page.click('.meo-mermaid-mode-btn');
+      await page.evaluate(() => (window as any).quietEditor.whenVisiblePresentationReady(3000));
+      const result = await page.evaluate(async () => {
+        const w = window as any, view = w.quietEditor.view;
+        const timers: Array<{ at: number; delay: number }> = [], nativeTimer = window.setTimeout, nativeNow = performance.now.bind(performance);
+        let clock = 1000;
+        Object.defineProperty(performance, 'now', { configurable: true, value: () => clock });
+        window.setTimeout = ((callback: TimerHandler, delay?: number, ...args: any[]) => {
+          timers.push({ at: clock, delay: delay ?? 0 }); return nativeTimer(callback, delay, ...args);
+        }) as typeof window.setTimeout;
+        try {
+          const from = view.state.doc.toString().indexOf('Alpha');
+          view.dispatch({ changes: { from, to: from + 5, insert: 'Beta' },
+            selection: { anchor: from + 4 }, userEvent: 'input.type' });
+          // Painted frames and the quiet timer share one accepted input deadline.
+          clock += 80;
+          for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
+          return { delays: timers.filter(timer => timer.at === clock).map(timer => timer.delay),
+            large: w.MermaidEditingHarness.usesLargeDocumentDerivedWorkBudget(view.state), text: view.state.doc.toString(),
+            sources: w.quietSources as string[] };
+        } finally { window.setTimeout = nativeTimer; Object.defineProperty(performance, 'now', { configurable: true, value: nativeNow }); }
+      });
+      assert.equal(result.large, large, 'the deadline fixture must use the production input budget');
+      assert.ok(result.text.includes('A[Beta]'));
+      if (large) {
+        assert.ok(result.delays.includes(40) && !result.delays.includes(120),
+          'large input must consume elapsed time instead of restarting its 120ms quiet window: ' + JSON.stringify(result.delays));
+      } else assert.ok(result.delays.includes(0) && !result.delays.includes(80) && result.sources.some(source => source.includes('A[Beta]')),
+        'accepted Mermaid source must not restart an expired input quiet window: ' + JSON.stringify(result.delays));
+    } finally { await page.evaluate(() => (window as any).quietEditor?.destroy()); await page.close(); }
+  }
+  console.log('Live input quiet deadlines passed: painted frames share the accepted input quiet window');
+}
+
 export async function checkMermaidInputContinuity(browser: Browser, bundle: string): Promise<void> {
   const worker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
   assert.ok(worker.success);

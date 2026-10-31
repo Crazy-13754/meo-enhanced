@@ -58,6 +58,24 @@ const surface = {
   }
 };
 
+{
+  let delay = Infinity;
+  const pending = new Map<number, () => void>();
+  let id = 0;
+  const responsive = createPreviewWebviewAdapter({ ...surface, preload() {}, dispose() {} }, {
+    scheduleTimeout(callback, milliseconds) { delay = milliseconds; pending.set(++id, callback); return id; },
+    cancelTimeout(timer) { pending.delete(timer as number); }
+  });
+  responsive.start({ text: 'visible', appearance: 'light', fontFamily: '', sourceColoring: true, active: true });
+  for (const text of ['first edit', 'second edit', 'latest edit']) responsive.scheduleVisibleRefresh(text);
+  assert.ok(delay <= 80, 'visible Preview must not add a 300ms pause before rendering accepted input');
+  assert.equal(pending.size, 1, 'responsive Preview still batches consecutive input');
+  pending.values().next().value!();
+  assert.equal(calls.at(-1)?.text, 'latest edit');
+  responsive.dispose();
+  calls.length = 0;
+}
+
 const adapter = createPreviewWebviewAdapter(surface);
 adapter.start({ text: 'hidden', appearance: 'auto', fontFamily: 'MEO Synthetic Sans', sourceColoring: false, showComments: true, active: false });
 assert.deepEqual(calls, [
