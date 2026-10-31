@@ -51,6 +51,7 @@ type ActiveMainInput = ActiveInput & {
   lastMeasuredScrollTop: number;
   scrollTopBeforeInput: number;
   viewportMoved: boolean;
+  insertedContentStart: { position: number; top: number } | null;
 };
 
 type ActiveNestedInput = ActiveInput & {
@@ -59,6 +60,7 @@ type ActiveNestedInput = ActiveInput & {
 };
 
 type MainInputMeasurement = {
+  insertedContentTop: number | null;
   caretTop: number | null;
   inputLineHeight: number;
   inputLineNumber: number;
@@ -144,6 +146,8 @@ export function createEditorInteractionContinuity(input: {
           const coords = view.coordsAtPos(position);
           const scroller = view.scrollDOM.getBoundingClientRect();
           return {
+            insertedContentTop: candidate.insertedContentStart
+              ? view.coordsAtPos(candidate.insertedContentStart.position)?.top ?? null : null,
             caretTop: coords?.top ?? null,
             inputLineHeight,
             inputLineNumber,
@@ -159,7 +163,16 @@ export function createEditorInteractionContinuity(input: {
           if (!measurement || !isCurrent(candidate)) return;
           if (animationFrame) candidate.remainingFrames -= 1;
           candidate.viewportMoved = measurement.viewportMoved;
-          const inputLineReflowed = (
+          // A multiline insertion can acquire a block preview before the caret
+          // after the source lines have already settled. If its start stayed
+          // fixed, that extra height belongs to the edit, not upstream drift.
+          const insertedContentReflowed = candidate.insertedContentStart !== null
+            && measurement.insertedContentTop !== null
+            && Math.abs(measurement.insertedContentTop - candidate.insertedContentStart.top) <= 0.5
+            && Math.abs(measurement.scrollTop - candidate.lastMeasuredScrollTop) <= 0.5
+            && measurement.caretTop !== null && candidate.caretTopBeforeInput !== null
+            && Math.abs(measurement.caretTop - candidate.caretTopBeforeInput) > 0.5;
+          const inputLineReflowed = insertedContentReflowed || (
             candidate.inputLineHeightBefore !== null &&
             Math.abs(measurement.inputLineHeight - candidate.inputLineHeightBefore) > 0.5
           ) || (
@@ -256,7 +269,7 @@ export function createEditorInteractionContinuity(input: {
     }
   };
 
-  const beginInputSettlement = (settleInSource = false): void => {
+  const beginInputSettlement = (settleInSource = false, insertedContentPosition: number | null = null): void => {
     const scrollTopAtInput = pendingScrollTopBeforeInput ?? view.scrollDOM.scrollTop;
     // A burst of keyboard input is one viewport interaction. If an earlier
     // character triggered a delayed height-map correction, the next
@@ -288,6 +301,7 @@ export function createEditorInteractionContinuity(input: {
     pendingInputLineNumber = null;
     cancelActive();
     const position = view.state.selection.main.head;
+    const insertedContentTop = insertedContentPosition !== null ? view.coordsAtPos(insertedContentPosition)?.top : null;
     inputSessionPosition = position;
     const candidate: ActiveMainInput = {
       generation: nextGeneration,
@@ -301,6 +315,8 @@ export function createEditorInteractionContinuity(input: {
       lastMeasuredScrollTop: scrollTopAtInput,
       scrollTopBeforeInput,
       viewportMoved: false,
+      insertedContentStart: insertedContentPosition !== null && insertedContentTop != null
+        ? { position: insertedContentPosition, top: insertedContentTop } : null,
       awaitingDerivedPresentation: getMode() === 'live',
       frame: null,
       remainingFrames: MAX_SETTLE_FRAMES,
@@ -371,7 +387,11 @@ export function createEditorInteractionContinuity(input: {
           (getMode() === 'live' || toolbarInput) &&
           view.hasFocus && view.state.selection.main.empty
         ) {
-          beginInputSettlement(toolbarInput);
+          let insertedContentPosition: number | null = null;
+          if (update.transactions.length === 1) update.changes.iterChanges((_fromA, _toA, fromB, toB, inserted) => {
+            if (inserted.lines > 1 && toB === view.state.selection.main.head) insertedContentPosition = fromB;
+          });
+          beginInputSettlement(toolbarInput, insertedContentPosition);
         } else {
           cancel();
         }

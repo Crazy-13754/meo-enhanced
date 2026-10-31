@@ -1425,6 +1425,17 @@ paths also retain body drag selections, native input/history and checkbox contro
 Empty prefix widgets must expose a text-row rectangle so coordinate search can
 reach the following body rather than stopping at the widget boundary.
 
+`scripts/test-list-layout-interaction.ts --paste-only` samples the paste frame
+and subsequent animation frames while ordered prefixes grow or shrink. Ordinary
+and optimized paths cover wrapped, nested, quoted and task items, native paste
+with inline HTML, unchanged node identity, history and Source/Live roundtrips.
+The source revision, marker widget and hanging indent must stay coherent without
+a transient body collapse. `scripts/test-html-content.ts --paste-only` pairs both
+budgets for block/hidden/sibling HTML, trailing blank lines, native/plain paste,
+source editing exit and history. Deferred parsing retains the paste intent in the
+HTML editing owner; a newer selection/input retires it. A multiline insertion's
+own preview height must not scroll already visible preceding prose.
+
 For semantic UI colors, `test:theme-inheritance` covers shared surfaces, neutral
 text and icons, switch states, cached palette reuse and invalidation when the
 base surface changes. It also checks that unrelated native menu colors cannot

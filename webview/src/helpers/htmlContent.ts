@@ -201,13 +201,41 @@ export const setHtmlEditingRangeEffect = StateEffect.define<HtmlEditingRange | n
   map: (range, changes) => range && ({ from: changes.mapPos(range.from, -1), to: changes.mapPos(range.to, 1) })
 });
 
-export const htmlEditingRangeField = StateField.define<HtmlEditingRange | null>({
+const openPastedHtmlSourceEffect = StateEffect.define<HtmlEditingRange[]>({
+  map: (ranges, changes) => ranges.map(range => ({ from: changes.mapPos(range.from, -1), to: changes.mapPos(range.to, 1) }))
+    .filter(range => range.to > range.from)
+});
+
+type HtmlEditingState = {
+  range: HtmlEditingRange | null;
+  paste: { inserted: HtmlEditingRange[]; head: number } | null;
+};
+const restoreHtmlEditingStateEffect = StateEffect.define<HtmlEditingState>({
+  map: (value, changes) => ({
+    range: value.range && { from: changes.mapPos(value.range.from, -1), to: changes.mapPos(value.range.to, 1) },
+    paste: value.paste && { head: changes.mapPos(value.paste.head, 1), inserted: value.paste.inserted.map(range => ({
+      from: changes.mapPos(range.from, -1), to: changes.mapPos(range.to, 1)
+    })) }
+  })
+});
+
+function pastedHtmlEditingRange(state: EditorState, inserted: readonly HtmlEditingRange[]): HtmlEditingRange | undefined {
+  if (state.readOnly || state.selection.ranges.length !== 1 || !state.selection.main.empty) return;
+  const head = state.selection.main.head;
+  const block = collectRenderableHtmlBlocks(state).filter(block => block.to <= head
+    && !state.doc.sliceString(block.to, head).trim()
+    && inserted.some(range => block.to > range.from && block.from < range.to && head <= range.to)).at(-1);
+  return block ? { from: block.from, to: block.to } : undefined;
+}
+
+export const htmlEditingRangeField = StateField.define<HtmlEditingState>({
   create() {
-    return null;
+    return { range: null, paste: null };
   },
   update(value, transaction) {
-    if (isExternalDocumentPresentation(transaction)) return null;
-    const previous = value ?? selectedHtmlBlock(transaction.startState);
+    if (isExternalDocumentPresentation(transaction)) return { range: null, paste: null };
+    const previous = value.range ?? selectedHtmlBlock(transaction.startState);
+    let paste = transaction.docChanged || transaction.selection ? null : value.paste;
     let replaced = false;
     if (previous) transaction.changes.iterChangedRanges((from, to) => {
       if (from <= previous.from && to >= previous.to) replaced = true;
@@ -219,42 +247,61 @@ export const htmlEditingRangeField = StateField.define<HtmlEditingRange | null>(
     for (const effect of transaction.effects) {
       if (effect.is(setHtmlEditingRangeEffect)) {
         next = effect.value;
+        paste = null;
+        explicitlySet = true;
+      } else if (effect.is(openPastedHtmlSourceEffect)) {
+        paste = { inserted: effect.value, head: transaction.state.selection.main.head };
+      } else if (effect.is(restoreHtmlEditingStateEffect)) {
+        next = effect.value.range;
+        paste = effect.value.paste;
         explicitlySet = true;
       }
     }
-    if (!next || explicitlySet || isLivePointerSelectionActive(transaction.state)) return next;
+    // The accepted parser may arrive after the paste. Retain only this intent
+    // in the existing range owner; a newer input/selection retires it.
+    if (paste) {
+      if (paste.head !== transaction.state.selection.main.head) paste = null;
+      else {
+        const pasted = pastedHtmlEditingRange(transaction.state, paste.inserted);
+        if (pasted) { next = pasted; paste = null; explicitlySet = true; }
+        else if (isCompleteMarkdownStructure(resolvedSyntaxTree(transaction.state, 0), transaction.newDoc.length)) paste = null;
+      }
+    }
+    if (!next || explicitlySet || isLivePointerSelectionActive(transaction.state)) return { range: next, paste };
     const pointerReleased = transaction.effects.some(effect => effect.is(setLivePointerSelectionActiveEffect) && !effect.value.active);
-    if (!transaction.selection && !pointerReleased) return next;
+    if (!transaction.selection && !pointerReleased) return { range: next, paste };
     const head = transaction.state.selection.main.head;
-    return head >= next.from && head <= next.to ? next : null;
+    return { range: head >= next.from && head <= next.to ? next : null, paste };
   }
 });
 
 export function getHtmlEditingRange(state: EditorState): HtmlEditingRange | null {
   if (blockReadingFocusAt(state)?.kind === 'html') return null;
-  return state.field(htmlEditingRangeField, false) ?? selectedHtmlBlock(state) ?? null;
+  const editing = state.field(htmlEditingRangeField, false);
+  // Parsing can become ready during the same presentation pass. Consume the
+  // owned intent immediately so the first HTML widget already opens as source.
+  return editing?.range ?? (editing?.paste && editing.paste.head === state.selection.main.head
+    ? pastedHtmlEditingRange(state, editing.paste.inserted) : undefined) ?? selectedHtmlBlock(state) ?? null;
 }
 
 // Keep the new fragment open in the paste transaction itself, including when
 // the native caret lands in trailing blank lines. The next selection/input owns exit.
 const htmlPasteSourceEditing = EditorState.transactionExtender.of(transaction => {
-  if (!transaction.isUserEvent('input.paste') || !transaction.docChanged || transaction.state.readOnly
-    || transaction.state.selection.ranges.length !== 1 || !transaction.state.selection.main.empty) return null;
+  if (!transaction.isUserEvent('input.paste') || !transaction.docChanged) return null;
   const inserted: Array<{ from: number; to: number }> = [];
   transaction.changes.iterChangedRanges((_from, _to, from, to) => {
-    if (transaction.state.doc.sliceString(from, to).includes('<')) inserted.push({ from, to });
+    if (transaction.newDoc.sliceString(from, to).includes('<')) inserted.push({ from, to });
   });
-  if (!inserted.length) return null;
-  const head = transaction.state.selection.main.head;
-  const block = collectRenderableHtmlBlocks(transaction.state).filter(block => block.to <= head
-    && !transaction.state.doc.sliceString(block.to, head).trim()
-    && inserted.some(range => block.to > range.from && block.from < range.to && head <= range.to)).at(-1);
-  return block ? { effects: setHtmlEditingRangeEffect.of({ from: block.from, to: block.to }) } : null;
+  // Extenders run before the input-phase effects are installed. Reading state
+  // here would compute a provisional parser/presentation and then repeat it.
+  return inserted.length ? { effects: openPastedHtmlSourceEffect.of(inserted) } : null;
 });
 
 const htmlSourceEditingHistory = invertedEffects.of(transaction => transaction.docChanged
-  && transaction.effects.some(effect => effect.is(setHtmlEditingRangeEffect))
-  ? [setHtmlEditingRangeEffect.of(getHtmlEditingRange(transaction.startState))] : []);
+  && transaction.effects.some(effect => effect.is(setHtmlEditingRangeEffect) || effect.is(openPastedHtmlSourceEffect)
+    || effect.is(restoreHtmlEditingStateEffect))
+  ? [restoreHtmlEditingStateEffect.of({ range: getHtmlEditingRange(transaction.startState),
+    paste: transaction.startState.field(htmlEditingRangeField, false)?.paste ?? null })] : []);
 
 export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = resolvedSyntaxTree(state), scope?: { from: number; to: number }): RenderableHtmlBlock[] {
   const details = getDetailsBlocks(state);

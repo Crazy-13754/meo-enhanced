@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { launchTestBrowser } from './browser-test-helpers';
+import { launchTestBrowser, closeTestBrowser } from './browser-test-helpers';
 import { renderMarkdownToHtml } from '../src/export/renderMarkdown';
 import { buildPreviewStyles } from '../src/export/exportStyles';
 
@@ -270,6 +270,88 @@ async function assertOrderedMarkerWidths(page: import('puppeteer-core').Page): P
   }
   console.log('ordered marker digit growth and hanging alignment checks passed');
 }
+async function assertListPasteFrames(page: import('puppeteer-core').Page): Promise<void> {
+  const fixtures = [
+    { source: '- a\n98. TARGET ' + longText, insert: '\n99. inserted', before: '98.', after: '100.', wrapped: true },
+    { source: '- a\n1. TARGET', insert: '\n1. inserted', before: '1.', after: '2.' },
+    { source: '- a\n98. TARGET', insert: '\n2. inserted', before: '98.', after: '3.' },
+    { source: '1) a\n2) TARGET', insert: '\n2) inserted', before: '2)', after: '3)' },
+    { source: '> - a\n> 98. TARGET ' + longText, insert: '\n> 99. inserted', before: '98.', after: '98.', wrapped: true },
+    { source: '1. parent\n  98. TARGET ' + longText, insert: '\n  99. inserted', before: '98.', after: '100.', wrapped: true },
+    { source: '- a\n98. [ ] TARGET ' + longText, insert: '\n99. inserted', before: '98. [ ]', after: '100. [ ]', wrapped: true },
+    { source: '- a\n98. TARGET', insert: '\n- inserted', before: '98.', after: '98.' },
+    { source: '- a\n98. TARGET ' + longText, insert: '\n99. inserted', before: '98.', after: '100.', wrapped: true, native: true },
+    { source: '- a\n98. TARGET ' + longText, insert: '\n99. <b>inserted</b>', before: '98.', after: '100.', wrapped: true, native: true }
+  ];
+  for (const large of [false, true]) for (const [index, fixture] of fixtures.entries()) {
+    const source = fixture.source + '\n\nKEEP NODE\n\n1. UNCHANGED ITEM'
+      + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
+    const label = `${large ? 'optimized' : 'ordinary'}/paste/${index}`;
+    const result = await page.evaluate(async ({ source, insert, native }) => {
+      const harness = (window as any).ListEditingHarness;
+      const host = document.getElementById('editor-host')!; host.replaceChildren();
+      const editor = harness.createEditor({ parent: host, text: source, initialMode: 'live', onApplyChanges() {} });
+      (window as any).__listPasteEditor = editor;
+      for (let i = 0; i < 8; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      editor.view.focus();
+      const first = editor.view.state.doc.line(1);
+      editor.view.dispatch({ selection: { anchor: first.to } });
+      const keeper = editor.view.domAtPos(source.indexOf('KEEP NODE')).node;
+      const samples: Array<{ x: number; y: number; scroll: number; rows: number[]; marker: boolean; keeper: boolean }> = [];
+      const sample = () => {
+        const text = editor.getText(), pos = text.indexOf('TARGET'), rect = editor.view.coordsAtPos(pos)!;
+        const node = editor.view.domAtPos(pos).node;
+        const line = (node.nodeType === 1 ? node : node.parentElement).closest('.cm-line')!;
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        const rows: number[] = [];
+        for (let item = walker.nextNode(); item; item = walker.nextNode()) {
+          const at = item.textContent?.indexOf('TARGET') ?? -1;
+          if (at < 0) continue;
+          const range = document.createRange(); range.setStart(item, at); range.setEnd(item, item.textContent!.length);
+          rows.push(...[...range.getClientRects()].filter(r => r.width > 0.5).map(r => r.left));
+        }
+        samples.push({ x: rect.left, y: rect.top, scroll: editor.view.scrollDOM.scrollTop, rows,
+          marker: !!line.querySelector('.meo-md-list-marker-ordered,.meo-task-checkbox'),
+          keeper: editor.view.domAtPos(text.indexOf('KEEP NODE')).node === keeper });
+      };
+      sample();
+      if (native) {
+        const clipboardData = new DataTransfer(); clipboardData.setData('text/plain', insert);
+        editor.view.contentDOM.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+      } else editor.view.dispatch({ changes: { from: first.to, insert }, selection: { anchor: first.to + insert.length },
+        annotations: [harness.userEvent.of('input.paste'), harness.isolateHistory.of('full')] });
+      sample();
+      for (let i = 0; i < 8; i++) { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); sample(); }
+      const pasted = editor.getText(), caret = editor.view.state.selection.main.head;
+      const optimized = harness.usesLargeDocumentDerivedWorkBudget(editor.view.state);
+      await editor.undo(); const undone = editor.getText();
+      await editor.redo(); const redone = editor.getText();
+      editor.setMode('source'); editor.setMode('live');
+      for (let i = 0; i < 4; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      const roundtrip = editor.getText(); editor.destroy();
+      return { samples, pasted, caret, undone, redone, roundtrip, optimized, firstTo: first.to };
+    }, { source, insert: fixture.insert, native: fixture.native ?? false });
+    const expected = (source.slice(0, result.firstTo) + fixture.insert + source.slice(result.firstTo))
+      .replace(fixture.before + ' TARGET', fixture.after + ' TARGET');
+    assert.equal(result.optimized, large, label + '/actual budget');
+    assert.equal(result.pasted, expected, label + '/accepted text');
+    assert.equal(result.caret, result.firstTo + fixture.insert.length, label + '/caret');
+    assert.equal(result.undone, source, label + '/undo');
+    assert.equal(result.redone, expected, label + '/redo');
+    assert.equal(result.roundtrip, expected, label + '/mode roundtrip');
+    for (const axis of ['x', 'y', 'scroll'] as const) assertNoDirectionReversal(result.samples.map(sample => sample[axis]), label + '/' + axis);
+    for (const sample of result.samples) {
+      assert.equal(sample.marker, true, label + '/marker present on every input frame');
+      assert.equal(sample.keeper, true, label + '/unchanged paragraph node');
+      if (fixture.wrapped) {
+        assert.ok(sample.rows.length > 1, label + '/actually wrapped');
+        assert.ok(sample.rows.every(left => Math.abs(left - sample.x) <= 1), label + '/hanging rows align: ' + JSON.stringify(sample));
+      }
+    }
+  }
+  console.log('list paste frames passed: ordinary/optimized, renumber growth/shrink, wrapped/nested/quoted/task prefixes, native paste, node identity, input history and mode roundtrips');
+}
+
 async function main(): Promise<void> {
   const build = await Bun.build({
     entrypoints: [path.join(repoRoot, 'scripts', 'test-list-editing-entry.ts')],
@@ -310,6 +392,8 @@ async function main(): Promise<void> {
     ` });
     await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
 
+    await assertListPasteFrames(page);
+    if (process.argv.includes('--paste-only')) return;
     await assertListTextSelection(page);
     await assertListPrefixTyping(page);
     await assertOrderedMarkerWidths(page);
@@ -747,7 +831,7 @@ async function main(): Promise<void> {
 
     console.log('list layout and interaction Chromium checks passed');
   } finally {
-    await browser.close();
+    await closeTestBrowser(browser);
   }
 }
 

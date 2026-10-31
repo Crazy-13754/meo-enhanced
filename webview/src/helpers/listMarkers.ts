@@ -647,6 +647,34 @@ export function addListMarkerDecoration(
 
 }
 
+export function isListMarkerDecoration(decoration: Decoration): boolean {
+  return decoration.spec.widget instanceof ListMarkerWidget || decoration.spec.widget instanceof CheckboxWidget;
+}
+
+/** Rebuild only a known ordered marker whose digits changed. Its unchanged
+ * suffix and separator keep this a provisional prefix projection, not a new
+ * container parse. The regular renderer still owns the later full refresh. */
+export function renumberedListMarkerDecoration(
+  decoration: Decoration,
+  transaction: Transaction,
+  from: number,
+  to: number
+): Range<Decoration> | undefined {
+  if (!isListMarkerDecoration(decoration)) return;
+  const previous = /^(\d+)([.)][ \t]+(?:\[[ xX]\][ \t]+)?)$/.exec(transaction.startState.doc.sliceString(from, to));
+  if (!previous) return;
+  const nextFrom = transaction.changes.mapPos(from, -1), nextTo = transaction.changes.mapPos(to, 1);
+  const next = /^(\d+)([.)][ \t]+(?:\[[ xX]\][ \t]+)?)$/.exec(transaction.newDoc.sliceString(nextFrom, nextTo));
+  if (!next || next[1] === previous[1] || next[2] !== previous[2]) return;
+  const ranges: Array<Range<Decoration>> = [];
+  const line = transaction.newDoc.lineAt(nextFrom);
+  addListMarkerDecoration(ranges, transaction.state, nextFrom, null, defaultListIndentStyle,
+    { showTaskListMarker: !(decoration.spec.widget instanceof CheckboxWidget) }, nextFrom - line.from);
+  return ranges.find(range => range.from === nextFrom && range.to === nextTo
+    && isListMarkerDecoration(range.value)
+    && (range.value.spec.widget instanceof CheckboxWidget) === (decoration.spec.widget instanceof CheckboxWidget));
+}
+
 export function continuedListMarker(lineText: string): string | null {
   const prefixOffset = quotePrefixOffset(lineText);
   const parts = parseListMarkerParts(lineText.slice(prefixOffset));

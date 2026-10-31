@@ -72,7 +72,7 @@ function checkPendingInputLayoutOwnership(): void {
       pendingCorrection = true;
       view.state.selection.main.head += 1;
       continuity.observe({
-        transactions: [{ docChanged: true, isUserEvent: () => true }], selectionSet: true
+        transactions: [{ docChanged: true, isUserEvent: () => true }], changes: { iterChanges() {} }, selectionSet: true
       } as any);
       if (reveals !== 0 || caretTop !== 350 || scroller.scrollTop !== 600) {
         throw new Error(`Virtual height correction must retain the physical input anchor: ${JSON.stringify({
@@ -135,6 +135,7 @@ function checkPendingInputLayoutOwnership(): void {
       view.state.selection.main.head += 1;
       continuity.observe({
         transactions: [{ docChanged: true, isUserEvent: () => true }],
+        changes: { iterChanges() {} },
         selectionSet: true
       } as any);
       if (!reflowed) {
@@ -143,7 +144,7 @@ function checkPendingInputLayoutOwnership(): void {
         dom.dispatchEvent(new Event('beforeinput'));
         view.state.selection.main.head += 1;
         continuity.observe({
-          transactions: [{ docChanged: true, isUserEvent: () => true }], selectionSet: true
+          transactions: [{ docChanged: true, isUserEvent: () => true }], changes: { iterChanges() {} }, selectionSet: true
         } as any);
         continuity.observe({ transactions: [{ docChanged: false, effects: [{ is: () => true }] }], selectionSet: false } as any);
         // Two post-refresh geometry receipts can arrive before any queued RAF.

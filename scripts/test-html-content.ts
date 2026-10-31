@@ -442,21 +442,37 @@ async function checkHtmlCrossBlockSelection(page: Page): Promise<void> {
   await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
 }
 
+async function resetHtmlEditor(page: Page, text: string): Promise<void> {
+  await page.evaluate(text => {
+    (window as any).__htmlEditor?.destroy();
+    document.getElementById('app')!.replaceChildren();
+    (window as any).__htmlLinks = [];
+    (window as any).__htmlEditor = (window as any).HtmlContentHarness.createEditor({ parent: document.getElementById('app'),
+      text, initialMode: 'live', uiLanguage: 'zh-CN', onApplyChanges() {},
+      onOpenLink(href: string) { (window as any).__htmlLinks.push(href); } });
+  }, text);
+  await frames(page, 12);
+}
+
 async function checkHtmlPasteEditing(page: Page): Promise<void> {
   const before = 'Before.\n\n\n\nAfter.';
   const insertAt = before.indexOf('\n\n') + 2;
   const fragment = '<div id="pasted-html"><p>First</p><p>Second</p></div>';
-  for (const [name, pasted, plain] of [
+  for (const large of [false, true]) for (const [name, pasted, plain] of [
     ['block', fragment, false], ['trailing-lines', fragment + '\n\n', false],
     ['plain-paste', fragment + '\n', true],
     ['invisible', '<div id="pasted-html"></div>', false],
     ['siblings', '<p>Earlier sibling</p>\n\n' + fragment, false]
   ] as const) {
+    const initial = before + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
     await page.evaluate(({ before, insertAt }) => {
       const editor = (window as any).__htmlEditor;
       editor.setText(before, true); editor.view.dispatch({ selection: { anchor: insertAt } }); editor.view.focus();
-    }, { before, insertAt });
+      editor.restoreTopLine(1, 0, { syncCursor: false, force: true });
+    }, { before: initial, insertAt });
     await frames(page);
+    await page.waitForFunction(large => (window as any).HtmlContentHarness.usesLargeDocumentDerivedWorkBudget(
+      (window as any).__htmlEditor.view.state) === large, {}, large);
     const top = await page.$eval('.cm-line', e => e.getBoundingClientRect().top);
     await page.evaluate(({ pasted, plain }) => {
       const editor = (window as any).__htmlEditor;
@@ -467,12 +483,14 @@ async function checkHtmlPasteEditing(page: Page): Promise<void> {
       }
     }, { pasted, plain });
     await frames(page);
-    const expected = before.slice(0, insertAt) + pasted + before.slice(insertAt);
+    const expected = initial.slice(0, insertAt) + pasted + initial.slice(insertAt);
     assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), expected, `${name}: paste retains the original text`);
     assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.selection.main.head), insertAt + pasted.length, `${name}: paste retains the native caret`);
-    assert.ok(await page.$('.meo-md-html-source-range-start'), `${name}: pasted HTML stays in source editing`);
+    if (large) await page.waitForSelector('.meo-md-html-source-range-start');
+    assert.ok(await page.$('.meo-md-html-source-range-start'), `${large ? 'optimized' : 'ordinary'}/${name}: pasted HTML stays in source editing`);
     assert.equal(await page.$$eval('.meo-md-html-live-result', nodes => nodes.length), name === 'invisible' ? 0 : 1);
-    assert.ok(Math.abs(await page.$eval('.cm-line', e => e.getBoundingClientRect().top) - top) <= 1, `${name}: content above stays fixed`);
+    const above = await page.$eval('.cm-line', e => e.getBoundingClientRect().top);
+    assert.ok(Math.abs(above - top) <= 1, `${large ? 'optimized' : 'ordinary'}/${name}: content above stays fixed (${top} → ${above})`);
     if (name === 'trailing-lines') {
       await page.click('.meo-format-html-btn');
       await page.waitForFunction(() => !(document.querySelector('.meo-format-html-btn') as HTMLButtonElement)?.disabled);
@@ -485,18 +503,43 @@ async function checkHtmlPasteEditing(page: Page): Promise<void> {
       assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), expected);
     }
     await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control'); await frames(page);
-    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), before, `${name}: one undo removes the paste`);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), initial, `${name}: one undo removes the paste`);
     await page.keyboard.down('Control'); await page.keyboard.press('y'); await page.keyboard.up('Control'); await frames(page);
     assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), expected);
+    if (large) await page.waitForSelector('.meo-md-html-source-range-start');
     assert.ok(await page.$('.meo-md-html-source-range-start'), `${name}: redo restores source editing`);
     if (name === 'trailing-lines') {
       await page.keyboard.type('Following prose'); await frames(page);
+      assert.equal(await page.evaluate(() => (window as any).HtmlContentHarness.getHtmlEditingRange(
+        (window as any).__htmlEditor.view.state)), null, 'New input retires pasted HTML source intent');
+      if (large) await page.waitForSelector('.meo-md-html-source-range-start', { hidden: true });
       assert.equal(await page.$('.meo-md-html-source-range-start'), null, 'Typing after trailing blank lines leaves the pasted block');
     }
+    if (large && name === 'siblings') {
+      await page.evaluate(() => {
+        const view = (window as any).__htmlEditor.view, harness = (window as any).HtmlContentHarness;
+        const previous = harness.getHtmlEditingRange(view.state);
+        const at = view.state.doc.toString().indexOf('After.') + 'After.'.length;
+        const insert = '\n\n<div id="new-paste-intent">New paste</div>\n\n';
+        view.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: 'input.paste' });
+        const current = harness.getHtmlEditingRange(view.state);
+        if (current?.from === previous?.from) throw Error('A new paste retained an unrelated HTML source range');
+        view.dispatch({ selection: { anchor: 0 } });
+        if (harness.getHtmlEditingRange(view.state)) throw Error('A newer selection must retire pending HTML source intent');
+      });
+      await page.waitForSelector('#new-paste-intent');
+      assert.equal(await page.$('.meo-md-html-source-range-start'), null, 'Late parsing cannot reopen a retired paste');
+    }
     await select(page, 'After.', 2);
+    assert.equal(await page.evaluate(() => (window as any).HtmlContentHarness.getHtmlEditingRange(
+      (window as any).__htmlEditor.view.state)), null, 'A newer selection retires pasted HTML source intent');
+    if (large) await page.waitForSelector('.meo-md-html-source-range-start', { hidden: true });
     assert.equal(await page.$('.meo-md-html-source-range-start'), null, `${name}: moving away collapses source`);
     if (name === 'invisible') assert.ok(await page.$('.meo-md-html-invisible-source-text'));
   }
+  // Large-document budgets latch for an editor session. Start a fresh ordinary
+  // session before the remaining inline/Source checks and reading interactions.
+  await resetHtmlEditor(page, before);
   for (const literal of ['<span>Inline</span>', '```html\n' + fragment + '\n```']) {
     await page.evaluate(({ before, insertAt, literal }) => {
       const editor = (window as any).__htmlEditor;
@@ -670,7 +713,7 @@ async function checkHtmlEditingTools(page: Page): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  if (!['--format-only', '--expansion-only', '--pointer-only', '--selection-only', '--lifecycle-only'].some(flag => process.argv.includes(flag))) await checkHtmlStyleRendering();
+  if (!['--format-only', '--expansion-only', '--pointer-only', '--selection-only', '--lifecycle-only', '--paste-only'].some(flag => process.argv.includes(flag))) await checkHtmlStyleRendering();
   if (process.argv.includes('--styles-only')) return;
   checkExport();
   const plain = '<div id="one" title="long title" style="color:red"><p>Hello <strong>world</strong>.</p></div>';
@@ -689,7 +732,7 @@ async function main(): Promise<void> {
   assert.ok(build.success, build.logs.map(String).join('\n'));
   const browser = await launchTestBrowser();
   try {
-    if (!['--format-only', '--expansion-only', '--pointer-only', '--selection-only'].some(flag => process.argv.includes(flag))) {
+    if (!['--format-only', '--expansion-only', '--pointer-only', '--selection-only', '--paste-only'].some(flag => process.argv.includes(flag))) {
       await checkHtmlContentLifecycle(browser, fs.readFileSync(path.join(tempDir, 'bundle.js'), 'utf8'));
       if (process.argv.includes('--lifecycle-only')) return;
     }
@@ -700,14 +743,12 @@ async function main(): Promise<void> {
     await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><body class="vscode-light"><div id="app"></div></body>');
     await page.addStyleTag({ path: path.join(repoRoot, 'webview/src/styles.css') });
     await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
-    await page.evaluate(text => {
-      (window as any).__htmlLinks = [];
-      (window as any).__htmlEditor = (window as any).HtmlContentHarness.createEditor({ parent: document.getElementById('app'),
-        text, initialMode: 'live', uiLanguage: 'zh-CN', onApplyChanges() {},
-        onOpenLink(href: string) { (window as any).__htmlLinks.push(href); } });
-    }, source);
-    await frames(page, 12);
+    await resetHtmlEditor(page, source);
     assert.deepEqual(errors, [], 'Editor initialization');
+    if (process.argv.includes('--paste-only')) {
+      await checkHtmlPasteEditing(page);
+      assert.deepEqual(errors, []); console.log('HTML paste source, ordinary/optimized, native/plain paste and history passed.'); return;
+    }
     if (process.argv.includes('--expansion-only')) {
       await checkSourceExpansionAnchor(page);
       assert.deepEqual(errors, []); console.log('HTML/math source expansion preserves preceding content through every frame.'); return;

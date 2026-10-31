@@ -54,6 +54,8 @@ import { indexSourceRanges } from './helpers/sourceRangeIndex';
 import { detailsBlockLiveExtensions, getDetailsBlocks, toggleDetailsBlock } from './helpers/detailsBlocks';
 import {
   addListMarkerDecoration,
+  isListMarkerDecoration,
+  renumberedListMarkerDecoration,
   CheckboxWidget,
   listMarkerData,
   detectListIndentStylesByLine,
@@ -610,6 +612,16 @@ class FootnoteReferenceSeparatorWidget extends WidgetType {
 
 const footnoteReferenceSeparatorWidget = new FootnoteReferenceSeparatorWidget();
 
+type ListLineLayout = {
+  contentOffsetColumns: number;
+  indentColumns: number;
+  guideStepColumns: number;
+  selected: boolean;
+  isTask: boolean;
+  taskHiddenPrefixColumns: number;
+  isOrdered: boolean;
+};
+
 function listLineDeco(
   contentOffsetColumns: number,
   indentColumns: number,
@@ -642,6 +654,8 @@ function listLineDeco(
 
   deco = Decoration.line({
     class: classes.join(' '),
+    listLineLayout: { contentOffsetColumns: offset, indentColumns: indent, guideStepColumns: guideStep,
+      selected, isTask, taskHiddenPrefixColumns: hiddenTaskPrefix, isOrdered } satisfies ListLineLayout,
     attributes: {
       style: `--meo-list-hanging-indent:calc(${offset}ch + var(--meo-list-footnote-offset, 0px));--meo-list-indent-columns:${indent}ch;--meo-list-guide-step:${guideStep}ch;--meo-task-hidden-prefix-columns:${hiddenTaskPrefix}ch;`
     }
@@ -3366,6 +3380,59 @@ function blockquoteLineDecorationsAtInputPosition(
   return [...decorations.values()];
 }
 
+/** Keep already rendered marker prefixes present while their numeric source
+ * changes. The deferred builder still owns all structural interpretation. */
+function projectInputRenumberedListMarkers(
+  decorations: DecorationSet,
+  mapped: DecorationSet,
+  transaction: Transaction
+): DecorationSet {
+  const additions: Range<Decoration>[] = [];
+  const visited = new Set<number>();
+  const changedLines = new Set<number>();
+  transaction.changes.iterChangedRanges((from, to) => {
+    decorations.between(from, to, (start, end, decoration) => {
+      if (start === end || visited.has(start)) return;
+      const replacement = renumberedListMarkerDecoration(decoration, transaction, start, end);
+      if (replacement) {
+        visited.add(start); additions.push(replacement);
+        changedLines.add(transaction.startState.doc.lineAt(start).from);
+      }
+    });
+  });
+  const linePositions = new Set<number>();
+  for (const from of changedLines) {
+    const line = transaction.startState.doc.lineAt(from);
+    let layout: ListLineLayout | undefined;
+    let lastMarker: { from: number; to: number; checkbox: boolean } | undefined;
+    decorations.between(line.from, line.to, (start, end, decoration) => {
+      if (start === end && start === line.from) layout = decoration.spec.listLineLayout ?? layout;
+      if (start < end && isListMarkerDecoration(decoration) && (!lastMarker || end > lastMarker.to)) {
+        lastMarker = { from: start, to: end, checkbox: decoration.spec.widget instanceof CheckboxWidget };
+      }
+    });
+    if (!layout || !lastMarker) continue;
+    const nextEnd = transaction.changes.mapPos(lastMarker.to, 1);
+    const nextLine = transaction.newDoc.lineAt(nextEnd);
+    if (transaction.newDoc.lineAt(transaction.changes.mapPos(line.from, 1)).from !== nextLine.from) continue;
+    const columns = countColumn(nextLine.text, transaction.state.tabSize, nextEnd - nextLine.from)
+      - countColumn(line.text, transaction.startState.tabSize, lastMarker.to - line.from);
+    const hiddenColumns = lastMarker.checkbox
+      ? nextEnd - transaction.changes.mapPos(lastMarker.from, -1) - (lastMarker.to - lastMarker.from) : 0;
+    if (!columns && !hiddenColumns) continue;
+    additions.push(listLineDeco(layout.contentOffsetColumns + columns, layout.indentColumns,
+      layout.guideStepColumns, layout.selected, layout.isTask,
+      layout.taskHiddenPrefixColumns + hiddenColumns, layout.isOrdered).range(nextLine.from));
+    linePositions.add(nextLine.from);
+  }
+  return additions.length ? updateLivePresentationRanges(mapped, {
+    filter: (from, to, value) => !(from === to && linePositions.has(from) && value.spec.listLineLayout),
+    filterFrom: linePositions.size ? Math.min(...linePositions) : undefined,
+    filterTo: linePositions.size ? Math.max(...linePositions) : undefined,
+    add: additions, sort: true
+  }) : mapped;
+}
+
 /**
  * Mermaid has no inner line numbers, but its native source still needs the
  * accepted code font, panel inset, container prefix and split-column width on
@@ -4481,7 +4548,7 @@ const liveDecorationField = StateField.define<DecorationSet>({
               ?? decorations.map(transaction.changes))
           : projectInputCodeBlockLines(
             projectInputBlockquoteLines(
-              mapLiveInputDerivedDecorations(decorations, transaction),
+              projectInputRenumberedListMarkers(decorations, mapLiveInputDerivedDecorations(decorations, transaction), transaction),
               transaction
             ),
             transaction
