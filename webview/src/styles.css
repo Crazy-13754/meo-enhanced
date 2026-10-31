@@ -4912,6 +4912,10 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor .meo-md-list-indent-spacer {
   display: inline-block;
   min-width: 0;
+  /* Coordinate search must see this empty widget on the text row, rather
+     than a zero-height box below the pointer that cuts off the body scan. */
+  height: 1lh;
+  vertical-align: top;
 }
 
 .cm-editor .meo-md-list-source-gap {

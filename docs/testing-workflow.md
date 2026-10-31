@@ -1418,6 +1418,13 @@ caret paint. Its `--held-only` slice covers the minimal `>\n` case, nested/list/
 quotes, Source, input/history and drag selection with actual ordinary/optimized
 budgets. Inactive glyphs stay hidden while their native caret boxes remain usable.
 
+`scripts/test-live-composite-lists.ts --body-hit-only` checks actual character
+clicks against document/native selections and coordinate mapping in nested
+list/quote bodies, including tasks, wrapped text and Source. Ordinary/optimized
+paths also retain body drag selections, native input/history and checkbox controls.
+Empty prefix widgets must expose a text-row rectangle so coordinate search can
+reach the following body rather than stopping at the widget boundary.
+
 For semantic UI colors, `test:theme-inheritance` covers shared surfaces, neutral
 text and icons, switch states, cached palette reuse and invalidation when the
 base surface changes. It also checks that unrelated native menu colors cannot

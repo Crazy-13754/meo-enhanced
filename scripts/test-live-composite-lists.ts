@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { launchTestBrowser } from './browser-test-helpers';
+import { launchTestBrowser, closeTestBrowser } from './browser-test-helpers';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
 
 const root = path.resolve(import.meta.dir, '..');
@@ -20,6 +20,117 @@ const source = [
   '- > - [ ] same-line nested task',
   '> - > 1. same-line quoted ordered'
 ].join('\n');
+
+async function assertContainerBodyHits(page: import('puppeteer-core').Page): Promise<void> {
+  const complex = fs.readFileSync(path.join(root, 'scripts/fixtures/github-readme/complex/README.md'), 'utf8').replace(/\r\n?/g, '\n');
+  const fixtures = [
+    ...[' > > - [ ] ', '  > > - [x] ', ' > > - ', ' > > 1. ', '> - > - [ ] ',
+      '> 1. > - [ ] ', '- > > - [x] ', '- [ ] ', '> > - [ ] ', ' > > ']
+      .map(prefix => ({ text: prefix + '正文测试', targets: ['正文测试'] })),
+    { text: ' > > - [ ] **正文测试**', targets: ['正文测试'] },
+    { text: ' > > - [ ] 正文测试 ' + 'wrapped content '.repeat(14) + '末行正文', targets: ['正文测试', '末行正文'], wrapped: true },
+    { text: complex.slice(complex.indexOf('## S02'), complex.indexOf('## S03')), targets: ['内层待办', '内层已完成项'], input: true },
+    { text: '  > > - [ ] 正文测试', targets: ['正文测试'], mode: 'source' }
+  ];
+  await page.setViewport({ width: 1000, height: 800 });
+  await page.setContent('<!doctype html><style>body{margin:0}#body-hits{height:720px}</style><div id="body-hits"></div>');
+  await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
+  // This page gets the same production bundle as the existing layout checks.
+  await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+  let clicks = 0;
+  for (const large of [false, true]) for (const [index, fixture] of fixtures.entries()) {
+    const text = fixture.text + '\n\nAFTER' + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
+    const label = `${large ? 'optimized' : 'ordinary'}/${fixture.mode ?? 'live'}/${index}`;
+    assert.equal(assessLargeDocument(text).boundedEditorWork, large, label + '/size policy');
+    const optimized = await page.evaluate(async ({ text, mode, width, font, appearance }) => {
+      const harness = (window as any).ListEditingHarness;
+      harness.applyBuiltInVisualBaseline(appearance);
+      document.documentElement.dataset.editorAppearance = appearance;
+      const host = document.getElementById('body-hits')!; host.style.width = width + 'px';
+      const editor = harness.createEditor({ parent: host, text, initialMode: mode, onApplyChanges() {} });
+      editor.view.dom.style.setProperty('--meo-user-editor-font-size', font + 'px');
+      (window as any).__bodyHitEditor = editor; editor.view.focus();
+      for (let i = 0; i < 8; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      return harness.usesLargeDocumentDerivedWorkBudget(editor.view.state);
+    }, { text, mode: fixture.mode ?? 'live', width: fixture.wrapped ? 340 : 950,
+      font: fixture.input ? 30 : index % 3 ? 16 : 24, appearance: index % 2 ? 'light' : 'dark' });
+    assert.equal(optimized, large, label + '/actual derived-work budget');
+    const pointAt = (target: string, offset: number, fraction: number, reset = true) => page.evaluate(async ({ target, offset, fraction, reset }) => {
+      const editor = (window as any).__bodyHitEditor, view = editor.view;
+      if (reset) {
+        view.dispatch({ selection: { anchor: 0 } });
+        for (let i = 0; i < 4; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      }
+      const walker = document.createTreeWalker(view.contentDOM, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const start = node.textContent?.indexOf(target) ?? -1;
+        if (start < 0) continue;
+        const range = document.createRange(); range.setStart(node, start + offset); range.setEnd(node, start + offset + 1);
+        const rect = range.getBoundingClientRect();
+        const x = Math.round(rect.left + rect.width * fraction), y = Math.floor((rect.top + rect.bottom) / 2);
+        return { x, y, expected: editor.getText().indexOf(target) + offset + (fraction > 0.5 ? 1 : 0),
+          mapped: view.posAtCoords({ x, y }) };
+      }
+      throw Error('Missing body text: ' + target);
+    }, { target, offset, fraction, reset });
+    const selection = () => page.evaluate(() => {
+      const view = (window as any).__bodyHitEditor.view, range = view.state.selection.main, native = getSelection();
+      return { anchor: range.anchor, head: range.head, empty: range.empty,
+        nativeHead: native?.focusNode ? view.posAtDOM(native.focusNode, native.focusOffset) : null };
+    });
+    try {
+      if (fixture.wrapped) {
+        const first = await pointAt(fixture.targets[0], 0, 0.2);
+        const last = await pointAt(fixture.targets[1], 0, 0.2);
+        assert.ok(last.y > first.y + 1, label + '/body actually wraps');
+      }
+      for (const target of fixture.targets) for (const offset of [0, Math.floor(target.length / 2), target.length - 1]) for (const fraction of [0.2, 0.8]) {
+        const point = await pointAt(target, offset, fraction);
+        await page.mouse.move(point.x, point.y); await page.mouse.down();
+        try {
+          const held = await selection();
+          assert.equal(held.head, point.expected, label + '/' + target + '/pressed body character');
+          assert.equal(held.nativeHead, point.expected, label + '/' + target + '/native body character');
+          assert.equal(point.mapped, point.expected, label + '/coordinate mapping');
+        } finally { await page.mouse.up(); }
+        assert.equal((await selection()).head, point.expected, label + '/release retains the clicked character');
+        clicks++;
+      }
+      assert.equal(await page.evaluate(() => (window as any).__bodyHitEditor.getText()), text, label + '/unchanged source');
+      if (fixture.input) {
+        const start = await pointAt(fixture.targets[0], 0, 0.2);
+        const end = await pointAt(fixture.targets[0], fixture.targets[0].length - 1, 0.8, false);
+        await page.mouse.move(start.x, start.y); await page.mouse.down();
+        await page.mouse.move(end.x, end.y, { steps: 5 });
+        const dragged = await selection();
+        await page.mouse.up();
+        assert.equal(dragged.anchor, start.expected, label + '/drag anchor');
+        assert.equal(dragged.head, end.expected, label + '/drag head');
+        assert.equal(dragged.empty, false, label + '/drag selects body');
+        assert.deepEqual(await selection(), dragged, label + '/released drag');
+        const caret = await pointAt(fixture.targets[0], 2, 0.2);
+        await page.mouse.click(caret.x, caret.y); await page.keyboard.type('Z');
+        const typed = text.slice(0, caret.expected) + 'Z' + text.slice(caret.expected);
+        assert.equal(await page.evaluate(() => (window as any).__bodyHitEditor.getText()), typed, label + '/native input');
+        for (const operation of ['undo', 'redo', 'undo'] as const) {
+          const result = await page.evaluate(async operation => {
+            const editor = (window as any).__bodyHitEditor; await editor[operation]();
+            return { text: editor.getText(), head: editor.view.state.selection.main.head };
+          }, operation);
+          assert.equal(result.text, operation === 'redo' ? typed : text, label + '/' + operation);
+          assert.equal(result.head, caret.expected + (operation === 'redo' ? 1 : 0), label + '/' + operation + '/caret');
+        }
+        await page.click('#body-hits .meo-task-checkbox');
+        assert.equal(await page.evaluate(() => (window as any).__bodyHitEditor.getText()), text.replace('[ ]', '[x]'), label + '/checkbox click');
+      }
+      if (process.env.MEO_TEST_SCREENSHOTS && fixture.input && !large) {
+        fs.mkdirSync(process.env.MEO_TEST_SCREENSHOTS, { recursive: true });
+        await page.screenshot({ path: path.join(process.env.MEO_TEST_SCREENSHOTS, 'nested-quote-task-body.png') });
+      }
+    } finally { await page.evaluate(() => (window as any).__bodyHitEditor.destroy()); }
+  }
+  console.log(`container body hit tests passed: ${clicks} glyph clicks, task/bullet/ordered/quoted/wrapped bodies, ordinary/optimized, native input/history, dragging and checkbox controls`);
+}
 
 async function assertTwoStateTasks(page: import('puppeteer-core').Page): Promise<void> {
   const taskSource = [
@@ -170,10 +281,15 @@ async function main(): Promise<void> {
 
   const browser = await launchTestBrowser();
   try {
+    if (process.argv.includes('--body-hit-only')) {
+      await assertContainerBodyHits(await browser.newPage());
+      return;
+    }
     if (process.argv.includes('--tasks-only')) {
       await assertTwoStateTasks(await browser.newPage());
       return;
     }
+    await assertContainerBodyHits(await browser.newPage());
     const page = await browser.newPage();
     await page.setContent('<!doctype html><div id="host"></div><div id="order-host"></div><div id="table-host"></div><div id="nested-table-host"></div><div id="edit-host"></div>');
     await page.addStyleTag({ path: path.join(root, 'webview', 'src', 'styles.css') });
@@ -671,7 +787,7 @@ async function main(): Promise<void> {
     await assertTwoStateTasks(await browser.newPage());
     console.log('live composite list checks passed');
   } finally {
-    await browser.close();
+    await closeTestBrowser(browser);
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }
