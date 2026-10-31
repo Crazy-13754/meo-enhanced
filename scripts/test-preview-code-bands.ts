@@ -26,6 +26,15 @@ if (copy.kind === 'copy') {
 const full = preparePreviewDocument(options, true).renderAll().html;
 assert.equal((full.match(/class="meo-export-code-block-wrap"/g) ?? []).length, 1);
 assert.equal((full.match(/class="meo-export-code-line"/g) ?? []).length, 18000);
+for (const closed of [true, false]) {
+  const prepared = preparePreviewDocument({ ...options, markdownText: '```javascript\n' + source + (closed ? '\n```' : '') }, true);
+  const first = prepared.renderBlock(0).html, middle = prepared.renderBlock(1).html;
+  const last = prepared.renderBlock(prepared.blocks.length - 1).html;
+  assert.ok(first.includes('data-meo-code-fence-start="true"'));
+  assert.ok(!first.includes('data-meo-code-fence-end') && !middle.includes('data-meo-code-fence-start') && !middle.includes('data-meo-code-fence-end'));
+  assert.equal(last.includes('data-meo-code-fence-end="true"'), closed, 'Only the last band of a closed fence owns its end boundary');
+  assert.ok(!last.includes('data-meo-code-fence-start'));
+}
 for (const [label, markdownText] of [
   ['ordinary fence', '```javascript\n' + source.split('\n').slice(0, 100).join('\n') + '\n```'],
   ['nested fence', ('```javascript\n' + source + '\n```').split('\n').map(line => '> ' + line).join('\n')],

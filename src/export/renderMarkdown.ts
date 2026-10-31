@@ -284,8 +284,13 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     const languageLabel = language && (!band || band.first)
       ? `<div class="meo-export-code-language-label">${escapeHtml(language)}</div>`
       : '';
+    const fenceStart = codeBlock.type === 'fence' && (!band || band.first);
+    const contentLines = source ? source.split('\n').length - (source.endsWith('\n') ? 1 : 0) : 0;
+    const fenceEnd = codeBlock.type === 'fence' && (band
+      ? band.last && Number(sourceEndLine) > band.lines.at(-1)!
+      : Boolean(codeBlock.map && codeBlock.map[1] - codeBlock.map[0] > contentLines + 1));
     return [
-      `<div class="meo-export-code-block-wrap"${sourceAttrs}${band ? ` data-meo-code-id="${band.id}" data-meo-code-offset="${band.offset}" data-meo-code-digits="${band.digits}" data-meo-code-part="${band.first ? 'start' : band.last ? 'end' : 'middle'}"` : ''}>`,
+      `<div class="meo-export-code-block-wrap"${sourceAttrs}${fenceStart ? ' data-meo-code-fence-start="true"' : ''}${fenceEnd ? ' data-meo-code-fence-end="true"' : ''}${band ? ` data-meo-code-id="${band.id}" data-meo-code-offset="${band.offset}" data-meo-code-digits="${band.digits}" data-meo-code-part="${band.first ? 'start' : band.last ? 'end' : 'middle'}"` : ''}>`,
       languageLabel,
       `<pre class="meo-export-code-block"><code${className}>${renderHighlightedCodeLines(highlighted, source, options.target, band, codeBlock.meta?.meoSourceLines)}</code></pre>`,
       '</div>'
@@ -415,7 +420,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
       td: ['colspan', 'rowspan', 'style'],
       code: ['class'],
       p: ['align'],
-      div: ['class', 'data-source-b64', 'align', ...(github ? githubHtmlAttributes.div : [])],
+      div: ['class', 'data-source-b64', 'data-meo-code-fence-start', 'data-meo-code-fence-end', 'align', ...(github ? githubHtmlAttributes.div : [])],
       nav: ['class', 'aria-label'],
       svg: [
         'xmlns',

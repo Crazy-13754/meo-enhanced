@@ -16,10 +16,15 @@ const browser = await launchTestBrowser();
 let primaryError: unknown;
 let previewRenderGate: Promise<void> | null = null;
 try {
-  const precisionBuild = await Bun.build({ entrypoints: ['scripts/test-preview-code-update-entry.ts'], target: 'browser', format: 'iife' });
-  assert.ok(precisionBuild.success, precisionBuild.logs.map(String).join('\n'));
-  for (const windowed of [false, true]) await assertMarkerPrecision(await browser.newPage(), await precisionBuild.outputs[0]!.text(), windowed);
+  if (!process.argv.includes('--navigation-only')) {
+    const precisionBuild = await Bun.build({ entrypoints: ['scripts/test-preview-code-update-entry.ts'], target: 'browser', format: 'iife' });
+    assert.ok(precisionBuild.success, precisionBuild.logs.map(String).join('\n'));
+    for (const windowed of [false, true]) await assertMarkerPrecision(await browser.newPage(), await precisionBuild.outputs[0]!.text(), windowed);
+  }
   if (!process.argv.includes('--precision-only')) {
+    for (const windowed of [false, true]) await assertMarkerContinuity(await browser.newPage(), await build.outputs[0]!.text(), windowed, false, true);
+  }
+  if (!process.argv.includes('--precision-only') && !process.argv.includes('--navigation-only')) {
   for (const windowed of [false, true]) {
     for (const imageAbove of [true, false]) {
       await assertMarkerContinuity(await browser.newPage(), await build.outputs[0]!.text(), windowed, imageAbove);
@@ -257,15 +262,21 @@ try {
     document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
       .querySelector<HTMLElement>('.meo-preview-source-position-marker')!.dataset.meoSourcePositionLine
   ));
-  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Home');
   await new Promise(resolve => setTimeout(resolve, 40));
   const afterKeyboard = await page.evaluate(() => ({
     previewTop: document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop,
     markerLine: document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
-      .querySelector<HTMLElement>('.meo-preview-source-position-marker')!.dataset.meoSourcePositionLine
+      .querySelector<HTMLElement>('.meo-preview-source-position-marker')!.dataset.meoSourcePositionLine,
+    visible: (() => {
+      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      const marker = doc.querySelector<HTMLElement>('.meo-preview-source-position-marker')!;
+      const r = marker.getBoundingClientRect();
+      return !marker.hidden && r.bottom > 0 && r.top < doc.documentElement.clientHeight;
+    })()
   }));
-  assert.notEqual(afterKeyboard.markerLine, lineBeforeKeyboard);
-  assert.ok(Math.abs(afterKeyboard.previewTop - bottomBeforeKeyboard) <= 1, JSON.stringify(afterKeyboard));
+  assert.equal(afterKeyboard.markerLine, lineBeforeKeyboard);
+  assert.ok(afterKeyboard.visible && afterKeyboard.previewTop < bottomBeforeKeyboard - 1, JSON.stringify(afterKeyboard));
 
   await page.mouse.click(sourceTarget.x, sourceTarget.y);
   await new Promise(resolve => setTimeout(resolve, 80));
@@ -585,7 +596,9 @@ async function assertMarkerPrecision(page: import('puppeteer-core').Page, bundle
     '---', '', '<div id="empty"></div>', 'Visible HTML tail', '',
     '| Header | Value |', '| --- | --- |', '| Data | 1 |', '',
     '<details>', '<summary>Folded</summary>', '', 'Inside folded.', '', '</details>', '', '<!-- Hidden -->', '',
-    '- Composite parent', '', '  ```text', '  nested code', '  ```', '', '  Continuation.', '', '```text', '```'];
+    '- Composite parent', '', '  ```text', '  nested code', '  ```', '', '  Continuation.', '', '```text', '```', '',
+    '## Boundary variants', '', '1. Quoted code', '   > ```js', '   > quoted alpha', '   >', '   > quoted omega', '   > ```', '',
+    '~~~', 'tilde body', '~~~~', '', '    indented alpha', '    indented omega'];
   const text = fixture.join('\n') + '\n\n' + Array.from({ length: windowed ? 5000 : 2 }, (_, i) => `Paragraph ${i}.\n\n`).join('');
   assert.equal(assessLargeDocument(text).windowedPreview, windowed);
   const documents = new Map<string, ReturnType<typeof createPreviewDocument>>();
@@ -643,11 +656,25 @@ async function assertMarkerPrecision(page: import('puppeteer-core').Page, bundle
     assert.ok(at('alpha').bottom <= at('omega').top - 1 && at('alpha').height < 30, 'Code targets one reading row');
     assert.ok(at('    note alpha').height < 30 && at('    note alpha').top > at('[^n]: Note first.').bottom, 'Footnote code has its own source row');
     assert.ok(at('  nested code').height < 30, 'Equivalent outer lists also update their retained code-row mappings');
+    assert.ok(at('```text').height < 30 && at('```').height < 30, 'Fence delimiters locate a boundary rather than the entire code block');
+    assert.ok(at('```text').bottom <= at('alpha').top + 1 && at('```').top >= at('omega').bottom - 1,
+      'Opening and closing fences locate distinct top and bottom boundaries');
     for (const source of ['---', 'Visible HTML tail', '```text', '```', '    ```', '</details>']) assert.ok(at(source).visible, `${windowed}: ${source} has a visible result`);
     assert.ok(at('---').height >= 14, 'A thin horizontal rule has a discernible reading-line highlight');
     for (const source of ['| --- | --- |', '    | --- | --- |', '<!-- Hidden -->']) assert.equal(at(source).visible, false, `${source} has no independent reading position`);
     assert.ok(projections[11]!.visible && projections[24]!.visible, 'Empty literal code rows retain a real reading position');
-    assert.ok(projections.at(-1)!.visible && projections.at(-2)!.visible, 'An empty code block retains both fence positions');
+    const emptyFenceIndex = fixture.findIndex((source, index) => source === '```text' && fixture[index + 1] === '```');
+    const emptyStart = projections[emptyFenceIndex]!, emptyEnd = projections[emptyFenceIndex + 1]!;
+    assert.ok(emptyStart.visible && emptyEnd.visible && emptyStart.height < 30 && emptyEnd.height < 30
+      && emptyStart.bottom <= emptyEnd.top + 1, 'An empty code block retains distinct fence boundaries');
+    assert.ok(at('    ```text').height < 30 && at('    ```').height < 30
+      && at('    ```').top >= at('    note omega').bottom - 1, 'Footnote fences retain their own boundaries');
+    assert.ok(at('   > ```js').height < 30 && at('   > ```').height < 30
+      && at('   > ```js').bottom <= at('   > quoted alpha').top + 1
+      && at('   > ```').top >= at('   > quoted omega').bottom - 1, 'Quoted fences inside a list have independent boundaries');
+    assert.ok(at('~~~').height < 30 && at('~~~~').height < 30, 'Tilde fences use the same boundary geometry');
+    assert.ok(at('    indented alpha').height < 30 && at('    indented omega').height < 30
+      && at('    indented alpha').bottom <= at('    indented omega').top + 1, 'Indented code retains actual content rows');
     const math = [at('    $$'), at('    x+y')];
     assert.ok(math.every(row => row.visible));
     assert.equal(math[0]!.top, math[1]!.top, 'Math remains one atomic reading result');
@@ -690,13 +717,13 @@ async function assertMarkerPrecision(page: import('puppeteer-core').Page, bundle
   } finally { for (const d of documents.values()) d.dispose(); await page.close(); }
 }
 
-async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundle: string, windowed: boolean, imageAbove: boolean): Promise<void> {
+async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundle: string, windowed: boolean, imageAbove: boolean, navigationOnly = false): Promise<void> {
   const prefix = imageAbove ? Array.from({ length: 40 }, (_, index) => `Before image ${index}: upstream context.\n\n`).join('')
     + '![Offscreen image](marker-image.svg)\n\n'
     + Array.from({ length: 40 }, (_, index) => `After image ${index}: upstream context.\n\n`).join('') : '';
   const lineOffset = prefix.split('\n').length - 1;
   const text = prefix + '# Position continuity\n\n- Typing target.\n- Neighbor item.\n\nFollowing paragraph.\n\n```text\nAlpha\n\nOmega\n```\n\n<!-- Hidden navigation target -->\n\n'
-    + Array.from({ length: windowed ? 5000 : 10 }, (_, index) => `Paragraph ${index} with stable reading context.\n\n`).join('');
+    + Array.from({ length: windowed ? 5000 : navigationOnly ? 50 : 10 }, (_, index) => `Paragraph ${index} with stable reading context.\n\n`).join('');
   assert.equal(assessLargeDocument(text).windowedPreview, windowed);
   const label = `${windowed ? 'windowed' : 'ordinary'}${imageAbove ? ', image above' : ''}`;
   const documents = new Map<string, ReturnType<typeof createPreviewDocument>>();
@@ -764,6 +791,90 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
       }, line + lineOffset);
       await page.evaluate(async () => { for (let n = 0; n < 3; n++) await new Promise(requestAnimationFrame); });
     };
+    if (navigationOnly) {
+      const previewTop = () => page.$eval('.preview-frame', e => (e as HTMLIFrameElement).contentDocument!.scrollingElement!.scrollTop);
+      const movePreviewAway = async () => {
+        await page.evaluate(() => {
+          document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop = 500;
+        });
+        await new Promise(resolve => setTimeout(resolve, 80));
+        assert.ok(await page.$eval('.preview-frame', e => (e as HTMLIFrameElement).contentDocument!
+          .querySelector('.meo-preview-source-position-marker')!.getBoundingClientRect().bottom < 0), 'Navigation fixture starts with an offscreen Preview target');
+      };
+      const waitForVisibleMarker = (line: number) => page.waitForFunction(line => {
+        const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+        const marker = doc.querySelector<HTMLElement>('.meo-preview-source-position-marker')!;
+        const r = marker.getBoundingClientRect();
+        return Number(marker.dataset.meoSourcePositionLine) === line && !marker.hidden && r.bottom > 0 && r.top < doc.documentElement.clientHeight;
+      }, { timeout: 3000 }, line);
+      for (const [line, key, expectedLine] of [[3, 'ArrowDown', 4], [4, 'ArrowUp', 3], [3, 'Home', 3], [3, 'ArrowLeft', 3]] as const) {
+        await selectLine(line);
+        await movePreviewAway();
+        await page.keyboard.press(key);
+        await waitForVisibleMarker(expectedLine);
+      }
+      const visibleTop = await previewTop();
+      await page.keyboard.press('ArrowLeft');
+      await new Promise(resolve => setTimeout(resolve, 80));
+      assert.ok(Math.abs(await previewTop() - visibleTop) <= 1, 'Moving within a visible target does not scroll Preview');
+      await selectLine(3);
+      await movePreviewAway();
+      await page.keyboard.down('Shift');
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.up('Shift');
+      await waitForVisibleMarker(4);
+      assert.ok(await page.evaluate(() => !(document.querySelector('.editor-host .cm-content') as any).cmTile.root.view.state.selection.main.empty),
+        'Shift navigation preserves the native text selection');
+
+      await selectLine(3);
+      await movePreviewAway();
+      const beforeInput = await previewTop();
+      await page.keyboard.type('x');
+      await new Promise(resolve => setTimeout(resolve, 240));
+      assert.ok(Math.abs(await previewTop() - beforeInput) <= 2, 'Typing does not become a new cross-pane navigation');
+      await page.keyboard.down('Control');
+      await page.keyboard.press('z');
+      await page.keyboard.up('Control');
+      await new Promise(resolve => setTimeout(resolve, 160));
+      assert.ok(Math.abs(await previewTop() - beforeInput) <= 2, 'Undo does not become keyboard selection navigation');
+
+      await selectLine(3);
+      await movePreviewAway();
+      const beforeComposition = await previewTop();
+      assert.ok(await page.evaluate(() => {
+        const v = (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view;
+        (v.contentDOM.editContext ?? v.contentDOM).dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+        const composing = v.compositionStarted;
+        v.dispatch({ selection: { anchor: v.state.doc.line(4).to }, userEvent: 'select' });
+        return composing;
+      }), 'The IME negative control exercises active composition');
+      await new Promise(resolve => setTimeout(resolve, 80));
+      assert.ok(Math.abs(await previewTop() - beforeComposition) <= 1, 'Composition selection does not become keyboard navigation');
+      await page.$eval('.cm-content', e => ((e as any).editContext ?? e).dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })));
+      await page.waitForFunction(() => !(document.querySelector('.editor-host .cm-content') as any).cmTile.root.view.compositionStarted);
+
+      await page.keyboard.down('Control');
+      await page.keyboard.press('End');
+      await page.keyboard.up('Control');
+      await page.keyboard.press('ArrowUp');
+      await page.keyboard.press('ArrowUp');
+      const tailLine = await page.evaluate(() => (document.querySelector('.editor-host .cm-content') as any).cmTile.root.view.state.doc.lines - 2);
+      await waitForVisibleMarker(tailLine);
+      await page.keyboard.down('Control');
+      await page.keyboard.press('Home');
+      await page.keyboard.up('Control');
+      await waitForVisibleMarker(1);
+
+      await page.click('.source-preview-scroll-sync-button');
+      await selectLine(3);
+      await movePreviewAway();
+      const independentTop = await previewTop();
+      await page.keyboard.press('ArrowDown');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.ok(Math.abs(await previewTop() - independentTop) <= 1, 'Keyboard navigation respects independent scrolling');
+      console.log(`Source keyboard marker reveal passed (${label})`);
+      return;
+    }
     const markerSnapshot = () => page.evaluate(() => {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
       const marker = doc.querySelector<HTMLElement>('.meo-preview-source-position-marker')!;

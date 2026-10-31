@@ -2753,7 +2753,12 @@ export function createEditor({
           suppressSelectionMenuForNativeHtml = false;
           syncSelectionClass();
           emitSelectionChange();
-          emitSourcePositionChange(update.view.hasFocus);
+          // Plain select is CodeMirror's caret/selection navigation. Pointer,
+          // search, history and input retain their own viewport intent.
+          const sourceKeyboardNavigation = currentMode === 'source' && update.view.hasFocus && !update.view.compositionStarted && !update.docChanged
+            && !applyingExternal && update.state.selection.main.head !== update.startState.selection.main.head
+            && update.transactions.some(transaction => transaction.annotation(Transaction.userEvent) === 'select');
+          emitSourcePositionChange(update.view.hasFocus, sourceKeyboardNavigation);
         } else if (update.docChanged) {
           emitSourcePositionChange(update.view.hasFocus);
         } else if (update.viewportChanged) {

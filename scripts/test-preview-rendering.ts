@@ -13,6 +13,18 @@ import MarkdownIt from 'markdown-it';
 import { readFileSync } from 'node:fs';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
 
+for (const preset of ['default', 'github-readme'] as const) {
+  for (const [markdownText, start, end] of [
+    ['```js\nbody\n```', true, true], ['~~~\nbody\n~~~~', true, true], ['```\n```', true, true],
+    ['```js\nbody', true, false], ['```js', true, false], ['    body\n    next', false, false]
+  ] as const) {
+    const rendered = renderMarkdownToHtml({ markdownText, markdownFilePath: '/fixture/fences.md', target: 'html', preset, sourceFootnotes: true });
+    const block = DomUtils.findOne(node => node.attribs?.class === 'meo-export-code-block-wrap', parseDocument(rendered.html).children)!;
+    assert.equal(block.attribs['data-meo-code-fence-start'] === 'true', start, `${preset}: ${markdownText}`);
+    assert.equal(block.attribs['data-meo-code-fence-end'] === 'true', end, 'Only a real closing fence owns an end boundary');
+  }
+}
+
 {
   const markdownText = ['Reference[^n].', '', '[^n]: Note.', '    - First<br>- Second', '',
     '    | A | B |', '    | --- | --- |', '    | one | two |', '    After the table.', '',

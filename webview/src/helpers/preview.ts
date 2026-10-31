@@ -133,6 +133,8 @@ const previewMutableStateAttributes = new Set([
   'open',
   'data-source-line',
   'data-source-end-line',
+  'data-meo-code-fence-start',
+  'data-meo-code-fence-end',
   'data-meo-preview-block'
 ]);
 
@@ -203,7 +205,7 @@ function preparePreviewPresentationMorphKeys(
 }
 
 function syncSourceMappingAttributes(fromElement: Element, toElement: Element): void {
-  for (const attribute of ['data-source-line', 'data-source-end-line', 'data-meo-preview-block']) {
+  for (const attribute of ['data-source-line', 'data-source-end-line', 'data-meo-preview-block', 'data-meo-code-fence-start', 'data-meo-code-fence-end']) {
     const value = toElement.getAttribute(attribute);
     if (fromElement.getAttribute(attribute) === value) continue;
     if (value === null) fromElement.removeAttribute(attribute);
@@ -3116,25 +3118,34 @@ export function createPreviewController({
     if (!frameDocument || !scrollElement) return null;
     const source = findSourceProjection(line);
     let entry = source?.exact;
-    // A closing fence follows the last literal row but still represents its
-    // code block. Keep this fallback local to the marker: table delimiters and
-    // source-only gaps must not inherit an arbitrary enclosing scroll range.
     const literal = entry ?? source?.before;
-    if ((!entry?.rendered || entry.bottom <= entry.top) && literal?.element.matches('.meo-export-code-line-source')) {
-      const block = literal.element.closest<HTMLElement>('.meo-export-code-block-wrap');
-      const range = block && getSourceRange(block);
-      if (block && range && line >= range.start && line <= range.end) entry = measurePreviewSourceEntry({ element: block,
+    const block = literal?.element.closest<HTMLElement>('.meo-export-code-block-wrap');
+    const range = block && getSourceRange(block);
+    const fenceBoundary = block && range && (line === range.start && block.hasAttribute('data-meo-code-fence-start') ? 'start'
+      : line === range.end && block.hasAttribute('data-meo-code-fence-end') ? 'end' : undefined);
+    // Only literal code can fall back to its own block. Source-only gaps such
+    // as table delimiters must not inherit an arbitrary enclosing range.
+    if (block && range && (fenceBoundary || (!entry?.rendered || entry.bottom <= entry.top)
+      && literal?.element.matches('.meo-export-code-line-source') && line >= range.start && line <= range.end)) {
+      entry = measurePreviewSourceEntry({ element: block,
         ...range, top: 0, bottom: 0, rendered: false });
     }
     if (!entry?.rendered || entry.bottom <= entry.top || entry.element.hasAttribute('data-meo-preview-gap')) return null;
     const contentLeft = getPreviewContentLeft(frameDocument, scrollElement);
     if (contentLeft === null) return null;
+    const metricElement = fenceBoundary ? block!.querySelector('.meo-export-code-line') ?? entry.element : entry.element;
     const computedLineHeight = Number.parseFloat(
-      frameDocument.defaultView?.getComputedStyle(entry.element).lineHeight ?? ''
+      frameDocument.defaultView?.getComputedStyle(metricElement).lineHeight ?? ''
     );
     const lineHeight = Number.isFinite(computedLineHeight)
       ? computedLineHeight
+      : fenceBoundary ? (Number.parseFloat(frameDocument.defaultView?.getComputedStyle(metricElement).fontSize ?? '') || 14) * 1.5
       : Math.max(1, entry.bottom - entry.top);
+    if (fenceBoundary) {
+      const height = Math.min(lineHeight, entry.bottom - entry.top);
+      const top = fenceBoundary === 'start' ? entry.top : entry.bottom - height;
+      return { top, bottom: top + height, left: contentLeft, lineHeight, kind: 'line' };
+    }
     const padding = entry.element.tagName === 'HR' ? Math.max(0, lineHeight - (entry.bottom - entry.top)) / 2 : 0;
     return {
       top: entry.top - padding,

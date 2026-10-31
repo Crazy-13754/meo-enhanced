@@ -1538,6 +1538,14 @@ independent target. Light/dark pixel comparisons require the code reading row
 itself to change when the overlay is toggled; a visible marker node alone cannot
 prove that an opaque block background has not covered it. Set
 `MEO_TEST_SCREENSHOTS` to an existing output directory for focused visual captures.
+Fence delimiters locate separate top/bottom bands, including empty blocks,
+tilde fences and quoted fences nested in lists. Rendering checks distinguish
+unclosed fences, indented code and the first/last bands of giant code blocks.
+Its `--navigation-only` slice drives actual caret and Shift-selection keys in
+ordinary/windowed Source, including cold document-end/Home navigation. Offscreen
+Preview targets become visible, already visible targets retain their position,
+and typing, undo, programmatic selection and disabled synchronization retain
+their independent behavior. The full marker command includes both slices.
 Late presentation growth above an explicitly located row retains that row's
 visible text through the existing viewport transaction. Source attention supplies
 the preferred row; content edits and a later Preview gesture keep their own
