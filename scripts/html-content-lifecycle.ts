@@ -21,10 +21,13 @@ export async function checkHtmlContentLifecycle(browser: Browser, bundle: string
 <audio id="lifecycle-audio" controls src="silent.wav"></audio>
 <input id="lifecycle-input" value="Authored"><a href="https://example.com/old">Current link</a>
 <details id="lifecycle-details"><summary>Disclosure</summary><p>Nested details.</p></details>
+
+**Markdown inside the root.**
+
 </section>`;
   for (const large of [false, true]) {
     const tail = large ? 'Background paragraph for production document optimization.\n\n'.repeat(19000) : '';
-    const text = `Before.\n\n${block}\n\nAfter.\n\n${tail}`;
+    const text = `Before.\n\n${block}\n**Independent prose**\n<div id="lifecycle-independent">Separate root</div>\n\nAfter.\n\n${tail}`;
     assert.equal(assessLargeDocument(text).boundedEditorWork, large);
     const page = await browser.newPage(), errors: string[] = [];
     page.on('pageerror', error => errors.push(String(error)));
@@ -78,10 +81,20 @@ export async function checkHtmlContentLifecycle(browser: Browser, bundle: string
       await page.waitForFunction(() => document.querySelector('.meo-md-html-live-result p')?.textContent === 'Caption'
         && (window as any).htmlLifecycleCalls.length >= 5);
       if (large) await page.waitForFunction(() => (window as any).htmlLifecycleWorkerResults > 0);
+      await page.waitForSelector('#lifecycle-independent');
+      const independent = await page.evaluate(() => {
+        const first = document.querySelector('.meo-md-html-live-result');
+        const next = document.getElementById('lifecycle-independent')!;
+        return first !== next.closest('.meo-md-html-block') && !first?.textContent?.includes('Independent prose')
+          && [...document.querySelectorAll('.cm-line')].some(line => line.textContent?.includes('Independent prose')
+            && !line.classList.contains('meo-md-html-source-range'));
+      });
+      assert.equal(independent, true, 'Adjacent roots and intervening Markdown keep independent source ownership');
       await page.evaluate(() => {
         const g = window as any;
         g.htmlLifecycleOriginal = ['lifecycle-picture', 'lifecycle-responsive', 'lifecycle-audio', 'lifecycle-input', 'lifecycle-details'].map(id => document.getElementById(id));
         g.htmlLifecycleInitialCalls = g.htmlLifecycleCalls.length;
+        g.htmlLifecycleIndependent = document.getElementById('lifecycle-independent');
       });
       await page.keyboard.type('7');
       await page.waitForFunction(() => document.querySelector('.meo-md-html-live-result p')?.textContent === 'Caption7');
@@ -99,7 +112,7 @@ export async function checkHtmlContentLifecycle(browser: Browser, bundle: string
         document.querySelector<HTMLInputElement>('#lifecycle-input')!.value = 'Runtime value';
         document.querySelector<HTMLDetailsElement>('#lifecycle-details')!.open = true;
         g.htmlLifecycleSamples = [];
-        const probe = document.createElement('div'); probe.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;pointer-events:none'; document.body.append(probe);
+        const probe = document.createElement('div'); probe.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;pointer-events:none;background:#010203'; document.body.append(probe);
         let frame = 0;
         g.htmlLifecycleObserver = new ResizeObserver(() => setTimeout(() => {
           const root = document.querySelector<HTMLElement>('.meo-md-html-live-result .meo-md-html-content');
@@ -107,15 +120,38 @@ export async function checkHtmlContentLifecycle(browser: Browser, bundle: string
             loaded: Array.from(root.querySelectorAll('img')).every(img => img.naturalWidth === 260), frame });
         }, 0));
         g.htmlLifecycleObserver.observe(probe);
-        function tick() { probe.style.width = `${1 + frame++ % 2}px`; g.htmlLifecycleFrame = requestAnimationFrame(tick); }
+        function tick() {
+          probe.style.width = `${1 + frame++ % 2}px`;
+          probe.style.backgroundColor = frame % 2 ? '#010203' : '#040506';
+          g.htmlLifecycleFrame = requestAnimationFrame(tick);
+        }
         g.htmlLifecycleFrame = requestAnimationFrame(tick);
       });
       await page.waitForFunction(() => document.querySelector('audio')!.currentTime > 0.15);
       const client = await page.createCDPSession(), painted: Buffer[] = [];
-      client.on('Page.screencastFrame', event => { painted.push(Buffer.from(event.data, 'base64')); void client.send('Page.screencastFrameAck', { sessionId: event.sessionId }); });
+      let firstPaintReady!: () => void, enoughPaintsReady!: () => void;
+      const firstPaint = new Promise<void>(resolve => { firstPaintReady = resolve; });
+      const enoughPaints = new Promise<void>(resolve => { enoughPaintsReady = resolve; });
+      const waitForPaint = async (ready: Promise<void>) => {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([ready, new Promise<never>((_, reject) => {
+            deadline = setTimeout(() => reject(new Error(`Native HTML compositor delivery timed out (${large}, ${painted.length} frames)`)), 5000);
+          })]);
+        } finally { if (deadline !== undefined) clearTimeout(deadline); }
+      };
+      client.on('Page.screencastFrame', event => {
+        painted.push(Buffer.from(event.data, 'base64'));
+        if (painted.length >= 1) firstPaintReady();
+        if (painted.length >= 3) enoughPaintsReady();
+        void client.send('Page.screencastFrameAck', { sessionId: event.sessionId });
+      });
       await client.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
+      await waitForPaint(firstPaint);
       await page.keyboard.type('8');
       await page.waitForFunction(() => { const samples = (window as any).htmlLifecycleSamples; return samples.length > 10 && samples.slice(-5).every((sample: any) => sample.caption === 'Caption78'); });
+      await waitForPaint(enoughPaints);
+      const finalPaint = Buffer.from((await client.send('Page.captureScreenshot', { format: 'png', fromSurface: true })).data, 'base64');
       await client.send('Page.stopScreencast'); await client.detach();
       const result = await page.evaluate(() => {
         const g = window as any;
@@ -128,9 +164,11 @@ export async function checkHtmlContentLifecycle(browser: Browser, bundle: string
       assert.ok(result.same && !result.paused && result.time > 0.15 && result.input === 'Runtime value', JSON.stringify({ identities: result.identities, paused: result.paused, time: result.time, input: result.input }));
       assert.equal(await page.$eval('#lifecycle-details', node => (node as HTMLDetailsElement).open), true);
       assert.equal(result.calls, result.initialCalls, 'Unchanged resources must not resolve again');
+      assert.equal(await page.evaluate(() => (window as any).htmlLifecycleIndependent === document.getElementById('lifecycle-independent')), true,
+        'Typing in the first root retains the independent following root');
       assert.ok(result.samples.every((sample: any) => sample.loaded && Math.abs(sample.height - result.samples.at(-1).height) <= 0.5));
       assert.ok(painted.length >= 3);
-      for (const png of painted) {
+      for (const png of [...painted, finalPaint]) {
         const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
         let pixels = 0;
         for (let index = 0; index < data.length; index += info.channels) if (data[index] === 252 && data[index + 1] === 2 && data[index + 2] === 220) pixels++;

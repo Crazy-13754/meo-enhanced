@@ -265,7 +265,8 @@ export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = res
     && cached.details === details && cached.styles === styles) return cached.blocks;
   const blocks: RenderableHtmlBlock[] = [];
   let detailsByAnchor: Map<number, ReturnType<typeof getDetailsBlocks>[number]> | undefined;
-  const nodes: Array<{ from: number; to: number; standalone?: boolean; bridged?: boolean; tags?: string }> = [];
+  const nodes: Array<{ from: number; to: number; standalone?: boolean; bridged?: boolean; tags?: string;
+    parts?: Array<{ tagFrom: number; sourceFrom: number }> }> = [];
   tree.iterate({ ...scope, enter(node: SyntaxNodeRef) {
     if (node.name === 'HTMLBlock') nodes.push({ from: node.from, to: node.to });
     else if (node.name === 'Paragraph') {
@@ -294,6 +295,8 @@ export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = res
       if (incomplete && supportedHtmlTags.has(getHtmlRootTagName(source) ?? '')) {
         const gap = state.doc.sliceString(previous.to, node.from);
         previous.bridged ||= Boolean(gap.trim());
+        previous.parts ??= [{ tagFrom: 0, sourceFrom: previous.from }];
+        previous.parts.push({ tagFrom: source.length, sourceFrom: node.from });
         previous.tags = source + state.doc.sliceString(node.from, node.to);
         previous.to = node.to;
         continue;
@@ -305,13 +308,27 @@ export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = res
     const parsedSource = state.doc.sliceString(node.from, node.to);
     const masked = maskHtmlComments(parsedSource);
     if (!masked) continue;
-    const bridgedFragments = node.bridged ? splitHtmlBlockFragments(node.tags ?? '') : [];
-    // The final HTML syntax node can include prose after the closing root.
-    // Its trailing suffix has the same length in the bridged tag sequence;
-    // only the Markdown gaps inside the root were omitted from that sequence.
-    const fragments = bridgedFragments.length
-      ? [{ from: 0, to: masked.source.length - ((node.tags?.length ?? 0) - bridgedFragments.at(-1)!.to) }]
-      : splitHtmlBlockFragments(masked.source);
+    let fragments: Array<{ from: number; to: number }>;
+    if (node.bridged) {
+      // Balance only real HTML syntax nodes, then restore each root's original
+      // coordinates. Markdown inside a root stays with it; prose between roots
+      // and literal closing tags inside code cannot join independent widgets.
+      const parts = node.parts!;
+      const sourceOffset = (offset: number, end = false): number => {
+        const position = Math.max(0, offset - (end ? 1 : 0));
+        let low = 0, high = parts.length - 1;
+        while (low <= high) {
+          const middle = (low + high) >>> 1;
+          if (parts[middle]!.tagFrom <= position) low = middle + 1;
+          else high = middle - 1;
+        }
+        const part = parts[Math.max(0, high)]!;
+        return part.sourceFrom - node.from + offset - part.tagFrom;
+      };
+      fragments = splitHtmlBlockFragments(node.tags ?? '').map(fragment => ({
+        from: sourceOffset(fragment.from), to: sourceOffset(fragment.to, true)
+      }));
+    } else fragments = splitHtmlBlockFragments(masked.source);
     // A single rendered source line cannot host two independent block widgets.
     for (let index = 1; index < fragments.length; index++) {
       const previous = fragments[index - 1], current = fragments[index];

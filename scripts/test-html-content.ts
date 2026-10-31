@@ -41,12 +41,24 @@ console.log('HTML cache context probe passed');
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 {
-  const block = '<details>\n<summary>Hybrid</summary>\n\n**Markdown body**\n\n</details>';
-  const doc = `Before\n${block}\nAfter 1\nAfter 2`;
-  const state = EditorState.create({ doc, extensions: [editorMarkdownLanguage, detailsBlockStateExtensions()] });
-  ensureSyntaxTree(state, state.doc.length, 1000);
-  assert.equal(collectRenderableHtmlBlocks(state)[0]?.source, block,
-    'A bridged HTML root ends at its balanced closing tag, before following prose');
+  const collect = (doc: string) => {
+    const state = EditorState.create({ doc, extensions: [editorMarkdownLanguage, detailsBlockStateExtensions()] });
+    ensureSyntaxTree(state, state.doc.length, 1000);
+    return collectRenderableHtmlBlocks(state).map(block => block.source);
+  };
+  for (const body of ['**Markdown body 中😀**', '```html\n</details>\n```']) {
+    const block = `<details>\n<summary>Hybrid</summary>\n\n${body}\n\n</details>`;
+    assert.deepEqual(collect(`Before\n${block}\nAfter 1\nAfter 2`), [block],
+      'A bridged HTML root ends at its real closing tag, before following prose');
+    const next = '<div>Independent root</div>';
+    assert.deepEqual(collect(`Before\n${block}\n**Intervening prose**\n${next}\nTrailing prose`), [block, next],
+      'Separate balanced roots retain their own source ranges across Markdown gaps');
+  }
+  const sameLine = '<div>First</div><div>Second</div>';
+  assert.deepEqual(collect(`Before\n${sameLine}\nAfter`), [sameLine],
+    'Roots on one source line still share one block widget');
+  assert.deepEqual(collect('<details>\n<summary>Unclosed</summary>\n\n```html\n</details>\n```\n\n<div>Inner</div>'), [],
+    'A fenced closing tag cannot complete an unclosed HTML root');
 }
 {
   const doc = '<hr>\nRaw text\n\n**Markdown paragraph**\n\n<div>Separate HTML</div>';
