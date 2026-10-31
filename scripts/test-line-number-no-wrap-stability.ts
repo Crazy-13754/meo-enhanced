@@ -131,21 +131,42 @@ try {
     }
     const detailsResult = await page.evaluate(async () => {
       const editor = (window as any).__editor;
-      editor.scrollToLine(120, 'center');
-      for (let index = 0; index < 4; index++) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      }
+      const frames = async (count: number) => {
+        for (let index = 0; index < count; index++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      };
       const selector = '.meo-md-html-block[data-meo-rendered-block-start-line="120"] details';
+      const textBefore = editor.view.state.doc.toString();
+      editor.scrollToLine(120, 'center');
+      await frames(4);
       const before = editor.view.dom.querySelector<HTMLDetailsElement>(selector);
       if (before) before.open = false;
-      for (let index = 0; index < 6; index++) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      }
+      await frames(6);
       const after = editor.view.dom.querySelector<HTMLDetailsElement>(selector);
-      return { found: Boolean(before), rebuilt: Boolean(after && after !== before), collapsed: after?.open === false };
+      const collapsed = after?.open === false;
+      editor.view.dispatch({ selection: { anchor: editor.view.state.doc.line(1).from } });
+      editor.scrollToLine(1, 'top');
+      await frames(4);
+      const unmounted = Boolean(after && !after.isConnected);
+      editor.scrollToLine(120, 'center');
+      await frames(4);
+      const restored = editor.view.dom.querySelector<HTMLDetailsElement>(selector);
+      const restoredCollapsed = restored?.open === false;
+      if (restored) restored.open = true;
+      await frames(6);
+      editor.view.dispatch({ selection: { anchor: editor.view.state.doc.line(1).from } });
+      editor.scrollToLine(1, 'top');
+      await frames(4);
+      const secondUnmounted = Boolean(restored && !restored.isConnected);
+      editor.scrollToLine(120, 'center');
+      await frames(4);
+      const reopened = editor.view.dom.querySelector<HTMLDetailsElement>(selector);
+      return { found: Boolean(before), collapsed,
+        unmounted, restoredCollapsed, secondUnmounted, restoredExpanded: reopened?.open === true,
+        textPreserved: textBefore === editor.view.state.doc.toString() };
     });
-    if (!detailsResult.found || !detailsResult.rebuilt || !detailsResult.collapsed) {
-      throw new Error(`HTML details toggle did not update state: ${JSON.stringify(detailsResult)}`);
+    if (!detailsResult.found || !detailsResult.collapsed || !detailsResult.unmounted || !detailsResult.restoredCollapsed
+      || !detailsResult.secondUnmounted || !detailsResult.restoredExpanded || !detailsResult.textPreserved) {
+      throw new Error(`HTML details state did not survive actual viewport remount: ${JSON.stringify(detailsResult)}`);
     }
     const sourceResult = await page.evaluate(async () => {
       const editor = (window as any).__editor;

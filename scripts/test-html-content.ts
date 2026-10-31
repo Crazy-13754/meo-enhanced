@@ -41,6 +41,14 @@ console.log('HTML cache context probe passed');
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 {
+  const block = '<details>\n<summary>Hybrid</summary>\n\n**Markdown body**\n\n</details>';
+  const doc = `Before\n${block}\nAfter 1\nAfter 2`;
+  const state = EditorState.create({ doc, extensions: [editorMarkdownLanguage, detailsBlockStateExtensions()] });
+  ensureSyntaxTree(state, state.doc.length, 1000);
+  assert.equal(collectRenderableHtmlBlocks(state)[0]?.source, block,
+    'A bridged HTML root ends at its balanced closing tag, before following prose');
+}
+{
   const doc = '<hr>\nRaw text\n\n**Markdown paragraph**\n\n<div>Separate HTML</div>';
   const state = EditorState.create({doc,extensions:[editorMarkdownLanguage,detailsBlockStateExtensions()]});
   ensureSyntaxTree(state,state.doc.length,1000);

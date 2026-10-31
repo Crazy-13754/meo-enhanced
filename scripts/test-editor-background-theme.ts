@@ -87,7 +87,7 @@ try {
       if (mode !== 'preview') assert.equal(await page.$eval('.cm-editor', element => getComputedStyle(element).backgroundColor), expected);
       if (mode === 'live') {
         await page.waitForSelector('.meo-md-html-table th code');
-        assert.equal(await page.$eval('.meo-md-kbd', element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)', 'Live keyboard labels have no fill');
+        assert.equal(await page.$eval('.cm-content kbd', element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)', 'Live keyboard labels have no fill');
         const table = await page.evaluate(() => {
           const header = document.querySelector('.meo-md-html-table th')!;
           const stripe = document.querySelector('.meo-md-html-table tbody tr:nth-child(2) td')!;

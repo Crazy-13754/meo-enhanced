@@ -305,8 +305,13 @@ export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = res
     const parsedSource = state.doc.sliceString(node.from, node.to);
     const masked = maskHtmlComments(parsedSource);
     if (!masked) continue;
-    const fragments = node.bridged && splitHtmlBlockFragments(node.tags ?? '').length
-      ? [{ from: 0, to: masked.source.length }] : splitHtmlBlockFragments(masked.source);
+    const bridgedFragments = node.bridged ? splitHtmlBlockFragments(node.tags ?? '') : [];
+    // The final HTML syntax node can include prose after the closing root.
+    // Its trailing suffix has the same length in the bridged tag sequence;
+    // only the Markdown gaps inside the root were omitted from that sequence.
+    const fragments = bridgedFragments.length
+      ? [{ from: 0, to: masked.source.length - ((node.tags?.length ?? 0) - bridgedFragments.at(-1)!.to) }]
+      : splitHtmlBlockFragments(masked.source);
     // A single rendered source line cannot host two independent block widgets.
     for (let index = 1; index < fragments.length; index++) {
       const previous = fragments[index - 1], current = fragments[index];

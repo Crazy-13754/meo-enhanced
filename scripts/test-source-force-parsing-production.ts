@@ -123,14 +123,16 @@ async function main(): Promise<void> {
       selection: { anchor: position - '<details>\n'.length - 1 }
     }), immediateDetailsPosition);
     await waitForFrames(page, 2);
-    await page.click('.meo-md-details-summary');
+    await page.click('.meo-md-html-content details > summary');
     await waitForFrames(page, 2);
     const immediateDetailsToggle = await page.evaluate(() => ({
-      label: document.querySelector('.meo-md-details-summary')?.getAttribute('aria-label') ?? null,
+      open: document.querySelector<HTMLDetailsElement>('.meo-md-html-content details')?.open,
+      summary: document.querySelector('.meo-md-html-content details > summary')?.textContent,
       history: (window as any).__immediateDetailsEditor.getHistoryDepth()
     }));
     assert.deepEqual(immediateDetailsToggle, {
-      label: 'Collapse details',
+      open: true,
+      summary: 'Remote details summary',
       history: { undo: 0, redo: 0 }
     });
     await page.evaluate(() => {

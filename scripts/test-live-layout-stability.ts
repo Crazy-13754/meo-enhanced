@@ -461,7 +461,7 @@ async function main(): Promise<void> {
     const hybridPreview = await page.evaluate(() => {
       const editor = (window as any).__editor;
       const anchor = editor.getText().indexOf('<details>');
-      const summary = document.querySelector<HTMLElement>('.meo-md-details-summary');
+      const summary = document.querySelector<HTMLElement>('.meo-md-html-content details > summary');
       const summaryIcon = summary?.querySelector<HTMLElement>('.meo-md-details-summary-icon[aria-hidden="true"]') ?? null;
       const summaryIconRect = summaryIcon?.getBoundingClientRect() ?? null;
       const summaryTop = summary?.getBoundingClientRect().top ?? null;
@@ -478,7 +478,7 @@ async function main(): Promise<void> {
         summaryIconVisible: (summaryIcon?.getBoundingClientRect().width ?? 0) > 0,
         summaryIconWidth: summaryIconRect?.width ?? 0,
         summaryIconTransform: summaryIcon ? getComputedStyle(summaryIcon).transform : '',
-        summaryExpanded: summary?.getAttribute('aria-expanded') ?? null,
+        summaryExpanded: String(summary?.closest('details')?.open),
         sourceToggleVisible: Boolean(sourceToggle),
         sourceToggleSameRow: Boolean(
           summaryLineRect && sourceToggleRect &&
@@ -491,8 +491,8 @@ async function main(): Promise<void> {
         sourceToggleTopDelta: sourceToggleRect && summaryLineRect
           ? sourceToggleRect.top - summaryLineRect.top
           : null,
-        bodyVisible: Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-          .some((line) => line.textContent?.includes('Hybrid body'))
+        bodyVisible: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-content p'))
+          .some((line) => line.textContent?.includes('Hybrid body') && line.getClientRects().length > 0)
       };
     });
     await waitForFrames(page, 4);
@@ -536,23 +536,23 @@ async function main(): Promise<void> {
       (window as any).__editor.view.dispatch({ selection: { anchor: 0 } });
     });
     await waitForFrames(page, 6);
-    const hybridSummaryPoint = await page.$eval('.meo-md-details-summary', (element) => {
+    const hybridSummaryPoint = await page.$eval('.meo-md-html-content details > summary', (element) => {
       const rect = element.getBoundingClientRect();
       return { x: rect.left + Math.min(90, rect.width / 2), y: rect.top + rect.height / 2, top: rect.top };
     });
     await page.mouse.click(hybridSummaryPoint.x, hybridSummaryPoint.y);
     await waitForFrames(page, 8);
     const hybridExpanded = await page.evaluate(() => ({
-      bodyVisible: Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-        .some((line) => line.textContent?.includes('Hybrid body')),
-      listVisible: Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-        .some((line) => line.textContent?.includes('hybrid markdown list item')),
-      summaryTop: document.querySelector<HTMLElement>('.meo-md-details-summary')?.getBoundingClientRect().top ?? null,
-      summaryIconWidth: document.querySelector<HTMLElement>('.meo-md-details-summary .meo-md-details-summary-icon[aria-hidden="true"]')!.getBoundingClientRect().width,
+      bodyVisible: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-content p'))
+        .some((line) => line.textContent?.includes('Hybrid body') && line.getClientRects().length > 0),
+      listVisible: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-content li'))
+        .some((line) => line.textContent?.includes('hybrid markdown list item') && line.getClientRects().length > 0),
+      summaryTop: document.querySelector<HTMLElement>('.meo-md-html-content details > summary')?.getBoundingClientRect().top ?? null,
+      summaryIconWidth: document.querySelector<HTMLElement>('.meo-md-html-content details > summary .meo-md-details-summary-icon[aria-hidden="true"]')!.getBoundingClientRect().width,
       summaryIconTransform: getComputedStyle(
-        document.querySelector<HTMLElement>('.meo-md-details-summary .meo-md-details-summary-icon[aria-hidden="true"]')!
+        document.querySelector<HTMLElement>('.meo-md-html-content details > summary .meo-md-details-summary-icon[aria-hidden="true"]')!
       ).transform,
-      summaryExpanded: document.querySelector<HTMLElement>('.meo-md-details-summary')?.getAttribute('aria-expanded') ?? null
+      summaryExpanded: String(document.querySelector<HTMLDetailsElement>('.meo-md-html-content details')?.open)
     }));
     if (
       !hybridExpanded.bodyVisible || !hybridExpanded.listVisible || hybridExpanded.summaryTop === null ||
