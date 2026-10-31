@@ -64,7 +64,10 @@ try {
         const sourceLine = view.state.doc.lineAt(view.state.selection.main.head);
         const caret = view.coordsAtPos(view.state.selection.main.head);
         const preview = document.querySelector('.meo-math-live-result')!.getBoundingClientRect();
+        const separator = getComputedStyle(document.querySelector('.meo-math-live-result')!, '::after');
         return { editors: document.querySelectorAll('.cm-editor').length, focused: view.hasFocus,
+          separator: { left: parseFloat(separator.left), width: parseFloat(separator.width),
+            border: separator.borderTopWidth, background: separator.backgroundImage },
           text: sourceLine.text, caretTop: caret?.top, previewTop: preview.top,
           payloadInside: caret!.left >= preview.left - 1 && caret!.left <= preview.right + 1,
           edges: Array.from(document.querySelectorAll('.meo-math-source-line'), source => {
@@ -72,6 +75,8 @@ try {
           }) };
       });
       assert.equal(editing.editors, 1, 'Formula source must use the document editor');
+      assert.ok(editing.separator.left >= 0 && editing.separator.width > 100 && editing.separator.background === 'none',
+        `${fixture.name}/${width}: source/result divider must stay inside the block: ${JSON.stringify(editing.separator)}`);
       assert.equal(editing.focused, true);
       assert.ok(editing.text.includes('x^2'));
       assert.ok(editing.previewTop > editing.caretTop!, 'Result must follow source');

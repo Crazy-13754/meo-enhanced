@@ -1298,6 +1298,15 @@ captures light/dark screenshots. `test:rendered-source` includes this contract.
 The regression Shiki recovery contract checks longer same-type closing fences and
 rejects short or mismatched closers, including unfinished embedded syntax.
 
+`scripts/test-rendered-block-source-appearance.ts` checks source/result dividers
+independently from quotation rules in formulas and HTML. It pairs ordinary and
+optimized documents with production policy and derived-work budget assertions,
+sampling panel boundaries across nested quotes, lists, alerts and footnotes in
+narrow dark Chinese and wide light English layouts. Its existing Mermaid/code
+appearance cases also cover quoted containers. `test:rendered-source` owns this
+contract; `scripts/test-display-math-editing.ts` retains the divider boundary
+assertion alongside real source editing and history checks.
+
 1. Reproduce the reported behavior with the smallest relevant contract.
 2. While implementing, rerun that contract; resolve known failures before broadening.
 3. For a coherent Light UI change, complete that path. For other behavior changes,

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import sharp from 'sharp';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
 
 const build = await Bun.build({ entrypoints: ['scripts/test-mermaid-editing-entry.ts'], target: 'browser', format: 'iife' });
@@ -23,11 +25,95 @@ try {
     for (let i = 0; i < count; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   }, count);
   let layouts = 0;
+  // Quotation rules and source/result dividers must paint independently, even
+  // when the same rendered block carries both decorations.
+  let dividers = 0;
+  for (const large of [false, true]) for (const narrow of [true, false]) {
+    await page.setViewport({ width: narrow ? 520 : 1100, height: 900 });
+    const containers = [
+      { name: 'quote', prefix: '> ', before: '' },
+      { name: 'nested-quote', prefix: '> > ', before: '' },
+      { name: 'quote-list', prefix: '>   ', before: '> - Item\n>\n' },
+      { name: 'list-quote', prefix: '  > ', before: '- Item\n\n' },
+      { name: 'alert', prefix: '> ', before: '> [!NOTE]\n>\n' },
+      { name: 'footnote-quote', prefix: '    > ', before: 'Reference[^note].\n\n[^note]: Note\n\n' },
+      { name: 'plain', prefix: '', before: '' },
+      { name: 'list', prefix: '  ', before: '- Item\n\n' }
+    ];
+    for (const container of containers) for (const kind of ['html', 'math'] as const) {
+      const block = kind === 'math' ? '$$\nx^2 + 1\n$$' : '<div>Divider content</div>';
+      const text = 'Before\n\n' + container.before + block.split('\n').map(line => container.prefix + line).join('\n')
+        + '\n\nAfter\n\n' + (large ? 'Background paragraph.\n\n'.repeat(12000) : '');
+      const label = `${large ? 'large' : 'ordinary'}/${narrow ? 'narrow-dark-zh' : 'wide-light-en'}/${container.name}/${kind}`;
+      assert.equal(assessLargeDocument(text).boundedEditorWork, large, label + ': production size policy');
+      await page.evaluate(({ text, narrow }) => {
+        const host = window as any;
+        host.appearanceEditor?.destroy(); document.querySelector('#app')!.replaceChildren();
+        document.documentElement.style.setProperty('--vscode-editor-background', narrow ? '#24292e' : '#ffffff');
+        document.documentElement.style.setProperty('--vscode-editor-foreground', narrow ? '#e6edf3' : '#24292e');
+        document.documentElement.style.setProperty('--meo-foreground', narrow ? '#e6edf3' : '#24292e');
+        document.documentElement.style.setProperty('--meo-semantic-blockquoteForeground', narrow ? '#abb5be' : '#586069');
+        host.MermaidEditingHarness.applyUiTheme(narrow ? 'dark' : 'light', true);
+        host.appearanceEditor = host.MermaidEditingHarness.createEditor({ parent: document.querySelector('#app'),
+          text, initialMode: 'live', uiLanguage: narrow ? 'zh-CN' : 'en', onApplyChanges() {} });
+      }, { text, narrow });
+      await settle();
+      assert.equal(await page.evaluate(() => (window as any).MermaidEditingHarness.usesLargeDocumentDerivedWorkBudget(
+        (window as any).appearanceEditor.view.state)), large, label + ': actual derived-work budget');
+      const selector = kind === 'math' ? '.meo-math-live-result' : '.meo-md-html-live-result';
+      await page.evaluate(kind => {
+        const view = (window as any).appearanceEditor.view;
+        view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf(kind === 'math' ? 'x^2' : 'Divider content') + 1 } });
+        view.focus();
+      }, kind);
+      await page.waitForSelector(selector);
+      const samples = await page.evaluate(async selector => {
+        const samples = [];
+        for (let i = 0; i < 8; i++) {
+          await new Promise(requestAnimationFrame);
+          const root = document.querySelector<HTMLElement>(selector)!;
+          const divider = getComputedStyle(root, '::after');
+          const quote = getComputedStyle(root.closest('.meo-live-quoted-block') ?? root, '::before');
+          const bounds = root.getBoundingClientRect();
+          samples.push({ left: parseFloat(divider.left), top: parseFloat(divider.top), width: parseFloat(divider.width),
+            border: divider.borderTopWidth, quoteBorder: quote.borderTopWidth,
+            quoteLeft: parseFloat(quote.left), quoteBackground: quote.backgroundImage,
+            widthMatches: Math.abs(parseFloat(divider.width) - bounds.width) < 1,
+            label: root.querySelector('.meo-math-result-status,.meo-md-html-result-status')?.textContent });
+        }
+        return samples;
+      }, selector);
+      assert.ok(samples.every(s => s.left === 0 && s.top === 8 && s.border === '1px' && s.widthMatches),
+        label + ': source/result divider stays inside its panel in every frame: ' + JSON.stringify(samples));
+      assert.ok(samples.every(s => s.quoteBorder === '0px'), label + ': quotation rule must not inherit the horizontal divider');
+      if (kind === 'math' && container.prefix.includes('>')) assert.ok(samples.every(s => s.quoteLeft < 0 && s.quoteBackground !== 'none'),
+        label + ': quotation rules remain outside the panel: ' + JSON.stringify(samples));
+      assert.equal(samples.at(-1)!.label, narrow ? '预览' : 'Preview', label);
+      assert.equal(await page.evaluate(() => (window as any).appearanceEditor.getText()), text, label + ': presentation preserves source');
+      if (!large && container.name === 'nested-quote') {
+        fs.mkdirSync('.local/rendered-block-source', { recursive: true });
+        const points = await page.$eval(selector, root => {
+          const label = root.querySelector('.meo-math-result-status,.meo-md-html-result-status')!.getBoundingClientRect();
+          return { inside: Math.floor(label.left + 3), outside: Math.floor(label.left - 3),
+            y: Math.round(root.getBoundingClientRect().top + 8) };
+        });
+        const png = await page.screenshot({ path: `.local/rendered-block-source/divider-${kind}-${narrow ? 'dark-zh' : 'light-en'}.png` });
+        const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        const pixel = (x: number, y: number) => [...data.subarray((y * info.width + x) * info.channels, (y * info.width + x + 1) * info.channels)];
+        assert.deepEqual(pixel(points.inside, points.y), pixel(points.inside, points.y + 3),
+          label + ': preview label masks the divider behind its padding');
+        assert.notDeepEqual(pixel(points.outside, points.y), pixel(points.outside, points.y + 3),
+          label + ': divider remains visible beside the label');
+      }
+      dividers++;
+    }
+  }
+  console.log(`Source/result dividers passed (${dividers} container/size/appearance cases)`);
   for (const light of [false, true]) {
     for (const narrow of [false, true]) {
       const profile = `${light ? 'light' : 'dark'}-${narrow ? 'narrow' : 'wide'}`;
       await page.setViewport({ width: narrow ? 520 : 1100, height: 1100 });
-      await page.evaluate(light => {
+      await page.evaluate(({ light, narrow }) => {
         const host = window as any;
         host.appearanceEditor?.destroy();
         document.querySelector('#app')!.replaceChildren();
@@ -41,10 +127,11 @@ try {
         host.MermaidEditingHarness.applyCodeTheme(light ? 'light' : 'dark');
         host.appearanceEditor = host.MermaidEditingHarness.createEditor({
           parent: document.querySelector('#app'),
-          text: '# Shared blocks\n\n```js\nconst first = 1;\nconst second = 2;\n```\n\n```mermaid\nflowchart LR\n A[脚注数据] --> B[分析] --> C[说明]\n```\n\n$$\nr = \\frac{6}{8} \\times 100\\% = 75\\%\n$$\n\nAfter',
+          text: '# Shared blocks\n\n```js\nconst first = 1;\nconst second = 2;\n```\n\n```mermaid\nflowchart LR\n A[脚注数据] --> B[分析] --> C[说明]\n```\n\n$$\nr = \\frac{6}{8} \\times 100\\% = 75\\%\n$$\n\nAfter'
+            .split('\n').map(line => narrow ? '> ' + line : line).join('\n'),
           initialMode: 'live', onApplyChanges() {}
         });
-      }, light);
+      }, { light, narrow });
       await page.waitForSelector('.meo-mermaid-block svg');
       await settle();
       for (const mode of ['preview', 'stacked', 'side-by-side'] as const) {

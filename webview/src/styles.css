@@ -4045,7 +4045,8 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   border-radius: 0 0 6px 6px;
 }
 
-.cm-editor :is(.meo-md-math-fenced-display.meo-math-live-result, .meo-md-html-live-result)::before {
+/* Quoted blocks reserve ::before for their container rules. */
+.cm-editor :is(.meo-md-math-fenced-display.meo-math-live-result, .meo-md-html-live-result)::after {
   content: '';
   position: absolute;
   top: 8px;
@@ -4105,6 +4106,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .meo-math-result-status,
 .meo-md-html-result-status {
   position: absolute;
+  z-index: 1;
   top: 8px;
   left: 50%;
   transform: translate(-50%, -50%);
