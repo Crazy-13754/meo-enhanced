@@ -3,7 +3,7 @@ import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 
 /** Pass the target document for iframe controls so events and tooltips share its DOM realm. */
 export function createCopyCodeButton(
-  codeContent: string | (() => string),
+  codeContent: string | (() => string | null),
   language: UiLanguage,
   ownerDocument: Document = document
 ): HTMLSpanElement {
@@ -28,12 +28,13 @@ export function createCopyCodeButton(
     event.preventDefault();
     event.stopPropagation();
     const attempt = ++copyAttempt;
-    clearTimeout(feedbackTimeout);
-    updateIcon(false);
     try {
-      await navigator.clipboard.writeText(
-        typeof codeContent === 'function' ? codeContent() : codeContent
-      );
+      const content = typeof codeContent === 'function' ? codeContent() : codeContent;
+      // Keep the clipboard unchanged while source discovery is pending.
+      if (content === null) return;
+      clearTimeout(feedbackTimeout);
+      updateIcon(false);
+      await navigator.clipboard.writeText(content);
       if (attempt !== copyAttempt) return;
       updateIcon(true);
       feedbackTimeout = setTimeout(() => updateIcon(false), 2000);

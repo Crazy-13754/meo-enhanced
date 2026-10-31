@@ -437,6 +437,10 @@ ordinary Mermaid batch window, rather than starting a second full pause. Use
 `bun scripts/test-mermaid-split-refresh.ts --quiet-deadlines-only` for that slice.
 `scripts/test-preview-webview-adapter.ts` bounds the default visible refresh wait
 to 80ms while retaining latest-input batching and one in-flight render.
+The Mermaid owner also checks stable layout icons/captions and image-button paint
+during ordinary/Worker-backed input, wrapped source, both layouts and sticky headers. Transient
+image-copy guards reject activation immediately; persistent errors dim normally.
+Pending source discovery must not copy empty text. Use `--controls-only` for this slice.
 
 `bun scripts/test-preview-table-layout-production.ts --live-update-only` isolates
 Live HTML table input stability. Caption/cell typing and undo/redo check every

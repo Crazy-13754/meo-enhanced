@@ -205,7 +205,13 @@ function activeMermaidSource(state: EditorState) {
 }
 function blockMode(view: EditorView, anchor: number) {
   const source = mermaidSourceForAnchor(view.state, anchor);
-  return source ? getMermaidBlockMode(view.state, anchor, source.closing.to) : null;
+  if (source) return getMermaidBlockMode(view.state, anchor, source.closing.to);
+  const editing = view.state.field(mermaidEditingStateField, false);
+  // The interaction owner keeps mapped bounds while the next syntax is pending.
+  // Buttons must describe that accepted layout, not a temporary stacked default.
+  return editing?.activeAnchor === anchor && editing.activeTo !== null
+    && !isCompleteMarkdownStructure(resolvedSyntaxTree(view.state, 0), view.state.doc.length)
+    ? getMermaidBlockMode(view.state, anchor, editing.activeTo) : null;
 }
 function chartFor(view: EditorView, anchor: number): HTMLElement | null {
   const line = view.state.doc.lineAt(anchor).number;
@@ -319,10 +325,10 @@ function updateMermaidLayoutButton(button: HTMLButtonElement, view: EditorView, 
     );
   }
   const label = narrow ? strings.mermaidNarrowLayout : side ? strings.mermaidStacked : strings.mermaidSideBySide;
-  button.disabled = narrow;
-  button.setAttribute('aria-label', label);
-  button.dataset.tooltip = label;
-  button.dataset.tooltipLiveUpdate = 'true';
+  if (button.disabled !== narrow) button.disabled = narrow;
+  if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+  if (button.dataset.tooltip !== label) button.dataset.tooltip = label;
+  if (button.dataset.tooltipLiveUpdate !== 'true') button.dataset.tooltipLiveUpdate = 'true';
 }
 
 class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
@@ -404,7 +410,7 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
     image.classList.add('meo-code-block-pill');
     const copy = createCopyCodeButton(() => {
       const current = anchor();
-      return current === null ? '' : (mermaidSourceForAnchor(view.state, current)?.source ?? '');
+      return current === null ? null : (mermaidSourceForAnchor(view.state, current)?.source ?? null);
     }, language);
     toolbar.append(mode, select, image, copy);
     this.updateDOM(toolbar, view);

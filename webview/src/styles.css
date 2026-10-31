@@ -8982,10 +8982,17 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .cm-editor .meo-copy-image-btn {
   cursor: pointer;
   color: var(--meo-code-action-foreground);
+  transition: background-color .12s ease, border-color .12s ease, color .12s ease, opacity 0s;
 }
 [data-meo-pointer-focus]:focus,
 .meo-mermaid-fullscreen-scrim:focus { outline: none; box-shadow: none; }
-.cm-editor .meo-copy-image-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
+/* Keep brief preview refreshes from pulsing the icon. Activation is still
+   blocked immediately by aria-disabled; persistent unavailability stays dim. */
+.cm-editor .meo-copy-image-btn[aria-disabled="true"] {
+  opacity: .4;
+  cursor: default;
+  transition-delay: 0s, 0s, 0s, 200ms;
+}
 .cm-editor .meo-preview-action-status {
   position: absolute;
   top: 25px;

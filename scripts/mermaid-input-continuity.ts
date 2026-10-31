@@ -60,6 +60,114 @@ export async function checkLiveInputQuietDeadlines(browser: Browser, bundle: str
   console.log('Live input quiet deadlines passed: painted frames share the accepted input quiet window');
 }
 
+export async function checkMermaidEditingControlStability(browser: Browser, bundle: string): Promise<void> {
+  const worker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
+  assert.ok(worker.success);
+  for (const large of [true, false]) for (const layout of ['side-by-side', 'stacked']) {
+    const page = await browser.newPage();
+    const label = `${large ? 'optimized' : 'ordinary'}/${layout}`;
+    try {
+      await page.setViewport({ width: 1050, height: 750 });
+      await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: large ? 'reduce' : 'no-preference' }]);
+      await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
+      await page.addStyleTag({ path: 'webview/src/styles.css' });
+      await page.evaluate(code => { document.body.dataset.meoMarkdownWorkerSrc = URL.createObjectURL(new Blob([code], { type: 'text/javascript' })); }, await worker.outputs[0]!.text());
+      await page.addScriptTag({ content: bundle });
+      await page.evaluate(({ large, layout }) => {
+        const w = window as any;
+        w.mermaid = { initialize() {}, async render(_id: string, source: string) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          if (source.includes('INVALID')) throw new Error('Invalid diagram');
+          return { svg: `<svg width="240" height="90" viewBox="0 0 240 90" data-control-source="${source}"><rect width="240" height="90"/></svg>` };
+        } };
+        w.MermaidEditingHarness.applyBuiltInVisualBaseline(large ? 'dark' : 'light');
+        w.controlsEditor = w.MermaidEditingHarness.createEditor({ parent: document.getElementById('app'), initialMode: 'live',
+          uiLanguage: large ? 'zh-CN' : 'en', text: 'Before\n\n```mermaid\nflowchart LR\n'
+            + (layout === 'side-by-side' ? Array.from({ length: 40 }, (_, i) => '%% comment ' + i + '\n').join('') : '')
+            + 'A[Alpha' + (large && layout === 'side-by-side' ? '5'.repeat(120) : '')
+            + '] --> B[End]\n```\n\nAfter\n\n' + (large ? 'Background paragraph.\n\n'.repeat(21000) : '') });
+      }, { large, layout });
+      await page.waitForSelector('.meo-mermaid-block svg');
+      await page.click('.meo-mermaid-mode-btn');
+      await page.evaluate(layout => {
+        const w = window as any, view = w.controlsEditor.view, text = view.state.doc.toString();
+        view.dispatch({ effects: w.MermaidEditingHarness.setMermaidLayoutEffect.of({ anchor: text.indexOf('```'), layout }),
+          selection: { anchor: text.indexOf('Alpha') + 5 }, scrollIntoView: true }); view.focus();
+      }, layout);
+      await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowRight');
+      await page.evaluate(() => (window as any).controlsEditor.whenVisiblePresentationReady(3000));
+      await page.waitForFunction(() => !document.querySelector('[data-meo-mermaid-rendering="true"]'));
+      assert.equal(await page.evaluate(() => (window as any).MermaidEditingHarness.usesLargeDocumentDerivedWorkBudget(
+        (window as any).controlsEditor.view.state)), large, label + ': actual input budget');
+      if (layout === 'side-by-side') await page.waitForSelector('.meo-block-sticky-header:not([hidden]) .meo-mermaid-layout-btn');
+      await page.mouse.move(0, 0);
+      await page.evaluate(() => {
+        const w = window as any;
+        const initial = new Map([...document.querySelectorAll('.meo-mermaid-layout-btn')].map(button =>
+          [button, { icon: button.querySelector('svg'), text: button.textContent, label: button.getAttribute('aria-label') }]));
+        w.controlsSamples = []; w.controlsSampling = true; w.imageGuardChecked = false; w.imageGuardIntact = false;
+        const sample = () => {
+          const layouts = [...document.querySelectorAll('.meo-mermaid-layout-btn')].map(button => {
+            const rect = button.getBoundingClientRect();
+            return { same: initial.get(button)?.icon === button.querySelector('svg') && initial.get(button)?.text === button.textContent
+              && initial.get(button)?.label === button.getAttribute('aria-label'),
+              visible: rect.width > 0 && rect.height > 0 && rect.top < innerHeight && rect.bottom > 0
+                && getComputedStyle(button).visibility !== 'hidden' };
+          });
+          const copies = [...document.querySelectorAll<HTMLElement>('.meo-mermaid-toolbar .meo-copy-image-btn')].map(button => {
+            const disabled = button.getAttribute('aria-disabled');
+            if (disabled === 'true' && !w.imageGuardChecked) {
+              const icon = button.firstElementChild; button.click(); w.imageGuardChecked = true;
+              w.imageGuardIntact = button.firstElementChild === icon && button.getAttribute('aria-busy') === 'false';
+            }
+            return { disabled, opacity: getComputedStyle(button).opacity,
+              floating: !!button.closest('.meo-block-sticky-header'), connected: button.isConnected };
+          });
+          w.controlsSamples.push({ layouts, copies });
+          if (w.controlsSampling) requestAnimationFrame(sample);
+        }; requestAnimationFrame(sample);
+      });
+      await page.keyboard.type('1234', { delay: 160 });
+      await page.waitForFunction(() => document.querySelector('svg[data-control-source*="Alpha1234"]')
+        && !document.querySelector('[data-meo-mermaid-rendering="true"]'));
+      const result = await page.evaluate(() => { const w = window as any; w.controlsSampling = false;
+        return { samples: w.controlsSamples, imageGuardChecked: w.imageGuardChecked, imageGuardIntact: w.imageGuardIntact }; });
+      const samples = result.samples;
+      assert.ok(samples.length > 10 && samples.every((s: any) => s.layouts.some((b: any) => b.visible) && s.layouts.every((b: any) => b.same)),
+        label + ': layout caption/icon/action must stay on the accepted layout during input');
+      assert.ok(samples.some((s: any) => s.copies.some((b: any) => b.disabled === 'true')), label + ': transient copy guard was exercised');
+      assert.ok(result.imageGuardChecked && result.imageGuardIntact, label + ': visually stable pending image copy must still reject activation');
+      assert.ok(samples.every((s: any) => s.copies.every((b: any) => b.opacity === '1')),
+        label + ': short render updates must not pulse image button opacity: ' + JSON.stringify(samples
+          .map((s: any, frame: number) => ({ frame, copies: s.copies })).filter((s: any) => s.copies.some((b: any) => b.opacity !== '1')).slice(0, 8)));
+      if (large) {
+        const copiedWhilePending = await page.evaluate(async () => {
+          const w = window as any, view = w.controlsEditor.view;
+          w.copiedSources = [];
+          Object.defineProperty(navigator, 'clipboard', { configurable: true,
+            value: { writeText: async (text: string) => { w.copiedSources.push(text); } } });
+          const from = view.state.doc.toString().indexOf('Alpha');
+          view.dispatch({ changes: { from, insert: 'Pending' }, userEvent: 'input.type' });
+          (document.querySelector('.meo-mermaid-toolbar .meo-copy-code-btn') as HTMLElement).click();
+          await Promise.resolve(); return w.copiedSources;
+        });
+        assert.deepEqual(copiedWhilePending, [], label + ': pending source discovery must not overwrite the clipboard with empty text');
+        await page.waitForFunction(() => document.querySelector('svg[data-control-source*="PendingAlpha1234"]')
+          && !document.querySelector('[data-meo-mermaid-rendering="true"]'));
+        await page.click('.meo-mermaid-toolbar .meo-copy-code-btn');
+        assert.ok(await page.evaluate(() => (window as any).copiedSources.at(-1)?.includes('PendingAlpha1234')),
+          label + ': settled copy uses the latest complete source');
+      }
+      await page.evaluate(() => { const view = (window as any).controlsEditor.view, from = view.state.doc.toString().indexOf('Alpha');
+        view.dispatch({ changes: { from, to: from + 5, insert: 'INVALID' }, userEvent: 'input.type' }); });
+      await page.waitForSelector('.meo-mermaid-error-badge');
+      await page.waitForFunction(() => [...document.querySelectorAll('.meo-mermaid-toolbar .meo-copy-image-btn')].every(button =>
+        button.getAttribute('aria-disabled') === 'true' && getComputedStyle(button).opacity === '0.4'));
+    } finally { await page.evaluate(() => (window as any).controlsEditor?.destroy()); await page.close(); }
+  }
+  console.log('Mermaid editing controls stayed stable across ordinary/optimized input, both layouts and sticky headers');
+}
+
 export async function checkMermaidInputContinuity(browser: Browser, bundle: string): Promise<void> {
   const worker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
   assert.ok(worker.success);
@@ -175,7 +283,7 @@ export async function checkMermaidInputContinuity(browser: Browser, bundle: stri
 /** The source is already accepted here; only presentation scheduling remains. */
 async function checkMermaidPreviewScheduling(browser: Browser, bundle: string, worker: string): Promise<void> {
   const results: Array<{ large: boolean; nextTurn: boolean; burstNextTurn: boolean; startLine: string | undefined; calls: string[] }> = [];
-  for (const large of [false, true]) {
+    for (const large of [false, true]) {
     const page = await browser.newPage();
     try {
       await page.setViewport({ width: 1000, height: 800 });
