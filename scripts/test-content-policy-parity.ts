@@ -7,15 +7,34 @@ import { buildPreviewStyles } from '../src/export/exportStyles';
 import { createMarkdownContentParser } from '../src/shared/markdownContentParser';
 import { renderHtmlMarkdown } from '../src/shared/htmlMarkdown';
 
-const fixtures: Array<{ text: string; quotes: number[]; heading?: boolean; table?: boolean }> = [
+const fixtures: Array<{ text: string; quotes: number[]; heading?: boolean; table?: boolean;
+  alignment?: { body: string; continuation: string }; physicalPrefixLine?: number }> = [
   { text: '> quote\n2. next', quotes: [1] },
   { text: '>> quote\n10) next', quotes: [1] },
   { text: '1. **引用**  \n  >使用">"来进行嵌套\n  >>当然使用">>"也能够叠加嵌套\n2. **列表**\n  i. 无序列表  \n    + 列表 **+**\n    - 列表 **-**', quotes: [2, 3] },
-  { text: '> quote\nlazy continuation', quotes: [1, 2] },
+  { text: '> quote\nlazy continuation', quotes: [1, 2], alignment: { body: 'quote', continuation: 'lazy continuation' } },
+  ...[
+    { text: '> > body\n/i', quotes: [1, 2] },
+    { text: '> > body\n> /i', quotes: [1, 2] },
+    { text: '  >\t>\tbody\n/i', quotes: [1, 2] },
+    { text: '> - body\n/i', quotes: [1, 2] },
+    { text: '- > body\n/i', quotes: [1, 2] },
+    { text: '- > body\n  > /i', quotes: [1, 2] },
+    { text: '> - > body\n> /i', quotes: [1, 2] },
+    { text: '> - [ ] body\n/i', quotes: [1, 2] },
+    { text: '> 10. body\n/i', quotes: [1, 2] },
+    { text: '- body\n/i', quotes: [] },
+    { text: 'Use[^n]\n\n[^n]: introduction\n\n    > body\n    /i', quotes: [5, 6] },
+    { text: '> > - item\n> >\n> >   | A | B |\n> >   | --- | --- |\n> >   | a | b |\n> >\n> >   body\n/i', quotes: [1, 2, 6, 7, 8] }
+  ].map(fixture => ({ ...fixture, alignment: { body: 'body', continuation: '/i' } })),
+  { text: '> > body\n' + 'wrapped continuation '.repeat(12), quotes: [1, 2],
+    alignment: { body: 'body', continuation: 'wrapped continuation '.repeat(12) } },
   { text: '> quote\n> 2. literal continuation', quotes: [1, 2] },
   { text: '- parent\n  > quote\n2. next', quotes: [2] },
   { text: '> - parent\n> 2. next', quotes: [1, 2] },
   { text: '> quote\n\n2. next', quotes: [1] },
+  { text: 'Use[^n]\n\n[^n]: > body\n    > /i', quotes: [3, 4], physicalPrefixLine: 4 },
+  { text: 'Use[^n]\n\n[^n]: - body\n    /i', quotes: [], physicalPrefixLine: 4 },
   { text: 'a | b\n---\nx | y', quotes: [], heading: true },
   { text: '> a | b\n> ---\n> x | y', quotes: [1, 2, 3], heading: true },
   { text: '1. a | b\n   --- | ---\n   x | y', quotes: [], table: true },
@@ -54,7 +73,7 @@ try {
       for (const fixture of fixtures) {
         const finite = fixture.text + '\n\nAFTER';
         const source = finite + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
-        const result = await page.evaluate(async ({ source, finite, appearance }) => {
+        const result = await page.evaluate(async ({ source, finite, appearance, alignment, physicalPrefixLine }) => {
           document.documentElement.dataset.editorAppearance = appearance;
           const harness = (window as any).ListEditingHarness;
           harness.applyBuiltInVisualBaseline(appearance);
@@ -64,23 +83,66 @@ try {
           for (let i = 0; i < 8; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
           const quoteLines = () => [...host.querySelectorAll<HTMLElement>('.cm-line.meo-md-quote')]
             .map(line => editor.view.state.doc.lineAt(editor.view.posAtDOM(line)).number);
+          const alignmentSamples: Array<{ bodyLeft: number; rowLefts: number[] }> = [];
+          const sampleAlignment = () => {
+            if (!alignment) return;
+            const body = editor.view.coordsAtPos(source.indexOf(alignment.body))!;
+            const start = source.indexOf(alignment.continuation);
+            const rows = new Map<number, number>();
+            for (let offset = 0; offset < alignment.continuation.length; offset++) {
+              const rect = editor.view.coordsAtPos(start + offset, 1)!;
+              rows.set(rect.top, Math.min(rows.get(rect.top) ?? Infinity, rect.left));
+            }
+            alignmentSamples.push({ bodyLeft: body.left, rowLefts: [...rows.values()] });
+          };
+          sampleAlignment();
+          if (alignment) {
+            editor.view.dispatch({ selection: { anchor: source.indexOf(alignment.continuation) + alignment.continuation.length } });
+            for (let i = 0; i < 4; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+            sampleAlignment();
+          }
           const before = quoteLines();
           const heading = host.querySelector('.meo-md-h2')?.textContent;
           const table = host.querySelector('.meo-md-html-table:not(.meo-md-html-table-sticky-table)');
           const tableCells = table ? [...table.querySelectorAll('th,td')].map(cell =>
             (cell.querySelector('.meo-md-html-table-cell-preview') ?? cell).textContent?.replace(/\s+/g, '')) : null;
+          const prefixLine = physicalPrefixLine && [...host.querySelectorAll<HTMLElement>('.cm-line')].find(line =>
+            editor.view.state.doc.lineAt(editor.view.posAtDOM(line)).number === physicalPrefixLine);
+          const physicalPrefixOffset = prefixLine ? Number.parseFloat(getComputedStyle(prefixLine).paddingLeft)
+            + Number.parseFloat(getComputedStyle(prefixLine).textIndent) : null;
           editor.setMode('source'); editor.setMode('live');
           for (let i = 0; i < 4; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+          sampleAlignment();
           const result = { before, after: quoteLines(), heading, tableCells, unchanged: editor.getText() === source,
-            optimized: harness.usesLargeDocumentDerivedWorkBudget(editor.view.state) };
+            optimized: harness.usesLargeDocumentDerivedWorkBudget(editor.view.state), alignmentSamples, physicalPrefixOffset };
           editor.destroy(); return result;
-        }, { source, finite, appearance });
+        }, { source, finite, appearance, alignment: fixture.alignment, physicalPrefixLine: fixture.physicalPrefixLine });
         const label = `${appearance}/${large ? 'optimized' : 'ordinary'}/${fixture.text}`;
         assert.deepEqual(result.before, fixture.quotes, label);
         assert.deepEqual(result.after, fixture.quotes, label + '/mode roundtrip');
         assert.equal(result.unchanged, true, label);
         assert.equal(result.optimized, large, label);
+        if (fixture.physicalPrefixLine) {
+          assert.notEqual(result.physicalPrefixOffset, null, label + '/footnote continuation mounted');
+          assert.ok(Math.abs(result.physicalPrefixOffset!) <= 1, label + '/definition label cannot add a hanging indent');
+        }
+        for (const sample of result.alignmentSamples) {
+          assert.ok(sample.rowLefts.every(left => Math.abs(left - sample.bodyLeft) <= 1),
+            label + '/continuation and wrapped rows align with paragraph body: ' + JSON.stringify(sample));
+          if (fixture.alignment?.continuation.startsWith('wrapped')) assert.ok(sample.rowLefts.length > 1, label + '/actually wrapped');
+        }
         const html = renderMarkdownToHtml({ markdownText: finite, markdownFilePath: 'D:/fixture/content.md', target: 'html' }).html;
+        if (fixture.alignment) {
+          const sameParagraph = await page.evaluate(({ html, alignment }) => {
+            const root = document.createElement('div'); root.innerHTML = html;
+            return [...root.querySelectorAll('p,li')].some(element =>
+              // Tight list items omit <p>; nested blocks cannot prove that
+              // both strings belong to the same paragraph.
+              (element.tagName === 'P' || !element.querySelector('p,ul,ol,blockquote'))
+              && element.textContent?.includes(alignment.body) && element.textContent?.includes(alignment.continuation.trim()));
+          }, { html, alignment: fixture.alignment });
+          assert.equal(sameParagraph, true, label + '/Preview retains the same paragraph');
+        }
         if (fixture.table) {
           const cells = await page.evaluate(html => {
             const root = document.createElement('div'); root.innerHTML = html;
@@ -162,7 +224,70 @@ try {
       await page.waitForFunction(() => (window as any).__contentInputEditor.view.contentDOM.querySelectorAll('.cm-line.meo-md-quote').length === 1);
       assert.deepEqual(await inputQuotes(), [1]);
       await page.evaluate(() => { (window as any).__contentInputEditor.destroy(); delete (window as any).__contentInputEditor; });
+
+      const quoteSource = '> > 表格后的同项正文。\n/i\n\nAFTER' + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
+      const caret = quoteSource.indexOf('/i');
+      const click = await page.evaluate(async ({ source, caret }) => {
+        const harness = (window as any).ListEditingHarness;
+        const host = document.querySelector('#live')!; host.replaceChildren();
+        const editor = harness.createEditor({ parent: host, text: source, initialMode: 'live', onApplyChanges() {} });
+        (window as any).__quoteInputEditor = editor;
+        editor.view.dispatch({ selection: { anchor: source.indexOf('AFTER') } });
+        for (let i = 0; i < 8; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        const rect = editor.view.coordsAtPos(caret)!;
+        return { x: Math.ceil(rect.left + 1), y: Math.floor((rect.top + rect.bottom) / 2),
+          optimized: harness.usesLargeDocumentDerivedWorkBudget(editor.view.state) };
+      }, { source: quoteSource, caret });
+      assert.equal(click.optimized, large);
+      await page.mouse.click(click.x, click.y);
+      assert.equal(await page.evaluate(() => (window as any).__quoteInputEditor.view.state.selection.main.head), caret,
+        'clicking the first lazy-continuation glyph keeps its source boundary');
+      await page.evaluate(() => {
+        const editor = (window as any).__quoteInputEditor;
+        (window as any).__quoteInputFrames = (async () => {
+          const samples = [];
+          for (let i = 0; i < 24; i++) {
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+            const text = editor.getText();
+            const body = editor.view.coordsAtPos(text.indexOf('表格后的同项正文。'))!;
+            const continuation = editor.view.coordsAtPos(editor.view.state.doc.line(2).from)!;
+            samples.push({ delta: continuation.left - body.left, text });
+          }
+          return samples;
+        })();
+      });
+      await page.keyboard.type('x');
+      const frames = await page.evaluate(async () => await (window as any).__quoteInputFrames);
+      const typedSource = quoteSource.replace('/i', 'x/i');
+      assert.ok(frames.some(frame => frame.text === typedSource), 'sample actual native input frames');
+      assert.ok(frames.every(frame => Math.abs(frame.delta) <= 1), 'native input retains paragraph alignment on every sampled frame');
+      for (const operation of ['undo', 'redo'] as const) {
+        const snapshot = await page.evaluate(async operation => {
+          const editor = (window as any).__quoteInputEditor;
+          await editor[operation]();
+          for (let i = 0; i < 6; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+          const text = editor.getText();
+          return { text, caret: editor.view.state.selection.main.head,
+            delta: editor.view.coordsAtPos(editor.view.state.doc.line(2).from)!.left
+              - editor.view.coordsAtPos(text.indexOf('表格后的同项正文。'))!.left };
+        }, operation);
+        assert.equal(snapshot.text, operation === 'undo' ? quoteSource : typedSource);
+        assert.equal(snapshot.caret, caret + (operation === 'redo' ? 1 : 0));
+        assert.ok(Math.abs(snapshot.delta) <= 1, operation + ' preserves lazy-continuation alignment');
+      }
+      if (process.env.MEO_TEST_SCREENSHOTS && !large) {
+        const html = renderMarkdownToHtml({ markdownText: typedSource, markdownFilePath: 'D:/fixture/content.md', target: 'html' }).html;
+        const css = buildPreviewStyles({ previewFontFamily: '' }, appearance);
+        await page.evaluate(({ html, css }) => {
+          const doc = document.querySelector<HTMLIFrameElement>('#preview')!.contentDocument!;
+          doc.open(); doc.write('<!doctype html><style>' + css + '</style><article class="meo-export-doc">' + html + '</article>'); doc.close();
+        }, { html, css });
+        await page.screenshot({ path: path.join(process.env.MEO_TEST_SCREENSHOTS, `content-lazy-quote-${appearance}.png`) });
+      }
+      await page.evaluate(() => {
+        (window as any).__quoteInputEditor.destroy(); delete (window as any).__quoteInputEditor; delete (window as any).__quoteInputFrames;
+      });
     }
   }
 } finally { await closeTestBrowser(browser); }
-console.log('PASS shared content policy: quote/list boundaries, lazy continuation, Setext/table precedence, Markdown/HTML typography, author styles, light/dark, ordinary/optimized and mode roundtrips');
+console.log('PASS shared content policy: quote/list boundaries, lazy/wrapped continuation alignment, native input/undo/redo, Setext/table precedence, Markdown/HTML typography, author styles, light/dark, ordinary/optimized and mode roundtrips');

@@ -1910,6 +1910,8 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
   const parsedTableRanges: SourceRange[] = [];
   const quoteDepthByLine = new Map<number, number>();
   const quoteBarsByLine = new Map<number, { columns: number[]; taskIndents: TaskListIndent[]; insideList: boolean }>();
+  const proseContinuationColumns = new Map<number, number>();
+  const footnoteDefinitionFirstLines = new Set(footnotes.definitions.map(definition => definition.lineFrom));
   let tableDepth = 0;
 
   let frontmatter: FrontmatterInfo | null = null;
@@ -1991,6 +1993,25 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
 
       if (node.name === 'Table') {
         tableDepth += 1;
+      }
+      if (node.name === 'Paragraph' || node.name === 'Task') {
+        const firstLine = state.doc.lineAt(node.from);
+        const lastLine = state.doc.lineAt(node.to - 1);
+        let container = node.node.parent;
+        while (container && container.name !== 'Blockquote' && container.name !== 'ListItem') container = container.parent;
+        // A definition's first source line includes its [^label]: spelling.
+        // The footnote owner projects that label separately; it is not a
+        // container indent that subsequent lines may inherit.
+        if (container && !footnoteDefinitionFirstLines.has(firstLine.from) && lastLine.number > firstLine.number) {
+          // Task's source starts at [ ]; its checkbox width is already owned
+          // by getLiveTaskListIndent, just as on explicit continuation lines.
+          const columns = countColumn(firstLine.text, state.tabSize, node.from - firstLine.from);
+          // Laziness belongs to the parsed paragraph, not to the spelling of
+          // each line's prefix. Only visit lines in the current Live scope.
+          const from = Math.max(firstLine.number + 1, scope ? state.doc.lineAt(scope.from).number : 1);
+          const to = Math.min(lastLine.number, scope ? state.doc.lineAt(scope.to).number : lastLine.number);
+          for (let number = from; number <= to; number++) proseContinuationColumns.set(number, columns);
+        }
       }
       if (node.name === 'HorizontalRule' && !isInsideFrontmatter(frontmatter, node.from)) {
         addThematicBreakDecorations(ranges, state, node.from, node.to, activeLines);
@@ -2422,14 +2443,21 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
     const definition = footnotes.definitions.find(candidate => candidate.isPrimary && candidate.number !== null
       && line.from > candidate.lineFrom && line.from <= candidate.lineTo);
     if (!codeBlockLines.has(lineNo)) {
-      const prefix = parseBlockLinePrefix(line.text, state.tabSize).prefix;
+      const listBeforeQuote = parsedContainers.markers.has(lineNo)
+        && !footnoteDefinitionFirstLines.has(line.from);
+      const lastQuote = listBeforeQuote ? parsedContainers.quoteMarks.get(lineNo)?.at(-1) : undefined;
+      const quoteEnd = lastQuote ? lastQuote.to - line.from : 0;
+      const quotePrefixEnd = quoteEnd + (/^[ \t]*/.exec(line.text.slice(quoteEnd))?.[0].length ?? 0);
+      // The source prefix scanner stops at list markers. Parsed quotes can
+      // follow a list on the same line; their spaces need column widths too.
+      const prefix = line.text.slice(0, Math.max(parseBlockLinePrefix(line.text, state.tabSize).prefix.length, quotePrefixEnd));
       const hiddenDefinitionIndent = definition ? (/^[ \t]*/.exec(line.text)?.[0].length ?? 0) : 0;
       // A proportional font's spaces are narrower than its column unit. Keep
       // source prefixes the same width as rendered tables and list spacers.
       for (const match of prefix.matchAll(/[ \t]+/g)) {
         if (match.index < hiddenDefinitionIndent) continue;
-        const startColumns = parseBlockLinePrefix(prefix.slice(0, match.index), state.tabSize).columns;
-        const endColumns = parseBlockLinePrefix(prefix.slice(0, match.index + match[0].length), state.tabSize).columns;
+        const startColumns = countColumn(prefix, state.tabSize, match.index);
+        const endColumns = countColumn(prefix, state.tabSize, match.index + match[0].length);
         ranges.push(Decoration.mark({ attributes: {
           class: 'meo-md-quote-prefix-space',
           style: '--meo-quote-space-width:calc(' + (endColumns - startColumns) + ' * var(--meo-live-container-ch));'
@@ -2482,24 +2510,29 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
     const lineNo = line.number;
     if (literalBlockLines.has(lineNo)) continue;
     const prefix = parseBlockLinePrefix(line.text, state.tabSize);
-    if (!prefix.prefix) continue;
+    const continuationColumns = proseContinuationColumns.get(lineNo);
+    if (!prefix.prefix && continuationColumns === undefined) continue;
     const contentFrom = line.from + prefix.prefix.length;
     const indent = getLiveBlockIndent(state, contentFrom);
+    const sourceIndent = liveBlockIndentCssValue(indent) ?? '0px';
+    if (continuationColumns !== undefined) {
+      indent.columns = Math.max(indent.columns, continuationColumns - (indent.footnoteNumber === null ? 0 : 4));
+    }
     const taskIndent = indent.taskIndent ?? { checkboxes: 0, sourceColumns: 0 };
     if (taskIndent.checkboxes) ranges.push(Decoration.line({ attributes: {
       class: 'meo-md-task-continuation',
       style: '--meo-live-task-indent:' + liveTaskListIndentCssValue(taskIndent) + ';'
     } }).range(line.from));
-    if (!prefix.prefix || parsedContainers.markers.has(lineNo) || listMarkerData(line.text)) continue;
+    if (parsedContainers.markers.has(lineNo) || listMarkerData(line.text)) continue;
     const proseIndent = liveBlockIndentCssValue(indent);
     if (!proseIndent) continue;
-    if (!prefix.quoteColumns.length && indent.footnoteNumber === null) ranges.push(Decoration.mark({ attributes: {
+    if (prefix.prefix && !prefix.quoteColumns.length && indent.footnoteNumber === null) ranges.push(Decoration.mark({ attributes: {
       class: 'meo-md-quote-prefix-space',
       style: '--meo-quote-space-width:calc(' + prefix.columns + ' * var(--meo-live-container-ch));'
     } }).range(line.from, contentFrom));
     ranges.push(Decoration.line({ attributes: {
       class: 'meo-md-container-prose',
-      style: '--meo-live-prose-indent:' + proseIndent + ';--meo-live-prose-prefix:calc(' + proseIndent + ' - '
+      style: '--meo-live-prose-indent:' + proseIndent + ';--meo-live-prose-prefix:calc(' + sourceIndent + ' - '
         + liveTaskListIndentCssValue(taskIndent) + ');'
     } }).range(line.from));
   }
