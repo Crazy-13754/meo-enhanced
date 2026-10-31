@@ -78,7 +78,7 @@ export interface PreviewViewportSurface {
   /** Explicit Source navigation reveals its block once, after its reading DOM is ready. */
   revealSourcePosition?(line: number, isCurrent: () => boolean): void | Promise<void>;
   /** A mounted unchanged glyph is more precise than an estimated source range. */
-  captureVisualReadingAnchor?(viewportRatio?: number): (() => boolean) | null;
+  captureVisualReadingAnchor?(viewportRatio?: number, preferredSourceLine?: number): (() => boolean) | null;
   captureTopVisiblePosition(viewportOffset?: number): {
     line: number;
     lineOffset: number;
@@ -1130,7 +1130,10 @@ export class ViewportController {
       // that grows inside the viewport would pull that top upward again.
       const readingRatio = linkedPreviewEnabled && projectionDriver === 'editor'
         && this.getMode() === 'source' && !this.linkedPreviewAttentionHeld ? 0 : 1 / 3;
-      const restoreVisualAnchor = this.previewSurface.captureVisualReadingAnchor?.(documentChange ? 0 : readingRatio);
+      const head = this.view.state.selection?.main.head;
+      const preferredSourceLine = !documentChange && linkedPreviewEnabled && this.linkedPreviewAttentionHeld
+        && this.getMode() === 'source' && head !== undefined ? this.view.state.doc.lineAt(head).number : undefined;
+      const restoreVisualAnchor = this.previewSurface.captureVisualReadingAnchor?.(documentChange ? 0 : readingRatio, preferredSourceLine);
       const previewGestureActive = linkedPreviewEnabled && projectionDriver === 'preview' && this.isLinkedInteractionActive();
       let readingAnchor: ViewportDocumentAnchor | null = null;
       // Source scrolling cannot displace an independently scrolled Preview.

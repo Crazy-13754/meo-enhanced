@@ -18,7 +18,7 @@ import { logWebviewRenderError } from './errors';
 import { normalizeDocumentText } from '../../../src/foundation/documentText';
 import { assessLargeDocument } from '../../../src/foundation/largeDocument';
 import { getPreviewViewportResources, observePreviewViewportResources } from './previewViewportResources';
-import { comparePreviewVisualSourceEntries, createPreviewSourceGeometry } from './previewSourceGeometry';
+import { comparePreviewVisualSourceEntries, createPreviewSourceEntries, createPreviewSourceGeometry, measurePreviewSourceEntry, type PreviewSourceEntry } from './previewSourceGeometry';
 import { capturePreviewReadingAnchor, restoreFullPreviewReadingScrollTop } from './previewReadingAnchor';
 import { createPreviewScrollRange } from './previewScrollRange';
 import { revealPreviewDocumentElement } from './previewDocumentReveal';
@@ -212,12 +212,21 @@ function syncSourceMappingAttributes(fromElement: Element, toElement: Element): 
 }
 
 function syncDescendantSourceMappings(fromElement: Element, toElement: Element): void {
-  syncSourceMappingAttributes(fromElement, toElement);
-  const fromMapped = fromElement.querySelectorAll('[data-source-line], [data-source-end-line]');
-  const toMapped = toElement.querySelectorAll('[data-source-line], [data-source-end-line]');
-  if (fromMapped.length !== toMapped.length) return;
-  for (let index = 0; index < fromMapped.length; index += 1) {
-    syncSourceMappingAttributes(fromMapped[index], toMapped[index]);
+  // Equivalence ignores source identity, including its addition/removal when
+  // changing layouts. Walk the proven corresponding structure, not just the
+  // old subset of mapped nodes. Themed code can have a different token tree;
+  // its existing literal rows are the stable correspondence at that boundary.
+  const pairs: Array<readonly [Element, Element]> = [[fromElement, toElement]];
+  while (pairs.length) {
+    const [from, to] = pairs.pop()!;
+    syncSourceMappingAttributes(from, to);
+    if (from.matches('code.hljs')) {
+      const fromRows = from.querySelectorAll('.meo-export-code-line-source');
+      const toRows = to.querySelectorAll('.meo-export-code-line-source');
+      for (let index = 0; index < fromRows.length; index++) syncSourceMappingAttributes(fromRows[index], toRows[index]);
+    } else {
+      for (let index = 0; index < from.children.length; index++) pairs.push([from.children[index], to.children[index]]);
+    }
   }
 }
 
@@ -679,11 +688,11 @@ table.meo-preview-table-compressed :is(th, td) :is(ul, ol, li) {
 const previewSourcePositionMarkerStyles = `
 .meo-preview-source-position-marker {
   position: absolute;
-  z-index: -1;
+  z-index: 1;
   left: 0;
   width: 100%;
   min-height: 1px;
-  background: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-fg)) 6%, var(--meo-preview-background, var(--meo-bg)));
+  background: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-fg)) 6%, transparent);
   pointer-events: none;
 }
 
@@ -1308,14 +1317,7 @@ export function createPreviewController({
   let latestAcceptedText: string | null = null;
   let frameRenderedText: string | null = null;
   let loadingFrameText: string | null = null;
-  type PreviewSourceMapEntry = {
-    element: HTMLElement;
-    start: number;
-    end: number;
-    top: number;
-    bottom: number;
-    rendered: boolean;
-  };
+  type PreviewSourceMapEntry = PreviewSourceEntry;
   let sourceMapDocument: Document | null = null;
   let sourceMap: PreviewSourceMapEntry[] = [];
   let visualSourceMap: PreviewSourceMapEntry[] = [];
@@ -2370,13 +2372,20 @@ export function createPreviewController({
     } else if (restoreFullPreviewReadingScrollTop(document, top)) sourceMapDirty = true;
   };
 
-  const captureVisualReadingAnchor = (viewportRatio = 0): (() => boolean) | null => {
+  const captureVisualReadingAnchor = (viewportRatio = 0, preferredSourceLine?: number): (() => boolean) | null => {
     const document = getFrameDocument();
     if (!document) return null;
+    const height = document.defaultView?.innerHeight ?? 0;
+    const marker = sourcePositionMarkerDocument === document && sourcePositionMarker && !sourcePositionMarker.hidden
+      && Number(sourcePositionMarker.dataset.meoSourcePositionLine) === preferredSourceLine ? sourcePositionMarker : null;
+    const rect = marker?.getBoundingClientRect();
+    const top = Math.max(0, rect?.top ?? 0), bottom = Math.min(height, rect?.bottom ?? 0);
+    const preferMarker = !!rect && bottom > top && height > 0;
+    if (preferMarker) viewportRatio = (top + bottom) / (2 * height);
     const fresh = capturePreviewReadingAnchor(document, top => restoreVisualReadingScrollTop(document, top),
-      viewportRatio, acceptingViewportProjection?.mapSourceLine);
+      viewportRatio, acceptingViewportProjection?.mapSourceLine, preferMarker);
     const position = presentationReadingPosition;
-    const retained = viewportRatio > 0 && !acceptingViewportProjection?.mapSourceLine
+    const retained = !preferMarker && viewportRatio > 0 && !acceptingViewportProjection?.mapSourceLine
       && position?.document === document && Math.abs(position.scrollTop - (document.scrollingElement?.scrollTop ?? 0)) <= 1
       ? position : null;
     const interaction = viewportInteractionGeneration;
@@ -2865,21 +2874,8 @@ export function createPreviewController({
     if (sourceMapDocument !== frameDocument || sourceMapDirty) {
       sourceMapDocument = frameDocument;
       sourceMapDirty = false;
-      const scrollTop = frameDocument.scrollingElement?.scrollTop ?? 0;
-      sourceMap = Array.from(frameDocument.querySelectorAll<HTMLElement>('[data-source-line]'))
-        .map((element) => {
-          const range = getSourceRange(element);
-          if (!range) return null;
-          const rect = element.getBoundingClientRect();
-          return {
-            element,
-            ...range,
-            top: rect.top + scrollTop,
-            bottom: rect.bottom + scrollTop,
-            rendered: element.getClientRects().length > 0
-          };
-        })
-        .filter((entry): entry is PreviewSourceMapEntry => entry !== null)
+      const main = frameDocument.querySelector<HTMLElement>('main.meo-export-doc');
+      sourceMap = (main ? createPreviewSourceEntries(main) : []).map(measurePreviewSourceEntry)
         // Source projection and binary search must not inherit DOM order:
         // footnotes and similar semantic blocks intentionally render elsewhere.
         .sort((left, right) => left.start - right.start || right.end - left.end || left.top - right.top);
@@ -3026,12 +3022,9 @@ export function createPreviewController({
         && entry.start === sourceRange.startLine && entry.end === sourceRange.endLine
         && !entry.element.hasAttribute('data-meo-preview-gap'));
     } else {
-      const scrollTop = getFrameDocument()?.scrollingElement?.scrollTop ?? 0;
       ranges = ranges.map(entry => {
         if (localSourceGeometry) return localSourceGeometry.measure(entry);
-        const rect = entry.element.getBoundingClientRect();
-        return { ...entry, top: rect.top + scrollTop, bottom: rect.bottom + scrollTop,
-          rendered: entry.element.getClientRects().length > 0 };
+        return measurePreviewSourceEntry(entry);
       }).filter(entry => entry.rendered)
         .sort((left, right) => left.top - right.top || left.bottom - right.bottom || left.start - right.start);
     }
@@ -3122,7 +3115,17 @@ export function createPreviewController({
     const scrollElement = frameDocument?.scrollingElement;
     if (!frameDocument || !scrollElement) return null;
     const source = findSourceProjection(line);
-    const entry = source?.exact;
+    let entry = source?.exact;
+    // A closing fence follows the last literal row but still represents its
+    // code block. Keep this fallback local to the marker: table delimiters and
+    // source-only gaps must not inherit an arbitrary enclosing scroll range.
+    const literal = entry ?? source?.before;
+    if ((!entry?.rendered || entry.bottom <= entry.top) && literal?.element.matches('.meo-export-code-line-source')) {
+      const block = literal.element.closest<HTMLElement>('.meo-export-code-block-wrap');
+      const range = block && getSourceRange(block);
+      if (block && range && line >= range.start && line <= range.end) entry = measurePreviewSourceEntry({ element: block,
+        ...range, top: 0, bottom: 0, rendered: false });
+    }
     if (!entry?.rendered || entry.bottom <= entry.top || entry.element.hasAttribute('data-meo-preview-gap')) return null;
     const contentLeft = getPreviewContentLeft(frameDocument, scrollElement);
     if (contentLeft === null) return null;
@@ -3132,9 +3135,10 @@ export function createPreviewController({
     const lineHeight = Number.isFinite(computedLineHeight)
       ? computedLineHeight
       : Math.max(1, entry.bottom - entry.top);
+    const padding = entry.element.tagName === 'HR' ? Math.max(0, lineHeight - (entry.bottom - entry.top)) / 2 : 0;
     return {
-      top: entry.top,
-      bottom: Math.max(entry.top + 1, entry.bottom),
+      top: entry.top - padding,
+      bottom: Math.max(entry.top + 1, entry.bottom + padding),
       left: contentLeft,
       lineHeight,
       kind: entry.start === entry.end ? 'line' : 'block'

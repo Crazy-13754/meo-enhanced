@@ -16,6 +16,10 @@ const browser = await launchTestBrowser();
 let primaryError: unknown;
 let previewRenderGate: Promise<void> | null = null;
 try {
+  const precisionBuild = await Bun.build({ entrypoints: ['scripts/test-preview-code-update-entry.ts'], target: 'browser', format: 'iife' });
+  assert.ok(precisionBuild.success, precisionBuild.logs.map(String).join('\n'));
+  for (const windowed of [false, true]) await assertMarkerPrecision(await browser.newPage(), await precisionBuild.outputs[0]!.text(), windowed);
+  if (!process.argv.includes('--precision-only')) {
   for (const windowed of [false, true]) {
     for (const imageAbove of [true, false]) {
       await assertMarkerContinuity(await browser.newPage(), await build.outputs[0]!.text(), windowed, imageAbove);
@@ -133,7 +137,6 @@ try {
   assert.equal(markerPresentation.position, 'absolute');
   assert.equal(markerPresentation.pointerEvents, 'none');
   assert.notEqual(markerPresentation.backgroundColor, 'rgba(0, 0, 0, 0)', 'Preview locator stays visible with a transparent native Source line highlight');
-  assert.equal(markerPresentation.zIndex, '-1');
   assert.equal(markerPresentation.kind, 'line');
   assert.equal(markerPresentation.ownerDocument, true);
   assert.equal(markerPresentation.parentIsReadingRoot, true);
@@ -199,26 +202,25 @@ try {
   const blockProjection = await page.evaluate(() => {
     const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
     const marker = frameDocument.querySelector<HTMLElement>('.meo-preview-source-position-marker')!;
-    const line = Number(marker.dataset.meoSourcePositionLine);
-    const mapped = Array.from(frameDocument.querySelectorAll<HTMLElement>('[data-source-line]'))
-      .map(element => ({
-        element,
-        start: Number(element.dataset.sourceLine),
-        end: Number(element.dataset.sourceEndLine ?? element.dataset.sourceLine)
-      }))
-      .filter(entry => entry.start <= line && entry.end >= line)
-      .sort((left, right) => left.start - right.start || right.end - left.end)[0]!;
+    const paragraph = [...frameDocument.querySelectorAll<HTMLElement>('p')]
+      .find(element => element.textContent?.includes('Its second source line'))!;
+    const walker = frameDocument.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+    let text: Node | null;
+    while ((text = walker.nextNode()) && !text.textContent?.includes('Its second source line')) {}
+    const range = frameDocument.createRange(); range.selectNodeContents(text!);
+    const textRect = range.getBoundingClientRect();
     const markerRect = marker.getBoundingClientRect();
-    const mappedRect = mapped.element.getBoundingClientRect();
+    const lineHeight = Number.parseFloat(frameDocument.defaultView!.getComputedStyle(paragraph).lineHeight);
     return {
       kind: marker.dataset.meoSourcePositionKind,
-      topDelta: markerRect.top - mappedRect.top,
-      bottomDelta: markerRect.bottom - mappedRect.bottom
+      containsText: markerRect.top <= textRect.top + 0.5 && markerRect.bottom >= textRect.bottom - 0.5,
+      height: markerRect.height, lineHeight,
+      isSecondLine: markerRect.top >= paragraph.getBoundingClientRect().top + lineHeight - 1
     };
   });
-  assert.equal(blockProjection.kind, 'block', JSON.stringify(blockProjection));
-  assert.ok(Math.abs(blockProjection.topDelta) <= 0.5, JSON.stringify(blockProjection));
-  assert.ok(Math.abs(blockProjection.bottomDelta) <= 0.5, JSON.stringify(blockProjection));
+  assert.equal(blockProjection.kind, 'line', JSON.stringify(blockProjection));
+  assert.ok(blockProjection.containsText && blockProjection.isSecondLine, JSON.stringify(blockProjection));
+  assert.ok(blockProjection.height <= blockProjection.lineHeight + 1, JSON.stringify(blockProjection));
 
   for (const sourceText of ['An indented quotation', 'An indented list item']) {
     const indentedTarget = await page.$$eval('.cm-line', (elements, expectedText) => {
@@ -564,6 +566,7 @@ try {
   await page.click('button[data-mode="preview"]');
   await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'preview');
   assert.equal(await page.$eval(alignment, element => (element as HTMLElement).hidden), true, 'full Preview has no divider actions');
+  }
 } catch (error) {
   primaryError = error;
 } finally {
@@ -572,6 +575,120 @@ try {
 }
 
 console.log('Source position marker checks passed');
+
+async function assertMarkerPrecision(page: import('puppeteer-core').Page, bundle: string, windowed: boolean): Promise<void> {
+  const fixture = ['# Precision', '', '- Parent item', '  - Child item', '- Sibling item', '',
+    'First **paragraph** line.', 'Second *paragraph* line.', '', '```text', 'alpha', '', 'omega', '```', '',
+    'Reference[^n].', '', '[^n]: Note first.', '', '    - Note parent', '      - Note child', '',
+    '    ```text', '    note alpha', '    ', '    note omega', '    ```', '',
+    '    | Key | Value |', '    | --- | --- |', '    | n | 1 |', '', '    $$', '    x+y', '    $$', '',
+    '---', '', '<div id="empty"></div>', 'Visible HTML tail', '',
+    '| Header | Value |', '| --- | --- |', '| Data | 1 |', '',
+    '<details>', '<summary>Folded</summary>', '', 'Inside folded.', '', '</details>', '', '<!-- Hidden -->', '',
+    '- Composite parent', '', '  ```text', '  nested code', '  ```', '', '  Continuation.', '', '```text', '```'];
+  const text = fixture.join('\n') + '\n\n' + Array.from({ length: windowed ? 5000 : 2 }, (_, i) => `Paragraph ${i}.\n\n`).join('');
+  assert.equal(assessLargeDocument(text).windowedPreview, windowed);
+  const documents = new Map<string, ReturnType<typeof createPreviewDocument>>();
+  try {
+    await page.setViewport({ width: 700, height: 900 });
+    await page.exposeFunction('__markerPrecisionHost', async (m: any) => {
+      if (m.type === 'requestPreviewRender') {
+        assert.equal(Boolean(m.window), windowed);
+        const options = { markdownText: m.text, sourceDocumentPath: '/fixture/precision.md', uiLanguage: 'en' as const, layout: m.layout };
+        const parsed = m.window ? createPreviewDocument(m.requestId, options) : undefined;
+        if (parsed) documents.set(m.requestId, parsed);
+        return { type: 'previewRenderResult', requestId: m.requestId, result: { ok: true,
+          value: parsed ? parsed.open(m.window.anchorLine) : exportRuntime.renderPreviewDocument(options) } };
+      }
+      if (m.type === 'requestPreviewDocument') return { type: 'previewDocumentResult', requestId: m.requestId,
+        documentId: m.documentId, result: { ok: true, value: await documents.get(m.documentId)!.run(m.operation) } };
+      return null;
+    });
+    await page.setContent('<!doctype html><style>html,body{height:100%;margin:0}.preview-host:not([hidden]){height:100%;display:flex;flex-direction:column}.preview-frame{width:100%;height:100%;flex:1}</style><body style="background:#121314"></body>');
+    await page.addStyleTag({ path: 'webview/src/styles.css' });
+    await page.addScriptTag({ content: bundle });
+    await page.evaluate(text => {
+      const w = window as any, c = w.__previewController;
+      w.__previewHostMessage = (m: unknown) => w.__markerPrecisionHost(m).then((response: any) => {
+        if (response?.type === 'previewRenderResult') c.acceptRenderResponse(response);
+        if (response?.type === 'previewDocumentResult') c.acceptDocumentResponse(response);
+      });
+      c.setLayout('full'); c.setSourcePreviewControls(true); c.setSourceColoring(false); c.setVisible(true);
+      void c.requestRender(text);
+    }, text);
+    await page.waitForFunction(() => (window as any).__previewRenderedAt && document.querySelector<HTMLIFrameElement>('iframe')?.contentDocument?.querySelector('.meo-export-code-line-source'));
+    await page.evaluate(text => {
+      (window as any).__precisionCodeWitness = document.querySelector<HTMLIFrameElement>('iframe')!.contentDocument!.querySelector('.meo-export-code-line-source');
+      const c = (window as any).__previewController;
+      c.setLayout('side'); void c.requestRender(text, { force: true });
+    }, text);
+    await page.waitForFunction(() => {
+      const d = document.querySelector<HTMLIFrameElement>('iframe')?.contentDocument;
+      return d?.documentElement.dataset.meoPreviewLayout === 'side' && d.querySelector('.meo-preview-source-footnote');
+    });
+    assert.ok(await page.evaluate(() => (window as any).__precisionCodeWitness === document.querySelector<HTMLIFrameElement>('iframe')!.contentDocument!.querySelector('.meo-export-code-line-source')),
+      'Full-to-side mapping updates retain the accepted literal code DOM');
+    const projections = await page.evaluate(lines => {
+      const c = (window as any).__previewController, d = document.querySelector<HTMLIFrameElement>('iframe')!.contentDocument!;
+      return lines.map((source, index) => {
+        c.setSourcePositionMarker({ visible: true, active: true, line: index + 1 });
+        const m = d.querySelector<HTMLElement>('.meo-preview-source-position-marker')!, r = m.getBoundingClientRect();
+        return { line: index + 1, source, visible: !m.hidden, top: r.top, bottom: r.bottom, height: r.height };
+      });
+    }, fixture);
+    const at = (source: string) => projections.find(row => row.source === source)!;
+    assert.ok(at('- Parent item').bottom <= at('  - Child item').top + 1, 'Parent text must exclude its child list');
+    assert.ok(at('    - Note parent').bottom <= at('      - Note child').top + 1, 'Footnote list text must exclude its child');
+    assert.ok(at('First **paragraph** line.').bottom <= at('Second *paragraph* line.').top + 1, 'Multiline prose maps each actual text range');
+    assert.ok(at('alpha').bottom <= at('omega').top - 1 && at('alpha').height < 30, 'Code targets one reading row');
+    assert.ok(at('    note alpha').height < 30 && at('    note alpha').top > at('[^n]: Note first.').bottom, 'Footnote code has its own source row');
+    assert.ok(at('  nested code').height < 30, 'Equivalent outer lists also update their retained code-row mappings');
+    for (const source of ['---', 'Visible HTML tail', '```text', '```', '    ```', '</details>']) assert.ok(at(source).visible, `${windowed}: ${source} has a visible result`);
+    assert.ok(at('---').height >= 14, 'A thin horizontal rule has a discernible reading-line highlight');
+    for (const source of ['| --- | --- |', '    | --- | --- |', '<!-- Hidden -->']) assert.equal(at(source).visible, false, `${source} has no independent reading position`);
+    assert.ok(projections[11]!.visible && projections[24]!.visible, 'Empty literal code rows retain a real reading position');
+    assert.ok(projections.at(-1)!.visible && projections.at(-2)!.visible, 'An empty code block retains both fence positions');
+    const math = [at('    $$'), at('    x+y')];
+    assert.ok(math.every(row => row.visible));
+    assert.equal(math[0]!.top, math[1]!.top, 'Math remains one atomic reading result');
+    assert.equal(await page.$eval('iframe', e => (e as HTMLIFrameElement).contentDocument!.documentElement.dataset.meoPreviewWindowed === 'true'), windowed);
+    for (const appearance of ['light', 'dark']) {
+      await page.evaluate(appearance => {
+        const c = (window as any).__previewController; c.setAppearance(appearance);
+        c.setSourcePositionMarker({ visible: true, active: true, line: 24 }, { revealIfOutside: true });
+      }, appearance);
+      await page.evaluate(async () => { for (let n = 0; n < 3; n++) await new Promise(requestAnimationFrame); });
+      const clip = await page.evaluate(() => {
+        const f = document.querySelector<HTMLIFrameElement>('iframe')!, d = f.contentDocument!, fr = f.getBoundingClientRect();
+        const row = [...d.querySelectorAll<HTMLElement>('.meo-export-code-line-source')].find(e => e.textContent === 'note alpha')!, r = row.getBoundingClientRect();
+        return { left: Math.ceil(fr.left + r.left), top: Math.ceil(fr.top + r.top), width: Math.floor(r.width), height: Math.floor(r.height) };
+      });
+      const before = await sharp(await page.screenshot()).extract(clip).raw().toBuffer();
+      await page.evaluate(() => (window as any).__previewController.setSourcePositionMarker({ visible: false, active: true, line: 24 }));
+      const after = await sharp(await page.screenshot()).extract(clip).raw().toBuffer();
+      assert.notDeepEqual(before, after, `${windowed}/${appearance}: the code background must not hide the position overlay`);
+      if (process.env.MEO_TEST_SCREENSHOTS) {
+        await page.evaluate(() => (window as any).__previewController.setSourcePositionMarker({ visible: true, active: true, line: 24 }));
+        await page.screenshot({ path: `${process.env.MEO_TEST_SCREENSHOTS}/marker-precision-${windowed}-${appearance}.png` });
+      }
+    }
+    const lateLayout = await page.evaluate(() => {
+      const c = (window as any).__previewController, d = document.querySelector<HTMLIFrameElement>('iframe')!.contentDocument!;
+      c.setSourcePositionMarker({ visible: true, active: true, line: 24 }, { revealIfOutside: true });
+      const row = [...d.querySelectorAll('.meo-export-code-line-source')].find(e => e.textContent === 'note alpha')!;
+      const before = row.getBoundingClientRect().top;
+      const restore = c.captureVisualReadingAnchor(1 / 3, 24);
+      const earlier = d.querySelector<HTMLElement>('.meo-export-code-block-wrap')!;
+      earlier.style.paddingBottom = '400px';
+      const restored = restore?.() === true, after = row.getBoundingClientRect().top;
+      earlier.style.paddingBottom = '';
+      return { before, after, restored };
+    });
+    assert.ok(lateLayout.restored && Math.abs(lateLayout.before - lateLayout.after) <= 1,
+      `Late layout above a located row must preserve its actual visible text: ${JSON.stringify(lateLayout)}`);
+    console.log(`Source marker precision passed (${windowed ? 'windowed' : 'ordinary'})`);
+  } finally { for (const d of documents.values()) d.dispose(); await page.close(); }
+}
 
 async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundle: string, windowed: boolean, imageAbove: boolean): Promise<void> {
   const prefix = imageAbove ? Array.from({ length: 40 }, (_, index) => `Before image ${index}: upstream context.\n\n`).join('')
@@ -693,6 +810,12 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
     const expectedColor = await page.evaluate(() => {
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
       const canvas = doc.createElement('canvas'), context = canvas.getContext('2d')!;
+      context.fillStyle = doc.defaultView!.getComputedStyle(doc.documentElement).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      context.fillStyle = doc.defaultView!.getComputedStyle(doc.body).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      context.fillStyle = doc.defaultView!.getComputedStyle(doc.querySelector('.meo-export-page')!).backgroundColor;
+      context.fillRect(0, 0, 1, 1);
       context.fillStyle = doc.defaultView!.getComputedStyle(doc.querySelector('.meo-preview-source-position-marker')!).backgroundColor;
       context.fillRect(0, 0, 1, 1);
       return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);

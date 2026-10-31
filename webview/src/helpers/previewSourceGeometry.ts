@@ -5,9 +5,61 @@ export type PreviewSourceEntry = {
   top: number;
   bottom: number;
   rendered: boolean;
+  range?: Range;
+  boundary?: HTMLElement;
 };
 
 type SourceNode = { element: HTMLElement; entry?: PreviewSourceEntry; children: SourceNode[] };
+
+/** Pair renderer-owned inline boundaries once per accepted DOM. The Range stays
+ * attached to the original formatted text; cursor queries never walk its nodes. */
+export function createPreviewSourceEntries(main: HTMLElement): PreviewSourceEntry[] {
+  const entries: PreviewSourceEntry[] = [];
+  let inline: PreviewSourceEntry | undefined;
+  for (const element of main.querySelectorAll<HTMLElement>('[data-source-line],[data-meo-source-inline-end]')) {
+    if (element.hasAttribute('data-meo-source-inline-end')) {
+      if (inline) {
+        const range = main.ownerDocument.createRange();
+        range.setStartAfter(inline.element); range.setEndBefore(element);
+        inline.range = range; inline = undefined;
+      }
+      continue;
+    }
+    const start = Number.parseInt(element.dataset.sourceLine ?? '', 10);
+    if (!Number.isFinite(start)) continue;
+    const end = Number.parseInt(element.dataset.sourceEndLine ?? '', 10);
+    const entry: PreviewSourceEntry = { element, start, end: Number.isFinite(end) ? Math.max(start, end) : start,
+      top: 0, bottom: 0, rendered: false };
+    if (element.hasAttribute('data-meo-source-inline')) inline = entry;
+    if (element.hasAttribute('data-meo-source-boundary')) entry.boundary = element.closest<HTMLElement>('details') ?? undefined;
+    entries.push(entry);
+  }
+  return entries;
+}
+
+export function previewSourceEntryBounds(entry: PreviewSourceEntry): DOMRect {
+  if (!entry.range) return (entry.boundary ?? entry.element).getBoundingClientRect();
+  const rect = entry.range.getBoundingClientRect();
+  const first = Array.from(entry.range.getClientRects()).find(value => value.height > 0 && value.width > 0);
+  const block = entry.element.closest<HTMLElement>('p,li,h1,h2,h3,h4,h5,h6,td,th') ?? entry.element;
+  const style = entry.element.ownerDocument.defaultView!.getComputedStyle(block);
+  const lineHeight = Number.parseFloat(style.lineHeight);
+  const boundary = block.querySelector<HTMLElement>('[data-meo-source-inline]');
+  const contentTop = block.getBoundingClientRect().top + (Number.parseFloat(style.paddingTop) || 0)
+    + (Number.parseFloat(style.borderTopWidth) || 0);
+  // Font ascent/descent need not divide the leading equally. Measure the
+  // actual first line's strut rather than centering glyph bounds in line-height.
+  const leading = boundary ? boundary.getBoundingClientRect().top - contentTop : 0;
+  const extra = first && Number.isFinite(lineHeight) ? Math.max(0, lineHeight - first.height) : 0;
+  return new DOMRect(rect.left, rect.top - leading, rect.width, rect.height + extra);
+}
+
+export function measurePreviewSourceEntry(entry: PreviewSourceEntry): PreviewSourceEntry {
+  const top = entry.element.ownerDocument.scrollingElement?.scrollTop ?? 0;
+  const rect = previewSourceEntryBounds(entry);
+  return { ...entry, top: rect.top + top, bottom: rect.bottom + top,
+    rendered: (entry.range ?? entry.boundary ?? entry.element).getClientRects().length > 0 && rect.height > 0 };
+}
 
 /** A visual lookup takes the last entry starting before its reading point.
  * At a shared start, put containers first so the inner source wins the tie. */
@@ -30,15 +82,11 @@ export function createPreviewSourceGeometry(document: Document) {
     nodes.set(node.element, node);
     return node;
   });
-  const entries: PreviewSourceEntry[] = [];
+  const entries = createPreviewSourceEntries(main);
+  const byElement = new WeakMap(entries.map(entry => [entry.element, entry] as const));
   for (const element of Array.from(main.querySelectorAll<HTMLElement>('[data-source-line],details'))) {
-    const start = Number.parseInt(element.dataset.sourceLine ?? '', 10);
-    if (!Number.isFinite(start) && element.tagName !== 'DETAILS') continue;
-    const parsedEnd = Number.parseInt(element.dataset.sourceEndLine ?? '', 10);
-    const entry: PreviewSourceEntry | undefined = Number.isFinite(start)
-      ? { element, start, end: Number.isFinite(parsedEnd) ? Math.max(start, parsedEnd) : start,
-        top: 0, bottom: 0, rendered: false } : undefined;
-    if (entry) entries.push(entry);
+    const entry = byElement.get(element);
+    if (!entry && element.tagName !== 'DETAILS') continue;
     const existing = nodes.get(element);
     if (existing) { existing.entry = entry; continue; }
     const node: SourceNode = { element, entry, children: [] };
@@ -81,10 +129,7 @@ export function createPreviewSourceGeometry(document: Document) {
     // Chromium can return nonzero layout rectangles for suppressed bodies.
     // Do not force that hidden layout merely to reject it as a reading box.
     if (collapsedOwner(entry)) return { ...entry, rendered: false };
-    const scrollTop = document.scrollingElement?.scrollTop ?? 0;
-    const rect = entry.element.getBoundingClientRect();
-    return { ...entry, top: rect.top + scrollTop, bottom: rect.bottom + scrollTop,
-      rendered: entry.element.getClientRects().length > 0 };
+    return measurePreviewSourceEntry(entry);
   };
   const project = (entry: PreviewSourceEntry): PreviewSourceEntry => measure(collapsedOwner(entry) ?? entry);
   const viewport = (offset: number, height: number): PreviewSourceEntry[] => {
@@ -93,7 +138,7 @@ export function createPreviewSourceGeometry(document: Document) {
     const rectangles = new Map<SourceNode, DOMRect>();
     const rect = (node: SourceNode) => {
       let value = rectangles.get(node);
-      if (!value) { value = node.element.getBoundingClientRect(); rectangles.set(node, value); }
+      if (!value) { value = node.entry ? previewSourceEntryBounds(node.entry) : node.element.getBoundingClientRect(); rectangles.set(node, value); }
       return value;
     };
     // Reading roots follow normal document flow. An unpainted root has no
@@ -108,7 +153,7 @@ export function createPreviewSourceGeometry(document: Document) {
     const result: PreviewSourceEntry[] = [];
     const visit = (node: SourceNode) => {
       const bounds = rect(node);
-      if (node.entry && node.element.getClientRects().length > 0) result.push({ ...node.entry,
+      if (node.entry && bounds.height > 0 && (node.entry.range ?? node.entry.boundary ?? node.element).getClientRects().length > 0) result.push({ ...node.entry,
         top: bounds.top + scrollTop, bottom: bounds.bottom + scrollTop, rendered: true });
       if (node.element.tagName === 'DETAILS' && !node.element.hasAttribute('open')) {
         const summary = Array.from(node.element.children).find(child => child.tagName === 'SUMMARY');

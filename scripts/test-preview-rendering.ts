@@ -13,6 +13,23 @@ import MarkdownIt from 'markdown-it';
 import { readFileSync } from 'node:fs';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
 
+{
+  const markdownText = ['Reference[^n].', '', '[^n]: Note.', '    - First<br>- Second', '',
+    '    | A | B |', '    | --- | --- |', '    | one | two |', '    After the table.', '',
+    '    ```text', '    Source after normalized containers.', '    ```'].join('\n');
+  const options = { markdownText, markdownFilePath: '/fixture/source-positions.md', target: 'html' as const, sourceFootnotes: true };
+  const complete = renderMarkdownToHtml(options).html;
+  const deferred = prepareMarkdownPresentation({ ...options, windowedPresentation: true });
+  assert.equal(deferred.blocks.map(block => deferred.renderBlock(block.index).html).join(''), complete,
+    'Source-positioned note children retain eager/lazy rendering parity');
+  assert.equal(deferred.renderAll().html, complete, 'Repeated rendering must not duplicate inline position boundaries');
+  const document = parseDocument(complete);
+  const row = DomUtils.findOne(node => node.attribs?.class === 'meo-export-code-line-source', document.children);
+  assert.equal(row?.attribs['data-source-line'], '12', 'Footnote code preserves its original source line after list/table normalization');
+  const tableRow = DomUtils.findOne(node => node.name === 'tr' && DomUtils.textContent(node).includes('one'), document.children);
+  assert.equal(tableRow?.attribs['data-source-line'], '8', 'Normalized note tables preserve original source rows');
+}
+
 for (const preset of ['default', 'github-readme'] as const) for (const layout of ['side', 'full'] as const) {
   const markdownText = 'First reference[^n].\n\n' + Array.from({ length: 5_000 }, (_, index) => index === 3_000
     ? '[^n]: Note with nested reference[^nested].\n\n' : index === 4_000 ? 'Repeated reference[^n].\n\n'

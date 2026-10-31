@@ -1528,6 +1528,20 @@ upstream placeholder reset even when the text's reading position stays stable.
 Unmapped gaps, hidden comments, removed text and unloaded window bands
 hide the overlay, while mapped empty code lines and new cursor destinations
 remain valid. Both paths keep one overlay and full Preview hides it.
+Its `--precision-only` slice pairs actual ordinary/windowed rendering for tight
+nested lists, multiline prose, code rows (including blank rows and fences),
+footnote paragraphs/lists/code/tables/math, visible HTML tails, disclosure
+boundaries and horizontal rules. It first renders full Preview, then changes to
+the side layout while retaining literal code DOM; the retained rows must accept
+their new source identities. Table delimiters and hidden comments have no
+independent target. Light/dark pixel comparisons require the code reading row
+itself to change when the overlay is toggled; a visible marker node alone cannot
+prove that an opaque block background has not covered it. Set
+`MEO_TEST_SCREENSHOTS` to an existing output directory for focused visual captures.
+Late presentation growth above an explicitly located row retains that row's
+visible text through the existing viewport transaction. Source attention supplies
+the preferred row; content edits and a later Preview gesture keep their own
+reading policies, covered by `test-viewport-controller.ts`.
 `scripts/test-viewport-controller.ts` also checks one-shot semantic mapping with
 unequal content heights, fresh geometry, origin ownership, selection preservation
 and no background work or continuous projection while sync remains off.

@@ -10,11 +10,11 @@ export type PrepareMarkdownWithFootnotesOptions = {
   outputFilePath?: string;
   renderMarkdown: (markdownText: string) => string;
   /** Capture parsing context now, while formatting the definition only on demand. */
-  prepareMarkdown?: (markdownText: string) => () => string;
+  prepareMarkdown?: (markdownText: string, sourceLines: readonly number[]) => () => string;
   /** Windowed reading formats a definition only when its block is requested. */
   deferDefinitionPreparation?: boolean;
   onFenceInfo?: (info: string) => void;
-  normalizeMarkdown: (markdownText: string) => string;
+  normalizeMarkdown: (markdownText: string) => string | SourceMappedMarkdown;
   backToReference: string;
   backToNumberedReference: (number: number) => string;
   backToReferenceOccurrence: (number: number, occurrence: number) => string;
@@ -38,6 +38,7 @@ type ExportFootnoteDefinition = {
   normalizedLabel: string;
   number: number | null;
   contentMarkdown: string;
+  contentSourceLines: number[];
   referenceIds: string[];
   sourceLine: number;
   sourceEndLine: number;
@@ -93,7 +94,7 @@ export function prepareMarkdownWithFootnotes(
     let preservesCodeLines = inspection !== null;
     const rewritten = markdown.split('\n').map((line, index) => {
       if (codeLines.has(index)) return line;
-      const sourceLine = definition ? definition.sourceLine + index : extracted.bodySourceLines[index] ?? index + 1;
+      const sourceLine = definition ? definition.contentSourceLines[index] ?? definition.sourceLine : extracted.bodySourceLines[index] ?? index + 1;
       return replaceFootnoteReferencesInLine(line, label => renderReference(label, sourceLine), (from, to, html) => {
         if (preservesCodeLines) preservesCodeLines = inspection!.canInsertInlineHtmlAt(index, from, to, html);
       });
@@ -117,8 +118,11 @@ export function prepareMarkdownWithFootnotes(
   const prepared = footnotes.map(footnote => {
     options.onAnchor?.(`fn-${footnote.number}`, footnote.sourceLine);
     const prepare = () => {
-      const source = options.normalizeMarkdown(footnote.contentMarkdown);
-      return options.prepareMarkdown?.(source) ?? (() => options.renderMarkdown(source));
+      const normalized = options.normalizeMarkdown(footnote.contentMarkdown);
+      const source = typeof normalized === 'string' ? normalized : normalized.markdown;
+      const sourceLines = typeof normalized === 'string' ? footnote.contentSourceLines
+        : normalized.sourceLines.map(line => footnote.contentSourceLines[line - 1] ?? footnote.sourceLine);
+      return options.prepareMarkdown?.(source, sourceLines) ?? (() => options.renderMarkdown(source));
     };
     // HTML participates in the global anchor registry and literal scopes.
     // Keep its original preparation order, including rewritten nested references.
@@ -196,6 +200,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown, sourcePositions: b
     const definitionStartIndex = index;
     definitionStarts.set(index, sourceFootnoteMarker);
     const contentLines = [line.slice(markerMatch[0].length)];
+    const contentSourceLines = [source.sourceLines[index] ?? index + 1];
     let continuationBaseline: 2 | 4 | null = null;
 
     while (index + 1 < lines.length) {
@@ -206,6 +211,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown, sourcePositions: b
       if (!nextLine.trim()) {
         consumedLineNumbers.add(index + 1);
         contentLines.push('');
+        contentSourceLines.push(source.sourceLines[index + 1] ?? index + 2);
         index += 1;
         continue;
       }
@@ -218,6 +224,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown, sourcePositions: b
 
       consumedLineNumbers.add(index + 1);
       contentLines.push(stripped);
+      contentSourceLines.push(source.sourceLines[index + 1] ?? index + 2);
       index += 1;
     }
 
@@ -225,6 +232,7 @@ function extractExportFootnotes(source: SourceMappedMarkdown, sourcePositions: b
       normalizedLabel,
       number: null,
       contentMarkdown: contentLines.join('\n'),
+      contentSourceLines,
       referenceIds: [],
       sourceLine: source.sourceLines[definitionStartIndex] ?? definitionStartIndex + 1,
       sourceEndLine: source.sourceLines[index] ?? index + 1

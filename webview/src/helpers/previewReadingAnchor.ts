@@ -21,7 +21,7 @@ export function restoreFullPreviewReadingScrollTop(document: Document, top: numb
 /** Retain an actual painted text position across a synchronous presentation
  * mutation. Estimated blocks and relocated footnotes cannot serve as witnesses. */
 export function capturePreviewReadingAnchor(document: Document, restore: (top: number) => void, viewportRatio = 0,
-  mapSourceLine?: PreviewSourceLineMapper): (() => boolean) | null {
+  mapSourceLine?: PreviewSourceLineMapper, preferReadingBand = false): (() => boolean) | null {
   const window = document.defaultView, scroll = document.scrollingElement;
   const root = document.querySelector<HTMLElement>('main.meo-export-doc');
   if (!window || !scroll || !root) return null;
@@ -32,7 +32,7 @@ export function capturePreviewReadingAnchor(document: Document, restore: (top: n
   const atTop = scroll.scrollTop <= .5;
   const atEnd = scroll.scrollHeight > scroll.clientHeight
     && scroll.scrollTop >= scroll.scrollHeight - scroll.clientHeight - 1;
-  if (viewportRatio > 0 && atTop) {
+  if (viewportRatio > 0 && atTop && !preferReadingBand) {
     return () => {
       if (!root.isConnected || root.ownerDocument !== document) return false;
       restore(0);

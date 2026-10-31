@@ -192,10 +192,11 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     installInlineScriptTransform(md);
     installPunctuationInlineTransform(md);
   }
-  const documentAnchors = installSourcePositionAndHeadingAnchorTransform(md, (startIndex, endIndex) => ({
-    start: bodySourceLines?.[startIndex] ?? 0,
-    end: bodySourceLines?.[Math.max(startIndex, endIndex - 1)] ?? 0
-  }), (heading) => headings.push(heading), github);
+  const resolveSourceRange = (startIndex: number, endIndex: number, environment?: { meoSourceLines?: readonly number[] }) => {
+    const lines = environment?.meoSourceLines ?? bodySourceLines;
+    return { start: lines?.[startIndex] ?? 0, end: lines?.[Math.max(startIndex, endIndex - 1)] ?? 0 };
+  };
+  const documentAnchors = installSourcePositionAndHeadingAnchorTransform(md, resolveSourceRange, (heading) => headings.push(heading), github, options.sourceFootnotes === true);
   installTableContainerTransform(md, (sourceLine) => (
     countLeadingIndentColumns(originalSourceLines[sourceLine - 1] ?? '')
   ));
@@ -207,10 +208,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   installSafeHtmlTransform(
     md,
     deferImageSrc,
-    (startIndex, endIndex) => ({
-      start: bodySourceLines?.[startIndex] ?? 0,
-      end: bodySourceLines?.[Math.max(startIndex, endIndex - 1)] ?? 0
-    }),
+    resolveSourceRange,
     !github && options.showComments === true,
     !github,
     github ? generatedFootnoteTags : undefined,
@@ -289,7 +287,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     return [
       `<div class="meo-export-code-block-wrap"${sourceAttrs}${band ? ` data-meo-code-id="${band.id}" data-meo-code-offset="${band.offset}" data-meo-code-digits="${band.digits}" data-meo-code-part="${band.first ? 'start' : band.last ? 'end' : 'middle'}"` : ''}>`,
       languageLabel,
-      `<pre class="meo-export-code-block"><code${className}>${renderHighlightedCodeLines(highlighted, source, options.target, band)}</code></pre>`,
+      `<pre class="meo-export-code-block"><code${className}>${renderHighlightedCodeLines(highlighted, source, options.target, band, codeBlock.meta?.meoSourceLines)}</code></pre>`,
       '</div>'
     ].join('');
   };
@@ -306,13 +304,13 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     target: options.target,
     outputFilePath: options.outputFilePath,
     renderMarkdown: (markdownText) => md.render(markdownText, github ? { meoGithubFootnote: true } : undefined),
-    prepareMarkdown: markdownText => {
-      const context = { meoFootnote: true, ...(github ? { meoGithubFootnote: true } : {}) };
+    prepareMarkdown: (markdownText, sourceLines) => {
+      const context = { meoFootnote: true, meoSourceLines: sourceLines, ...(github ? { meoGithubFootnote: true } : {}) };
       const nodes = md.parse(markdownText, context);
       if (!github) hasMermaid ||= nodes.some(node => node.type === 'fence' && normalizeFenceLanguage(node.info) === 'mermaid');
       return () => md.renderer.render(nodes, md.options, context);
     },
-    normalizeMarkdown: github ? text => text : normalizeMarkdownForExport,
+    normalizeMarkdown: github ? text => text : normalizeMarkdownForExportWithSourceMap,
     backToReference: uiStrings.backToReference,
     backToNumberedReference: uiStrings.backToNumberedReference,
     backToReferenceOccurrence: uiStrings.backToReferenceOccurrence
@@ -411,7 +409,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
       img: ['src', 'alt', 'title', 'width', 'height', 'loading', DEFERRED_IMAGE_ATTRIBUTE, ...(github ? githubHtmlAttributes.img : [])],
       ol: ['start', 'reversed', ...(github ? githubHtmlAttributes.ol : [])],
       li: ['value'],
-      '*': ['class', 'style', 'id', 'title', 'hidden', 'lang', 'dir', 'data-source-b64', 'data-meo-deferred-math', 'data-meo-container-part', 'data-meo-container-origin', 'data-meo-code-id', 'data-meo-code-digits', 'data-meo-code-offset', 'data-meo-code-part', 'data-meo-preview-table-widths', 'data-meo-preview-table-part', 'data-meo-preview-table-origin', 'data-source-line', 'data-source-end-line', 'aria-hidden', ...(!github ? ['aria-*', 'data-*'] : githubHtmlAttributes['*'])],
+      '*': ['class', 'style', 'id', 'title', 'hidden', 'lang', 'dir', 'data-source-b64', 'data-meo-deferred-math', 'data-meo-container-part', 'data-meo-container-origin', 'data-meo-code-id', 'data-meo-code-digits', 'data-meo-code-offset', 'data-meo-code-part', 'data-meo-preview-table-widths', 'data-meo-preview-table-part', 'data-meo-preview-table-origin', 'data-source-line', 'data-source-end-line', 'data-meo-source-inline', 'data-meo-source-inline-end', 'data-meo-source-boundary', 'aria-hidden', ...(!github ? ['aria-*', 'data-*'] : githubHtmlAttributes['*'])],
       span: ['class', 'style', 'title', 'role', 'aria-label', 'aria-hidden', 'data-line-number'],
       th: ['colspan', 'rowspan', 'scope', 'style'],
       td: ['colspan', 'rowspan', 'style'],
@@ -580,7 +578,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   };
 }
 
-function renderHighlightedCodeLines(highlighted: string, source: string, target: RenderMarkdownOptions['target'], band?: CodeBand): string {
+function renderHighlightedCodeLines(highlighted: string, source: string, target: RenderMarkdownOptions['target'], band?: CodeBand, mappedSourceLines?: readonly number[]): string {
   const rows: string[] = [];
   const openSpans: string[] = [];
   let rowHtml = '';
@@ -627,7 +625,7 @@ function renderHighlightedCodeLines(highlighted: string, source: string, target:
   return rows.map((row, index) => [
     '<span class="meo-export-code-line">',
     `<span class="meo-export-code-line-number" aria-hidden="true" data-line-number="${(band?.offset ?? 0) + index + 1}"></span>`,
-    `<span class="meo-export-code-line-source"${band ? ` data-source-line="${band.lines[index]}"` : ''}>${row}${target !== 'docx' && source.length > 0 && sourceLines[index] === '' ? '<br>' : ''}</span>`,
+    `<span class="meo-export-code-line-source"${(band?.lines ?? mappedSourceLines)?.[index] ? ` data-source-line="${(band?.lines ?? mappedSourceLines)![index]}"` : ''}>${row}${target !== 'docx' && source.length > 0 && sourceLines[index] === '' ? '<br>' : ''}</span>`,
     '</span>'
   ].join('')).join(band ? '\n' : '') + (source.endsWith('\n') ? '\n' : '');
 }
@@ -635,7 +633,7 @@ function renderHighlightedCodeLines(highlighted: string, source: string, target:
 function installSafeHtmlTransform(
   md: MarkdownIt,
   rewriteImageSrc: (rawSrc: string) => { src: string; deferredSrc?: string },
-  resolveSourceRange: (startIndex: number, endIndex: number) => { start: number; end: number },
+  resolveSourceRange: (startIndex: number, endIndex: number, environment?: any) => { start: number; end: number },
   showComments: boolean,
   preserveSourceStyles = true,
   generatedFootnoteTags?: ReadonlySet<string>,
@@ -788,7 +786,7 @@ function installSafeHtmlTransform(
     const sanitizedPair = sanitizeHtml(`${source}</${tagName}>`, safeHtmlSanitizerOptions);
     return new RegExp(`^<${tagName}\\b[^>]*>`, 'i').exec(sanitizedPair)?.[0] ?? escapeHtml(source);
   };
-  const renderRawHtml = (tokens: any[], index: number): string => {
+  const renderRawHtml = (tokens: any[], index: number, _options: unknown, environment: any): string => {
     const htmlNode = tokens[index];
     const source = String(htmlNode?.content ?? '');
     if (htmlNode?.meta?.meoTrustedHtml === true || generatedFootnoteTags?.has(source)) return source;
@@ -805,13 +803,16 @@ function installSafeHtmlTransform(
     }
     if (rendered === '') return '';
     if (htmlNode?.type !== 'html_block' || !Array.isArray(htmlNode.map)) return rendered;
-    const sourceRange = resolveSourceRange(Number(htmlNode.map[0]), Number(htmlNode.map[1]));
+    const sourceRange = resolveSourceRange(Number(htmlNode.map[0]), Number(htmlNode.map[1]), environment);
     if (sourceRange.start <= 0) return rendered;
     const fragments = splitHtmlBlockFragments(source);
     const withoutComments = (text: string) => text.replace(/<!--[\s\S]*?-->/g, '').trim();
     const complete = /^\s*<!--/.test(source) && !withoutComments(source)
-      || fragments.length > 0 && !withoutComments(source.slice(fragments.at(-1)!.to))
+      || fragments.length > 0 && !/<\/?[a-z]/i.test(withoutComments(source.slice(fragments.at(-1)!.to)))
         && !withoutComments(source.slice(0, fragments[0].from));
+    if (/^\s*<\/details\s*>\s*$/i.test(rendered)) {
+      return `<span hidden data-source-line="${sourceRange.start}" data-source-end-line="${sourceRange.end}" data-meo-source-boundary="true"></span>${rendered}`;
+    }
     if (!preserveSourceStyles || !complete) {
       return rendered.replace(/^(\s*<[a-z][a-z\d-]*)(?=[\s>])/i, `$1 data-source-line="${sourceRange.start}" data-source-end-line="${Math.max(sourceRange.start, sourceRange.end)}"`);
     }
@@ -823,9 +824,10 @@ function installSafeHtmlTransform(
 
 function installSourcePositionAndHeadingAnchorTransform(
   md: MarkdownIt,
-  resolveSourceRange: (startIndex: number, endIndex: number) => { start: number; end: number },
+  resolveSourceRange: (startIndex: number, endIndex: number, environment?: any) => { start: number; end: number },
   onHeading?: (heading: ExportHeading) => void,
-  github = false
+  github = false,
+  preciseSourcePositions = false
 ): (state: Parameters<MarkdownIt['core']['process']>[0]) => void {
   const assignAnchors = (state: any) => {
     if (state.env?.meoTableCell) return;
@@ -843,8 +845,8 @@ function installSourcePositionAndHeadingAnchorTransform(
 
     for (let index = 0; index < tokens.length; index += 1) {
       const headingOpen = tokens[index];
-      const sourceRange = !state.env?.meoFootnote && Array.isArray(headingOpen.map)
-        ? resolveSourceRange(Number(headingOpen.map[0]), Number(headingOpen.map[1]))
+      const sourceRange = (!state.env?.meoFootnote || preciseSourcePositions) && Array.isArray(headingOpen.map)
+        ? resolveSourceRange(Number(headingOpen.map[0]), Number(headingOpen.map[1]), state.env)
         : null;
       const sourceLine = sourceRange?.start ?? 0;
       const sourceEndLine = sourceRange?.end ?? 0;
@@ -859,9 +861,17 @@ function installSourcePositionAndHeadingAnchorTransform(
         }
         if (ids.length) headingOpen.meta = { ...headingOpen.meta, meoGithubHeadingIds: ids };
       }
-      if ((headingOpen.nesting === 1 || headingOpen.type === 'fence' || headingOpen.type === 'code_block' || headingOpen.type === 'meo_math_block') && sourceLine > 0) {
+      if ((headingOpen.nesting === 1 || ['fence', 'code_block', 'meo_math_block', 'hr'].includes(headingOpen.type)) && sourceLine > 0) {
         headingOpen.attrSet('data-source-line', String(sourceLine));
         headingOpen.attrSet('data-source-end-line', String(Math.max(sourceLine, sourceEndLine)));
+      }
+      if (preciseSourcePositions && sourceLine > 0 && ['inline', 'fence', 'code_block'].includes(headingOpen.type)) {
+        const first = Number(headingOpen.map[0]) + (headingOpen.type === 'fence' ? 1 : 0);
+        const length = headingOpen.type === 'inline' ? Number(headingOpen.map[1]) - first
+          : String(headingOpen.content).replace(/\n$/, '').split('\n').length;
+        if (headingOpen.type !== 'inline' || length > 1 || tokens[index - 1]?.hidden) {
+          headingOpen.meta = { ...headingOpen.meta, meoSourceLines: Array.from({ length }, (_, offset) => resolveSourceRange(first + offset, first + offset + 1, state.env).start) };
+        }
       }
       if (headingOpen.type !== 'heading_open') {
         continue;
@@ -893,6 +903,44 @@ function installSourcePositionAndHeadingAnchorTransform(
     }
   };
   md.core.ruler.after('inline', 'meo-heading-anchors', assignAnchors);
+  if (!preciseSourcePositions) return assignAnchors;
+  // Empty inline boundaries preserve the original formatting tree and native
+  // selection, including emphasis crossing a source newline and tight lists
+  // whose paragraph tags are intentionally omitted. Geometry uses DOM Ranges.
+  md.renderer.rules.meo_source_position = (tokens, index) => tokens[index]!.content;
+  const inlineSources = new WeakMap<object, readonly number[]>();
+  const render = md.renderer.render;
+  md.renderer.render = function(tokens, options, environment) {
+    for (const node of tokens) {
+      if (node.type === 'inline' && node.children && node.meta?.meoSourceLines) inlineSources.set(node.children, node.meta.meoSourceLines);
+    }
+    return render.call(this, tokens, options, environment);
+  };
+  const renderInline = md.renderer.renderInline;
+  md.renderer.renderInline = function(children, options, environment) {
+    const lines = inlineSources.get(children);
+    if (lines?.length && children.length) {
+      const boundary = (line?: number, endLine = line) => {
+        const boundaryNode = new (children[0]!.constructor as any)('meo_source_position', '', 0);
+        boundaryNode.content = line === undefined ? '<span data-meo-source-inline-end="true"></span>'
+          : `<span data-source-line="${line}" data-source-end-line="${endLine}" data-meo-source-inline="true"></span>`;
+        return boundaryNode;
+      };
+      // Multiline literals can collapse their source newlines into one inline
+      // result. Keep that result atomic instead of inventing an offset mapping.
+      const split = children.filter(child => child.type === 'softbreak' || child.type === 'hardbreak').length + 1 === lines.length;
+      const mapped = [boundary(lines[0], split ? lines[0] : lines.at(-1))];
+      let lineIndex = 0;
+      for (const child of children) {
+        if (split && (child.type === 'softbreak' || child.type === 'hardbreak')) {
+          mapped.push(boundary(), child, boundary(lines[++lineIndex]));
+        } else mapped.push(child);
+      }
+      mapped.push(boundary());
+      return renderInline.call(this, mapped, options, environment);
+    }
+    return renderInline.call(this, children, options, environment);
+  };
   return assignAnchors;
 }
 
@@ -901,7 +949,7 @@ function installTableContainerTransform(md: MarkdownIt, resolveIndent: (sourceLi
   const defaultTableClose = md.renderer.rules.table_close ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
   md.renderer.rules.table_open = (tokens, idx, options, env, self) => {
     const sourceLine = Number(tokens[idx]?.attrGet('data-source-line') ?? 0);
-    const indent = tokens[idx]?.level === 0 && sourceLine > 0 ? resolveIndent(sourceLine) : 0;
+    const indent = !env?.meoFootnote && tokens[idx]?.level === 0 && sourceLine > 0 ? resolveIndent(sourceLine) : 0;
     const wrapperAttributes = indent > 0
       ? ` class="meo-table-scroll meo-export-indented-table" style="--meo-table-indent:${indent}ch"`
       : ' class="meo-table-scroll"';

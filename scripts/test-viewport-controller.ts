@@ -3537,4 +3537,30 @@ for (const [insert, removed, expectedLine] of [['x', 0, 3], ['x\n', 0, 4], ['', 
   } finally { controller.destroy(); }
 }
 
+// Source attention can sit below a late chart/image. Its visible source row is
+// the presentation witness; a new Preview gesture and content edits keep their
+// own existing reading policies.
+{
+  const doc = Text.of(Array.from({ length: 80 }, () => 'line'));
+  const scroll = { scrollTop: 200, scrollLeft: 0, scrollHeight: 2000, clientHeight: 400 };
+  const witnesses: Array<number | undefined> = [];
+  let previewTop = 300;
+  const controller = new ViewportController({ dom: {}, scrollDOM: scroll,
+    state: { doc, selection: { main: { head: doc.line(30).from } } }, ...uniformLineGeometry(doc)
+  } as any, { attachInteractions: false, getMode: () => 'source', previewSurface: {
+    captureTopVisiblePosition: () => null, restoreTopVisiblePosition() {},
+    readScrollTop: () => previewTop, writeScrollTop: top => { previewTop = top; },
+    revealSourcePosition() {}, captureVisualReadingAnchor: (_ratio, line) => { witnesses.push(line); return () => true; }
+  } });
+  try {
+    controller.setLinkedPreviewEnabled(true); controller.locateLinkedSourcePosition(30);
+    controller.runPreviewPresentationTransaction(() => {});
+    if (witnesses.at(-1) !== 30) throw new Error('A held Source location must prefer its current source row during resource layout');
+    controller.runPreviewPresentationTransaction(() => {}, { previousText: doc.toString(), nextText: doc.toString() + 'x' });
+    if (witnesses.at(-1) !== undefined) throw new Error('Content edits must retain their existing boundary mapping');
+    controller.markPreviewInteraction(); controller.runPreviewPresentationTransaction(() => {});
+    if (witnesses.at(-1) !== undefined) throw new Error('A Preview gesture must retire the old Source preference');
+  } finally { controller.destroy(); }
+}
+
 console.log('viewport controller checks passed');
