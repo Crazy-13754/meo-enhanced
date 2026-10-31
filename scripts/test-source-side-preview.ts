@@ -116,6 +116,9 @@ async function assertColdSourceScroll(page: import('puppeteer-core').Page, windo
     const view = (element as any).cmTile.root.view;
     return { text: view.state.doc.toString(), selection: view.state.selection.toJSON() };
   });
+  assert.equal(await page.$eval('.preview-frame', (frame: HTMLIFrameElement) =>
+    frame.contentDocument!.querySelector<HTMLElement>('.meo-preview-source-position-marker')?.hidden), true,
+  'The unmapped document-end gap navigates without highlighting unrelated content');
   const bounds = await page.$eval('.cm-scroller', element => {
     const rect = element.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };

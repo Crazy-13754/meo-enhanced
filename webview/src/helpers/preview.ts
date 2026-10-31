@@ -3784,7 +3784,22 @@ export function createPreviewController({
       const valid = () => !disposed && !host.hidden && isCurrent() && generation === frameGeneration
         && current === previewViewport && sourcePositionMarkerState.line === line
         && frameRenderedText !== null && isCurrentText?.(frameRenderedText) !== false;
-      const reveal = () => { if (valid()) refreshSourcePositionMarker(true); };
+      const reveal = () => {
+        if (!valid()) return;
+        refreshSourcePositionMarker(true);
+        if (projectSourcePositionMarker(line)) return;
+        // A source-only gap has no highlight, but navigation still owns its
+        // reading location. Reveal the existing mapped gap only when offscreen.
+        const source = findSourceProjection(line);
+        const scroll = getFrameDocument()?.scrollingElement;
+        if (!source || source.exact || !scroll || (!source.before && !source.after)) return;
+        const top = source.before?.bottom ?? source.after!.top;
+        const bottom = source.after?.top ?? top;
+        if (bottom < scroll.scrollTop) restoreTopLine(line, 0, 0, undefined, valid);
+        else if (top > scroll.scrollTop + scroll.clientHeight) {
+          restoreTopLine(line, 0, scroll.clientHeight, undefined, valid);
+        }
+      };
       if (current && !current.containsLine(line)) {
         // Keep the old window painted; only the newest click may reveal the
         // destination after its source-backed block has actually mounted.
