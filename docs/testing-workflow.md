@@ -1412,6 +1412,12 @@ endurance keep their existing long-run authorization. Register new tests through
 [adding or changing tests](#adding-or-changing-tests) and preserve full release
 ownership of mandatory regressions.
 
+`scripts/test-empty-quote-caret.ts` checks native caret pixels on pointer press,
+hold and release; a correct document/DOM selection alone cannot prove correct
+caret paint. Its `--held-only` slice covers the minimal `>\n` case, nested/list/alert
+quotes, Source, input/history and drag selection with actual ordinary/optimized
+budgets. Inactive glyphs stay hidden while their native caret boxes remain usable.
+
 For semantic UI colors, `test:theme-inheritance` covers shared surfaces, neutral
 text and icons, switch states, cached palette reuse and invalidation when the
 base surface changes. It also checks that unrelated native menu colors cannot

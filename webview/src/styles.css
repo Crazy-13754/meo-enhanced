@@ -3503,10 +3503,6 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   text-indent: 0;
 }
 
-.cm-editor.meo-mode-live .meo-md-quote-marker {
-  visibility: hidden;
-}
-
 /* Prefix spaces express nesting once; list wrapping adds only the content inset. */
 .cm-editor.meo-mode-live .cm-line.meo-md-quote-source-order.meo-md-quote:not(.meo-md-list-line):not(.meo-md-code-block):not(.meo-mermaid-block) {
   padding-left: var(--meo-live-container-ch);
@@ -3529,6 +3525,15 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
 .cm-editor .cm-line.meo-md-quote .meo-md-code-marker-active {
   color: var(--meo-semantic-markdownSyntax) !important;
   -webkit-text-fill-color: var(--meo-semantic-markdownSyntax) !important;
+}
+
+/* Keep the marker's native caret box visible while pointer selection preserves
+   inactive syntax. Hiding a terminal > with visibility:hidden makes Chromium
+   paint an empty quote's caret on the next line until the pointer is released. */
+.cm-editor.meo-mode-live .cm-line:is(.meo-md-quote, .meo-md-alert):not(.meo-md-code-block):not(.meo-mermaid-block)
+:is(.meo-md-quote-marker, .meo-md-quote-marker *) {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
 }
 
 .cm-editor .cm-line:is(.meo-md-quote, .meo-md-alert):is(.meo-md-code-block, .meo-mermaid-block) {
