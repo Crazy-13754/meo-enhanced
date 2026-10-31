@@ -784,8 +784,10 @@ the work reaches one of these boundaries:
 
 Every recommendation must state the test type, why it is warranted, its scope,
 and its expected duration. Broad regression, release, endurance, full browser matrices, repeated
-stress runs, full-document sweeps, and VM validation wait for explicit user authorization
-in the current task. A generic request to fix, build, test, commit, or merge
+stress runs, and full-document sweeps wait for explicit user authorization
+in the current task. VM validation follows the authorization rules in
+[native acceptance environment](#native-acceptance-environment), including any applicable
+standing authorization. A generic request to fix, build, test, commit, or merge
 is not authorization. The confirmation flag records an intentional invocation;
 it is not a substitute for asking. `--dry-run` is always safe and prints the
 exact commands without running them.
@@ -839,11 +841,15 @@ native behavior checks regardless of the chosen environment.
   host evidence cannot rule out the risk. A separate profile isolates VS Code
   state; it does not prove independence from installed OS dependencies. Select a
   VM or appropriate native platform that can actually reproduce the risk.
-- **Authorization and preparation.** Before starting or operating a VM, obtain
-  explicit authorization in the current task, stating the unresolved risk,
-  checks, and estimated setup and execution times. Release acceptance authorization
-  and approval of this policy do not authorize VM use. Once authorized, prefer an
-  approved disposable baseline snapshot with VS Code and test fixtures ready.
+- **Authorization and preparation.** Before starting or operating a VM, check
+  applicable user and repository instructions for authorization. An explicit standing
+  authorization applies across tasks within its stated scope; when it covers the
+  required VM work, state the unresolved risk, checks, and estimated setup and
+  execution times, then proceed without another confirmation. Otherwise obtain
+  explicit authorization in the current task before VM work. Release acceptance
+  alone does not grant VM authorization. Prefer an approved disposable baseline
+  snapshot with VS Code and test fixtures ready, preserving needed results and
+  unsaved test data before restoring it.
   Verify relevant OS/VS Code/runtime versions, preserve needed prior evidence,
   install the candidate and match its SHA-256. Update or rebuild the baseline only
   when its state or versions no longer meet the required scope.
