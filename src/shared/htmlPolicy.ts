@@ -160,7 +160,6 @@ export function isSafeHtmlUrl(value: string, kind: 'href' | 'src'): boolean {
   const normalized = normalizeLinkDestination(value).replace(/[\u0000-\u0020\u007f]/g, '');
   if (!normalized) return false;
   if (normalized.startsWith('#')) return kind === 'href';
-  if (normalized.startsWith('//')) return false;
   if (/^(?:\.\.?\/|\/)/.test(normalized)) return true;
 
   const scheme = /^([a-z][a-z\d+.-]*):/i.exec(normalized)?.[1]?.toLowerCase();

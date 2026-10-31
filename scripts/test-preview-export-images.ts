@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import exportRuntime from '../src/export/runtime';
+import { mapHtmlSrcset, normalizeHtmlAttribute } from '../src/shared/htmlPolicy';
+import assert from 'node:assert/strict';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-preview-image-'));
 const localImagePath = path.join(tempDir, 'absolute-image.png');
@@ -27,6 +29,15 @@ const baseOptions = {
 };
 
 try {
+  for (const [tag, attribute] of [['a', 'href'], ['img', 'src']] as const) {
+    assert.equal(normalizeHtmlAttribute(tag, attribute, '//images.example.test/image.png'), '//images.example.test/image.png');
+    for (const unsafe of ['javascript:alert(1)', 'java\nscript:alert(1)', 'vbscript:alert(1)', 'data:text/html;base64,PHNjcmlwdD4=']) {
+      assert.equal(normalizeHtmlAttribute(tag, attribute, unsafe), null, `${tag} rejects ${JSON.stringify(unsafe)}`);
+    }
+  }
+  assert.equal(mapHtmlSrcset('//images.example.test/a.png 1x, https://images.example.test/b.png 2x', url => url),
+    '//images.example.test/a.png 1x, https://images.example.test/b.png 2x');
+  assert.equal(mapHtmlSrcset('//images.example.test/a.png 1x, javascript:alert(1) 2x', url => url), '');
   const preview = exportRuntime.renderPreviewDocument({ ...baseOptions, markdownText, uiLanguage: 'en', styleEnvironment: { previewFontFamily: '' } });
   const exported = await exportRuntime.renderExportHtmlDocument({
     ...baseOptions,
