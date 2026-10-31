@@ -2226,6 +2226,10 @@ button:focus-visible > .menu-switch {
   display: block;
 }
 
+.source-preview-button > svg {
+  overflow: visible;
+}
+
 .heading-dropdown-option:hover {
   background-color: var(--meo-ui-surface-hover);
 }
