@@ -10,6 +10,7 @@
 
 | 影响范围 | 首先查阅的现有入口 | 维护要求 |
 | --- | --- | --- |
+| 正文／HTML 语义和样式 | [内容规则与样式管理](content-policy.md)、`src/shared/markdownContentRules.ts`、`src/shared/markdownContentStyles.ts` | 共用语义与基础样式，按表面适配呈现；语法适配同时接入普通与后台路径，外观调整只投影 CSS。 |
 | 输入与派生工作 | [liveInputDerivedWork.ts](../webview/src/editor/liveInputDerivedWork.ts)、[liveMode.ts](../webview/src/liveMode.ts) | 立即接受文本和选择变化；昂贵派生工作合并调度。键入、IME、粘贴、工具栏、颜色调整及历史操作均保留正确的事务来源，接入对应的更新路径。 |
 | Live 局部呈现 | [liveMode.ts](../webview/src/liveMode.ts)、[liveWidgetPositions.ts](../webview/src/editor/liveWidgetPositions.ts) | 映射未变范围，复用仍然有效的装饰和 DOM。能证明局部影响时只更新受影响内容；引用、语法边界或其他全局依赖变化时走正确的失效与重建路径。 |
 | 语法与全文功能 | [backgroundMarkdownStructure.ts](../webview/src/editor/backgroundMarkdownStructure.ts)、[markdownStructure.ts](../webview/src/editor/markdownStructure.ts) | 接受与当前文档版本匹配的结果，明确区分部分树与完整结果。目录、搜索和引用依据完整文本模型，独立于是否挂载屏外 DOM。 |

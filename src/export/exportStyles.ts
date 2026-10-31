@@ -1,4 +1,4 @@
-import { buildMarkdownInlineStyleCss, darkDefaultStrongForeground } from '../shared/markdownInlineStyles';
+import { buildMarkdownContentStyleCss, contentStyleDeclarations, markdownHeadingStyle, darkDefaultStrongForeground } from '../shared/markdownContentStyles';
 import { readingMathReflowCss } from '../shared/mathStyles';
 import {
   defaultThemeColors,
@@ -171,11 +171,17 @@ function buildReadingStyles(
     .map((_fontSize, index) => {
       const level = index + 1;
       const opacity = level === 6 ? ' opacity: 0.9;' : '';
-      return `h${level} { font-size: var(--meo-heading-${level}-size); font-weight: var(--meo-heading-${level}-weight);${opacity} }`;
+      return `h${level} { ${contentStyleDeclarations(markdownHeadingStyle(level))}${opacity} }`;
     })
     .join('\n');
   return `
 :root {
+  --meo-content-heading-foreground: var(--meo-heading);
+  --meo-content-code-font: var(--meo-font-code);
+  --meo-content-code-background: var(--meo-inline-code-bg);
+  --meo-content-code-border: var(--meo-inline-code-border, transparent);
+  --meo-content-quote-border: color-mix(in srgb, var(--meo-quote) 60%, transparent);
+  --meo-content-quote-foreground: var(--meo-quote);
   color-scheme: ${appearance};
   --meo-font-system-sans: ui-sans-serif, system-ui, sans-serif;
   --meo-font-system-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -660,10 +666,6 @@ a {
   text-underline-offset: 3px;
 }
 
-u {
-  text-decoration: underline;
-}
-
 /* The HTML policy retains generated reference IDs; use them to identify note
  * superscripts even when the input class is stripped by sanitization. */
 sup:has(> a[id^="fnref-"]) {
@@ -735,19 +737,13 @@ sup > a[id^="fnref-"],
   color: var(--meo-link);
 }
 
-strong, b { color: ${previewAppearanceIsDark ? darkDefaultStrongForeground : 'inherit'}; }
+:is(strong, b):not([style]):not(.meo-export-doc [style] *) { color: ${previewAppearanceIsDark ? darkDefaultStrongForeground : 'inherit'}; }
 :is(h1, h2, h3, h4, h5, h6, a, strong, b, .meo-export-task-text.is-done) :is(strong, b) { color: inherit; }
-${buildMarkdownInlineStyleCss({
-  emphasis: 'em', strong: 'strong', strikethrough: 's, del',
-  subscript: 'sub', superscript: 'sup:not(:has(> a[id^="fnref-"]))'
+${buildMarkdownContentStyleCss({
+  emphasis: 'em, i', strong: 'strong, b', strikethrough: 's, del',
+  subscript: 'sub', superscript: 'sup:not(:has(> a[id^="fnref-"]))',
+  underline: 'u', highlight: 'mark', paragraph: 'p', blockquote: 'blockquote', inlineCode: 'code:not(pre code)'
 })}
-mark {
-  color: inherit;
-  background-color: color-mix(in srgb, #ffd60a 34%, transparent);
-  border-radius: 0.14em;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
 code {
   font-family: var(--meo-font-code);
   font-weight: inherit;
@@ -758,15 +754,6 @@ code {
   font-variant-ligatures: none;
   font-feature-settings: "liga" 0, "calt" 0;
   text-rendering: auto;
-}
-
-code:not(pre code) {
-  padding: 0.08em 0.25em;
-  border-radius: 0.35em;
-  background: var(--meo-inline-code-bg);
-  box-shadow: inset 0 0 0 1px var(--meo-inline-code-border, transparent);
-  box-decoration-break: slice;
-  -webkit-box-decoration-break: slice;
 }
 
 p:has(code:not(pre code)) {
@@ -973,10 +960,6 @@ pre.meo-export-code-block code {
 blockquote {
   margin-left: 0;
   padding: 0 0 0 3ch;
-  border-left: 3px solid color-mix(in srgb, currentColor 60%, transparent);
-  background: transparent;
-  border-radius: 0;
-  color: var(--meo-quote);
 }
 
 blockquote > :last-child {

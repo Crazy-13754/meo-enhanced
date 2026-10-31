@@ -1,4 +1,5 @@
 import { editorScrollIntoView, isEditorScrollEffect } from './editor/scrollEffects';
+import { canRepairMarkdownTableDelimiter } from '../../src/shared/markdownContentRules';
 import { isCodeMirrorSyntaxPublicationEffect } from './adapters/codeMirrorSyntaxPublication';
 import { viewportSyntaxHighlighting } from './editor/viewportSyntaxHighlighting';
 import { backgroundMarkdownParser, prepareBackgroundMarkdownPresentation } from './editor/backgroundMarkdownStructure';
@@ -58,7 +59,7 @@ import {
   detectListIndentStylesByLine,
   nextOrderedSequenceNumber
 } from './helpers/listMarkers';
-import { addTableDecorations, addTableDecorationsForLineRange, isTableDelimiterLine, parseTableInfo } from './helpers/tables';
+import { addTableDecorations, addTableDecorationsForLineRange, parseTableInfo } from './helpers/tables';
 import {
   forEachYamlFrontmatterLayoutLine,
   parseFrontmatter,
@@ -4573,8 +4574,7 @@ function detectTableBlocks(state: EditorState, scope?: LiveDecorationScope): Arr
     const lineNo = delimiterLine.number;
     if (lineNo <= scannedThrough) continue;
     const delimiterText = delimiterLine.text;
-    if (isThematicBreakLine(delimiterText)) continue;
-    if (!isTableDelimiterLine(delimiterText)) continue;
+    if (!canRepairMarkdownTableDelimiter(parseBlockLinePrefix(delimiterText).content)) continue;
     const commonIndent = parseBlockLinePrefix(delimiterText, state.tabSize).prefix;
 
     const headerLineNo = lineNo - 1;

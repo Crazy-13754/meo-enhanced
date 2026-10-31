@@ -4,10 +4,10 @@ import { parseMarkdownTable } from '../application/delimitedTable';
 import { isThematicBreakLine } from './frontmatter';
 import { footnoteMarkdownExtension } from './footnotes';
 import { highlightMarkdownExtension } from './highlightSyntax';
-import { inlineScriptMarkdownExtension } from './inlineStyles';
 import { collectInlineMathExcludedRanges, createMathLiteralSyntaxExtension, htmlCodeLiteralSyntaxExtension } from './markdownLiteralSyntax';
 import { createPunctuationInlineStyleExtension } from './punctuationSyntax';
 import { wikiImageMarkdownExtension } from '../../../src/foundation/wikiReference';
+import { createMarkdownContentGrammar, inlineScriptMarkdownExtension } from './markdownContentGrammar';
 
 const tableBlock = Table.parseBlock![0];
 const tableParsers = new WeakMap<LeafBlock, { parser: LeafBlockParser; confirmed: boolean }>();
@@ -15,8 +15,23 @@ const tableBlockBoundaryExtension: MarkdownConfig = { parseBlock: [{
   ...tableBlock,
   leaf(context, leaf) {
     const parser = tableBlock.leaf!(context, leaf);
-    if (parser) tableParsers.set(leaf, { parser, confirmed: false });
-    return parser;
+    if (!parser) return null;
+    const adapted: LeafBlockParser = {
+      nextLine(context, line, leaf) {
+        if (!line.pos) return parser.nextLine(context, line, leaf);
+        // Lezer 1.6's table delimiter count applies line.pos to already-sliced
+        // text. Project the public line/context together, retaining absolute
+        // source positions while giving the table parser one content origin.
+        const contentLine = Object.assign(Object.create(line), {
+          text: line.text.slice(line.pos), pos: 0, basePos: 0
+        });
+        const contentContext = Object.assign(Object.create(context), { lineStart: context.lineStart + line.pos });
+        return parser.nextLine(contentContext, contentLine, leaf);
+      },
+      finish: (context, leaf) => parser.finish(context, leaf)
+    };
+    tableParsers.set(leaf, { parser: adapted, confirmed: false });
+    return adapted;
   },
   endLeaf(context, line, leaf) {
     const table = tableParsers.get(leaf);
@@ -35,7 +50,7 @@ const tableBlockBoundaryExtension: MarkdownConfig = { parseBlock: [{
   }
 }] };
 
-const literalExtensions = [footnoteMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, htmlCodeLiteralSyntaxExtension, wikiImageMarkdownExtension, tableBlockBoundaryExtension];
+const literalExtensions = [createMarkdownContentGrammar(), footnoteMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, htmlCodeLiteralSyntaxExtension, wikiImageMarkdownExtension, tableBlockBoundaryExtension];
 const literalParser = (markdownLanguage.parser as MarkdownParser).configure(literalExtensions);
 export const inlineMarkdownExtensions = [...literalExtensions, createMathLiteralSyntaxExtension(literalParser), createPunctuationInlineStyleExtension(literalParser)];
 const inlineParser = (markdownLanguage.parser as MarkdownParser).configure(inlineMarkdownExtensions);

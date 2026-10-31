@@ -3,7 +3,7 @@ import { markdownTaskMarkerPattern } from '../foundation/markdownTaskList';
 import { normalizeLinkDestination, isLocalFileLinkDestination } from '../foundation/linkDestination';
 import { splitMarkdownTableRow } from '../foundation/markdownTableRow';
 import * as path from 'node:path';
-import MarkdownIt from 'markdown-it';
+import type MarkdownIt from 'markdown-it';
 import sanitizeHtml from 'sanitize-html';
 import { Parser, parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
@@ -15,13 +15,11 @@ import { installMathTransform } from './mathTransform';
 import { collectMarkdownCodeLines } from './markdownCodeLines';
 import { renderLatexMathPresentation } from './math';
 import { isMathFenceLanguage, mathFenceBodyRange, mathFenceContent } from '../shared/mathFence';
-import { installHighlightTransform } from '../shared/markdownHighlight';
-import { installInlineScriptTransform } from '../shared/markdownInlineScript';
-import { installPunctuationInlineTransform } from '../shared/markdownPunctuation';
+import { createMarkdownContentParser } from '../shared/markdownContentParser';
+import { canRepairMarkdownTableDelimiter } from '../shared/markdownContentRules';
 import { Info, Lightbulb, AlertCircle, AlertTriangle, XCircle } from 'lucide';
 import {
   getSupportedHtmlAttributes,
-  matchInlineHtmlCode,
   isSupportedHtmlSource,
   sanitizeHtmlStyle,
   htmlSanitizedStyleRules,
@@ -158,12 +156,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   const extractedFrontmatter = extractExportFrontmatter(normalized, uiStrings.properties);
   const shouldEnableMathTransform = extractedFrontmatter.body.markdown.includes('$');
 
-  const md = new MarkdownIt({
-    html: true,
-    linkify: true,
-    breaks: !github,
-    langPrefix: 'language-'
-  });
+  const md = createMarkdownContentParser(github);
   if (github) installGithubInlineRules(md);
   const allowLocalLinks = !github || options.allowLocalLinks === true;
   const normalizeHref = (href: string) => options.deferLocalLinks || !allowLocalLinks
@@ -172,25 +165,8 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   md.normalizeLink = href => normalizeLink(normalizeHref(href));
   md.validateLink = href => allowLocalLinks && isLocalFileLinkDestination(href) || validateLink(href);
   const githubHtml = github ? createGithubHtmlSanitizer(deferImageSrc, allowLocalLinks) : undefined;
-  // The bundled backtick rule strips bounding spaces even from all-space code.
-  // Preserve that CommonMark exception before the regular rule handles other spans.
-  md.inline.ruler.before('backticks', 'meo_code_space_literal', (state, silent) => {
-    if (state.src[state.pos] !== '`') return false;
-    const match = /^(`+)([ \n]+)\1(?!`)/.exec(state.src.slice(state.pos, state.posMax));
-    if (!match) return false;
-    if (!silent) {
-      const inlineCode = state.push('code_inline', 'code', 0);
-      inlineCode.markup = match[1];
-      inlineCode.content = match[2].replace(/\n/g, ' ');
-    }
-    state.pos += match[0].length;
-    return true;
-  });
   if (!github) {
     installWikiReferenceTransform(md, options.deferImages === true, options.wikiResources);
-    installHighlightTransform(md);
-    installInlineScriptTransform(md);
-    installPunctuationInlineTransform(md);
   }
   const resolveSourceRange = (startIndex: number, endIndex: number, environment?: { meoSourceLines?: readonly number[] }) => {
     const lines = environment?.meoSourceLines ?? bodySourceLines;
@@ -644,14 +620,6 @@ function installSafeHtmlTransform(
   generatedFootnoteTags?: ReadonlySet<string>,
   githubSanitize?: (source: string) => string
 ): void {
-  // HTML code contents are literal, including when another paragraph enables math rendering.
-  if (!githubSanitize) md.inline.ruler.before('html_inline', 'meo_literal_html_code', (state, silent) => {
-    const match = matchInlineHtmlCode(state.src, state.pos, state.posMax);
-    if (!match) return false;
-    if (!silent) state.push('html_inline', '', 0).content = state.src.slice(state.pos, match.to);
-    state.pos = match.to;
-    return true;
-  });
   const allowedAttributes = Object.fromEntries(
     renderedHtmlTagNames.map((tagName) => [tagName, getSupportedHtmlAttributes(tagName)
       .filter(attribute => preserveSourceStyles || !['style', 'class', 'id'].includes(attribute))])
@@ -1138,7 +1106,7 @@ function normalizeLooseTableDelimiters(markdownText: string, codeLines: Readonly
     const originalDelimiter = lines[index] ?? '';
     const containerPrefix = /^[ \t]*(?:>[ \t]*)*/.exec(originalDelimiter)?.[0] ?? '';
     const delimiter = originalDelimiter.slice(containerPrefix.length);
-    if (!isTableDelimiterLine(delimiter) || !isTableHeaderLine(lines[index - 1] ?? '')) {
+    if (!canRepairMarkdownTableDelimiter(delimiter) || !isTableHeaderLine(lines[index - 1] ?? '')) {
       continue;
     }
     // Keep even-run header pipes visible to the bundled table rule. Its cell
@@ -1269,11 +1237,10 @@ function isTableRowLine(line: string): boolean {
 }
 
 function isTableDelimiterLine(line: string): boolean {
-  const trimmed = line.trim();
-  return /^\|?\s*:?[-]{3,}:?\s*(?:\|\s*:?[-]{3,}:?\s*)*\|?$/.test(trimmed);
+  return canRepairMarkdownTableDelimiter(line);
 }
 
-const bodyInlineParser = new MarkdownIt({ html: true });
+const bodyInlineParser = createMarkdownContentParser();
 
 function expandBodyListBreaks(line: string): string[] {
   if (!/<br/i.test(line)) return [line];

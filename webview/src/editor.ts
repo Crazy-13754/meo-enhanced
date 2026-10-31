@@ -50,7 +50,7 @@ import { insertMountedTableCellBreak } from './helpers/tables';
 import { insertCodeBlock, sourceCodeBlockLines } from './helpers/codeBlocks';
 import { continueLiteralSourceNewline, insertIndentedCodeNewline, insertLiteralSourceNewline } from './editor/indentedCodeEditing';
 import { getCodeBlockSourceLines } from './helpers/blockIndent';
-import { markdownInlineStyleTheme } from './helpers/inlineStyles';
+import { markdownContentStyleTheme } from './helpers/markdownContentStyleTheme';
 import { markdownTagField } from './helpers/tags';
 import { findDocumentFragmentPosition, getLinkHrefAtPointer, getLinkHrefAtSourcePosition, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
 import {
@@ -2671,7 +2671,7 @@ export function createEditor({
       mermaidDiagramPresentationFactoryFacet.of(
         mermaidDiagramPresentationConsumer
       ),
-      markdownInlineStyleTheme,
+      markdownContentStyleTheme,
       sourcePreparationCompartment.of(lightweightSourceSyntax ? [] : sourceSyntaxPreparation),
       createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork })] : sourceMode(boundedEditorWork, lightweightSourceSyntax)),

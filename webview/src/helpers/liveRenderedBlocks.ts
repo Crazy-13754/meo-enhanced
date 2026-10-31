@@ -2,12 +2,12 @@ import { documentLines } from './documentLines';
 import { language, type Language } from '@codemirror/language';
 import { EditorState, type ChangeDesc } from '@codemirror/state';
 import { IterMode, type SyntaxNodeRef, type Tree } from '@lezer/common';
-import { isThematicBreakLine } from './frontmatter';
+import { canRepairMarkdownTableDelimiter } from '../../../src/shared/markdownContentRules';
 import { parseBlockLinePrefix } from './blockIndent';
 import { getFencedCodeInfo, resolvedSyntaxTree, withMarkdownSyntaxSnapshot } from './markdownSyntax';
 import { resolveFencedDisplayMathInnerLineRange } from './math';
 import { collectDocumentMathRanges } from './displayMathBlocks';
-import { isTableDelimiterLine, getTableSourceBounds } from './tables';
+import { getTableSourceBounds } from './tables';
 import { collectRenderableHtmlBlocks, getHtmlEditingRange } from './htmlContent';
 import { markdownStructureIdentity } from '../editor/markdownStructure';
 import type { MarkdownBlockKind, MarkdownBlock, DiscoveredMarkdownBlock } from '../../../src/foundation/markdownDocumentContext';
@@ -156,8 +156,7 @@ function detectFallbackTableBlocks(
     const lineNo = delimiterLine.number;
     if (lineNo <= scannedThrough) continue;
     const delimiterText = delimiterLine.text;
-    if (isThematicBreakLine(delimiterText)) continue;
-    if (!isTableDelimiterLine(delimiterText)) continue;
+    if (!canRepairMarkdownTableDelimiter(parseBlockLinePrefix(delimiterText).content)) continue;
     const prefix = parseBlockLinePrefix(delimiterText, state.tabSize).prefix;
 
     const headerLineNo = lineNo - 1;

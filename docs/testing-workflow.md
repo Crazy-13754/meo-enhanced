@@ -2224,6 +2224,14 @@ rules with fresh per-fixture state, retaining CLI and staged-index coverage.
 
 ### Adding or changing tests
 
+`scripts/test-content-policy-parity.ts` is the focused shared-content regression
+in `test:browser` and the rendered targeted plan. It pairs ordinary/optimized
+documents and light/dark surfaces for quote/list exits, valid lazy continuations,
+Setext versus loose-table precedence, Markdown/HTML typography, author-style
+cascade and mode roundtrips. Set `MEO_TEST_SCREENSHOTS` to capture both appearances.
+Parser-rule changes also run the existing affected input and background-structure
+checks; CSS-only updates retain the same document and syntax ownership.
+
 Agents complete this procedure whenever they add, move or change a test or its
 workflow registration, without waiting for the user to request it:
 

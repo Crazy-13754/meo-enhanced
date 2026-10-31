@@ -470,6 +470,7 @@
       "scripts/test-complex-input-presentation.ts",
       "scripts/test-composite-block-layout.ts",
       "scripts/test-composite-render-parity.ts",
+      "scripts/test-content-policy-parity.ts",
       "scripts/test-cursor-after-enter.ts",
       "scripts/test-custom-preview-presets-browser.ts",
       "scripts/test-development-style-refresh.ts",

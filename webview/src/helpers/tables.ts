@@ -1,4 +1,5 @@
 import { editorScrollIntoView } from '../editor/scrollEffects';
+import { isMarkdownTableDelimiter } from '../../../src/shared/markdownContentRules';
 import { markdownTaskMarkerPattern } from '../../../src/foundation/markdownTaskList';
 import { tableHeaderFitsStickyViewport } from '../editor/tableStickyHeaderPolicy';
 import { createTableRowWindow, type TableRowWindow } from '../editor/tableRowWindow';
@@ -305,7 +306,6 @@ interface TableSearchMatchRange {
 const taskContentPrefix = new RegExp(String.raw`^${markdownTaskMarkerPattern}[ \t]+`);
 const sourceTableHeaderLineDeco = Decoration.line({ class: 'meo-md-source-table-header-line' });
 const sourceTableHeaderCellDeco = Decoration.mark({ class: 'meo-md-source-table-header-cell' });
-const tableDelimiterRegex = /^\s*\|?\s*[:]?\-+[:]?\s*(\|\s*[:]?\-+[:]?\s*)*\|?$/;
 const tableCellSelector = 'th[data-table-row][data-table-col], td[data-table-row][data-table-col]';
 const tableControlSelector = '.meo-md-html-table-context-trigger, .meo-md-html-table-context-menu, .meo-md-html-table-context-btn, .meo-md-link-open-btn, .meo-md-color-swatch-interactive, .meo-md-html-table-column-resize-handle';
 const tableCellAutoCommitDelayMs = 250;
@@ -6822,7 +6822,7 @@ class HtmlTableController extends UiLanguageSensitiveWidget {
 }
 
 export function isTableDelimiterLine(lineText: string): boolean {
-  return tableDelimiterRegex.test(parseBlockLinePrefix(lineText).content.trimEnd());
+  return isMarkdownTableDelimiter(parseBlockLinePrefix(lineText).content);
 }
 
 /** Source geometry does not need cell segmentation, inline Markdown or widget

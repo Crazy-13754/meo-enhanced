@@ -127,6 +127,7 @@ function targetedCommands(
         script('scripts/test-math-tag-layout.ts'),
         script('scripts/test-composite-block-layout.ts'),
         script('scripts/test-composite-render-parity.ts'),
+        script('scripts/test-content-policy-parity.ts'),
         script('scripts/test-indented-code-blocks-production.ts'),
         script('scripts/test-mode-selection-continuity.ts'),
         script('scripts/test-html-content.ts'),
