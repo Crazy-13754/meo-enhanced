@@ -2207,8 +2207,8 @@ button:focus-visible > .menu-switch {
   position: absolute;
   top: 1px;
   right: 1px;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--meo-ui-danger);
   box-shadow: 0 0 0 2px var(--meo-save-badge-surface);
