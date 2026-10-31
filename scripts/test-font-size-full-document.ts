@@ -43,6 +43,7 @@ try {
       type: 'previewRenderResult',
       requestId: message.requestId,
       result: { ok: true, value: exportRuntime.renderPreviewDocument({
+        layout: message.layout,
         markdownText: message.text,
         sourceDocumentPath: 'C:/font-test.md',
         uiLanguage: message.uiLanguage,

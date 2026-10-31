@@ -146,9 +146,9 @@ export function preparePreviewDocument(options: PreviewDocumentOptions, windowed
     ...(definition.custom ? { presetRevision: definition.custom.revision } : {}),
     styles: {
       dark: buildPresetPreviewStyles(preset, environment, 'dark', options.contentWidth, definition)
-        + (windowed ? windowedPreviewStyles : '') + sourceFootnoteStyles + prepared.authorStyles,
+        + (windowed ? windowedPreviewStyles : '') + (options.layout === 'side' ? sourceFootnoteStyles : '') + prepared.authorStyles,
       light: buildPresetPreviewStyles(preset, environment, 'light', options.contentWidth, definition)
-        + (windowed ? windowedPreviewStyles : '') + sourceFootnoteStyles + prepared.authorStyles
+        + (windowed ? windowedPreviewStyles : '') + (options.layout === 'side' ? sourceFootnoteStyles : '') + prepared.authorStyles
     }
   };
   return {
