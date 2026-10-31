@@ -37,6 +37,15 @@ try {
         return { count: rows.length, visible: visible.map(row => row.textContent), line: visible[0]?.dataset.sourceLine,
           top: visible[0]?.getBoundingClientRect().top };
       }, kind);
+      // Initial Preview can leave its bootstrap shell through the safety
+      // timeout while the seeded chunks are still becoming a measured window.
+      // This contract inspects the ready reading band, with the same DOM bound
+      // and the fixture's existing deadline, rather than its temporary seed.
+      await page.waitForFunction(kind => {
+        const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
+        const count = doc?.querySelectorAll(`[data-meo-container-part] > ${kind === 'blockquote' ? 'p' : 'li'}`).length ?? 0;
+        return count > 0 && count < 256;
+      }, { timeout: 10_000 }, kind);
       assert.ok((await state()).count > 0 && (await state()).count < 256);
       const point = await page.$eval('.preview-frame', element => { const r = element.getBoundingClientRect(); return { x: r.left + 160, y: r.top + 350 }; });
       await page.mouse.move(point.x, point.y); await page.mouse.wheel({ deltaY: 18000 }); await frames(page, 20);
