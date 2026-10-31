@@ -3,6 +3,15 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## 0.3.38
+- Expanded shared HTML rendering across Live, Source previews and exports, including inline styles, disclosure elements and tables. Sized Live HTML tables before their first paint and preserved block previews through edits and reloads.
+- Anchored Mermaid and image zoom to the visible viewport and avoided duplicate Mermaid preview delays.
+- Simplified task lists to checked and unchecked states, and kept unresolved Live link markers aligned with surrounding prose colors.
+- Refined Frontmatter presentation in reading presets, with clearer heading separation and property-row dividers, plus updated preset examples and documentation.
+- Kept side-preview footnotes in source order with compact spacing between adjacent definitions, and reused footnote rendering and navigation indexes.
+- Reflected VS Code's unsaved document state on the save icon.
+- Improved Source/Preview position highlights, keyboard navigation and code-fence boundary targeting, retaining image geometry before positioning and preserving highlights through updates.
+
 ## 0.3.37
 - Kept the toolbar fixed within the VS Code window during Preview navigation, focus changes and document scrolling, including windowed large documents.
 - Preserved native Preview scrolling and reading positions as rendering windows and collapsed content change geometry.
