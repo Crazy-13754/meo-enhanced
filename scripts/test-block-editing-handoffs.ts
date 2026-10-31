@@ -59,6 +59,9 @@ async function observeHandoffPaints(page: Page, frames: (count?: number) => Prom
     async finish(label: string, beforeTop: number) {
       try {
         await frames(2); // Let the terminal epoch reach the compositor before stopping capture.
+        // Screencast delivery can omit its unchanged terminal surface. Capture
+        // that actual compositor frame too; all intermediate epochs stay required.
+        paints.push((await client.send('Page.captureScreenshot', { format: 'png', fromSurface: true })).data);
         await client.send('Page.stopScreencast');
         const samples: Array<{ epoch: number | null; top: number }> = [];
         for (const encoded of paints) {
