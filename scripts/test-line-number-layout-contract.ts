@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
 
 const build = await Bun.build({ entrypoints: ['scripts/test-mermaid-editing-entry.ts'], target: 'browser', format: 'iife' });
 assert.ok(build.success, build.logs.map(String).join('\n'));
+const workerBuild = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
+assert.ok(workerBuild.success, workerBuild.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
 let primary: unknown;
 try {
@@ -16,9 +20,111 @@ try {
   await page.addStyleTag({ content: ':root{--meo-font-live:Arial;--meo-font-live-size:16px;--meo-font-source:Consolas,monospace;--meo-font-source-size:14px}' });
   await page.addScriptTag({ content: fs.readFileSync('webview/dist/mermaid.min.js', 'utf8') });
   await page.addScriptTag({ content: await build.outputs[0]!.text() });
+  await page.evaluate(uri => {
+    document.body.dataset.meoMarkdownWorkerSrc = uri;
+    const NativeWorker = Worker;
+    (window as any).syntaxReplies = 0;
+    window.Worker = class extends NativeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        this.addEventListener('message', event => {
+          if (event.data.kind === 'syntax') (window as any).syntaxReplies++;
+        });
+      }
+    };
+  },
+    'data:text/javascript;base64,' + Buffer.from(await workerBuild.outputs[0]!.text()).toString('base64'));
   const settle = () => page.evaluate(async () => {
     for (let i = 0; i < 10; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   });
+  const complex = fs.readFileSync('scripts/fixtures/github-readme/complex/README.md', 'utf8').replace(/\r\n/g, '\n');
+  const headings = 'Before\n\n' + Array.from({ length: 6 }, (_, index) => '#'.repeat(index + 1) + ' Heading 标题').join('\n\n')
+    + '\n\nSetext heading\n===\n\nSetext subheading\n---\n\nAfter';
+  for (const [name, text] of [['ordinary', headings], ['optimized', headings + '\n\n' + 'Paragraph\n\n'.repeat(4500)],
+    ['deep', complex]] as const) {
+    const large = assessLargeDocument(text).boundedEditorWork;
+    const target = name === 'deep' ? text.indexOf('## 14. Long Paragraph') : text.indexOf('## Heading');
+    const targetLine = text.slice(0, target).split('\n').length;
+    const initialReplies = await page.evaluate(() => (window as any).syntaxReplies);
+    await page.evaluate(text => {
+      const host = window as any;
+      host.ed = host.MermaidEditingHarness.createEditor({ parent: document.querySelector('#app'), initialMode: 'live',
+        text, sourceLineNumbers: 'on', onApplyChanges() {} });
+      host.headingSamples = [];
+      let observing = true;
+      let frame = 0;
+      host.stopHeadingSamples = () => { observing = false; cancelAnimationFrame(frame); };
+      host.readHeadingNumbers = () => {
+        const view = host.ed.view;
+        return Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.cm-line:is(.meo-md-h1,.meo-md-h2,.meo-md-h3,.meo-md-h4,.meo-md-h5,.meo-md-h6)')).map(row => {
+          const line = view.state.doc.lineAt(view.posAtDOM(row)).number;
+          const gutter = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-lineNumbers > .cm-gutterElement'))
+            .find(element => element.textContent === String(line));
+          if (!gutter) return { line, offset: null };
+          const range = document.createRange(); range.selectNodeContents(gutter);
+          const number = range.getBoundingClientRect(), box = row.getBoundingClientRect();
+          return { line, offset: (number.top + number.bottom - box.top - box.bottom) / 2 };
+        });
+      };
+      const sample = () => {
+        if (!observing) return;
+        host.headingSamples.push(...host.readHeadingNumbers());
+        frame = requestAnimationFrame(() => setTimeout(sample, 0));
+      };
+      frame = requestAnimationFrame(() => setTimeout(sample, 0));
+    }, text);
+    await settle();
+    if (name === 'deep') await page.evaluate(line => (window as any).ed.scrollToLine(line - 2, 'top'), targetLine);
+    await page.waitForFunction(line => (window as any).readHeadingNumbers().some((row: any) => row.line === line), {}, targetLine)
+      .catch(async error => { throw new Error(name + ': ' + String(error) + ' ' + JSON.stringify(await page.evaluate(() => ({
+        replies: (window as any).syntaxReplies, rows: (window as any).readHeadingNumbers(),
+        pending: (window as any).MermaidEditingHarness.isLiveInputDerivedWorkPending((window as any).ed.view.state)
+      }))) + ' ' + JSON.stringify(errors)); });
+    await settle();
+    const cold = await page.evaluate(() => {
+      const host = window as any;
+      host.stopHeadingSamples();
+      return { rows: host.readHeadingNumbers(), samples: host.headingSamples, replies: host.syntaxReplies,
+        large: host.MermaidEditingHarness.usesLargeDocumentDerivedWorkBudget(host.ed.view.state) };
+    });
+    assert.equal(cold.large, large, name + ': actual production derived-work budget');
+    if (large) assert.ok(cold.replies > initialReplies, name + ': real Markdown Worker publication');
+    if (name !== 'deep') assert.equal(cold.rows.length, 8, name + ': all six ATX and both Setext headings');
+    const aligned = (rows: Array<{ line: number; offset: number | null }>, stage: string) => {
+      assert.ok(rows.length > 0, name + '/' + stage + ': missing heading witnesses');
+      assert.deepEqual(rows.filter(row => row.offset === null || !Number.isFinite(row.offset) || Math.abs(row.offset) > 1), [],
+        name + '/' + stage + ': heading numbers must be vertically centered');
+    };
+    aligned(cold.rows, 'cold');
+    aligned(cold.samples, 'cold frames');
+    if (name === 'optimized' && process.env.MEO_TEST_SCREENSHOTS) {
+      fs.mkdirSync(process.env.MEO_TEST_SCREENSHOTS, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.MEO_TEST_SCREENSHOTS, 'heading-line-numbers.png') });
+    }
+    const editAt = await page.evaluate(line => {
+      const view = (window as any).ed.view;
+      view.dispatch({ selection: { anchor: view.state.doc.line(line).to } }); view.focus();
+      return view.state.selection.main.head;
+    }, targetLine);
+    await page.keyboard.press('1'); await settle();
+    assert.ok(await page.evaluate(() => (window as any).ed.getText()) === text.slice(0, editAt) + '1' + text.slice(editAt),
+      name + ': native input reaches the heading');
+    aligned(await page.evaluate(() => (window as any).readHeadingNumbers()), 'input');
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control'); await settle();
+    assert.equal(await page.evaluate(() => (window as any).ed.getText()), text, name + ': undo restores source');
+    if (large) {
+      await page.evaluate(() => { const ed = (window as any).ed; ed.scrollToLine(ed.view.state.doc.lines - 2, 'top'); });
+      await settle();
+      assert.equal(await page.evaluate(line => (window as any).readHeadingNumbers().some((row: any) => row.line === line), targetLine),
+        false, name + ': target heading unmounted');
+      await page.evaluate(line => (window as any).ed.scrollToLine(Math.max(1, line - 2), 'top'), targetLine);
+      await page.waitForFunction(line => (window as any).readHeadingNumbers().some((row: any) => row.line === line), {}, targetLine);
+      await settle();
+      aligned(await page.evaluate(() => (window as any).readHeadingNumbers()), 'remount');
+    }
+    await page.evaluate(() => (window as any).ed.destroy());
+    console.log(`Heading line numbers: ${name}, cold frames, input/undo and ${large ? 'Worker/remount' : 'synchronous'} passed`);
+  }
   await page.evaluate(() => {
     const host = window as any;
     host.ed = host.MermaidEditingHarness.createEditor({ parent: document.querySelector('#app'), initialMode: 'live',

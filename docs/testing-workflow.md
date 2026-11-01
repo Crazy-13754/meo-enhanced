@@ -1475,7 +1475,10 @@ scale and actual screencast pixel alignment during changing formula fitting.
 The [line-number layout contract](line-number-layout.md) defines numbering,
 geometry, caret and lifecycle invariants. `test-line-number-layout-contract.ts`
 checks first-frame split projection, caret-relative numbering in Mermaid/HTML,
-setting changes, typing, resizing and font changes. It and the input-frame test
+setting changes, typing, resizing and font changes. It also checks cold
+ATX/Setext heading-number alignment through real Markdown Worker
+publication, native input/undo and offscreen remounts in ordinary and optimized
+documents, including a deep target in the complex Markdown fixture. It and the input-frame test
 run in regression and targeted viewport gates. The daily long-caret test uses
 `--sampled --hidpi`: six distributed targets in a 2,112-line document, including
 original-content display, rather than a full-document sweep. Empty-line caret

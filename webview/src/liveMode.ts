@@ -4855,7 +4855,8 @@ const styledLineNumberMarkerField = StateField.define<RangeSet<GutterMarker>>({
   create: buildStyledLineNumberMarkers,
   update(markers, transaction) {
     if (isMappedLiveInputRefresh(transaction) || shouldDeferLiveInputDerivedWork(transaction)) return transaction.docChanged ? markers.map(transaction.changes) : markers;
-    if (!transaction.docChanged && !isLiveInputDerivedWorkRefresh(transaction) && !livePresentationBandChanged(transaction)) return markers;
+    if (!transaction.docChanged && !isLiveInputDerivedWorkRefresh(transaction)
+      && !livePresentationBandChanged(transaction) && !syntaxTreeChanged(transaction)) return markers;
     return buildStyledLineNumberMarkers(transaction.state);
   },
   provide: (field) => gutterLineClass.from(field)
