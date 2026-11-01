@@ -44,6 +44,7 @@ const formatting = [
   '# Markdown heading', '', '<h1 id="html-heading">HTML heading</h1>', '',
   '**MarkdownStrong** *MarkdownEm* ~~MarkdownStrike~~ H~2~O x^2^ ==MarkdownMark==', '',
   '`MarkdownCode` and <code id="html-code">HTML code</code>', '',
+  '**`MarkdownStrongCode`** *`MarkdownEmCode`* <strong><code id="html-strong-code">HTML strong code</code></strong> <em><code id="html-em-code">HTML emphasis code</code></em>', '',
   '<p><b id="html-strong">HTML strong</b> <i id="html-em">HTML emphasis</i> <s id="html-strike">HTML strike</s> <sub id="html-sub">sub</sub> <sup id="html-sup">sup</sup> <mark id="html-mark">mark</mark></p>', '',
   '<p><b id="author-style" style="font-size:21px;font-weight:300;color:rgb(123,45,67)">Author style</b></p>', '',
   '<p><span style="color:rgb(123,45,67)"><strong id="author-inherited">Inherited author color</strong></span></p>', '',
@@ -163,6 +164,7 @@ try {
       const result = await page.evaluate(async ({ source, html, css, caret }) => {
         const host = document.querySelector('#live')!; host.replaceChildren();
         const editor = (window as any).ListEditingHarness.createEditor({ parent: host, text: source, initialMode: 'live', onApplyChanges() {} });
+        editor.view.dom.style.setProperty('--meo-font-source-weight', '500');
         editor.view.dispatch({ selection: { anchor: caret } });
         for (let i = 0; i < 8; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
         const iframe = document.querySelector<HTMLIFrameElement>('#preview')!;
@@ -180,7 +182,20 @@ try {
           ordinary: style(host.querySelector(markdown)!, property), html: style(host.querySelector(raw)!, property) }));
         const author = host.querySelector('#author-style')!;
         const previewAuthor = doc.querySelector('#author-style')!;
-        const result = { pairs, author: [style(author, 'font-size'), style(author, 'font-weight'), style(author, 'color')],
+        const codeStyle = (needle: string) => {
+          const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (node.textContent === needle && node.parentElement) return {
+              weight: style(node.parentElement, 'font-weight'), family: style(node.parentElement, 'font-family'),
+              italic: style(node.parentElement, 'font-style')
+            };
+          }
+          throw new Error('Missing inline code: ' + needle);
+        };
+        const result = { pairs, code: {
+          plain: codeStyle('MarkdownCode'), strong: codeStyle('MarkdownStrongCode'), emphasis: codeStyle('MarkdownEmCode'),
+          htmlPlain: codeStyle('HTML code'), htmlStrong: codeStyle('HTML strong code'), htmlEmphasis: codeStyle('HTML emphasis code')
+        }, author: [style(author, 'font-size'), style(author, 'font-weight'), style(author, 'color')],
           previewAuthor: [style(previewAuthor, 'font-size'), style(previewAuthor, 'font-weight'), style(previewAuthor, 'color')],
           inherited: style(host.querySelector('#author-inherited')!, 'color'),
           previewInherited: style(doc.querySelector('#author-inherited')!, 'color'),
@@ -192,6 +207,14 @@ try {
         return result;
       }, { source, html, css, caret: formatting.length + 7 });
       for (const pair of result.pairs) assert.equal(pair.html, pair.ordinary, `${appearance}/${large}/${pair.markdown}/${pair.property}`);
+      assert.equal(result.code.plain.weight, '500', 'plain code retains the source font weight preference');
+      assert.equal(result.code.strong.weight, '700', 'strong code retains semantic weight');
+      assert.equal(result.code.emphasis.italic, 'italic');
+      assert.equal(result.code.strong.family, result.code.plain.family);
+      assert.equal(result.code.emphasis.family, result.code.plain.family);
+      assert.deepEqual(result.code.htmlPlain, result.code.plain);
+      assert.deepEqual(result.code.htmlStrong, result.code.strong);
+      assert.deepEqual(result.code.htmlEmphasis, result.code.emphasis);
       assert.deepEqual(result.author, ['21px', '300', 'rgb(123, 45, 67)']);
       assert.deepEqual(result.previewAuthor, result.author);
       assert.equal(result.inherited, 'rgb(123, 45, 67)');
