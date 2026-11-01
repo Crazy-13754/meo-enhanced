@@ -3,6 +3,14 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## 0.3.39
+- Added image refresh, external-open and fullscreen actions to full and side Preview, preserving image dimensions, linked destinations and reading positions while resources reload.
+- Unified image fullscreen controls across Live and Preview, including zoom, pan, reset and keyboard focus, and aligned image and Mermaid zoom-reset icons.
+- Improved Live and side Preview update responsiveness while retaining coalesced background work and stable Mermaid editing controls.
+- Unified Markdown and HTML content rules and typography across Live, Preview and exports, including nested container continuations and author-style precedence.
+- Preserved caret placement in empty quotes and nested list bodies, including pointer holds, selections and optimized large documents.
+- Kept pasted lists and HTML stable through the first visible frames, source editing, undo/redo and mode changes, and kept rendered-block dividers inside quoted panels.
+
 ## 0.3.38
 - Expanded shared HTML rendering across Live, Source previews and exports, including inline styles, disclosure elements and tables. Sized Live HTML tables before their first paint and preserved block previews through edits and reloads.
 - Anchored Mermaid and image zoom to the visible viewport and avoided duplicate Mermaid preview delays.
