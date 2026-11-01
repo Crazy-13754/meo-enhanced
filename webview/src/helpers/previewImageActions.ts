@@ -139,7 +139,7 @@ export function createPreviewImageActions(owner: Document, options: {
     }, { signal });
     image.addEventListener('load', () => update(record), { signal });
     image.addEventListener('error', () => update(record), { signal });
-    const anchor = image.closest('picture') ?? image;
+    const anchor = image.closest('a') ?? image.closest('picture') ?? image;
     anchor.after(controls);
     records.set(image, record); update(record);
   };

@@ -93,7 +93,7 @@ try {
         await image.scrollIntoView(); box = await image.boundingBox(); assert.ok(box);
       }
       await page.mouse.move(box.x + box.width / 2, Math.max(viewport.y + 30, Math.min(box.y + box.height / 2, viewport.y + viewport.height - 30)));
-      const action = await frame.$(`:is(img[alt="${alt}"], picture:has(img[alt="${alt}"])) + .meo-preview-image-actions > [role="button"]:nth-child(${index + 1})`);
+      const action = await frame.$(`:is(img[alt="${alt}"], picture:has(img[alt="${alt}"]), a:has(img[alt="${alt}"])) + .meo-preview-image-actions > [role="button"]:nth-child(${index + 1})`);
       const point = await action!.boundingBox(); assert.ok(point);
       await page.mouse.click(point.x + point.width / 2, point.y + point.height / 2);
     };
@@ -101,6 +101,8 @@ try {
     await page.waitForFunction(() => (window as any).__previewMessages.some((message: any) => message.type === 'openImageExternally'));
     assert.equal(messages.filter(message => message.type === 'openImageExternally').at(-1).url, 'local.svg');
     await clickAction('linked', 2);
+    assert.equal(await frame.$eval('img[alt="linked"]', image => image.closest('a')!.children.length), 1,
+      'Image controls retain the authored link contents');
     assert.equal(messages.some(message => message.type === 'openLink'), false, 'Image actions must not activate the enclosing link');
     assert.deepEqual(await page.$$eval('.meo-md-image-fullscreen-controls button', nodes => nodes.map(node => node.getAttribute('aria-label'))), language === 'en'
       ? ['Zoom in', 'Zoom out', 'Reset zoom', 'Exit fullscreen'] : ['放大', '缩小', '重置缩放', '退出全屏']);
