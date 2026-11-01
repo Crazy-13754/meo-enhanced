@@ -321,17 +321,44 @@ try {
   await movePreviewToBottom();
   await page.mouse.click(editingTarget.x, editingTarget.y);
   await new Promise(resolve => setTimeout(resolve, 80));
-  const heldPreviewTop = await page.evaluate(() => (
-    document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop
-  ));
+  const attentionBefore = await page.evaluate(() => {
+    const scope = window as any;
+    const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+    const paragraphs = [...doc.querySelectorAll('p')].filter(node => /^Paragraph \d+/.test(node.textContent ?? '')
+      && node.getBoundingClientRect().top >= 0 && node.getBoundingClientRect().bottom <= doc.documentElement.clientHeight);
+    paragraphs.sort((a, b) => Math.abs(a.getBoundingClientRect().top - doc.documentElement.clientHeight / 3)
+      - Math.abs(b.getBoundingClientRect().top - doc.documentElement.clientHeight / 3));
+    const witness = paragraphs[0];
+    if (!witness) throw new Error('A visible reading paragraph is required');
+    const text = witness.textContent;
+    scope.__attentionSamples = [];
+    scope.__attentionSampling = true;
+    const sample = () => {
+      if (!scope.__attentionSampling) return;
+      const current = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+      const node = [...current.querySelectorAll('p')].find(node => node.textContent === text);
+      scope.__attentionSamples.push(node?.getBoundingClientRect().top ?? null);
+      scope.__attentionRaf = requestAnimationFrame(sample);
+    };
+    scope.__attentionRaf = requestAnimationFrame(sample);
+    return { text, top: witness.getBoundingClientRect().top };
+  });
   await page.keyboard.type('x');
   await new Promise(resolve => setTimeout(resolve, 240));
   const previewTopAfterTyping = await page.evaluate(() => (
     document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop
   ));
+  const attentionSamples = await page.evaluate(() => {
+    const scope = window as any;
+    scope.__attentionSampling = false;
+    cancelAnimationFrame(scope.__attentionRaf);
+    return scope.__attentionSamples as Array<number | null>;
+  });
+  // Adding a paragraph can change scrollTop while the reading anchor stays
+  // fixed. Retain the actual visible text, including every input frame.
   assert.ok(
-    Math.abs(previewTopAfterTyping - heldPreviewTop) <= 2,
-    `Typing after an explicit locate must retain the Preview attention position: ${JSON.stringify({ heldPreviewTop, previewTopAfterTyping })}`
+    attentionSamples.length >= 2 && attentionSamples.every(top => top !== null && Math.abs(top - attentionBefore.top) <= 2),
+    `Typing after an explicit locate must retain the Preview attention position: ${JSON.stringify({ attentionBefore, attentionSamples })}`
   );
 
   const sourceScrollerPoint = await page.$eval('.cm-scroller', element => {

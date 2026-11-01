@@ -220,8 +220,25 @@ async function verifyListContainerLayouts(browser: Awaited<ReturnType<typeof lau
                 const start = view.domAtPos(text.indexOf('Probe item'));
                 const end = view.domAtPos(view.state.doc.lineAt(text.indexOf('Probe item')).to);
                 range.setStart(start.node, start.offset); range.setEnd(end.node, end.offset);
-                const rows = new Map<number, number>();
-                for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0) { const y = Math.round(r.top); rows.set(y, Math.min(rows.get(y) ?? Infinity, r.left)); }
+                // A source range may include empty caret-hit widgets. Measure
+                // text leaves, retaining real whitespace at wrapped row starts.
+                const textRows = (range: Range) => {
+                  const rows = new Map<number, number>();
+                  const ancestor = range.commonAncestorContainer;
+                  const walker = document.createTreeWalker(ancestor, NodeFilter.SHOW_TEXT);
+                  let node: Node | null = ancestor.nodeType === Node.TEXT_NODE ? ancestor : walker.nextNode();
+                  for (; node; node = walker.nextNode()) {
+                    if (!range.intersectsNode(node)) continue;
+                    const textRange = document.createRange();
+                    textRange.setStart(node, node === range.startContainer ? range.startOffset : 0);
+                    textRange.setEnd(node, node === range.endContainer ? range.endOffset : node.textContent!.length);
+                    for (const r of textRange.getClientRects()) {
+                      if (r.width > 0 && r.height > 0) { const y = Math.round(r.top); rows.set(y, Math.min(rows.get(y) ?? Infinity, r.left)); }
+                    }
+                  }
+                  return rows;
+                };
+                const rows = textRows(range);
                 const bodyLeft = [...rows.values()][0]!;
                 const continuation = view.domAtPos(text.indexOf('Continuation body'));
                 const continuationEnd = view.domAtPos(view.state.doc.lineAt(text.indexOf('Continuation body')).to);
@@ -229,8 +246,7 @@ async function verifyListContainerLayouts(browser: Awaited<ReturnType<typeof lau
                 const code = [...document.querySelectorAll<HTMLElement>('#lists .meo-md-code-container-line')].find(e => e.textContent?.includes('const nested'))!;
                 const table = document.querySelector<HTMLElement>('#lists .meo-md-html-table-shell')!;
                 const slot = line.querySelector<HTMLElement>('.meo-md-footnote-backref-spacer');
-                const continuationRows = new Map<number, number>();
-                for (const r of continuationRange.getClientRects()) if (r.width > 0 && r.height > 0) { const y = Math.round(r.top); continuationRows.set(y, Math.min(continuationRows.get(y) ?? Infinity, r.left)); }
+                const continuationRows = textRows(continuationRange);
                 return { continuationRows: [...continuationRows.values()], railRight, markerLeft: marker.getBoundingClientRect().left, markerRight: marker.getBoundingClientRect().right, bodyLeft, rows: [...rows.values()], continuationLeft: [...continuationRows.values()][0], codeLeft: code?.getBoundingClientRect().left, tableLeft: table?.getBoundingClientRect().left, slotWidth: slot?.getBoundingClientRect().width, source: text };
               });
               if (!active) inactiveBodyLeft = result.bodyLeft;

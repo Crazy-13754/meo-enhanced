@@ -22,6 +22,7 @@ type FrameSample = {
   gitOverviewRenders: number;
   searchOverviewRenders: number;
   derivedMutationKinds: string[];
+  orderedMarkers: Array<{ label: string; bodyLeft: number; markerRight: number; width: number }>;
 };
 
 async function waitForFrames(page: import('puppeteer-core').Page, count: number): Promise<void> {
@@ -111,7 +112,14 @@ async function armFirstFrame(
             searchEvents,
             gitOverviewRenders,
             searchOverviewRenders,
-            derivedMutationKinds: [...derivedMutationKinds]
+            derivedMutationKinds: [...derivedMutationKinds],
+            orderedMarkers: [...content.querySelectorAll<HTMLElement>('.meo-md-list-marker-ordered')].map(marker => {
+              const line = editor.view.state.doc.lineAt(editor.view.posAtDOM(marker.closest('.cm-line')));
+              const prefix = /^\s*\d+[.)]\s+/.exec(line.text);
+              const box = marker.getBoundingClientRect();
+              return { label: marker.textContent?.trim() ?? '', markerRight: box.right, width: box.width,
+                bodyLeft: prefix ? editor.view.coordsAtPos(line.from + prefix[0].length)?.left ?? NaN : NaN };
+            })
           };
         };
         (window as any).__liveInputSettledFrame = new Promise<FrameSample>((resolveSettled) => {
@@ -1844,7 +1852,12 @@ async function main(): Promise<void> {
       orderedFrame.derivedAdditions !== 0 ||
       orderedFrame.searchEvents !== 0 ||
       orderedSettled.text !== orderedFrame.text ||
-      !orderedSettled.derivedMutationKinds.some((kind) => kind.includes('meo-md-list-marker'))
+      !orderedFrame.caretVisible ||
+      orderedSettled.searchEvents !== 1 ||
+      [orderedFrame, orderedSettled].some(sample =>
+        sample.orderedMarkers.map(marker => marker.label).join(',') !== '1.,2.'
+        || sample.orderedMarkers.some(marker => marker.width <= 0 || !Number.isFinite(marker.bodyLeft) || marker.bodyLeft < marker.markerRight - 1)
+        || Math.abs(sample.orderedMarkers[0]!.bodyLeft - sample.orderedMarkers[1]!.bodyLeft) > 1)
     ) {
       throw new Error(`Ordered-list input follow-up escaped the input phase: ${JSON.stringify({ orderedFrame, orderedSettled, orderedLatestApply })}`);
     }

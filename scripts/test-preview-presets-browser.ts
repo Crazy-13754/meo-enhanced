@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
-import { launchTestBrowser } from './browser-test-helpers';
+import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
 import exportRuntime from '../src/export/runtime';
 import { createCustomPreviewPreset, parseCustomPreviewPresetManifest } from '../src/foundation/customPreviewPreset';
 import type { PreviewPresetDefinition } from '../src/foundation/previewPresets';
@@ -29,6 +29,7 @@ const init = {
   findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260, vscodeTheme: null
 };
 const browser = await launchTestBrowser();
+let primaryError: unknown;
 try {
   let nextDelay = 0;
   const errors: string[] = [];
@@ -513,6 +514,9 @@ try {
   await reopened.close();
   assert.deepEqual(errors, []);
   console.log('Preview preset switching, reading position, settings, split toolbar and persistence browser tests passed.');
+} catch (error) {
+  primaryError = error;
 } finally {
-  await browser.close();
+  if (primaryError === undefined) await closeTestBrowser(browser);
+  else await closeTestBrowser(browser, primaryError);
 }

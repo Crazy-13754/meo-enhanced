@@ -1369,7 +1369,7 @@ for the staged snapshot. A staging/content change invalidates earlier index chec
 Preview in English/light and Chinese/dark. Native pointer and keyboard actions check
 image refresh without Markdown rerendering, retained images and painted reading anchors
 during delayed loading, failed-refresh feedback and retry, linked-image navigation,
-authored HTML sizing, window eviction/remount, modal focus and mode cleanup. Image
+unchanged authored link children, authored HTML sizing, window eviction/remount, modal focus and mode cleanup. Image
 fullscreen has exactly four viewing controls in both Preview and Live; Live zoom,
 pan and reset remain covered by `scripts/test-image-layout.ts`. The new contract belongs
 to `test:browser` and the rendered targeted plan, with browser-exclusive execution.
@@ -1586,6 +1586,10 @@ upstream placeholder reset even when the text's reading position stays stable.
 Unmapped gaps, hidden comments, removed text and unloaded window bands
 hide the overlay, while mapped empty code lines and new cursor destinations
 remain valid. Both paths keep one overlay and full Preview hides it.
+The explicit-attention typing check follows an unchanged visible paragraph on every
+input frame, retaining the 2px limit while allowing scroll-offset compensation for
+new content above it. Composite list-layout checks measure painted text rows rather
+than empty caret-hit widgets, retaining their 1px columns and complete font/container matrix.
 Its `--precision-only` slice pairs actual ordinary/windowed rendering for tight
 nested lists, multiline prose, code rows (including blank rows and fences),
 footnote paragraphs/lists/code/tables/math, visible HTML tails, disclosure
@@ -2261,7 +2265,9 @@ rules with fresh per-fixture state, retaining CLI and staged-index coverage.
 in `test:browser` and the rendered targeted plan. It pairs ordinary/optimized
 documents and light/dark surfaces for quote/list exits, valid lazy continuations,
 Setext versus loose-table precedence, Markdown/HTML typography, author-style
-cascade and mode roundtrips. Set `MEO_TEST_SCREENSHOTS` to capture both appearances.
+cascade and mode roundtrips. Inline-code checks combine strong/emphasis semantics
+with a nondefault source font weight, comparing actual Markdown and HTML styles.
+Set `MEO_TEST_SCREENSHOTS` to capture both appearances.
 Parser-rule changes also run the existing affected input and background-structure
 checks; CSS-only updates retain the same document and syntax ownership.
 

@@ -1679,9 +1679,11 @@ try {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.up('Shift');
   await page.keyboard.up('Control');
-  await page.keyboard.type('**Intro**');
-  await new Promise(resolve => setTimeout(resolve, 150));
-  assert.equal(previewRenderCount, countBeforeTyping, 'Preview refresh must yield during active typing');
+  for (const character of '**Intro**') {
+    await page.keyboard.type(character);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(previewRenderCount, countBeforeTyping, 'Preview refresh must yield during active typing');
+  }
   await page.waitForFunction(() => {
     const frame = document.querySelector<HTMLIFrameElement>('.preview-frame');
     return frame?.contentDocument?.querySelector('strong')?.textContent === 'Intro';
