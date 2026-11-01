@@ -4,6 +4,7 @@ This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
 ## 0.3.39
+- Aligned Live heading line numbers as background parsing completes, including initial display and large-document remounts.
 - Added image refresh, external-open and fullscreen actions to full and side Preview, preserving image dimensions, linked destinations and reading positions while resources reload.
 - Unified image fullscreen controls across Live and Preview, including zoom, pan, reset and keyboard focus, and aligned image and Mermaid zoom-reset icons.
 - Improved Live and side Preview update responsiveness while retaining coalesced background work and stable Mermaid editing controls.
