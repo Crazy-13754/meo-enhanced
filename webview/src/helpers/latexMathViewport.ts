@@ -1,4 +1,5 @@
-import { createElement, Maximize2, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide';
+import { createElement, Maximize2, X, ZoomIn, ZoomOut } from 'lucide';
+import { ZoomReset } from './zoomResetIcon';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { mountRenderedBlockPreviewControls } from './renderedBlockModeControls';
 
@@ -436,7 +437,7 @@ export function attachLatexMathViewport(
           userZoom = Math.max(MIN_ZOOM, userZoom - ZOOM_STEP);
           applyTransform();
         }),
-        createControlButton(ownerDocument, RotateCcw, strings.resetZoom, reset)
+        createControlButton(ownerDocument, ZoomReset, strings.resetZoom, reset)
       );
       if (allowFullscreen) {
         controls.append(createControlButton(ownerDocument, Maximize2, strings.fullscreen, () => {

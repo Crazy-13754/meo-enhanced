@@ -1,4 +1,5 @@
-import { createElement, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide';
+import { createElement, X, ZoomIn, ZoomOut } from 'lucide';
+import { ZoomReset } from './zoomResetIcon';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { suppressRenderedBlockPointerFocus } from './renderedBlockActionFocus';
 import { stepVisualZoom, visualZoomPanAtPoint } from './visualZoom';
@@ -76,7 +77,7 @@ export function openImageFullscreen(options: {
   };
   button(ZoomIn, strings.zoomIn, () => changeZoom(1));
   button(ZoomOut, strings.zoomOut, () => changeZoom(-1));
-  button(RotateCcw, strings.resetZoom, () => { zoom = 1; panX = 0; panY = 0; transform(); });
+  button(ZoomReset, strings.resetZoom, () => { zoom = 1; panX = 0; panY = 0; transform(); });
   const exit = button(X, strings.exitFullscreen, () => close(true));
 
   overlay.addEventListener('pointerdown', event => {

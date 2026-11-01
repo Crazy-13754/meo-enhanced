@@ -1,4 +1,5 @@
-import { createElement, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide';
+import { createElement, X, ZoomIn, ZoomOut } from 'lucide';
+import { ZoomReset } from './zoomResetIcon';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { suppressRenderedBlockPointerFocus } from './renderedBlockActionFocus';
 import { stepVisualZoom, visualZoomPanAtPoint } from './visualZoom';
@@ -84,7 +85,7 @@ export function openMermaidFullscreen(options: {
   };
   addButton(ZoomIn, strings.zoomIn, () => changeZoom(1));
   addButton(ZoomOut, strings.zoomOut, () => changeZoom(-1));
-  addButton(RotateCcw, strings.resetZoom, fit);
+  addButton(ZoomReset, strings.resetZoom, fit);
   const exit = addButton(X, strings.exitFullscreen, () => viewer.close('user-close'));
   exit.classList.add('meo-mermaid-exit-btn');
   container.append(svgWrapper, controls);

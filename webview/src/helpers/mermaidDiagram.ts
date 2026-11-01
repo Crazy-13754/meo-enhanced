@@ -1,5 +1,6 @@
 import { WidgetType, type EditorView } from '@codemirror/view';
-import { createElement, ZoomIn, ZoomOut, RotateCcw, Maximize2 } from 'lucide';
+import { createElement, ZoomIn, ZoomOut, Maximize2 } from 'lucide';
+import { ZoomReset } from './zoomResetIcon';
 import type { EditorState } from '@codemirror/state';
 import type { SyntaxNodeRef } from '@lezer/common';
 import type { MermaidConfig } from 'mermaid';
@@ -1204,7 +1205,7 @@ export class MermaidDiagramWidget extends WidgetType {
     const reset = document.createElement('button');
     reset.type = 'button';
     reset.className = 'meo-visual-control-btn meo-mermaid-zoom-btn';
-    reset.appendChild(createElement(RotateCcw, { width: 16, height: 16 }));
+    reset.appendChild(createElement(ZoomReset, { width: 16, height: 16 }));
     reset.setAttribute('aria-label', strings.resetZoom);
 
     const fullscreen = document.createElement('button');
