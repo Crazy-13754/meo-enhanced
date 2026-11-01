@@ -1,3 +1,4 @@
+import { cacheBustedImageSource } from './imageReload';
 import type {
   ImagePresentationEffect,
   ImagePresentationEffectContext,
@@ -692,18 +693,6 @@ export function createImagePresentationFactory(
       releaseResourceLeases.clear();
     }
   };
-}
-
-let imageReloadSequence = 0;
-
-function cacheBustedImageSource(resolvedSrc: string): string {
-  if (/^(?:data:|blob:)/i.test(resolvedSrc)) return resolvedSrc;
-  const hashAt = resolvedSrc.indexOf('#');
-  const base = hashAt >= 0 ? resolvedSrc.slice(0, hashAt) : resolvedSrc;
-  const hash = hashAt >= 0 ? resolvedSrc.slice(hashAt) : '';
-  const separator = base.includes('?') ? '&' : '?';
-  imageReloadSequence += 1;
-  return `${base}${separator}meoReload=${imageReloadSequence}${hash}`;
 }
 
 export function loadBrowserImage(

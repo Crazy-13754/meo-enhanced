@@ -1,5 +1,5 @@
 const pointerFocus = new WeakMap<HTMLElement, AbortController>();
-const actionGroups = '.meo-preview-code-actions, .meo-code-block-actions, .meo-mermaid-toolbar, .meo-math-copy-actions, .meo-mermaid-preview-controls, .meo-mermaid-fullscreen-controls';
+const actionGroups = '.meo-preview-code-actions, .meo-code-block-actions, .meo-mermaid-toolbar, .meo-math-copy-actions, .meo-mermaid-preview-controls, .meo-mermaid-fullscreen-controls, .meo-md-image-fullscreen-controls';
 
 /** Restore logical focus without presenting a mouse action as keyboard navigation. */
 export function focusRenderedBlockAction(target: HTMLElement, pointerDriven: boolean): void {

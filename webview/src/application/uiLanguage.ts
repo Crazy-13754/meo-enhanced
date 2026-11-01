@@ -217,6 +217,8 @@ export type UiStrings = Readonly<{
   openWithSystemApp: string;
   fullscreenImage: string;
   refreshImage: string;
+  openImageInBrowser: string;
+  refreshImageFailed: string;
   colorLabel: (value: string) => string;
   adjustColor: (value: string) => string;
   colorControls: (value: string) => string;
@@ -508,7 +510,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     mermaidSideBySideAction: 'Switch to columns', mermaidStackedAction: 'Switch to rows',
     mermaidCurrentPreview: 'Current diagram', mermaidResizePreview: 'Resize source and preview',
     mermaidNarrowLayout: 'Stacked layout is used in a narrow editor',
-    openWithSystemApp: 'Open with system app', fullscreenImage: 'Fullscreen image', refreshImage: 'Refresh image',
+    openWithSystemApp: 'Open with system app', fullscreenImage: 'Fullscreen image', refreshImage: 'Refresh image', openImageInBrowser: 'Open image in browser', refreshImageFailed: 'Could not refresh image. Try again.',
     colorLabel: (value: string) => `Color ${value}`,
     adjustColor: (value: string) => `Adjust color ${value}`,
     colorControls: (value: string) => `Color controls for ${value}`,
@@ -771,7 +773,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
       };
       return `Mermaid 错误：${runtimeMessages[message] ?? `暂时无法渲染图表。\n原始错误：${message}`}`;
     },
-    openWithSystemApp: '使用系统应用打开', fullscreenImage: '全屏查看图片', refreshImage: '刷新图片',
+    openWithSystemApp: '使用系统应用打开', fullscreenImage: '全屏查看图片', refreshImage: '刷新图片', openImageInBrowser: '在浏览器中打开图片', refreshImageFailed: '无法刷新图片，请重试。',
     colorLabel: (value: string) => `颜色 ${value}`,
     adjustColor: (value: string) => `调整颜色 ${value}`,
     colorControls: (value: string) => `${value} 的颜色调整器`,

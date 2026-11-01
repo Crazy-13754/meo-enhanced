@@ -1365,6 +1365,15 @@ for the staged snapshot. A staging/content change invalidates earlier index chec
 
 ## Document-scale coverage
 
+`scripts/test-preview-image-actions.ts` covers ordinary and actually windowed full/side
+Preview in English/light and Chinese/dark. Native pointer and keyboard actions check
+image refresh without Markdown rerendering, retained images and painted reading anchors
+during delayed loading, failed-refresh feedback and retry, linked-image navigation,
+authored HTML sizing, window eviction/remount, modal focus and mode cleanup. Image
+fullscreen has exactly four viewing controls in both Preview and Live; Live zoom,
+pan and reset remain covered by `scripts/test-image-layout.ts`. The new contract belongs
+to `test:browser` and the rendered targeted plan, with browser-exclusive execution.
+
 `scripts/test-changes-review-consistency.ts` covers silent pending summaries,
 retaining zero/nonzero results, equal-count baseline changes, manual snapshot replacement,
 failure and disabling comparison. Actual typing in Source and Live pairs ordinary

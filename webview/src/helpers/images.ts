@@ -1,7 +1,7 @@
 import { EditorView, WidgetType } from '@codemirror/view';
 import type { ChangeDesc } from '@codemirror/state';
 import { mapLiveWidgetPositions } from '../editor/liveWidgetPositions';
-import { AppWindow, createElement, ExternalLink, Maximize2, RefreshCw, RotateCcw, SquareArrowRightEnter, X, ZoomIn, ZoomOut } from 'lucide';
+import { AppWindow, createElement, ExternalLink, Maximize2, RefreshCw, SquareArrowRightEnter } from 'lucide';
 import { getViewportController } from './viewportController';
 import { createImageResolutionTransport, type ImageResolutionTransport } from '../adapters/imageResolutionTransport';
 import { createClipboardImageSaveTransport, type ClipboardImageSaveTransport } from '../adapters/clipboardImageSaveTransport';
@@ -14,7 +14,7 @@ import type {
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { encodeMarkdownPath } from '../../../src/foundation/linkDestination';
 import { isWikiImageTarget, parseWikiReference, wikiImageSrc, wikiTargetFromImageSrc, WIKI_IMAGE_SCHEME } from '../../../src/foundation/wikiReference';
-import { stepVisualZoom, visualZoomPanAtPoint } from './visualZoom';
+import { openImageFullscreen, type ImageFullscreenViewer } from './imageFullscreen';
 import { getEnclosingSourceLinkHref, hrefFromSourceLinkNode, isPrimaryModifierPointerClick } from './linkNavigation';
 
 const wikiImageIssues = new Map<string, string>();
@@ -67,9 +67,7 @@ type ImageMount = {
   sourceFrom: () => number | null;
   presentationHandle: ImagePresentationHandle | null;
   wikiPresentation?: WikiImagePresentation;
-  fullscreenOverlay: HTMLElement | null;
-  fullscreenCleanup: (() => void) | null;
-  exitFullscreenHandler: ((event: KeyboardEvent) => void) | null;
+  fullscreenViewer: ImageFullscreenViewer | null;
 };
 type ImageElement = HTMLElement & { __meoImageMount?: ImageMount };
 type ImageDoubleClickCandidate = {
@@ -406,7 +404,7 @@ export class ImageWidget extends WidgetType {
     const container: ImageElement = document.createElement('div');
     const mount: ImageMount = {
       disposed: false, url: this.url, sourceFrom: () => this.sourceFrom, presentationHandle: null,
-      fullscreenOverlay: null, fullscreenCleanup: null, exitFullscreenHandler: null
+      fullscreenViewer: null
     };
     container.__meoImageMount = mount;
     container.className = 'meo-md-image';
@@ -667,149 +665,17 @@ export class ImageWidget extends WidgetType {
   }
 
   private openFullscreen(src: string, mount: ImageMount): void {
-    if (!src || mount.disposed || mount.fullscreenOverlay) return;
+    if (!src || mount.disposed || mount.fullscreenViewer) return;
     clearPendingImageDoubleClick();
-
-    const overlay = document.createElement('div');
-    overlay.className = 'meo-md-image-fullscreen-scrim';
-    const viewer = document.createElement('div');
-    viewer.className = 'meo-md-image-fullscreen';
-    const image = document.createElement('img');
-    image.className = 'meo-md-image-fullscreen-img';
-    image.alt = this.altText;
-    image.src = src;
-    viewer.appendChild(image);
-
-    let zoom = 1;
-    let panX = 0;
-    let panY = 0;
-    let dragging = false;
-    let dragged = false;
-    let closeOnClick = false;
-    let startX = 0;
-    let startY = 0;
-    let lastX = 0;
-    let lastY = 0;
-    const applyTransform = () => {
-      image.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
-    };
-    const changeZoom = (direction: 1 | -1, pointer?: WheelEvent) => {
-      const next = stepVisualZoom(zoom, direction, pointer ? 'wheel' : 'button');
-      const bounds = viewer.getBoundingClientRect();
-      const point = pointer ? { x: pointer.clientX, y: pointer.clientY }
-        : { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
-      ({ panX, panY } = visualZoomPanAtPoint(image, { zoom, panX, panY }, next, point));
-      zoom = next;
-      applyTransform();
-    };
-
-    const controls = document.createElement('div');
-    controls.className = 'meo-visual-controls meo-md-image-fullscreen-controls';
-    const addButton = (icon: typeof ZoomIn, label: string, action: () => void) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'meo-visual-control-btn meo-md-image-control-btn';
-      button.dataset.tooltip = label;
-      button.setAttribute('aria-label', label);
-      button.appendChild(createElement(icon, { width: 16, height: 16 }));
-      button.addEventListener('pointerdown', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        action();
-      });
-      controls.appendChild(button);
-    };
-    const strings = getUiStrings(this.uiLanguage);
-    addButton(ZoomIn, strings.zoomIn, () => changeZoom(1));
-    addButton(ZoomOut, strings.zoomOut, () => changeZoom(-1));
-    addButton(RotateCcw, strings.resetZoom, () => {
-      zoom = 1;
-      panX = 0;
-      panY = 0;
-      applyTransform();
+    mount.fullscreenViewer = openImageFullscreen({
+      src, alt: this.altText, uiLanguage: this.uiLanguage, pointerDriven: true,
+      onClose: () => { mount.fullscreenViewer = null; }
     });
-    addButton(AppWindow, strings.openWithSystemApp, () => openImageExternally(this.url));
-    addButton(X, strings.exitFullscreen, () => this.closeFullscreen(mount));
-    viewer.appendChild(controls);
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 0 || (event.target instanceof Element && event.target.closest('.meo-md-image-fullscreen-controls'))) return;
-      dragging = true;
-      dragged = false;
-      closeOnClick = false;
-      startX = event.clientX;
-      startY = event.clientY;
-      lastX = event.clientX;
-      lastY = event.clientY;
-      viewer.setPointerCapture(event.pointerId);
-      viewer.classList.add('is-dragging');
-    };
-    const onPointerMove = (event: PointerEvent) => {
-      if (!dragging) return;
-      const deltaX = event.clientX - lastX;
-      const deltaY = event.clientY - lastY;
-      if (Math.abs(event.clientX - startX) > 3 || Math.abs(event.clientY - startY) > 3) dragged = true;
-      panX += deltaX;
-      panY += deltaY;
-      lastX = event.clientX;
-      lastY = event.clientY;
-      applyTransform();
-    };
-    const onPointerUp = (event: PointerEvent) => {
-      if (!dragging) return;
-      closeOnClick = !dragged;
-      dragging = false;
-      viewer.classList.remove('is-dragging');
-      if (viewer.hasPointerCapture(event.pointerId)) viewer.releasePointerCapture(event.pointerId);
-    };
-    const onPointerCancel = (event: PointerEvent) => {
-      dragging = false;
-      viewer.classList.remove('is-dragging');
-      if (viewer.hasPointerCapture(event.pointerId)) viewer.releasePointerCapture(event.pointerId);
-    };
-    const onClick = (event: MouseEvent) => {
-      if (!closeOnClick || (event.target instanceof Element && event.target.closest('.meo-md-image-fullscreen-controls'))) return;
-      closeOnClick = false;
-      this.closeFullscreen(mount);
-    };
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      changeZoom(event.deltaY > 0 ? -1 : 1, event);
-    };
-
-    viewer.addEventListener('pointerdown', onPointerDown);
-    viewer.addEventListener('pointermove', onPointerMove);
-    viewer.addEventListener('pointerup', onPointerUp);
-    viewer.addEventListener('pointercancel', onPointerCancel);
-    viewer.addEventListener('click', onClick);
-    viewer.addEventListener('wheel', onWheel, { passive: false });
-    overlay.appendChild(viewer);
-    document.body.appendChild(overlay);
-
-    mount.fullscreenOverlay = overlay;
-    mount.exitFullscreenHandler = (event) => {
-      if (event.key === 'Escape') this.closeFullscreen(mount);
-    };
-    document.addEventListener('keydown', mount.exitFullscreenHandler);
-    mount.fullscreenCleanup = () => {
-      viewer.removeEventListener('pointerdown', onPointerDown);
-      viewer.removeEventListener('pointermove', onPointerMove);
-      viewer.removeEventListener('pointerup', onPointerUp);
-      viewer.removeEventListener('pointercancel', onPointerCancel);
-      viewer.removeEventListener('click', onClick);
-      viewer.removeEventListener('wheel', onWheel);
-    };
   }
 
   private closeFullscreen(mount: ImageMount): void {
-    mount.fullscreenCleanup?.();
-    mount.fullscreenCleanup = null;
-    mount.fullscreenOverlay?.remove();
-    mount.fullscreenOverlay = null;
-    if (mount.exitFullscreenHandler) {
-      document.removeEventListener('keydown', mount.exitFullscreenHandler);
-      mount.exitFullscreenHandler = null;
-    }
+    mount.fullscreenViewer?.close();
+    mount.fullscreenViewer = null;
   }
 
   renderFallback(container: HTMLElement): void {

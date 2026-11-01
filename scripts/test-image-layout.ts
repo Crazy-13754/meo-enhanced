@@ -363,6 +363,7 @@ async function main() {
       button.closest('.meo-md-image')!.querySelector<HTMLImageElement>('img')!.src);
     await page.click(openViewer);
     await page.waitForSelector('.meo-md-image-fullscreen-img');
+    assert.equal(await page.$$eval('.meo-md-image-fullscreen-controls button', buttons => buttons.length), 4, 'Image fullscreen only exposes zoom in, zoom out, reset and close');
     assert.equal(await page.$eval('.meo-md-image-fullscreen-img', image => (image as HTMLImageElement).src), expectedSrc);
     const transform = () => page.$eval('.meo-md-image-fullscreen-img', image => {
       const matrix = new DOMMatrix(getComputedStyle(image).transform);
@@ -405,20 +406,20 @@ async function main() {
     const beforeRepeatedZoom = await imagePointAt();
     await page.$eval('.meo-md-image-fullscreen-controls', controls => {
       const buttons = controls.querySelectorAll<HTMLButtonElement>('button');
-      for (let i = 0; i < 15; i++) buttons[0]!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      for (let i = 0; i < 15; i++) buttons[0]!.click();
     });
     const enlarged = await transform();
     assert.ok(Math.abs(enlarged.zoom - 1.25 ** 16) < 0.0001, 'Image zoom continues proportionally beyond 4x');
     assertImagePoint(await imagePointAt(), beforeRepeatedZoom, 'Repeated image zoom preserves the viewport anchor');
     await page.$eval('.meo-md-image-fullscreen-controls', controls => {
       const buttons = controls.querySelectorAll<HTMLButtonElement>('button');
-      for (let i = 0; i < 16; i++) buttons[1]!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      for (let i = 0; i < 16; i++) buttons[1]!.click();
     });
     assert.ok(Math.abs((await transform()).zoom - 1) < 0.00001, 'Matching image zoom steps return to the original scale');
     const limits = await page.$eval('.meo-md-image-fullscreen-controls', controls => {
       const buttons = controls.querySelectorAll<HTMLButtonElement>('button');
       const image = document.querySelector<HTMLElement>('.meo-md-image-fullscreen-img')!;
-      const step = (index: number) => buttons[index]!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      const step = (index: number) => buttons[index]!.click();
       for (let i = 0; i < 80; i++) step(0);
       const maximum = new DOMMatrix(image.style.transform).a;
       for (let i = 0; i < 80; i++) step(1);
