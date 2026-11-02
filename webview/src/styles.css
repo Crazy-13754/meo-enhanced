@@ -8428,9 +8428,11 @@ html[data-meo-ui-contrast='high'] .appearance-color-field:not(:focus-within):not
 .meo-secondary-cursor { display: inline; border-left: 1px solid var(--meo-ui-text); margin-left: -1px; pointer-events: none; }
 .more-tools-section-label { font-size: 12px; font-weight: 400; }
 .more-tools-section-label:not(:first-child) { margin-top: 6px; padding-top: 11px; }
-.more-tools-preferences { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 8px 7px; }
 .more-tools-preferences-label { color: var(--meo-ui-text); font-size: 12px; white-space: nowrap; }
-.more-tools-settings-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 4px; box-sizing: border-box; padding: 0 10px; font-size: 12px; line-height: 18px; height: 28px; min-height: 28px; }
+.more-tools-settings-button { display: flex; align-items: center; justify-content: space-between; gap: 8px; box-sizing: border-box; min-height: 30px; padding: 4px 8px; }
+.more-tools-settings-button > svg { flex: 0 0 16px; }
+.more-tools-settings-button:focus-visible:not(:disabled) { outline: 1px solid var(--meo-ui-focus) !important; outline-offset: -1px; }
+.more-tools-option.more-tools-settings-button:active:not(:disabled) { background: var(--meo-ui-surface-pressed); }
 .more-tools-feedback { box-sizing: border-box; min-height: 30px; }
 .more-tools-feedback-link { border-radius: 4px; padding: 3px 7px; }
 .more-tools-feedback-link:hover, .more-tools-feedback-link:focus-visible { background: var(--meo-ui-surface-hover); color: var(--meo-ui-accent-text); }

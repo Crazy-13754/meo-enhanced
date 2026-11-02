@@ -7,6 +7,7 @@ import { saveClipboardImageFile } from '../src/host/clipboardImageSave';
 import { createImageStorageHost, type ImageStorageContext } from '../src/host/imageStorage';
 import type { ImageLocationRequest } from '../src/protocol/imageStorage';
 import { editorCommandIds } from '../src/foundation/editingPreferences';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 const build = await Bun.build({ entrypoints: ['scripts/test-settings-window-production-entry.ts'], target: 'browser', format: 'iife' });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
@@ -234,7 +235,7 @@ try {
   await page.waitForSelector('.cm-editor.meo-mode-source');
   await page.click('.more-tools-wrapper > .format-button');
   assert.equal(await page.$eval('.more-tools-panel', element => element.getBoundingClientRect().width), 288);
-  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 6);
+  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 7);
   assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置']);
   await page.click('.more-tools-settings-button');
   assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true);
@@ -672,13 +673,13 @@ try {
   await page.evaluate(() => document.body.classList.remove('vscode-reduce-motion'));
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
   for (const language of ['en', 'zh-CN']) for (const appearance of ['light', 'dark']) {
+    await page.setViewport({ width: 1100, height: 780 });
     await page.click('.settings-tab[data-tab="general"]');
     await page.click(`[data-setting="language"] [data-value="${language}"]`);
     await page.click('.settings-tab[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`);
     assert.equal(await page.evaluate(() => document.documentElement.lang), language);
     assert.equal(await page.evaluate(() => document.documentElement.dataset.editorAppearance), appearance);
-    assert.equal(await page.$eval('.more-tools-settings-button', element => element.textContent), language === 'en' ? 'Open settings' : '打开设置');
-    assert.equal(await page.$('.more-tools-settings-button svg'), null, 'Open settings uses a text-only button');
+    assert.equal(await page.$eval('.more-tools-settings-button', element => element.textContent), language === 'en' ? 'Appearance · Input · Shortcuts' : '外观 · 输入 · 快捷键');
     await page.click('.settings-tab[data-tab="shortcuts"]');
     assert.equal(await page.$eval('[data-command="saveAs"] .settings-item-title', e => e.textContent), language === 'en' ? 'Save as…' : '另存为…');
     assert.ok(await page.$('[data-command="saveAs"] [data-edit-command="saveAs"]'));
@@ -700,6 +701,35 @@ try {
     const size = await page.evaluate(() => { const dialog = document.querySelector('.settings-window')!; const rect = dialog.getBoundingClientRect(); return { left: rect.left, right: rect.right, overflow: dialog.scrollWidth > dialog.clientWidth }; });
     assert.ok(size.left >= 0 && size.right <= 430 && !size.overflow, JSON.stringify(size));
     assert.equal(await page.$eval('.settings-footer', element => (element as HTMLElement).hidden), true);
+    await closeSettings('button');
+    await page.locator('.more-tools-wrapper > .format-button').click();
+    await page.waitForSelector('.more-tools-panel:not([hidden])');
+    await page.hover('.more-tools-settings-button');
+    const entry = await page.$eval('.more-tools-settings-button', element => {
+      const bounds = element.getBoundingClientRect();
+      const label = element.querySelector('.more-tools-preferences-label')!.getBoundingClientRect();
+      const arrow = element.querySelector(':scope > svg')!.getBoundingClientRect();
+      return { left: bounds.left, right: bounds.right, labelRight: label.right, arrowLeft: arrow.left, arrowRight: arrow.right,
+        overflow: element.scrollWidth > element.clientWidth, background: getComputedStyle(element).backgroundColor };
+    });
+    assert.ok(entry.left >= 0 && entry.right <= 430 && entry.labelRight < entry.arrowLeft && entry.arrowRight <= entry.right && !entry.overflow,
+      `${language}/${appearance}: the full settings entry and arrow fit the narrow menu`);
+    assert.notEqual(entry.background, 'rgba(0, 0, 0, 0)', 'The full settings row shows hover feedback');
+    if (process.env.MEO_SETTINGS_SCREENSHOTS) {
+      await page.screenshot({ path: path.join(path.resolve(process.env.MEO_SETTINGS_SCREENSHOTS), `settings-entry-${language}-${appearance}.png`) });
+    }
+    await page.locator('.more-tools-settings-button .more-tools-preferences-label').click();
+    await page.waitForSelector('.settings-window[open]');
+    assert.equal(await page.$eval('.more-tools-panel', element => (element as HTMLElement).hidden), true, 'Opening settings dismisses the menu');
+    await closeSettings('escape');
+    await page.locator('.more-tools-wrapper > .format-button').click();
+    await page.waitForSelector('.more-tools-panel:not([hidden])');
+    await page.focus('.more-tools-feedback-link');
+    await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
+    assert.equal(await page.$eval('.more-tools-settings-button', element => element === document.activeElement), true, 'Tab reaches the full settings entry');
+    assert.equal(await page.$eval('.more-tools-settings-button', element => getComputedStyle(element).outlineStyle), 'solid', 'The entry has a visible keyboard focus outline');
+    await page.keyboard.press(language === 'en' ? 'Enter' : 'Space');
+    await page.waitForSelector('.settings-window[open]');
   }
   await page.click('.settings-close');
   const setPreferences = async (shortcuts: object) => page.evaluate(shortcuts => {
@@ -1155,10 +1185,29 @@ try {
       await page.$eval('.image-naming-modes', element => element.scrollIntoView({block: 'center'}));
       await page.screenshot({ path: path.join(directory, `image-naming-narrow-${language}-${appearance}.png`) });
     }
-    await page.click('.settings-close'); await page.click('.more-tools-wrapper > .format-button');
+    await closeSettings('button'); await page.locator('.more-tools-wrapper > .format-button').click();
     await page.screenshot({ path: path.join(directory, 'settings-menu-en-light.png') });
   }
-  console.log('Production settings: flat sections, narrow/desktop, real controls, live search, recording/conflict, actual reassigned format operation, reset scope, modal return focus/caret/selection in prose, native cells and embedded editors; scrolled viewport, first-character input, animation/reduced motion, failure/retry, late clipboard and native key rebinding; selection toolbar toggle, drag direction, reload and native cells passed');
+  const largeText = '# Settings entry\n\n' + 'Paragraph for the optimized editor settings entry.\n\n'.repeat(5_000);
+  assert.equal(assessLargeDocument(largeText).boundedEditorWork, true);
+  await page.close(); page = await browser.newPage(); page.on('pageerror', error => errors.push(String(error)));
+  await openFixture(largeText);
+  await page.waitForSelector('.cm-editor.meo-mode-source');
+  await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
+  assert.equal(await page.evaluate(() => {
+    const harness = (window as any).EditingSettingsHarness;
+    return harness.usesLargeDocumentDerivedWorkBudget(harness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state);
+  }), true, 'The settings entry smoke exercises the production large-document work budget');
+  await page.click('.more-tools-wrapper > .format-button');
+  await page.click('.more-tools-settings-button > svg');
+  await page.waitForSelector('.settings-window[open]');
+  await closeSettings('escape');
+  assert.deepEqual(await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+    return { text: view.state.doc.toString(), focus: view.hasFocus };
+  }), { text: largeText, focus: true }, 'The arrow opens settings and returns to the unchanged optimized document');
+  assert.deepEqual(errors, []);
+  console.log('Production settings: flat sections, narrow/desktop, real controls, live search, recording/conflict, actual reassigned format operation, reset scope, modal return focus/caret/selection in prose, native cells and embedded editors; scrolled viewport, first-character input, animation/reduced motion, failure/retry, late clipboard and native key rebinding; selection toolbar toggle, drag direction, reload and native cells; full-row entry pointer/keyboard and optimized-document return passed');
 } catch (error) {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'meo-settings-failure-'));
   await page.screenshot({ path: path.join(folder, 'settings.png') }); await fs.writeFile(path.join(folder, 'page.html'), await page.content());

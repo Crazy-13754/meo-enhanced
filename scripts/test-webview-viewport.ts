@@ -891,7 +891,7 @@ async function main() {
       const panel = document.querySelector<HTMLElement>('.more-tools-panel')!;
       const options = Array.from(panel.querySelectorAll<HTMLElement>(':scope > .more-tools-option'));
       return {
-        labels: options.map((option) => option.querySelector('.more-tools-option-label')?.textContent),
+        labels: options.map((option) => option.querySelector('.more-tools-option-label, .more-tools-preferences-label')?.textContent),
         topHeading: panel.querySelector<HTMLElement>(':scope > .more-tools-section-label')?.textContent,
         languageAutoLabel: panel.querySelector<HTMLElement>('[data-ui-language="auto"] .segmented-control-button-label')?.textContent,
         directChildren: options.every((option) => option.parentElement === panel),
@@ -910,7 +910,7 @@ async function main() {
     if (
       JSON.stringify(moreToolsLayout.labels) !== JSON.stringify([
         '显示行号', '折叠长代码块', '限制宽度', '粗体文字着色', '标题加粗',
-        '表格浮动表头'
+        '表格浮动表头', '外观 · 输入 · 快捷键'
       ]) ||
       moreToolsLayout.topHeading !== '文档显示' ||
       moreToolsLayout.languageAutoLabel !== '自动' ||
