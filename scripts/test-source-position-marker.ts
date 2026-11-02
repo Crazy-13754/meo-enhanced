@@ -442,7 +442,7 @@ try {
     disabled: (button as HTMLButtonElement).disabled
   })));
   assert.deepEqual(buttons.map(button => [button.width, button.height, button.iconWidth, button.disabled]), [[23, 23, 22, false], [23, 23, 22, false]]);
-  assert.deepEqual(buttons.map(button => button.hint), ['Align preview to source view', 'Align source to preview view']);
+  assert.deepEqual(buttons.map(button => button.hint), ['Align to source', 'Align to preview']);
   assert.ok(buttons.every(button => button.hint === button.label));
   const fixed = await geometry();
   assert.ok(Math.abs(fixed.x - fixed.dividerX) <= 0.5 && Math.abs(fixed.y - fixed.frameY) <= 0.5, JSON.stringify(fixed));
@@ -564,7 +564,7 @@ try {
     assert.ok(remainingSource <= 2, 'Preview boundary aligns Source boundary: ' + remainingSource);
   }
   await page.hover(toPreview);
-  await page.waitForFunction(() => document.querySelector('.meo-tooltip.is-visible')?.textContent?.includes('Align preview to source view'));
+  await page.waitForFunction(() => document.querySelector('.meo-tooltip.is-visible')?.textContent?.includes('Align to source'));
   const hintPosition = await page.$eval('.meo-tooltip.is-visible', element => element.getBoundingClientRect().toJSON());
   const buttonRect = await page.$eval(toPreview, element => element.getBoundingClientRect().toJSON());
   await page.mouse.move(buttonRect.left + 6, buttonRect.top + 6);
