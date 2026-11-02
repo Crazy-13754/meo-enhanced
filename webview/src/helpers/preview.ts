@@ -3230,6 +3230,7 @@ export function createPreviewController({
     button.type = 'button';
     button.className = 'format-button meo-preview-viewport-align-button';
     button.dataset.meoAlignViewport = owner === 'source' ? 'preview' : 'source';
+    button.dataset.tooltipPlacement = 'left';
     button.appendChild(createIconElement([
       ['path', { d: 'm10 8-4 4 4 4' }],
       ['path', { d: 'M6 12h12' }]
