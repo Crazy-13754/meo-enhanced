@@ -85,6 +85,7 @@ export type UiStrings = Readonly<{
   more: string;
   moreTools: string;
   toolbarOverflow: string;
+  supportHeading: string;
   feedbackPrompt: string;
   reportIssue: string;
   editorAppearance: string;
@@ -446,7 +447,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     exportHtml: 'Export as HTML', exportPdf: 'Export as PDF', exportDocx: 'Export as Word', exportAsHtml: 'Export as HTML',
     exportAsPdf: 'Export as PDF', exportAsDocx: 'Export as Word document', exportHtmlWithContents: 'Export as HTML with Contents',
     exportPdfWithContents: 'Export as PDF with Contents', exportDocxWithContents: 'Export as Word with Contents', findAndReplace: 'Find and replace', more: 'Settings',
-    moreTools: 'Settings', toolbarOverflow: 'More tools', feedbackPrompt: 'Having trouble?', reportIssue: 'Report an issue',
+    moreTools: 'Settings', toolbarOverflow: 'More tools', supportHeading: 'About & support', feedbackPrompt: 'Questions or ideas?', reportIssue: 'Give feedback',
     editorAppearance: 'UI theme', editorFontSize: 'Font size',
     custom: 'Custom', decreaseFontSize: 'Decrease font size', increaseFontSize: 'Increase font size',
     interfaceLanguage: 'Language', showLineNumbers: 'Show line numbers',
@@ -694,7 +695,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     exportAsDocx: '导出为 Word 文档', exportHtmlWithContents: '导出为 HTML（含目录）', exportPdfWithContents: '导出为 PDF（含目录）',
     exportDocxWithContents: '导出为 Word（含目录）',
     findAndReplace: '查找和替换', more: '设置', moreTools: '设置', toolbarOverflow: '更多工具',
-    feedbackPrompt: '使用中遇到问题？', reportIssue: '欢迎反馈',
+    supportHeading: '关于与支持', feedbackPrompt: '遇到问题或有建议？', reportIssue: '去反馈',
     editorAppearance: '界面主题', editorFontSize: '字号大小', custom: '自定义',
     decreaseFontSize: '减小字号', increaseFontSize: '增大字号',
     interfaceLanguage: '界面语言', showLineNumbers: '显示行号',

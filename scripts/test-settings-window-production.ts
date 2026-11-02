@@ -235,8 +235,8 @@ try {
   await page.waitForSelector('.cm-editor.meo-mode-source');
   await page.click('.more-tools-wrapper > .format-button');
   assert.equal(await page.$eval('.more-tools-panel', element => element.getBoundingClientRect().width), 288);
-  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 7);
-  assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置']);
+  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 8);
+  assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置', '关于与支持']);
   await page.click('.more-tools-settings-button');
   assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true);
   assert.equal(await page.$$eval('.settings-item', elements => elements.length), 9);
@@ -709,12 +709,21 @@ try {
       const bounds = element.getBoundingClientRect();
       const label = element.querySelector('.more-tools-preferences-label')!.getBoundingClientRect();
       const arrow = element.querySelector(':scope > svg')!.getBoundingClientRect();
-      return { left: bounds.left, right: bounds.right, labelRight: label.right, arrowLeft: arrow.left, arrowRight: arrow.right,
+      return { left: bounds.left, right: bounds.right, height: bounds.height, labelRight: label.right, arrowLeft: arrow.left, arrowRight: arrow.right,
         overflow: element.scrollWidth > element.clientWidth, background: getComputedStyle(element).backgroundColor };
     });
     assert.ok(entry.left >= 0 && entry.right <= 430 && entry.labelRight < entry.arrowLeft && entry.arrowRight <= entry.right && !entry.overflow,
       `${language}/${appearance}: the full settings entry and arrow fit the narrow menu`);
     assert.notEqual(entry.background, 'rgba(0, 0, 0, 0)', 'The full settings row shows hover feedback');
+    const feedback = await page.$eval('.more-tools-feedback-link', element => {
+      const row = element.getBoundingClientRect(), prompt = element.querySelector('.more-tools-feedback-prompt')!.getBoundingClientRect();
+      const action = element.querySelector('.more-tools-feedback-action')!.getBoundingClientRect();
+      const promptElement = element.querySelector('.more-tools-feedback-prompt')!;
+      return { left: row.left, right: row.right, height: row.height, promptRight: prompt.right, actionLeft: action.left,
+        overflow: element.scrollWidth > element.clientWidth || promptElement.scrollWidth > promptElement.clientWidth };
+    });
+    assert.ok(feedback.left === entry.left && feedback.right === entry.right && feedback.height === entry.height && feedback.promptRight < feedback.actionLeft && !feedback.overflow,
+      `${language}/${appearance}: the feedback description and action fit the aligned narrow row`);
     if (process.env.MEO_SETTINGS_SCREENSHOTS) {
       await page.screenshot({ path: path.join(path.resolve(process.env.MEO_SETTINGS_SCREENSHOTS), `settings-entry-${language}-${appearance}.png`) });
     }
@@ -729,6 +738,16 @@ try {
     assert.equal(await page.$eval('.more-tools-settings-button', element => element === document.activeElement), true, 'Tab reaches the full settings entry');
     assert.equal(await page.$eval('.more-tools-settings-button', element => getComputedStyle(element).outlineStyle), 'solid', 'The entry has a visible keyboard focus outline');
     await page.keyboard.press(language === 'en' ? 'Enter' : 'Space');
+    await page.waitForSelector('.settings-window[open]');
+    await closeSettings('escape');
+    await page.locator('.more-tools-wrapper > .format-button').click();
+    await page.focus('.more-tools-settings-button'); await page.keyboard.press('Tab');
+    assert.equal(await page.$eval('.more-tools-feedback-link', element => element === document.activeElement && getComputedStyle(element).outlineStyle === 'solid'), true,
+      'Tab reaches the feedback row with a visible keyboard focus outline');
+    await page.keyboard.press(language === 'en' ? 'Enter' : 'Space');
+    assert.equal(await page.$eval('.more-tools-panel', element => (element as HTMLElement).hidden), true);
+    assert.deepEqual(await page.evaluate(() => (window as any).__messages.at(-1)), { type: 'openLink', href: 'https://github.com/huangko555/meo-enhanced/issues/new' });
+    await page.locator('.more-tools-wrapper > .format-button').click(); await page.locator('.more-tools-settings-button').click();
     await page.waitForSelector('.settings-window[open]');
   }
   await page.click('.settings-close');
@@ -1206,6 +1225,10 @@ try {
     const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
     return { text: view.state.doc.toString(), focus: view.hasFocus };
   }), { text: largeText, focus: true }, 'The arrow opens settings and returns to the unchanged optimized document');
+  await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-feedback-prompt');
+  assert.equal(await page.$eval('.more-tools-panel', element => (element as HTMLElement).hidden), true);
+  assert.deepEqual(await page.evaluate(() => (window as any).__messages.at(-1)), { type: 'openLink', href: 'https://github.com/huangko555/meo-enhanced/issues/new' },
+    'The feedback description activates its whole row in the optimized document');
   assert.deepEqual(errors, []);
   console.log('Production settings: flat sections, narrow/desktop, real controls, live search, recording/conflict, actual reassigned format operation, reset scope, modal return focus/caret/selection in prose, native cells and embedded editors; scrolled viewport, first-character input, animation/reduced motion, failure/retry, late clipboard and native key rebinding; selection toolbar toggle, drag direction, reload and native cells; full-row entry pointer/keyboard and optimized-document return passed');
 } catch (error) {

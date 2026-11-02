@@ -63,8 +63,8 @@ assert.deepEqual(
   [english.resumeFromLastPosition, chinese.resumeFromLastPosition],
   ['Resume from last position', '打开时恢复上一次阅读位置']
 );
-assert.deepEqual([english.feedbackPrompt, english.reportIssue], ['Having trouble?', 'Report an issue']);
-assert.deepEqual([chinese.feedbackPrompt, chinese.reportIssue], ['使用中遇到问题？', '欢迎反馈']);
+assert.deepEqual([english.supportHeading, english.feedbackPrompt, english.reportIssue], ['About & support', 'Questions or ideas?', 'Give feedback']);
+assert.deepEqual([chinese.supportHeading, chinese.feedbackPrompt, chinese.reportIssue], ['关于与支持', '遇到问题或有建议？', '去反馈']);
 assert.equal(english.line, 'Lines');
 assert.equal(chinese.line, '行号');
 assert.equal(chinese.exportHtml, '导出为 HTML');

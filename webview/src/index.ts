@@ -15,7 +15,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, isEditorCommandId, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, MessageSquare, ExternalLink, History, Info } from 'lucide';
 import { createCodicon } from './helpers/codicons';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
@@ -1153,7 +1153,7 @@ displaySettingsHeading.textContent = activeUiStrings.documentDisplaySettings;
 const preferencesHeading = document.createElement('div');
 preferencesHeading.className = 'more-tools-section-label';
 const preferencesLabel = document.createElement('span'); preferencesLabel.className = 'more-tools-preferences-label';
-const moreSettingsButton = document.createElement('button'); moreSettingsButton.type = 'button'; moreSettingsButton.className = 'more-tools-option more-tools-settings-button';
+const moreSettingsButton = document.createElement('button'); moreSettingsButton.type = 'button'; moreSettingsButton.className = 'more-tools-option more-tools-navigation-option more-tools-settings-button';
 moreSettingsButton.setAttribute('role', 'menuitem');
 moreSettingsButton.setAttribute('aria-haspopup', 'dialog');
 moreSettingsButton.append(createMoreToolsControlHeading(SlidersHorizontal, preferencesLabel), createElement(ChevronRight, { width: 16, height: 16, 'aria-hidden': 'true' }));
@@ -1317,8 +1317,8 @@ const applyUiLanguage = (language: UiLanguage): void => {
   displaySettingsHeading.textContent = strings.documentDisplaySettings;
   openingDocumentsHeading.textContent = strings.openingDocumentsSettings;
   interfaceSettingsHeading.textContent = strings.interfaceSettings;
+  supportHeading.textContent = strings.supportHeading;
   feedbackPrompt.textContent = strings.feedbackPrompt;
-  reportIssueButton.setAttribute('aria-label', strings.reportIssue);
   reportIssueLabel.textContent = strings.reportIssue;
   toolbarOverflowIndicator.dataset.tooltip = strings.toolbarOverflow;
   toolbarOverflowIndicator.setAttribute('aria-label', strings.toolbarOverflow);
@@ -1366,22 +1366,22 @@ const editorFontSizeControls = document.createElement('div');
 editorFontSizeControls.className = 'editor-font-size-controls';
 editorFontSizeControls.append(editorFontSizeModeControl.element, editorFontSizeStepper);
 editorFontSizeRow.append(createMoreToolsControlHeading(Type, editorFontSizeLabel), editorFontSizeControls);
-const feedbackSeparator = document.createElement('div');
-feedbackSeparator.className = 'more-tools-separator';
-feedbackSeparator.setAttribute('role', 'separator');
-const feedbackRow = document.createElement('div');
-feedbackRow.className = 'more-tools-feedback';
+const supportHeading = document.createElement('div');
+supportHeading.className = 'more-tools-section-label more-tools-support-heading';
+supportHeading.textContent = activeUiStrings.supportHeading;
 const feedbackPrompt = document.createElement('span');
-feedbackPrompt.className = 'more-tools-feedback-prompt';
+feedbackPrompt.className = 'more-tools-option-label more-tools-feedback-prompt';
 feedbackPrompt.textContent = activeUiStrings.feedbackPrompt;
 const reportIssueButton = document.createElement('button');
 reportIssueButton.type = 'button';
-reportIssueButton.className = 'more-tools-feedback-link';
-reportIssueButton.setAttribute('aria-label', activeUiStrings.reportIssue);
+reportIssueButton.className = 'more-tools-option more-tools-navigation-option more-tools-feedback-link';
+reportIssueButton.setAttribute('role', 'menuitem');
+const reportIssueAction = document.createElement('span');
+reportIssueAction.className = 'more-tools-navigation-action more-tools-feedback-action';
 const reportIssueLabel = document.createElement('span');
 reportIssueLabel.textContent = activeUiStrings.reportIssue;
-reportIssueButton.append(reportIssueLabel, createElement(ExternalLink, { width: 13, height: 13 }));
-feedbackRow.append(feedbackPrompt, reportIssueButton);
+reportIssueAction.append(reportIssueLabel, createElement(ExternalLink, { width: 13, height: 13, 'aria-hidden': 'true' }));
+reportIssueButton.append(createMoreToolsControlHeading(MessageSquare, feedbackPrompt), reportIssueAction);
 moreToolsPanel.append(
   displaySettingsHeading,
   sourceLineNumbersBtn,
@@ -1396,8 +1396,8 @@ moreToolsPanel.append(
   editorFontSizeRow,
   preferencesHeading,
   moreSettingsButton,
-  feedbackSeparator,
-  feedbackRow
+  supportHeading,
+  reportIssueButton
 );
 
 const moreToolsWrapper = document.createElement('div');

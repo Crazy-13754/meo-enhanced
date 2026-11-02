@@ -1984,44 +1984,6 @@ html[lang='zh-CN'] .mode-group .segmented-control-button-label {
   background: var(--meo-ui-separator);
 }
 
-.more-tools-feedback {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 28px;
-  padding: 3px 8px;
-}
-
-.more-tools-feedback-prompt {
-  min-width: 0;
-  color: var(--meo-ui-text-muted, var(--meo-ui-text));
-  font-size: 12px;
-  line-height: 1.3;
-}
-
-.more-tools-feedback-link {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 4px;
-  border: 0;
-  border-radius: 4px;
-  color: var(--meo-semantic-linkForeground, var(--meo-ui-accent-text));
-  background: transparent;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.more-tools-feedback-link:hover,
-.more-tools-feedback-link:focus-visible {
-  color: var(--meo-ui-accent-text, var(--meo-semantic-linkForeground));
-  background: var(--meo-ui-surface-hover);
-  outline: none;
-}
-
 .menu-switch {
   position: relative;
   box-sizing: border-box;
@@ -8429,14 +8391,11 @@ html[data-meo-ui-contrast='high'] .appearance-color-field:not(:focus-within):not
 .more-tools-section-label { font-size: 12px; font-weight: 400; }
 .more-tools-section-label:not(:first-child) { margin-top: 6px; padding-top: 11px; }
 .more-tools-preferences-label { color: var(--meo-ui-text); font-size: 12px; white-space: nowrap; }
-.more-tools-settings-button { display: flex; align-items: center; justify-content: space-between; gap: 8px; box-sizing: border-box; min-height: 30px; padding: 4px 8px; }
-.more-tools-settings-button > svg { flex: 0 0 16px; }
-.more-tools-settings-button:focus-visible:not(:disabled) { outline: 1px solid var(--meo-ui-focus) !important; outline-offset: -1px; }
-.more-tools-option.more-tools-settings-button:active:not(:disabled) { background: var(--meo-ui-surface-pressed); }
-.more-tools-feedback { box-sizing: border-box; min-height: 30px; }
-.more-tools-feedback-link { border-radius: 4px; padding: 3px 7px; }
-.more-tools-feedback-link:hover, .more-tools-feedback-link:focus-visible { background: var(--meo-ui-surface-hover); color: var(--meo-ui-accent-text); }
-.more-tools-feedback-link:active { background: var(--meo-ui-surface-pressed); }
+.more-tools-navigation-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; box-sizing: border-box; min-height: 30px; padding: 4px 8px; }
+.more-tools-navigation-option > svg { flex: 0 0 16px; }
+.more-tools-navigation-option:focus-visible:not(:disabled) { outline: 1px solid var(--meo-ui-focus) !important; outline-offset: -1px; }
+.more-tools-option.more-tools-navigation-option:active:not(:disabled) { background: var(--meo-ui-surface-pressed); }
+.more-tools-navigation-action { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; white-space: nowrap; }
 @media (max-width: 620px) {
   .settings-window { width: calc(100vw - 16px); height: calc(100dvh - 16px); }
   .settings-titlebar { padding-inline: 16px; }
@@ -8712,7 +8671,6 @@ html[data-meo-ui-contrast='normal'] .meo-input-suggestions:not(.meo-narrow-sugge
 .more-tools-option:is(:hover, :focus-visible) :is(.more-tools-option-label, .more-tools-option-icon) { color: inherit; }
 .mode-toolbar .format-separator, .more-tools-separator, .more-tools-section-label::before { background: var(--meo-ui-separator); }
 .more-tools-option-info { color: var(--meo-ui-text-muted); }
-.more-tools-feedback-link { color: var(--meo-ui-accent-text); }
 .find-input, .line-jump-input {
   color: var(--meo-ui-text);
   background: var(--meo-ui-surface-field);
@@ -8830,7 +8788,7 @@ body .cm-tooltip.meo-hex-color-adjustment,
 .preview-toolbar-dropdown-chevron { color: var(--meo-ui-text-muted); }
 .changes-review-option-icon,
 .changes-review-check:not(.is-warning) { color: inherit; }
-:is(.more-tools-section-label, .more-tools-feedback-prompt, .more-tools-option-info, .preview-export-note, .find-status, .settings-description, .settings-jump, .settings-native, .settings-unassigned, .settings-context, .settings-empty, .settings-reset-description, .settings-tab-badge, .settings-subtle, .meo-input-suggestion-detail, .meo-suggestion-parameters),
+:is(.more-tools-section-label, .more-tools-option-info, .preview-export-note, .find-status, .settings-description, .settings-jump, .settings-native, .settings-unassigned, .settings-context, .settings-empty, .settings-reset-description, .settings-tab-badge, .settings-subtle, .meo-input-suggestion-detail, .meo-suggestion-parameters),
 .changes-review-empty, .changes-review-header, .changes-review-section-label,
 .settings-paste-contexts dd,
 .settings-searchbox > svg,

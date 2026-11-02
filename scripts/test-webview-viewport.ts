@@ -896,8 +896,9 @@ async function main() {
         languageAutoLabel: panel.querySelector<HTMLElement>('[data-ui-language="auto"] .segmented-control-button-label')?.textContent,
         directChildren: options.every((option) => option.parentElement === panel),
         separatorCount: panel.querySelectorAll(':scope > .more-tools-separator').length,
+        supportHeading: panel.querySelector<HTMLElement>('.more-tools-support-heading')?.textContent,
         feedbackPrompt: panel.querySelector<HTMLElement>('.more-tools-feedback-prompt')?.textContent,
-        feedbackLabel: panel.querySelector<HTMLElement>('.more-tools-feedback-link')?.textContent?.trim(),
+        feedbackLabel: panel.querySelector<HTMLElement>('.more-tools-feedback-action')?.textContent?.trim(),
         width: panel.getBoundingClientRect().width,
         clientWidth: panel.clientWidth,
         scrollWidth: panel.scrollWidth,
@@ -910,14 +911,15 @@ async function main() {
     if (
       JSON.stringify(moreToolsLayout.labels) !== JSON.stringify([
         '显示行号', '折叠长代码块', '限制宽度', '粗体文字着色', '标题加粗',
-        '表格浮动表头', '外观 · 输入 · 快捷键'
+        '表格浮动表头', '外观 · 输入 · 快捷键', '遇到问题或有建议？'
       ]) ||
       moreToolsLayout.topHeading !== '文档显示' ||
       moreToolsLayout.languageAutoLabel !== '自动' ||
       !moreToolsLayout.directChildren ||
-      moreToolsLayout.separatorCount !== 1 ||
-      moreToolsLayout.feedbackPrompt !== '使用中遇到问题？' ||
-      moreToolsLayout.feedbackLabel !== '欢迎反馈' ||
+      moreToolsLayout.separatorCount !== 0 ||
+      moreToolsLayout.supportHeading !== '关于与支持' ||
+      moreToolsLayout.feedbackPrompt !== '遇到问题或有建议？' ||
+      moreToolsLayout.feedbackLabel !== '去反馈' ||
       moreToolsLayout.width > 288 ||
       moreToolsLayout.scrollWidth > moreToolsLayout.clientWidth ||
       moreToolsLayout.fontSizeModeHeight !== 26 ||
