@@ -450,6 +450,44 @@ try {
     assert.deepEqual(stable, {state: true, line: true, link: true, scroll: true, recolored: true}, `${large ? 'large' : 'ordinary'} document color changes preserve editor state, DOM and viewport`);
     await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', {data: {type: 'uiColorsChanged', colors: {light: {}, dark: {}}}})));
   }
+  const checkFeedbackAction = async (label: string, blue = true) => {
+    const color = await page.$eval('.more-tools-feedback-action', element => getComputedStyle(element).color);
+    const [red, green, blueChannel] = channels(color);
+    if (blue) assert.ok(blueChannel! > green! && green! > red!, `${label}: the feedback action stays blue (${color})`);
+    for (const name of ['surface-raised', 'surface-hover', 'surface-pressed']) {
+      const values = [luminance(color), luminance(await role(name))];
+      assert.ok((Math.max(...values) + 0.05) / (Math.min(...values) + 0.05) >= 4.5, `${label}: feedback text stays readable on ${name}`);
+    }
+    return color;
+  };
+  for (const appearance of ['light', 'dark']) {
+    await openFixture();
+    await page.evaluate(appearance => {
+      document.body.className = 'vscode-' + appearance;
+      const root = document.documentElement.style;
+      root.setProperty('--vscode-editor-background', appearance === 'light' ? '#FFFFFF' : '#22272E');
+      root.setProperty('--vscode-editorWidget-background', appearance === 'light' ? '#FAFAFD' : '#22272E');
+      window.dispatchEvent(new MessageEvent('message', {data: {type: 'uiColorsChanged', colors: {light: {}, dark: {}}}}));
+      window.dispatchEvent(new MessageEvent('message', {data: {type: 'vscodeCodeThemeChanged', appearance, vscodeTheme: {name: 'Feedback blue', type: appearance, colors: {}, tokenColors: []}}}));
+    }, appearance);
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.editorAppearance), appearance);
+    const initial = await checkFeedbackAction(appearance);
+    await page.evaluate(appearance => window.dispatchEvent(new MessageEvent('message', {data: {type: 'uiColorsChanged', colors: {
+      light: {}, dark: {}, [appearance]: {accent: '#DD0088', textEmphasis: '#00FF00', link: '#FF0000'}
+    }}})), appearance);
+    assert.equal(await checkFeedbackAction(appearance + '/custom accent and content'), initial,
+      'Feedback blue is independent of custom accent, heading and document link colors');
+    await page.evaluate(appearance => window.dispatchEvent(new MessageEvent('message', {data: {type: 'uiColorsChanged', colors: {
+      light: {}, dark: {}, [appearance]: {surface: '#777777'}
+    }}})), appearance);
+    await checkFeedbackAction(appearance + '/custom surface');
+  }
+  await page.evaluate(() => {
+    document.body.className = 'vscode-high-contrast';
+    document.documentElement.style.setProperty('--vscode-textLink-foreground', '#FFFF00');
+    window.dispatchEvent(new MessageEvent('message', {data: {type: 'vscodeCodeThemeChanged', appearance: 'dark', vscodeTheme: {name: 'HC feedback', type: 'dark', colors: {}, tokenColors: []}}}));
+  });
+  assert.equal(await checkFeedbackAction('high contrast', false), 'rgb(255, 255, 0)', 'High contrast keeps the native accessible link color');
   assert.deepEqual(errors, []);
-  console.log('Production appearance: bilingual light/dark layout, defaults, semantic colors, drag projection/coalescing, autosave, all close paths, validation, retry, reload, external changes, delayed acknowledgements and high contrast passed');
+  console.log('Production appearance: bilingual light/dark layout, defaults, semantic colors, drag projection/coalescing, autosave, all close paths, validation, retry, reload, external changes, delayed acknowledgements, high contrast and contrast-corrected feedback blue passed');
 } finally { await closeTestBrowser(browser); }

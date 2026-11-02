@@ -183,6 +183,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
       const accentHover = fit(mix(accent, endpoint([accent]), appearance === 'light' ? 0.08 : 0.06), [endpoint([accent])], 4.55);
       const onAccent = fit(endpoint([accent, accentHover]), [accent, accentHover], 4.55);
       const accentText = fit(accent, surfaces, 4.55);
+      const feedbackAction = fit(highContrast ? link : sample(appearance === 'light' ? '#0069CC' : '#58A6FF'), [raised, hover, pressed], 4.55);
       const selectedText = fit(custom.text ? text : neutral(nativeSelectionText ?? text), [selected], 4.55);
       const contentEmphasis = fit(textEmphasis, contentSurfaces, 4.55);
       // Preserve semantic hue/chroma when raising contrast. Mixing toward white
@@ -214,6 +215,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
         focus: nativeFocus ?? fit(accent, [surface, raised, field], 3.05),
         'selection-border': nativeActiveBorder ?? selected,
         accent, 'accent-hover': accentHover, 'on-accent': onAccent, 'accent-text': accentText,
+        'feedback-action': feedbackAction,
         'text-emphasis': fit(contentEmphasis, highContrast ? [raised, hover] : [raised, hover, selected], 4.55),
         'text-emphasis-content': contentEmphasis,
         link: fit(link, linkSurfaces, 4.55),

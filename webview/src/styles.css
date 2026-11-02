@@ -8396,6 +8396,7 @@ html[data-meo-ui-contrast='high'] .appearance-color-field:not(:focus-within):not
 .more-tools-navigation-option:focus-visible:not(:disabled) { outline: 1px solid var(--meo-ui-focus) !important; outline-offset: -1px; }
 .more-tools-option.more-tools-navigation-option:active:not(:disabled) { background: var(--meo-ui-surface-pressed); }
 .more-tools-navigation-action { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; white-space: nowrap; }
+.more-tools-feedback-action { color: var(--meo-ui-feedback-action); }
 @media (max-width: 620px) {
   .settings-window { width: calc(100vw - 16px); height: calc(100dvh - 16px); }
   .settings-titlebar { padding-inline: 16px; }

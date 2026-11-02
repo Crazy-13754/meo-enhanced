@@ -15,7 +15,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, isEditorCommandId, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, MessageSquare, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, CircleQuestionMark, ExternalLink, History, Info } from 'lucide';
 import { createCodicon } from './helpers/codicons';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
@@ -1381,7 +1381,7 @@ reportIssueAction.className = 'more-tools-navigation-action more-tools-feedback-
 const reportIssueLabel = document.createElement('span');
 reportIssueLabel.textContent = activeUiStrings.reportIssue;
 reportIssueAction.append(reportIssueLabel, createElement(ExternalLink, { width: 13, height: 13, 'aria-hidden': 'true' }));
-reportIssueButton.append(createMoreToolsControlHeading(MessageSquare, feedbackPrompt), reportIssueAction);
+reportIssueButton.append(createMoreToolsControlHeading(CircleQuestionMark, feedbackPrompt), reportIssueAction);
 moreToolsPanel.append(
   displaySettingsHeading,
   sourceLineNumbersBtn,
