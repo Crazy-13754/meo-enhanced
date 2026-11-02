@@ -416,6 +416,9 @@ preservation and unchanged HTML node identity after prose input. GitHub's separa
 filter remains unchanged. Screenshots are saved under `.local/html-style-audit/`.
 Inline author boxes also check nested sizing, stylesheet and explicit box-model
 overrides, and that the actual text stays within its declared content box.
+`scripts/test-toolbar-menus-browser.ts` checks narrow Live/Source/Preview switches
+at fractional display scale, preserving toolbar bounds and source while requiring
+zero window error events, including ResizeObserver delivery errors.
 
 `bun scripts/test-html-content.ts --lifecycle-only` checks pending/loaded native
 picture and srcset nodes, uninterrupted audio, form/disclosure state, changed URLs,

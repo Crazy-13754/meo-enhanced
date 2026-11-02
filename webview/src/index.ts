@@ -1674,13 +1674,23 @@ const syncToolbarOverflow = () => {
   if (!moreToolsPanel.hidden) setMoreToolsVisible(true);
 };
 
-const toolbarResizeObserver = new ResizeObserver(syncToolbarOverflow);
+let toolbarOverflowFrame: number | null = null;
+const requestToolbarOverflow = () => {
+  if (toolbarOverflowFrame !== null) return;
+  toolbarOverflowFrame = requestAnimationFrame(() => {
+    toolbarOverflowFrame = null;
+    syncToolbarOverflow();
+  });
+};
+// Moving controls changes the observed groups themselves. Write before the next
+// frame's layout, rather than re-entering ResizeObserver's delivery loop.
+const toolbarResizeObserver = new ResizeObserver(requestToolbarOverflow);
 toolbarResizeObserver.observe(toolbar);
 toolbarResizeObserver.observe(formatGroup);
 toolbarResizeObserver.observe(previewFormatGroup);
 toolbarResizeObserver.observe(rightGroup);
 toolbarResizeObserver.observe(modeGroup);
-requestAnimationFrame(syncToolbarOverflow);
+requestToolbarOverflow();
 
 const existingEditorWrapper = root.querySelector('.editor-wrapper');
 const editorWrapper = existingEditorWrapper instanceof HTMLElement ? existingEditorWrapper : document.createElement('div');

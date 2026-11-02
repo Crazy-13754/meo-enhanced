@@ -396,6 +396,27 @@ try {
     await page.screenshot({ path: `tmp/preview-toolbar/export-${appearance}-${language}.png` });
     await page.keyboard.press('Escape');
   }
+  await page.evaluate(() => {
+    (window as any).__toolbarObserverErrors = [];
+    window.addEventListener('error', event => (window as any).__toolbarObserverErrors.push(event.message));
+  });
+  await page.setViewport({ width:720, height:950, deviceScaleFactor:1.5 });
+  for (const mode of ['live','preview','source','preview','live']) {
+    await page.click(`.mode-group button[data-mode="${mode}"]`);
+    await page.waitForFunction(mode => document.getElementById('app')?.dataset.mode === mode
+      && !document.querySelector('.mode-group [aria-busy="true"]'), {}, mode);
+    await page.evaluate(async () => { for (let frame=0;frame<12;frame++) await new Promise(requestAnimationFrame); });
+    const geometry = await page.$eval('.mode-toolbar', toolbar => {
+      const box=toolbar.getBoundingClientRect(), modes=toolbar.querySelector('.mode-group')!.getBoundingClientRect();
+      return {top:box.top,left:box.left,right:box.right,height:box.height,modeRight:modes.right,width:innerWidth};
+    });
+    assert.ok(geometry.top === 0 && geometry.left === 0 && geometry.right <= geometry.width+1
+      && geometry.height === 40 && geometry.modeRight <= geometry.width+1, `${mode}: toolbar must fit the narrow viewport`);
+    assert.equal(await page.evaluate(() => (document.querySelector('.cm-content') as any).cmTile.root.view.state.doc.toString()),text);
+  }
+  assert.deepEqual(await page.evaluate(() => (window as any).__toolbarObserverErrors),[],
+    'Narrow mode transitions must not re-enter ResizeObserver delivery by moving observed controls');
+  await page.screenshot({path:'tmp/preview-toolbar/narrow-mode-transitions.png'});
   await page.close();
   console.log('Toolbar menus browser test passed.');
 } finally {
