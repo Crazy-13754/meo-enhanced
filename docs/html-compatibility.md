@@ -56,9 +56,9 @@ the reading document, excluding exposed HTML source and preview labels. Only
 conditional `media`, `supports` and `container` rules are retained; imports,
 font registration and executable/resource CSS are filtered.
 
-HTML block content retains the browser's native box sizing on both surfaces,
-including native control defaults. Reader layout resets do not reinterpret an
-author's width, height and padding. Explicit inline, document stylesheet and
+Author HTML, including inline fragments and their children, retains the browser's
+native box sizing on both surfaces, including native control defaults. Reader
+layout resets do not reinterpret an author's width, height and padding. Explicit inline, document stylesheet and
 preset rules can still choose another box model. Fonts, line spacing and heading
 colors continue to follow the surface or selected preset.
 

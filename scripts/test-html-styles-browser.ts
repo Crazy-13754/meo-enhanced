@@ -216,6 +216,21 @@ export async function checkHtmlStyleRendering(): Promise<void> {
           for (const box of staticLayout.boxes) {
             assert.ok(box.horizontal <= 1 && box.vertical <= 3, `${label}: rounded text moved outside its centered content: ${JSON.stringify(box)}`);
           }
+          const inlineBoxes = await page.evaluate(live => {
+            const doc = live ? document : document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+            return ['compat-inline-box','compat-inline-nested','compat-inline-rule','compat-inline-explicit'].map(id => {
+              const node = doc.getElementById(id)!, box = node.getBoundingClientRect(), range = doc.createRange();
+              range.selectNodeContents(node); const text = range.getBoundingClientRect();
+              return {width:box.width,height:box.height,sizing:doc.defaultView!.getComputedStyle(node).boxSizing,
+                textFits:text.top >= box.top-1 && text.bottom <= box.bottom+1};
+            });
+          }, surface === 'live');
+          assert.deepEqual(inlineBoxes, [
+            {width:188,height:52,sizing:'content-box',textFits:true},
+            {width:92,height:32,sizing:'content-box',textFits:true},
+            {width:188,height:52,sizing:'content-box',textFits:true},
+            {width:188,height:52,sizing:'border-box',textFits:true}
+          ], `${label}: inline author HTML and its descendants keep the same native box semantics`);
           assert.deepEqual(result.box,{border:'3px',left:'7px',style:'dashed',radius:'12px',padding:'12px',sizing:'border-box'},label);
           assert.match(result.type.family,/Example; Family/,label);
           assert.equal(result.type.weight,'450',label); assert.equal(result.type.line,'28.8px',label);

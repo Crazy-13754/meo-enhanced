@@ -19,6 +19,12 @@ export const htmlCompatibilityFixture = `
 
 Inline <samp id="compat-inline">output</samp> <var>x</var> <time datetime="2026-10-29">today</time> <cite>citation</cite> <ins>inserted</ins> <bdi>text</bdi>.
 
+Inline box: <span id="compat-inline-box" style="display:inline-block;width:160px;height:24px;padding:12px;border:2px solid #2563eb;text-align:center;line-height:20px">Inline authored box</span> after.
+
+Nested box: <span style="display:inline-block"><em id="compat-inline-nested" style="display:inline-block;width:80px;height:20px;padding:5px;border:1px solid #2563eb">Nested</em></span> after.
+
+Author stylesheet: <span id="compat-inline-rule" class="compat-sized">Rule box</span>; explicit model: <span id="compat-inline-explicit" class="compat-border-box" style="display:inline-block;width:188px;height:52px;padding:12px;border:2px solid #2563eb">Explicit box</span>.
+
 <aside id="compat-structure" class="compat-grid" aria-label="HTML example" data-kind="example" style="--Accent:rgb(12, 90, 140)">
 <header><dfn>Definition</dfn><wbr><samp>output</samp></header>
 <div id="compat-flex" style="display:flex;gap:8px;align-items:center"><b>Flex</b><span>item</span></div>
@@ -41,6 +47,7 @@ Inline <samp id="compat-inline">output</samp> <var>x</var> <time datetime="2026-
 .compat-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;color:var(--Accent)}
 .compat-paint {width:24px;height:12px;background-color:red}
 .compat-border-box {box-sizing:border-box}
+.compat-sized {display:inline-block;width:160px;height:24px;padding:12px;border:2px solid #2563eb}
 #app {border:99px solid red}
 @import "https://example.invalid/style.css";
 </style>

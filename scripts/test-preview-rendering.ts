@@ -665,7 +665,7 @@ if (previewColors.html.includes('meo-md-color-swatch')
 if (exportedColors.html.includes('meo-md-color-swatch') || !exportedColors.html.includes('#abc')) {
   throw new Error('HTML export must keep HEX text without enabling Preview-only swatches');
 }
-if (!rawHtmlUnderline.html.includes('<u>underlined</u>')) {
+if (!/<u\b[^>]*>underlined<\/u>/.test(rawHtmlUnderline.html)) {
   throw new Error(`Preview must preserve safe HTML underline tags: ${rawHtmlUnderline.html}`);
 }
 if (

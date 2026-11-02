@@ -145,7 +145,7 @@ function checkExport(): void {
     assert.match(html, /<p[^>]*id="center"[^>]*style="color:red"/);
     assert.match(html, /<h2>HTML heading<\/h2>/);
     assert.match(html, /<section><p>Semantic section<\/p><\/section>/);
-    assert.match(html, /<ruby>字<rt>zi<\/rt><\/ruby>/);
+    assert.match(html, /<ruby\b[^>]*>字<rt\b[^>]*>zi<\/rt><\/ruby>/);
     assert.match(html, /<caption>HTML table caption<\/caption>/);
     assert.match(html, /<strong>bold<\/strong>/);
     assert.match(html, /<code>\*\*literal\*\* &lt;tag&gt;<\/code>/);

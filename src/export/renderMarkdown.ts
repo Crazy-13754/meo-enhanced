@@ -23,7 +23,7 @@ import {
   isSupportedHtmlSource,
   sanitizeHtmlStyle,
   htmlSanitizedStyleRules,
-  supportedHtmlTags, normalizeHtmlAttribute, mapHtmlSrcset, getHtmlTagNames,
+  supportedHtmlTags, normalizeHtmlAttribute, mapHtmlSrcset, getHtmlTagNames, getHtmlRootTagName,
   renderedHtmlTagNames, canonicalHtmlTagName, canonicalHtmlAttributeName
 } from '../shared/htmlPolicy';
 import { inspectHtmlStylesheets } from '../shared/htmlStylesheet';
@@ -764,6 +764,12 @@ function installSafeHtmlTransform(
     const source = String(htmlNode?.content ?? '');
     if (htmlNode?.meta?.meoTrustedHtml === true || generatedFootnoteTags?.has(source)) return source;
     let rendered = githubSanitize ? githubSanitize(source) : sanitizeRawSource(source, String(htmlNode?.type ?? ''));
+    // Inline author HTML has no block wrapper. Mark its sanitized root so the
+    // reading layout can apply the same native box rules as Live HTML content.
+    if (!githubSanitize && preserveSourceStyles && htmlNode?.type === 'html_inline'
+      && supportedHtmlTags.has(getHtmlRootTagName(source) ?? '')) {
+      rendered = rendered.replace(/^(\s*<[a-z][a-z\d-]*)(?=[\s>])/i, '$1 data-meo-html-content=""');
+    }
     if (githubSanitize && Array.isArray(htmlNode.meta?.meoGithubHeadingIds)) {
       let headingIndex = 0;
       rendered = rendered.replace(/<h[1-6]\b[^>]*>/gi, (opening) => {
