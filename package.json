@@ -611,6 +611,7 @@
     }
   },
   "scripts": {
+    "prototype:mindmap": "bun scripts/build-mindmap-prototype.ts",
     "test:custom-preview-presets": "bun scripts/test-custom-preview-presets.ts && bun scripts/test-vscode-preview-presets.ts && bun scripts/test-custom-preview-presets-browser.ts && bun scripts/test-preview-preset-management-browser.ts",
     "test:preview-presets": "bun scripts/test-preview-presets.ts && bun scripts/test-export-links.ts && bun scripts/test-preview-fonts.ts && bun scripts/test-preview-preset-preferences.ts && bun scripts/test-github-readme-compatibility.ts && bun scripts/test-preview-preset-host.ts && bun scripts/test-preview-preset-preferences-browser.ts && bun scripts/test-preview-font-refresh-browser.ts && bun scripts/test-preview-presets-browser.ts && bun scripts/test-preview-preset-position.ts && bun scripts/test-preview-preset-position.ts --large && bun scripts/test-preview-outline-viewport-browser.ts && bun scripts/test-github-preset-export-browser.ts && bun scripts/test-export-links-browser.ts",
     "install:all": "bun install && (cd webview && bun install)",

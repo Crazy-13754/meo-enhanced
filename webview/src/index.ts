@@ -4441,6 +4441,28 @@ window.addEventListener('pagehide', () => readingPositionLifecycle?.flush());
 scheduleReadyHandshake();
 scheduleEditorBundleWarmupAfterReady();
 
+// Temporary comparison UI; only the Development Host opts into this prototype.
+if (document.body.dataset.meoMindmapPrototype === 'true') {
+  void import('./mindmap.prototype').then(({ mountMindmapPrototype }) => {
+    mountMindmapPrototype({
+      root, editorSurface: editorWrapper, entryContainer: toolbarRight,
+      getText: getCurrentEditorText,
+      getLanguage: () => activeUiLanguage,
+      revealLine(line) {
+        if (root.dataset.mode === 'preview') void previewController.revealSourcePosition(line, () => true);
+        else editor?.scrollToLine(line, 'upper');
+      },
+      preserveReading() {
+        const owner = root.dataset.mode === 'preview' ? 'preview' : 'editor';
+        const anchor = editor?.captureModeTransitionAnchorToken?.(owner);
+        return () => {
+          if (anchor) editor?.restoreViewportAnchorToken?.(anchor, owner);
+        };
+      }
+    });
+  });
+}
+
 function refreshShortcutHints(): void {
   shortcutHints = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
   tooltipBinding.refreshShortcuts();

@@ -1074,7 +1074,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         <link href="${styleUri}" rel="stylesheet" />
         ${preloadMermaid ? `<link rel="modulepreload" href="${mermaidModuleUri}" />` : ''}
       </head>
-      <body data-meo-katex-src="${katexStyleUri}" data-meo-mermaid-src="${mermaidRuntimeUri}" data-meo-mermaid-module-src="${mermaidModuleUri}" data-meo-git-diff-worker-src="${gitDiffWorkerUri}" data-meo-shiki-worker-src="${shikiWorkerUri}" data-meo-markdown-worker-src="${markdownWorkerUri}" data-meo-script-nonce="${nonce}">
+      <body data-meo-mindmap-prototype="${this.context.extensionMode === vscode.ExtensionMode.Development}" data-meo-katex-src="${katexStyleUri}" data-meo-mermaid-src="${mermaidRuntimeUri}" data-meo-mermaid-module-src="${mermaidModuleUri}" data-meo-git-diff-worker-src="${gitDiffWorkerUri}" data-meo-shiki-worker-src="${shikiWorkerUri}" data-meo-markdown-worker-src="${markdownWorkerUri}" data-meo-script-nonce="${nonce}">
         <div id="app" class="editor-root">
           ${getWebviewPreloadShellMarkup()}
         </div>
