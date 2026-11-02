@@ -41,6 +41,13 @@ parsing. Inline HTML participates in inline Markdown. MEO retains its existing
 literal HTML `code` rule. Source, selections and history always refer to the
 original Markdown, never serialized rendered DOM.
 
+An explicit root closing tag also bounds a fragment whose children omit end
+tags. Live and Preview let their existing native parsing and sanitization repair
+that interior for presentation; the source is not rewritten. Fragment discovery
+does not infer a missing root end from EOF, later siblings, comments or literal
+code examples. Tag input assistance still requires explicit pairs before reusing
+an existing closing tag.
+
 ## Styles and resources
 
 See [inline styles](html-inline-styles.md) for the declaration policy. Document
@@ -48,6 +55,12 @@ See [inline styles](html-inline-styles.md) for the declaration policy. Document
 the reading document, excluding exposed HTML source and preview labels. Only
 conditional `media`, `supports` and `container` rules are retained; imports,
 font registration and executable/resource CSS are filtered.
+
+HTML block content retains the browser's native box sizing on both surfaces,
+including native control defaults. Reader layout resets do not reinterpret an
+author's width, height and padding. Explicit inline, document stylesheet and
+preset rules can still choose another box model. Fonts, line spacing and heading
+colors continue to follow the surface or selected preset.
 
 Live owns one derived stylesheet per surface. Optimized documents collect it
 in the existing Markdown context worker and retain it through proven plain-text

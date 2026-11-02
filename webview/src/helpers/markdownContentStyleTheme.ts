@@ -3,6 +3,7 @@ import { darkDefaultLiveStrongForeground, markdownContentStyles, markdownHeading
 import { mathReflowBaseStyle } from '../../../src/shared/mathStyles';
 
 export const markdownContentStyleTheme = EditorView.baseTheme({
+  '& :where(.meo-md-html-content *, .meo-md-html-inline)': markdownContentStyles.htmlContent,
   '&.meo-mode-live': {
     '--meo-content-highlight': 'var(--meo-live-highlight-background)',
     '--meo-content-heading-foreground': 'var(--meo-ui-text-emphasis-content)',

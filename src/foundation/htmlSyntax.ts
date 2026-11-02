@@ -66,8 +66,11 @@ export function scanHtmlTags(source: string): HtmlTagToken[] {
   return tags;
 }
 
-/** Balanced root fragments retain offsets into the original text, never DOM serialization. */
-export function splitHtmlBlockFragments(source: string): Array<{ from: number; to: number }> {
+/** Explicit root boundaries retain source offsets; native HTML parsing repairs their interior. */
+export function splitHtmlBlockFragments(
+  source: string,
+  { requirePairedChildren = false }: { requirePairedChildren?: boolean } = {}
+): Array<{ from: number; to: number }> {
   const fragments: Array<{ from: number; to: number }> = [];
   const stack: string[] = [];
   let from = 0;
@@ -81,8 +84,13 @@ export function splitHtmlBlockFragments(source: string): Array<{ from: number; t
       }
       stack.push(tag.name);
     } else if (tag.closing) {
-      if (stack.at(-1) !== tag.name) continue;
-      stack.pop();
+      const open = requirePairedChildren
+        ? (stack.at(-1) === tag.name ? stack.length - 1 : -1)
+        : stack.lastIndexOf(tag.name);
+      if (open < 0) continue;
+      // A real ancestor end closes omitted/mismatched children as well. Never
+      // infer a root end from EOF or a sibling: following Markdown stays outside.
+      stack.length = open;
       if (!stack.length) fragments.push({ from, to: tag.to });
     } else if (!tag.selfClosing) stack.push(tag.name);
   }

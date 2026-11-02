@@ -9,6 +9,14 @@ export const htmlTextShadowExample = '<h1 style="text-shadow: 5px 5px 5px #FF000
 export const htmlCompatibilityFixture = `
 <div id="compat-text-shadow">${htmlTextShadowExample}</div>
 
+<svg id="compat-star" xmlns="http://www.w3.org/2000/svg" height="190"><polygon points="100,10 40,180 190,60 10,60 160,180" style="fill:lime;stroke:purple;stroke-width:5;fill-rule:evenodd;clip-rule:evenodd"></svg>
+
+<p id="compat-rounded-fill" style="border-radius:25px;background:#8AC007;padding:20px;width:200px;height:20px;text-align:center">圆角</p>
+
+<p id="compat-rounded-border" style="border-radius:25px;border:2px solid #8AC007;padding:20px;width:200px;height:20px;text-align:center">圆角</p>
+
+<p id="compat-rounded-authored" class="compat-border-box" style="border-radius:25px;border:2px solid #8AC007;padding:20px;width:200px;height:60px;text-align:center">Authored box</p>
+
 Inline <samp id="compat-inline">output</samp> <var>x</var> <time datetime="2026-10-29">today</time> <cite>citation</cite> <ins>inserted</ins> <bdi>text</bdi>.
 
 <aside id="compat-structure" class="compat-grid" aria-label="HTML example" data-kind="example" style="--Accent:rgb(12, 90, 140)">
@@ -32,6 +40,7 @@ Inline <samp id="compat-inline">output</samp> <var>x</var> <time datetime="2026-
 <style>
 .compat-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;color:var(--Accent)}
 .compat-paint {width:24px;height:12px;background-color:red}
+.compat-border-box {box-sizing:border-box}
 #app {border:99px solid red}
 @import "https://example.invalid/style.css";
 </style>

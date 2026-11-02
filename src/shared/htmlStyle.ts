@@ -137,6 +137,7 @@ const rules: Record<string, StyleValidator> = {
   display: keywords('none block inline inline-block flow-root flex inline-flex grid inline-grid contents table inline-table table-row table-cell table-row-group table-header-group table-footer-group table-column table-column-group table-caption list-item'), visibility: keywords('visible hidden collapse'),
   opacity: value => scalar(value) && +value >= 0 && +value <= 1 || percent(value) && +value.slice(0, -1) >= 0 && +value.slice(0, -1) <= 100,
   'box-sizing': keywords('content-box border-box'),
+  'fill-rule': keywords('nonzero evenodd'), 'clip-rule': keywords('nonzero evenodd'),
   'list-style-type': listType, 'list-style-position': listPosition,
   'list-style': value => {
     const values = split(value, ' ');

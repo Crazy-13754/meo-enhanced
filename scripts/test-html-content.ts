@@ -59,6 +59,19 @@ const repoRoot = path.resolve(import.meta.dir, '..');
     'Roots on one source line still share one block widget');
   assert.deepEqual(collect('<details>\n<summary>Unclosed</summary>\n\n```html\n</details>\n```\n\n<div>Inner</div>'), [],
     'A fenced closing tag cannot complete an unclosed HTML root');
+  for (const fragment of [
+    '<svg height="190"><polygon points="100,10 40,180 190,60 10,60 160,180" style="fill:lime;fill-rule:evenodd"></svg>',
+    '<div><p>Omitted paragraph end</div>',
+    '<ul><li>First<li>Second</ul>',
+    '<svg><g><svg><path d="M0 0h10"></svg></svg>',
+    '<div><span>Nested\n\n**Literal body**\n\n</div>'
+  ]) {
+    assert.deepEqual(collect(`${fragment}\n\nFollowing Markdown.\n\n<div>Separate</div>`),
+      [fragment, '<div>Separate</div>'], 'An explicit root end bounds tolerant HTML without consuming following content');
+  }
+  for (const fragment of ['<svg><polygon points="0,0 10,0 0,10">', '<div><span>Unclosed</span>']) {
+    assert.deepEqual(collect(fragment), [], 'A missing root end must not be invented');
+  }
 }
 {
   const doc = '<hr>\nRaw text\n\n**Markdown paragraph**\n\n<div>Separate HTML</div>';

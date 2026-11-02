@@ -27,7 +27,7 @@ there is no separate CSS property completion catalog to synchronize.
 | Tables | `border-collapse`, `border-spacing`, `caption-side`, `empty-cells`; cell borders and padding use the same rules |
 | Images | `object-fit`, common one/two-component `object-position`, `aspect-ratio`; image sizing remains with the existing image owner |
 | Layout | Flex/Grid display and tracks, gap, alignment, order, float/clear, columns; static/relative/absolute/sticky positioning and offsets |
-| Paint | Gradients, box/text shadows, outlines and static SVG fill/stroke declarations |
+| Paint | Gradients, box/text shadows, outlines and static SVG fill/stroke declarations; `fill-rule` and `clip-rule` accept `nonzero`/`evenodd` |
 | Ink and visibility | `color`, `background-color`, color/gradient `background`, ordinary document `display` values, `visibility`, `opacity` including percentages |
 
 These properties accept `inherit`, `initial` and `unset`. Supported lengths use

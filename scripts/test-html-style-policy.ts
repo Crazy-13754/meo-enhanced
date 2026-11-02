@@ -12,6 +12,7 @@ export function checkHtmlStylePolicy(): void {
     'margin-block-start': ['-.25em'], padding: ['1cm 2mm 3pt 4px'], 'padding-inline': ['1ch 2%'],
     width: ['80%', '0.0', '20vw', 'max-content'], 'max-width': ['none'], 'min-height': ['auto'],
     'inline-size': ['40ch'], 'min-block-size': ['10lh'], 'box-sizing': ['border-box'],
+    'fill-rule': ['evenodd', 'nonzero'], 'clip-rule': ['evenodd', 'nonzero'],
     'font-family': ['"Noto Sans CJK SC", serif', "'Example; Family', monospace", 'system-ui, sans-serif', '宋体, serif'],
     'font-size': ['large', 'smaller', '12pt'], 'font-weight': ['450', '562.5', 'bolder'],
     'font-variant': ['small-caps'], 'line-height': ['1.6', '150%', 'normal'],
@@ -45,6 +46,7 @@ export function checkHtmlStylePolicy(): void {
     'border-width:2%', 'font-weight:1001', 'font-weight:0', 'text-decoration:underline underline',
     'text-decoration:none underline', 'border-spacing:2px -1px', 'aspect-ratio:1/0',
     'object-position:left right', 'font-family:url(https://example.com/font)', 'color:rgb(bad)',
+    'fill-rule:bad', 'clip-rule:bad',
     'background:url(https://example.com/image)', 'color:var(--vscode-editor-foreground)',
     'color:red !important', 'color:r\\65 d', 'background-image:url(javascript:alert(1))']) {
     const result = inspectHtmlStyle(source);

@@ -263,6 +263,7 @@ ${documentSurfaceCss}
 }
 
 * { box-sizing: border-box; }
+${buildMarkdownContentStyleCss({htmlContent: ':where(.meo-export-html-block *)'})}
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--meo-bg);

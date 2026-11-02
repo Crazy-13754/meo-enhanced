@@ -73,7 +73,7 @@ export async function checkHtmlStyleRendering(): Promise<void> {
         let previewSource = '';
         page.on('pageerror', error => errors.push(String(error)));
         try {
-          await page.setViewport({width:1200,height:900});
+          await page.setViewport({width:1200,height:1500});
           await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
           await page.addStyleTag({path:'webview/src/styles.css'});
           await page.evaluate(code => {
@@ -195,6 +195,27 @@ export async function checkHtmlStyleRendering(): Promise<void> {
           assert.deepEqual(compatibility, {grid:'grid',gap:'6px',color:'rgb(12, 90, 140)',flex:'flex',aria:'HTML example',data:'example',
             svg:'http://www.w3.org/2000/svg',gradient:true,math:'http://www.w3.org/1998/Math/MathML',check:{checked:true,disabled:true},formAction:null,
             picture:{complete:true,width:1,source:true},media:[true,true],textShadow:'rgb(255, 0, 0) 5px 5px 5px',paint:12,mixed:'Mixed Markdown',outerBorder:'0px'}, `${label}: common HTML content must render on every surface`);
+          const staticLayout = await page.evaluate(live => {
+            const doc = live ? document : document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+            const polygon = doc.querySelector('#compat-star polygon') as SVGGeometryElement;
+            const ink = doc.defaultView!.getComputedStyle(polygon);
+            const boxes = ['compat-rounded-fill', 'compat-rounded-border', 'compat-rounded-authored'].map(id => {
+              const node = doc.getElementById(id)!, rect = node.getBoundingClientRect();
+              const range = doc.createRange(); range.selectNodeContents(node); const text = range.getBoundingClientRect();
+              return {width:rect.width,height:rect.height,sizing:doc.defaultView!.getComputedStyle(node).boxSizing,
+                horizontal:Math.abs(text.left+text.width/2-rect.left-rect.width/2),
+                vertical:Math.abs(text.top+text.height/2-rect.top-rect.height/2)};
+            });
+            return {rule:ink.fillRule,clip:ink.clipRule,centerFilled:polygon.isPointInFill(new DOMPoint(100,100)),boxes};
+          }, surface === 'live');
+          assert.deepEqual({rule:staticLayout.rule,clip:staticLayout.clip,centerFilled:staticLayout.centerFilled},
+            {rule:'evenodd',clip:'evenodd',centerFilled:false}, `${label}: tolerant SVG must preserve the author's hollow fill`);
+          assert.deepEqual(staticLayout.boxes.map(({width,height,sizing})=>({width,height,sizing})),
+            [{width:240,height:60,sizing:'content-box'},{width:244,height:64,sizing:'content-box'},
+              {width:200,height:60,sizing:'border-box'}], `${label}: author HTML keeps native boxes and explicit stylesheet overrides`);
+          for (const box of staticLayout.boxes) {
+            assert.ok(box.horizontal <= 1 && box.vertical <= 3, `${label}: rounded text moved outside its centered content: ${JSON.stringify(box)}`);
+          }
           assert.deepEqual(result.box,{border:'3px',left:'7px',style:'dashed',radius:'12px',padding:'12px',sizing:'border-box'},label);
           assert.match(result.type.family,/Example; Family/,label);
           assert.equal(result.type.weight,'450',label); assert.equal(result.type.line,'28.8px',label);

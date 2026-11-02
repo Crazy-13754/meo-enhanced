@@ -4,6 +4,7 @@ export const darkDefaultLiveStrongForeground = 'color-mix(in srgb, currentColor 
 
 /** Shared content styles. Surface adapters supply selectors, never independent style values. */
 export const markdownContentStyles = {
+  htmlContent: { boxSizing: 'revert' },
   emphasis: { fontStyle: 'italic' },
   strong: { fontWeight: '700' },
   strikethrough: { textDecoration: 'line-through' },

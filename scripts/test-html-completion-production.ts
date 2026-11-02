@@ -99,6 +99,12 @@ try {
     step = mode + ': closing tags';
     await prepare(mode, '<div>\n</|'); await manual(); await choose('div');
     assert.equal(await text(), '<div>\n</div>');
+    await prepare(mode, '<div><span|</div>'); await page.keyboard.type('>');
+    assert.equal(await text(), '<div><span></span></div>', 'a tolerant ancestor end must not suppress the new child closing tag');
+    await prepare(mode, '<div><div|</div>'); await page.keyboard.type('>');
+    assert.equal(await text(), '<div><div></div></div>', 'a new same-name child keeps the existing parent end');
+    await prepare(mode, '<div><p>First</div><|'); await page.keyboard.type('/');
+    assert.equal(await text(), '<div><p>First</div></', 'closing assistance must retire children closed by a real ancestor end');
 
     step = mode + ': tags in HTML code and ordinary prose';
     await prepare(mode, '```html\n<di|\n```'); await page.keyboard.type('v'); await choose('div');

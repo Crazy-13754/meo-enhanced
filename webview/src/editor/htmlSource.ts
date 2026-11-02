@@ -22,7 +22,9 @@ export function createHtmlSourceEditing(
         const [tag] = scanHtmlTags(source);
         if (!tag || tag.from !== 0 || tag.to !== source.length || tag.closing || tag.selfClosing || !tagNames.has(tag.name)) return false;
         const rest = view.state.doc.sliceString(from, range?.to ?? view.state.doc.length);
-        if (splitHtmlBlockFragments(before + '>' + rest).some(fragment =>
+        // Pairing a new tag requires explicit child pairs. Rendering may repair
+        // missing ends, but that must not consume an existing parent's end here.
+        if (splitHtmlBlockFragments(before + '>' + rest, { requirePairedChildren: true }).some(fragment =>
           fragment.from <= open && fragment.to > before.length)) return false;
         view.dispatch({ changes: { from, insert: `></${tag.name}>` }, selection: { anchor: from + 1 },
           userEvent: 'input.type', scrollIntoView: true });
@@ -31,7 +33,7 @@ export function createHtmlSourceEditing(
       if (text === '/' && before.endsWith('<')) {
         const stack: string[] = [];
         for (const tag of scanHtmlTags(before.slice(0, -1))) {
-          if (tag.closing) { if (stack.at(-1) === tag.name) stack.pop(); }
+          if (tag.closing) { const open = stack.lastIndexOf(tag.name); if (open >= 0) stack.length = open; }
           else if (!tag.selfClosing) stack.push(tag.name);
         }
         const name = stack.at(-1);
