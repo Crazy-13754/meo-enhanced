@@ -350,14 +350,6 @@ liveStrongColoringBtn.setAttribute('role', 'menuitemcheckbox');
 liveStrongColoringBtn.setAttribute('aria-checked', 'false');
 appendMoreToolsOptionContent(liveStrongColoringBtn, Bold, activeUiStrings.strongColoring);
 
-const boldHeadingsBtn = document.createElement('button');
-boldHeadingsBtn.type = 'button';
-boldHeadingsBtn.className = 'more-tools-option more-tools-toggle-option is-active';
-boldHeadingsBtn.dataset.action = 'boldHeadings';
-boldHeadingsBtn.setAttribute('role', 'menuitemcheckbox');
-boldHeadingsBtn.setAttribute('aria-checked', 'true');
-appendMoreToolsOptionContent(boldHeadingsBtn, Heading, activeUiStrings.boldHeadings);
-
 const sourceLineNumbersBtn = document.createElement('button');
 sourceLineNumbersBtn.type = 'button';
 sourceLineNumbersBtn.className = 'more-tools-option more-tools-toggle-option is-active';
@@ -384,14 +376,6 @@ const largeDocumentTooltip = appendMoreToolsOptionContent(
   activeUiStrings.largeDocumentStartup,
   { id: 'large-document-startup-tooltip', text: activeUiStrings.largeDocumentStartupHint }
 );
-
-const tableStickyHeaderBtn = document.createElement('button');
-tableStickyHeaderBtn.type = 'button';
-tableStickyHeaderBtn.className = 'more-tools-option more-tools-toggle-option is-active';
-tableStickyHeaderBtn.dataset.action = 'tableStickyHeader';
-tableStickyHeaderBtn.setAttribute('role', 'menuitemcheckbox');
-tableStickyHeaderBtn.setAttribute('aria-checked', 'true');
-appendMoreToolsOptionContent(tableStickyHeaderBtn, Table2, activeUiStrings.stickyTableHeader);
 
 const restoreReadingPositionBtn = document.createElement('button');
 restoreReadingPositionBtn.type = 'button';
@@ -525,8 +509,6 @@ const setBoldHeadingsEnabled = (enabled: boolean, { post = true }: PostUpdateOpt
   } else {
     mutate();
   }
-  boldHeadingsBtn.classList.toggle('is-active', nextEnabled);
-  boldHeadingsBtn.setAttribute('aria-checked', nextEnabled ? 'true' : 'false');
   if (post && changed) vscode.postMessage({ type: 'setBoldHeadings', enabled: nextEnabled });
 };
 
@@ -542,11 +524,6 @@ const setLargeDocumentOptimizationEnabled = (
   if (post && changed) {
     vscode.postMessage({ type: 'setLargeDocumentOptimization', enabled: nextEnabled });
   }
-};
-
-const updateTableStickyHeaderUI = () => {
-  tableStickyHeaderBtn.classList.toggle('is-active', tableStickyHeaderEnabled);
-  tableStickyHeaderBtn.setAttribute('aria-checked', tableStickyHeaderEnabled ? 'true' : 'false');
 };
 
 const updateRestoreReadingPositionUI = () => {
@@ -609,7 +586,6 @@ const setTableStickyHeaderEnabled = (
   const nextEnabled = enabled === true;
   const changed = nextEnabled !== tableStickyHeaderEnabled;
   tableStickyHeaderEnabled = nextEnabled;
-  updateTableStickyHeaderUI();
   if (changed) editor?.setTableStickyHeaderEnabled(tableStickyHeaderEnabled);
   if (post && changed) {
     vscode.postMessage({ type: 'setTableStickyHeader', enabled: tableStickyHeaderEnabled });
@@ -1277,11 +1253,9 @@ const applyUiLanguage = (language: UiLanguage): void => {
   contentMaxWidthBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.constrainWidth;
   sourceLineNumbersBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.showLineNumbers;
   liveStrongColoringBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.strongColoring;
-  boldHeadingsBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.boldHeadings;
   longCodeBlockFoldingBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.foldLongCodeBlocks;
   largeDocumentOptimizationBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.largeDocumentStartup;
   largeDocumentTooltip?.setContent({ text: strings.largeDocumentStartupHint, kind: 'description' });
-  tableStickyHeaderBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.stickyTableHeader;
   restoreReadingPositionBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.resumeReadingPositionLabel;
   changesReviewControl.setUiLanguage(language);
   updateGitChangesGutterUI();
@@ -1388,8 +1362,6 @@ moreToolsPanel.append(
   longCodeBlockFoldingBtn,
   contentMaxWidthBtn,
   liveStrongColoringBtn,
-  boldHeadingsBtn,
-  tableStickyHeaderBtn,
   interfaceSettingsHeading,
   editorAppearanceRow,
   uiLanguageRow,
@@ -4400,9 +4372,6 @@ contentMaxWidthBtn.addEventListener('click', () => {
 liveStrongColoringBtn.addEventListener('click', () => {
   setLiveStrongColoring(!liveStrongColoring);
 });
-boldHeadingsBtn.addEventListener('click', () => {
-  setBoldHeadingsEnabled(!boldHeadingsEnabled);
-});
 sourceLineNumbersBtn.addEventListener('click', () => {
   const nextMode = pendingSourceLineNumbers === 'off' ? previousVisibleSourceLineNumbers : 'off';
   if (nextMode !== 'off') previousVisibleSourceLineNumbers = nextMode;
@@ -4420,9 +4389,6 @@ longCodeBlockFoldingBtn.addEventListener('click', () => {
 });
 largeDocumentOptimizationBtn.addEventListener('click', () => {
   setLargeDocumentOptimizationEnabled(!largeDocumentOptimizationEnabled);
-});
-tableStickyHeaderBtn.addEventListener('click', () => {
-  setTableStickyHeaderEnabled(!tableStickyHeaderEnabled);
 });
 restoreReadingPositionBtn.addEventListener('click', () => {
   setRestoreReadingPositionOnOpen(!restoreReadingPositionOnOpen);

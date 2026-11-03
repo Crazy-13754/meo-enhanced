@@ -5748,10 +5748,6 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   background: var(--meo-outline-hover-background);
 }
 
-.outline-close-button:hover {
-  color: var(--meo-outline-danger, var(--meo-ui-danger, #f48771));
-}
-
 .editor-wrapper[data-outline-mode='fixed'] .outline-header-button {
   opacity: 0;
   pointer-events: none;

@@ -235,11 +235,21 @@ try {
   await page.waitForSelector('.cm-editor.meo-mode-source');
   await page.click('.more-tools-wrapper > .format-button');
   assert.equal(await page.$eval('.more-tools-panel', element => element.getBoundingClientRect().width), 288);
-  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 8);
+  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 6);
+  assert.deepEqual(await page.$$eval('.more-tools-panel [role="menuitemcheckbox"]', elements => elements.map(element => (element as HTMLElement).dataset.action)), ['sourceLineNumbers', 'longCodeBlockFolding', 'contentMaxWidth', 'liveStrongColoring']);
   assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置', '关于与支持']);
   await page.click('.more-tools-settings-button');
   assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true);
   assert.equal(await page.$$eval('.settings-item', elements => elements.length), 9);
+  for (const [setting, type] of [['boldHeadings', 'setBoldHeadings'], ['stickyHeader', 'setTableStickyHeader']]) {
+    const toggle = `[data-setting="${setting}"] .settings-switch`;
+    assert.equal(await page.$eval(toggle, element => element.getAttribute('aria-checked')), 'true');
+    await page.locator(toggle).click();
+    assert.equal(await page.$eval(toggle, element => element.getAttribute('aria-checked')), 'false');
+    assert.deepEqual(await page.evaluate(type => (window as any).__messages.filter((message: any) => message.type === type).at(-1), type), { type, enabled: false });
+    await page.locator(toggle).click();
+    assert.equal(await page.$eval(toggle, element => element.getAttribute('aria-checked')), 'true');
+  }
   assert.equal(await page.$eval('.settings-footer', element => (element as HTMLElement).hidden), true);
   const height = await page.$eval('.settings-window', element => element.getBoundingClientRect().height);
   assert.equal(await page.$('[data-setting="fontSize"]'), null, 'font size moves out of General');
