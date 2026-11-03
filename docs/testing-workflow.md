@@ -174,6 +174,12 @@ opportunity, after the twelve-stable-frame task can finish. Text and table ancho
 retain the existing 12px bound through the same post-measure owner; a newer native
 wheel or navigation still takes precedence. Keep the original observation budgets.
 
+Full-document endurance checks formula source/result pairing immediately when the
+public undo/redo promise completes, as well as after the existing twelve-frame
+history observation. Native text focus alone does not establish completed formula
+presentation while its accepted input generation is still pending. The existing
+history restore owner retains its original retry budget and cancellation rules.
+
 Retained Preview settings are covered by `test-preview-webview-adapter.ts`
 (cache invalidation, delayed preload/render retirement, coalescing and unchanged
 switch reuse) and the font-wheel browser contract (Custom to Auto while hidden).

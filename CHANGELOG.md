@@ -12,6 +12,7 @@ Optimized project. New MEO Enhanced releases start from version 0.1.0.
 - Retired Mermaid source editing after pointer navigation even when a diagram render is still pending, preserving the clicked text and neighboring block positions.
 - Kept Live HTML tables fitted between history updates and size observation, avoiding a transient return to native column widths after undo or redo.
 - Preserved text and table reading anchors when delayed height measurements finish after a font-size change.
+- Completed formula undo and redo only after deferred source presentation is ready, retaining native focus at the restored formula.
 
 ## 0.3.39
 - Aligned Live heading line numbers as background parsing completes, including initial display and large-document remounts.

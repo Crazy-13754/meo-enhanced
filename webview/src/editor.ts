@@ -2029,6 +2029,9 @@ export function createEditor({
       }, isCurrent);
       return () => {
         if (!isCurrent()) return false;
+        // Native focus can return before deferred formula presentation has
+        // accepted the replay. Keep the existing restore pending until then.
+        if (block.kind === 'math' && isLiveInputDerivedWorkPending(view.state)) return false;
         view.contentDOM.focus({ preventScroll: true });
         return view.hasFocus;
       };
