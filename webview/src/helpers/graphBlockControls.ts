@@ -2,6 +2,11 @@ import { createElement, Maximize2, X, ZoomIn, ZoomOut } from 'lucide';
 import { ZoomReset } from './zoomResetIcon';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 
+/** Shared visual vocabulary for standard camera actions, including contributed views. */
+export function graphCameraIcon(id: string): Parameters<typeof createElement>[0] | undefined {
+  return id === 'zoom-in' ? ZoomIn : id === 'zoom-out' ? ZoomOut : id === 'fit' ? ZoomReset : undefined;
+}
+
 /** Graph gestures belong to one renderer; icons, order and labels belong to the host. */
 export function createGraphBlockControls(doc: Document, language: UiLanguage, actions: {
   zoomIn?: () => void; zoomOut?: () => void; fit?: () => void;
@@ -23,7 +28,7 @@ export function createGraphBlockControls(doc: Document, language: UiLanguage, ac
     button.className = 'meo-visual-control-btn meo-mermaid-zoom-btn'; button.dataset.action = id;
     if (id === 'fullscreen') button.classList.add('meo-mermaid-fullscreen-btn');
     if (id === 'close') button.classList.add('meo-mermaid-exit-btn');
-    button.append(doc.importNode(createElement(icon, { width: 16, height: 16, 'aria-hidden': 'true' }), true));
+    button.append(doc.importNode(createElement(graphCameraIcon(id) ?? icon, { width: 16, height: 16, 'aria-hidden': 'true' }), true));
     button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); run(event.detail > 0); });
     buttons.set(id, button); element.append(button);
   }

@@ -1,10 +1,11 @@
-import { createElement, FileText, X, Maximize2, PanelLeftRightDashed, ArrowLeft, TextSearch } from 'lucide';
+import { createElement, FileText, X, Maximize2, Columns2, ArrowLeft, FileSearch } from 'lucide';
 import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
 import { documentViewStyles } from './documentViewStyles';
 import { documentContentStyles } from './documentContentStyles';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { applyDocumentViewPalette, type DocumentSurfacePaletteInput } from './helpers/uiTheme';
+import { graphCameraIcon } from './helpers/graphBlockControls';
 
 type Host = {
   root: HTMLElement; editorSurface: HTMLElement; contentSurface: HTMLElement; entryContainer: HTMLElement;
@@ -98,7 +99,11 @@ export function mountDocumentViews(host: Host) {
     const selectionHint = selectedLine === null ? t('请先选择', 'Select an item first') : t('按所选内容定位正文', 'Locate selection in document');
     toDocument.dataset.tooltip = selectionHint;
     toDocument.setAttribute('aria-label', selectionHint);
-    if (locate) locate.disabled = running || dirty || selectedLine === null;
+    if (locate) {
+      locate.disabled = running || dirty || selectedLine === null;
+      const hint = selectedLine === null ? t('先选择内容，再定位正文', 'Select an item to locate in the document') : t('在正文中查看', 'Show in document');
+      locate.dataset.tooltip = hint; locate.setAttribute('aria-label', hint);
+    }
     for (const action of actionButtons) action.disabled = running || dirty;
   }
 
@@ -218,26 +223,38 @@ export function mountDocumentViews(host: Host) {
     toolbar.replaceChildren(); toolbar.hidden = !active; locate = undefined; actionButtons = [];
     if (!active) return;
     toolbar.setAttribute('aria-label', label(active));
-    locate = button(t('在正文中查看', 'Show in document'), TextSearch, () => {
+    const separator = () => {
+      const element = document.createElement('span'); element.className = 'document-view-tool-separator'; element.setAttribute('aria-hidden', 'true'); toolbar.append(element);
+    };
+    locate = button(t('在正文中查看', 'Show in document'), FileSearch, () => {
       if (selectedLine !== null) revealDocumentLine(selectedLine);
     });
-    locate.dataset.viewAction = 'locate'; toolbar.append(locate);
+    locate.dataset.viewAction = 'locate';
     const target = instance, current = generation;
     for (const action of target?.actions ?? []) {
-      const control = button(label(action), action.iconPaths.map(d => ['path', { d }]), () => {
+      const control = button(label(action), graphCameraIcon(action.id) ?? action.iconPaths.map(d => ['path', { d }]), () => {
         void Promise.resolve().then(() => {
           if (current === generation && instance === target) return action.run();
         }).catch(error => console.error('Document view action failed', error));
       });
+      if (action.id === 'fit') {
+        const text = document.createElement('span'); text.textContent = t('适应', 'Fit'); control.append(text); control.classList.add('has-label');
+      }
       control.dataset.viewAction = action.id; actionButtons.push(control); toolbar.append(control);
     }
-    const layoutButton = button(side ? t('全屏查看', 'Fullscreen') : t('左右分栏', 'Split view'), side ? Maximize2 : PanelLeftRightDashed, () => {
+    if (actionButtons.length) separator();
+    const layoutButton = button(side ? t('全屏查看', 'Fullscreen') : t('左右分栏', 'Split view'), side ? Maximize2 : Columns2, () => {
       if (side) restoreReading = host.preserveReading();
       side = !side; layout(); if (side) afterLayout(restoreReading);
     });
     layoutButton.dataset.viewAction = 'layout';
     const closeButton = button(t('关闭', 'Close'), X, () => close()); closeButton.dataset.viewAction = 'close';
-    toolbar.append(layoutButton, closeButton); updateAlignment();
+    toolbar.append(locate, layoutButton); separator(); toolbar.append(closeButton);
+    for (const control of toolbar.querySelectorAll<HTMLButtonElement>('button')) {
+      control.dataset.tooltip = control.title; control.dataset.tooltipPlacement = 'top'; control.dataset.tooltipLiveUpdate = 'true'; control.removeAttribute('title');
+      control.querySelector('svg')?.setAttribute('aria-hidden', 'true');
+    }
+    updateAlignment();
   }
   function setViews(next: readonly DocumentViewDescriptor[]) {
     if (active && !next.some(v => v.id === active!.id && v.entryUri === active!.entryUri)) close();
