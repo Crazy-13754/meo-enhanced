@@ -9,6 +9,7 @@ export const documentViewStyles = `
 .document-view-tool:focus-visible{outline:2px solid var(--meo-ui-focus);outline-offset:-2px}
 .document-view-tool:disabled{opacity:.4;cursor:default}
 .mm-view-canvas{position:relative;flex:1;min-height:0;overflow:hidden}
+.document-view-loading{z-index:0;color:var(--meo-view-foreground);background:var(--meo-view-background)}
 .mm-view-empty{margin:auto;text-align:center;color:var(--meo-view-muted-foreground);line-height:1.8;padding:24px}
 [data-document-view-side]{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}
 [data-document-view-side]>.editor-host,[data-document-view-side]>.preview-host{grid-area:1 / 1!important}

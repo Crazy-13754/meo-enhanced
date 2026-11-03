@@ -2,6 +2,7 @@ import { createElement, FileText, X, Maximize2, PanelLeftRightDashed, ArrowLeft,
 import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
 import { documentViewStyles } from './documentViewStyles';
+import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { applyDocumentViewPalette, type DocumentSurfacePaletteInput } from './helpers/uiTheme';
 
 type Host = {
@@ -34,6 +35,7 @@ export function mountDocumentViews(host: Host) {
   const panel = document.createElement('section'); panel.className = 'mm-view-panel'; panel.hidden = true; host.root.append(panel);
   const toolbar = document.createElement('div'); toolbar.className = 'document-view-toolbar'; toolbar.setAttribute('role', 'toolbar');
   const canvas = document.createElement('div'); canvas.className = 'mm-view-canvas'; panel.append(canvas, toolbar);
+  const loading = createLoadingPresentation('document-view-loading'); panel.append(loading.element);
   // Contributed canvases own their gestures; suppressing pointerdown here would
   // also suppress the compatibility mouse events used by renderers such as D3.
   canvas.setAttribute('data-editor-focus-transfer', ''); canvas.tabIndex = -1;
@@ -51,10 +53,16 @@ export function mountDocumentViews(host: Host) {
   let status: 'loading' | 'failure' | null = null;
   function presentStatus() {
     if (!status) return;
+    if (status === 'loading') {
+      loading.setLabel(t(`正在加载${active ? label(active) : '视图'}…`, `Loading ${active ? label(active) : 'view'}…`));
+      return;
+    }
     const message = document.createElement('p'); message.className = 'mm-view-empty';
-    message.textContent = status === 'loading' ? t('正在生成…', 'Loading…')
-      : t('视图加载失败，请关闭后重新打开。', 'The view could not load. Close it and try again.');
+    message.textContent = t('视图加载失败，请关闭后重新打开。', 'The view could not load. Close it and try again.');
     canvas.replaceChildren(message);
+  }
+  function finishLoading() {
+    loading.finish(); panel.removeAttribute('aria-busy'); canvas.inert = false;
   }
   function refreshAppearance() {
     if (active && !disposed) applyDocumentViewPalette(panel, host.getPalette());
@@ -122,6 +130,7 @@ export function mountDocumentViews(host: Host) {
     const id = active.id;
     if (side) restoreReading = host.preserveReading();
     ++generation; ++transition; clearTimeout(timer); dirty = false; running = false;
+    finishLoading();
     try { instance?.dispose(); } catch (error) { console.error('Document view disposal failed', error); }
     instance = undefined; active = undefined; selectedLine = null; status = null; canvas.replaceChildren(); layout();
     if (restore) afterLayout(restoreReading);
@@ -129,6 +138,7 @@ export function mountDocumentViews(host: Host) {
   }
   function failure(error: unknown) {
     console.error('Document view failed', error);
+    finishLoading();
     canvas.replaceChildren();
     renderToolbar();
     status = 'failure'; presentStatus();
@@ -137,12 +147,19 @@ export function mountDocumentViews(host: Host) {
     if (!active || !instance || running || !dirty) return;
     const current = generation, target = instance;
     dirty = false; running = true; selectedLine = null; updateAlignment();
-    try { await target.update({ text: host.getText(), revision: ++revision }); }
+    try {
+      await target.update({ text: host.getText(), revision: ++revision });
+      if (status === 'loading' && current === generation) await new Promise(requestAnimationFrame);
+    }
     catch (error) { if (current === generation) {
       try { target.dispose(); } catch (disposeError) { console.error('Document view disposal failed', disposeError); }
       instance = undefined; failure(error);
     } }
-    finally { if (current === generation) { running = false; updateAlignment(); if (dirty) void flush(); } }
+    finally { if (current === generation) {
+      running = false; updateAlignment();
+      if (dirty) void flush();
+      else if (status === 'loading') { status = null; finishLoading(); }
+    } }
   }
   function documentChanged() {
     if (!active) return;
@@ -156,6 +173,9 @@ export function mountDocumentViews(host: Host) {
     active = view; side = inSide; const current = ++generation;
     panel.setAttribute('aria-label', label(view)); layout();
     status = 'loading'; presentStatus();
+    loading.begin(() => current === generation && !disposed && !!active, () => {
+      panel.setAttribute('aria-busy', 'true'); canvas.inert = true;
+    });
     if (side) afterLayout(restoreReading);
     try {
       let module = modules.get(view.entryUri);
@@ -163,7 +183,7 @@ export function mountDocumentViews(host: Host) {
       const renderer = await module;
       if (current !== generation || disposed) return;
       if (renderer.apiVersion !== 1 || typeof renderer.mount !== 'function') throw new Error('Unsupported document view API');
-      status = null; canvas.replaceChildren();
+      canvas.replaceChildren();
       instance = renderer.mount(canvas, { language: host.getLanguage(), getAvailableViewport() {
         if (disposed || current !== generation) return { x: 0, y: 0, width: 0, height: 0 };
         const bounds = canvas.getBoundingClientRect();

@@ -7148,8 +7148,7 @@ html[data-meo-ui-contrast='high'] .meo-preview-viewport-alignment {
   background: var(--meo-content-editorWidget-background, var(--meo-content-sideBar-background));
 }
 
-.preview-loading,
-.editor-loading {
+.surface-loading {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -7175,13 +7174,11 @@ html[data-meo-ui-contrast='high'] .meo-preview-viewport-alignment {
   grid-column: 1 / -1;
 }
 
-.preview-loading[hidden],
-.editor-loading[hidden] {
+.surface-loading[hidden] {
   display: none;
 }
 
-.preview-loading-spinner,
-.editor-loading-spinner {
+.surface-loading-spinner {
   width: 22px;
   height: 22px;
   box-sizing: border-box;
@@ -7196,7 +7193,7 @@ html[data-meo-ui-contrast='high'] .meo-preview-viewport-alignment {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .preview-loading-spinner, .editor-loading-spinner { animation: none; }
+  .surface-loading-spinner { animation: none; }
 }
 
 .editor-root[data-mode='preview'] .format-group {

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import exportRuntime from '../src/export/runtime';
 import { launchTestBrowser } from './browser-test-helpers';
 import { checkDocumentViewContent } from './document-view-content-checks';
+import { checkDocumentViewLoading } from './document-view-loading-checks';
 
 const root = process.cwd(), out = path.join(root, '.local/document-view-tests');
 const markmapDirectory = process.env.MEO_MARKMAP_DIR;
@@ -20,12 +21,18 @@ try {
   page.on('pageerror', error => errors.push(String(error)));
   page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
   await page.setRequestInterception(true);
+  let assetGate: Promise<void> | undefined;
+  const holdAssets = () => {
+    let release!: () => void;
+    assetGate = new Promise<void>(resolve => { release = resolve; });
+    return () => { assetGate = undefined; release(); };
+  };
   page.on('request', request => {
     if (request.url().startsWith('https://example.invalid/')) { void request.respond({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>' }); return; }
     if (!request.url().startsWith('https://document-view.test/')) { void request.continue(); return; }
     requests.push(request.url());
     const asset = request.url().endsWith('/worker.js') ? 'worker.js' : 'view.js';
-    void request.respond({ status: 200, contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: readFileSync(path.join(markmapDirectory, 'dist', asset)) });
+    void Promise.resolve(assetGate).then(() => request.respond({ status: 200, contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: readFileSync(path.join(markmapDirectory, 'dist', asset)) }));
   });
   await page.setContent('<!doctype html><html lang="zh-CN"><body class="vscode-light"><div id="app" class="editor-root"></div></body></html>');
   await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
@@ -49,14 +56,18 @@ try {
   assert.equal(await page.$('.mm-view-entry'), null); assert.deepEqual(requests, []);
   const catalog = { type: 'documentViewsChanged', views: [{ ...contribution, id: 'test/mindmap', entryUri: 'https://document-view.test/view.js' }] };
   await send(catalog); await page.waitForSelector('.mm-view-entry'); assert.deepEqual(requests, []);
-  if (process.argv.includes('--content-only')) {
+  if (process.argv.includes('--loading-only')) {
+    await checkDocumentViewLoading(page, out, holdAssets);
+    assert.deepEqual(errors, []);
+    console.log('PASS: shared delayed loading, runtime language, background updates and close/reopen cancellation.');
+  } else if (process.argv.includes('--content-only')) {
     await checkDocumentViewContent(page, out);
     assert.deepEqual(errors, []);
     console.log('PASS: document fonts, formatted content geometry and contrast in light/dark themes.');
   } else {
   assert.equal(await page.$eval('.mm-view-entry svg path', e => e.getAttribute('d')), contribution.iconPaths[0]);
   assert.equal(await page.$eval('.mm-view-entry', e => e.textContent), '');
-  const waitMap = () => page.waitForFunction(() => !!document.querySelector('.meo-markmap g.markmap-node') && !document.querySelector('.meo-map-status')?.textContent);
+  const waitMap = () => page.waitForFunction(() => !!document.querySelector('.meo-markmap g.markmap-node') && !document.querySelector('.meo-map-status')?.textContent && !!document.querySelector('[data-view-action="fit"]:not(:disabled)'));
   const settle = () => page.evaluate(async () => { for (let i = 0; i < 8; i++) await new Promise(requestAnimationFrame); });
   const layout = '[data-view-action="layout"]', close = '[data-view-action="close"]';
   async function assertMapFits() {
@@ -412,15 +423,15 @@ try {
         unsafe: !!container.querySelector('img, a, script') };
       const empty = instance.update({ text: '', revision: 2 });
       instance.setLanguage('en');
-      const updatingTranslated = container.querySelector('.meo-map-status')!.textContent === 'Updating…';
+      const updatingSilent = container.querySelector('.meo-map-status')!.textContent === '';
       await empty;
       const emptyEnglish = container.querySelector('.meo-map-status')!.textContent === 'The document is empty';
       instance.setLanguage('zh-CN');
       const emptyChinese = container.querySelector('.meo-map-status')!.textContent === '文档为空';
-      return { ...result, updatingTranslated, emptyEnglish, emptyChinese };
+      return { ...result, updatingSilent, emptyEnglish, emptyChinese };
     } finally { instance.dispose(); container.remove(); }
   });
-  assert.deepEqual(compatibility, { folded: true, math: true, task: true, otherFolded: true, color: 'white', selected: 8, scalePreserved: true, smallZoomRecovered: true, largeZoomRecovered: true, centered: true, authorColorsPreserved: true, unsafe: false, updatingTranslated: true, emptyEnglish: true, emptyChinese: true });
+  assert.deepEqual(compatibility, { folded: true, math: true, task: true, otherFolded: true, color: 'white', selected: 8, scalePreserved: true, smallZoomRecovered: true, largeZoomRecovered: true, centered: true, authorColorsPreserved: true, unsafe: false, updatingSilent: true, emptyEnglish: true, emptyChinese: true });
   assert.deepEqual(errors, []);
   console.log('PASS: optional lazy loading, real Markmap worker, full/side layout, Source exclusivity, document transactions, folds, navigation, close/Escape, unregister.');
   }

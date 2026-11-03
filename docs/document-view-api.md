@@ -47,6 +47,8 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 
 字体由主体提供 `--meo-view-font-family`、`--meo-view-font-size`、`--meo-view-font-weight` 和 `--meo-view-code-font-family`。前三者始终跟随普通文档（Live）的字体及用户字号，代码字体跟随文档的 Source 字体；不采用 Preview 预设的排版。变量实时继承，无须重新解析快照或重建视图。扩展负责字体变化后的内容测量和布局，保留选择、折叠、平移与缩放。公共工具栏仍使用界面字体。
 
+首次打开的加载反馈由主体统一管理，与实时、源码和预览共用加载组件及 200ms 延迟显示规则。等待范围包括模块加载、首次 `update()` 和首帧；更新期间的新快照不会重新计时。关闭或卸载取消提示，迟到结果不得重新打开视图。已有画面的普通文档更新不显示加载遮罩，扩展不另建“正在更新”提示。扩展的 `update()` 应在渲染布局就绪后完成；空内容等结果状态仍由扩展呈现。
+
 这是供可信、已安装 VS Code 扩展使用的协作接口，不是执行不可信第三方脚本的沙箱。Markdown 中的脚本、事件属性及任意外部资源由渲染扩展自行限制；主编辑器不负责理解扩展语法。
 
 ## 当前公共交互
@@ -75,6 +77,7 @@ $env:MEO_MARKMAP_DIR = '<独立导图扩展目录>'
 bun scripts/test-document-views-browser.ts
 bun scripts/test-document-views-browser.ts --dark --english
 bun scripts/test-document-views-browser.ts --content-only
+bun scripts/test-document-views-browser.ts --loading-only
 ```
 
 覆盖未安装时无入口、按需加载、侧边预览互斥、分栏和全屏、文字及空白处拖动、双向定位、底部工具栏、适应画布避让、正文更新和关闭释放。该测试不替代 VS Code 内安装 VSIX 后的实际激活验证。

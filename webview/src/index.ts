@@ -1,4 +1,5 @@
 import { mountDocumentViews } from './documentViews';
+import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
 import { createEditorFontWheel } from './adapters/editorFontWheel';
@@ -1833,7 +1834,9 @@ const previewController = createPreviewController({
     editorSurface.removeAttribute('data-source-preview-exit-cover');
     const splitWillReveal = pendingSourcePreviewReveal !== null;
     markSourcePreviewSurfaceReady();
-    if (!splitWillReveal) previewController.finishLoadingPresentation();
+    // A ready frame must not start a new spinner while split linkage settles.
+    // Preserve an already visible cover until the atomic reveal completes.
+    previewController.finishLoadingPresentation({ keepVisible: splitWillReveal });
     outlineController?.refreshAppearance(); documentViews?.refreshAppearance();
     if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
     if (getActiveEditorMode() === 'preview') findPanelController.refreshForModeChange();
@@ -1953,30 +1956,20 @@ outlineController = createOutlineController({
 
 const editorSurface = document.createElement('div');
 editorSurface.className = 'editor-surface';
-const editorLoading = document.createElement('div');
-editorLoading.className = 'editor-loading';
-editorLoading.hidden = true;
-editorLoading.setAttribute('role', 'status');
-editorLoading.setAttribute('aria-live', 'polite');
-const editorLoadingSpinner = document.createElement('span');
-editorLoadingSpinner.className = 'editor-loading-spinner';
-editorLoadingSpinner.setAttribute('aria-hidden', 'true');
-const editorLoadingLabel = document.createElement('span');
-editorLoading.append(editorLoadingSpinner, editorLoadingLabel);
+const editorLoadingPresentation = createLoadingPresentation('editor-loading');
+const editorLoading = editorLoadingPresentation.element;
 editorSurface.append(editorHost, previewController.host, editorLoading);
 let editorInteractive = true;
 let initialEditorPresentationPending = true;
-let pendingEditorLoading: { mode: 'live' | 'source'; intent: number; timer: number | null } | null = null;
+let pendingEditorLoading: { mode: 'live' | 'source'; intent: number } | null = null;
 const refreshEditorLoadingLabel = (): void => {
-  editorLoadingLabel.textContent = pendingEditorLoading?.mode === 'source'
-    ? activeUiStrings.sourceLoading : activeUiStrings.liveLoading;
+  editorLoadingPresentation.setLabel(pendingEditorLoading?.mode === 'source'
+    ? activeUiStrings.sourceLoading : activeUiStrings.liveLoading);
 };
 const finishEditorLoading = (): void => {
   const wasVisible = !editorLoading.hidden;
-  const timer = pendingEditorLoading?.timer;
-  if (timer !== null && timer !== undefined) window.clearTimeout(timer);
+  editorLoadingPresentation.finish();
   pendingEditorLoading = null;
-  editorLoading.hidden = true;
   editorHost.removeAttribute('aria-busy');
   editorHost.inert = !editorInteractive;
   // Inert can move focus to the body. Restore only that lost editor focus;
@@ -1999,25 +1992,24 @@ const beginEditorLoading = (mode: 'live' | 'source'): void => {
   // clearing it here would briefly expose the old, unprepared editor.
   const retainStartupCover = initialEditorPresentationPending && !editorLoading.hidden;
   if (retainStartupCover) {
-    const timer = pendingEditorLoading?.timer;
-    if (timer !== null && timer !== undefined) window.clearTimeout(timer);
+    editorLoadingPresentation.finish(true);
     pendingEditorLoading = null;
   } else finishEditorLoading();
   if (!editorPresentationPending(mode, intent)) return;
-  const loading = { mode, intent, timer: null as number | null };
+  const loading = { mode, intent };
   pendingEditorLoading = loading;
   refreshEditorLoadingLabel();
   // The existing mode intent owns this deadline. Edits and parser publications
   // do not start another loading presentation or restart its quiet window.
-  loading.timer = window.setTimeout(() => {
-    loading.timer = null;
-    if (pendingEditorLoading !== loading) return;
-    if (!editorPresentationPending(mode, intent)) { finishEditorLoading(); return; }
-    editorLoading.hidden = false;
+  editorLoadingPresentation.begin(() => {
+    if (pendingEditorLoading !== loading) return false;
+    if (!editorPresentationPending(mode, intent)) { finishEditorLoading(); return false; }
+    return true;
+  }, () => {
     editorHost.setAttribute('aria-busy', 'true');
     editorHost.inert = true;
     revealInitialShell();
-  }, 200);
+  });
 };
 editorWrapper.replaceChildren(editorSurface, outlineController.sidebar, selectionMenuElements.menu);
 // Keep the shared popup outside toolbar stacking and inside editor focus ownership.
