@@ -590,14 +590,14 @@ try {
   imageContext = { documentFsPath: path.join(imagePasteRoot, '中文 方案[甲].md'), imageStorage: {mode: 'default', folder: '中文图片 with spaces (v1) #100%', rule: '${fileDirname}/assets'} };
   await fs.writeFile(imageContext.documentFsPath!, '# Draft');
   const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNwaPj/HwAFggK/465+UQAAAABJRU5ErkJggg==';
-  const pasteImage = async () => {
+  const pasteImage = async (imageBase64 = png) => {
     await page.evaluate(png => {
       const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
       view.focus();
       const bytes = Uint8Array.from(atob(png), character => character.charCodeAt(0));
       const clipboard = new DataTransfer(); clipboard.items.add(new File([bytes], 'screenshot.png', {type: 'image/png'}));
       view.contentDOM.dispatchEvent(new ClipboardEvent('paste', {clipboardData: clipboard, bubbles: true, cancelable: true}));
-    }, png);
+    }, imageBase64);
   };
   console.log('Image settings autosave, validation, IME, stale replies, picker and close persistence passed');
   await pasteImage();
@@ -617,8 +617,15 @@ try {
   console.log('Untitled image paste retained the document and displayed an actionable failure');
   await pasteImage();
   await page.waitForFunction(before => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor')).state.doc.toString() !== before, {}, beforeUntitledPaste);
+  assert.deepEqual(await fs.readdir(path.join(imagePasteRoot, imageContext.imageStorage!.folder)), ['中文 方案[甲]-1.png'],
+    'pasting the same image after a failed untitled paste reuses the existing file');
+  const afterRepeatedPaste = await page.evaluate(() => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor')).state.doc.toString());
+  assert.equal(afterRepeatedPaste.split('![中文 方案\\[甲\\]-1.png](').length - 1, 2, 'both image references use the reused final filename');
+  await pasteImage('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+  await page.waitForFunction(before => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor')).state.doc.toString() !== before, {}, afterRepeatedPaste);
   assert.equal((await fs.readdir(path.join(imagePasteRoot, imageContext.imageStorage!.folder))).length, 2);
-  assert.ok((await fs.readdir(path.join(imagePasteRoot, imageContext.imageStorage!.folder))).includes('中文 方案[甲]-2.png'));
+  assert.ok((await fs.readdir(path.join(imagePasteRoot, imageContext.imageStorage!.folder))).includes('中文 方案[甲]-2.png'),
+    'different image contents still create a new sequence file');
   await page.click('button[data-mode="live"]');
   await page.evaluate(() => {
     const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));

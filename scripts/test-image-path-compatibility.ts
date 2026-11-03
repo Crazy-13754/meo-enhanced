@@ -61,6 +61,12 @@ try {
     path.join(path.dirname(chineseNote.fsPath), savedChinese.relativePath));
   assert.equal(await links.resolveWebviewImageSrc(chineseTarget, chineseNote as never, webview as never, {delivery: 'embedded'}), embedded,
     'newly named images in Chinese directories resolve to the actual saved bytes');
+  const otherChineseNote = URI.file(path.join(path.dirname(chineseNote.fsPath), '另一个文档.md'));
+  const reusedChinese = await saveClipboardImageFile({ documentFsPath: otherChineseNote.fsPath,
+    imageStorage: {mode: 'default', folder: '图片(一)#50%', rule: 'assets'}, extension: 'png', contents: png });
+  assert.deepEqual(reusedChinese, savedChinese, 'shared-directory reuse retains the original final filename');
+  assert.equal(await links.resolveWebviewImageSrc(encodeMarkdownPath(reusedChinese.relativePath), otherChineseNote as never,
+    webview as never, {delivery: 'embedded'}), embedded, 'reused escaped image paths resolve from the second document');
   const workspace = URI.file(path.join(fixture, 'workspace')).fsPath;
   const note = URI.file(path.join(workspace, 'notes', 'chapter', 'note.md'));
   write(note.fsPath, Buffer.from('# Note'));

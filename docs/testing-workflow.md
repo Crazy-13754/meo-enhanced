@@ -367,6 +367,15 @@ presets, continuing numbers across image formats, concurrent exclusive creation,
 Chinese folders/document names, escaped Markdown targets and final-file-name alt
 text. Settings coverage includes persisted selection, bilingual search and narrow
 light/dark layouts; `MEO_SETTINGS_SCREENSHOTS` captures the naming controls.
+The storage contract also checks exact-content reuse within the configured directory,
+all naming presets, cold concurrent pastes, shared-directory documents, JPEG/TIFF
+extension aliases, bounded multi-chunk comparison, same-size differing contents,
+and external rename/edit/delete without stale matches. Only regular files of the
+same image type are candidates. Directory/symlink guards and exclusive creation
+remain in force. The production link-destination contract bridges real clipboard
+image requests to the Host file saver in ordinary and actually budgeted Source/Live
+documents, checking one file for two pastes, escaped reused paths, text, selection,
+focus, undo/redo and saved bytes.
 The clipboard-image root contract also runs the production directory resolver with
 isolated POSIX and Windows path adapters on every OS. Relative-only settings reject
 either platform's roots and drive-relative paths; advanced rules retain explicit
