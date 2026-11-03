@@ -721,33 +721,35 @@ async function main() {
       throw new Error(`Bold heading host update was not applied: ${JSON.stringify(restoredBoldHeadingSetting)}`);
     }
     await page.click('.settings-close');
-    const recentSaveHeaders = await page.evaluate(() => {
-      const read = () => {
-        const header = document.querySelector<HTMLElement>('.changes-review-header')!;
-        const baseline = header.querySelector<HTMLElement>('.changes-review-header-baseline')!;
-        return {
-          text: header.textContent,
-          clipped: header.scrollWidth > header.clientWidth || baseline.scrollWidth > baseline.clientWidth
-        };
+    const readRecentSaveHeader = () => page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>('.changes-review-header')!;
+      const baseline = header.querySelector<HTMLElement>('.changes-review-header-baseline')!;
+      return {
+        text: header.textContent,
+        clipped: header.scrollWidth > header.clientWidth || baseline.scrollWidth > baseline.clientWidth
       };
-      window.dispatchEvent(new MessageEvent('message', { data: {
-        type: 'diffBaselineModeChanged', mode: 'recent-save'
-      }}));
-      const english = read();
-      document.querySelector<HTMLButtonElement>('[data-ui-language="zh-CN"]')!.click();
-      const chinese = read();
-      window.dispatchEvent(new MessageEvent('message', { data: {
-        type: 'diffBaselineModeChanged', mode: 'current-edit'
-      }}));
-      return { english, chinese };
     });
+    // Settings closes transient menus; observe the accepted visible comparison surface.
+    await page.click('.changes-review-trigger');
+    await page.waitForSelector('.changes-review-panel:not([hidden])');
+    await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'diffBaselineModeChanged', mode: 'recent-save'
+    }})));
+    const englishRecentSaveHeader = await readRecentSaveHeader();
+    await page.click('.more-tools-wrapper > button');
+    await page.click('[data-ui-language="zh-CN"]');
+    await page.click('.changes-review-trigger');
+    await page.waitForSelector('.changes-review-panel:not([hidden])');
+    const recentSaveHeaders = { english: englishRecentSaveHeader, chinese: await readRecentSaveHeader() };
+    await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'diffBaselineModeChanged', mode: 'current-edit'
+    }})));
     if (JSON.stringify(recentSaveHeaders) !== JSON.stringify({
       english: { text: 'No Changes·vs. Before Agent Edits', clipped: false },
       chinese: { text: '无更改·与Agent 编辑前版本对比', clipped: false }
     })) {
       throw new Error(`Recent-save headers did not fit both languages: ${JSON.stringify(recentSaveHeaders)}`);
     }
-    await page.evaluate(() => document.querySelector<HTMLButtonElement>('[data-ui-language="zh-CN"]')!.click());
     await waitForFrames(page, 2);
     await page.click('[data-baseline="git-head"]');
     await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: {
@@ -913,8 +915,8 @@ async function main() {
     });
     if (
       JSON.stringify(moreToolsLayout.labels) !== JSON.stringify([
-        '显示行号', '折叠长代码块', '限制宽度', '粗体文字着色', '标题加粗',
-        '表格浮动表头', '外观 · 输入 · 快捷键', '遇到问题或有建议？'
+        '显示行号', '折叠长代码块', '限制宽度', '粗体文字着色',
+        '外观 · 输入 · 快捷键', '遇到问题或有建议？', '赞助项目'
       ]) ||
       moreToolsLayout.topHeading !== '文档显示' ||
       moreToolsLayout.languageAutoLabel !== '自动' ||
