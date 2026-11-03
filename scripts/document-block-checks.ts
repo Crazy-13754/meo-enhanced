@@ -64,6 +64,26 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     return getComputedStyle(canvas).backgroundColor === getComputedStyle(owner).backgroundColor;
   }), true, 'Mounted graph inherits the actual code surface, not detached default colors');
   await assertCanvasPalette();
+  const checkNodeInteraction = async (fullscreen: boolean) => {
+    const before = await page.evaluate(fullscreen => {
+      const owner = document.querySelector(fullscreen ? '.meo-mermaid-fullscreen-scrim .meo-contributed-block' : '.editor-host .meo-contributed-block')!;
+      const root = owner.shadowRoot!;
+      const label = root.querySelector('foreignObject > div > div')!;
+      const rect = label.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, count: root.querySelectorAll('g.markmap-node').length };
+    }, fullscreen);
+    await page.mouse.move(before.x, before.y); await page.mouse.click(before.x, before.y);
+    const result = await page.evaluate(fullscreen => {
+      const root = document.querySelector(fullscreen ? '.meo-mermaid-fullscreen-scrim .meo-contributed-block' : '.editor-host .meo-contributed-block')!.shadowRoot!;
+      const outline = getComputedStyle(root.querySelector('foreignObject > div > div')!).outlineStyle;
+      if (!fullscreen) root.querySelector('circle')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      return { outline, count: root.querySelectorAll('g.markmap-node').length, buttons: root.querySelectorAll('circle[role=button]').length };
+    }, fullscreen);
+    assert.equal(result.outline, 'none', 'Block labels do not highlight on hover');
+    assert.equal(result.count, before.count, 'Content clicks do not change nodes');
+    if (!fullscreen) assert.equal(result.buttons, 0, 'Inline nodes do not expose folding controls');
+  };
+  await checkNodeInteraction(false);
   const quoteStyle = () => page.evaluate(() => {
     const owner = document.querySelector('.meo-mermaid-fullscreen-scrim .meo-contributed-block') ?? document.querySelector('.editor-host .meo-contributed-block');
     const quotes = [...owner!.shadowRoot!.querySelectorAll('blockquote')].filter(q => q.querySelector('blockquote'));
@@ -93,6 +113,7 @@ export async function checkDocumentBlocks(page: Page, out: string) {
   assert.equal(await page.$('.meo-mermaid-editing-preview'), null, 'Clicking a node does not enter source editing');
   await checkWheel();
   await full(); await waitFull(); const initial = await nodeCount();
+  await checkNodeInteraction(true);
   const fullQuote = await quoteStyle();
   assert.equal(inlineQuote.length, 2, 'Cover standalone and table-cell nested quotes');
   inlineQuote.forEach((quote, index) => {
@@ -127,6 +148,14 @@ export async function checkDocumentBlocks(page: Page, out: string) {
   await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'preview');
   await waitInline();
   const previewCount = await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector('.meo-contributed-block')!.shadowRoot!.querySelectorAll('g.markmap-node').length);
+  assert.equal(await page.evaluate(() => {
+    const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+    const owner = doc.querySelector('.meo-export-graph')!;
+    const probe = doc.createElement('div'); probe.className = 'meo-export-mermaid'; owner.parentElement!.append(probe);
+    const canvas = owner.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector('.meo-contributed-canvas')!;
+    const same = doc.defaultView!.getComputedStyle(canvas).backgroundColor === doc.defaultView!.getComputedStyle(probe).backgroundColor;
+    probe.remove(); return same;
+  }), true, 'Default Preview graphs use the same background as Mermaid');
   await checkWheel();
   assert.equal(previewCount, initial, 'Preview uses authored folds, not fullscreen viewing folds');
   await full(); await waitFull(); assert.equal(await nodeCount(), folded, 'Live and Preview share local fullscreen folding');
@@ -228,6 +257,14 @@ export async function checkDocumentBlocks(page: Page, out: string) {
       assert(await page.$$eval('.cm-line', lines => lines.length < 200), 'Large document keeps mounted source bounded');
     }
   }
+  await page.evaluate(() => {
+    const view = (window as any).__viewportTestView();
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '# Small\n\n```markmap\n# Trip\n## Travel\n- Train\n- Bus\n```\n' }, selection: { anchor: 0 } });
+    view.scrollDOM.scrollTop = 0;
+  });
+  await waitInline();
+  assert(await page.evaluate(() => document.querySelector('.meo-contributed-block')!.getBoundingClientRect().height < 260), 'Small maps shrink instead of reserving a fixed 360px canvas');
+  await page.screenshot({ path: out + '/embedded-map-compact.png' });
   await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'documentViewsChanged', views: [] } })));
   await page.waitForFunction(() => !document.querySelector('.editor-host .meo-contributed-block'));
   assert((await page.evaluate(() => (window as any).__viewportTestText())).includes('```markmap'), 'Uninstalling the extension preserves source');

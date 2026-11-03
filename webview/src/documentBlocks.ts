@@ -66,7 +66,7 @@ export function createDocumentBlocks(host: Host) {
     const doc = owner.ownerDocument, win = doc.defaultView!;
     const reading = doc.querySelector<HTMLElement>('.meo-export-doc') ?? document.body;
     const style = win.getComputedStyle(reading);
-    const background = owner.classList.contains('meo-graph-block')
+    const background = owner.matches('.meo-graph-block,.meo-export-graph')
       ? win.getComputedStyle(owner).backgroundColor : win.getComputedStyle(doc.body).backgroundColor;
     applyDocumentViewPalette(surface, { background, foreground: style.color });
     // Typography is always the ordinary document's, including in preset iframes.
@@ -96,6 +96,14 @@ export function createDocumentBlocks(host: Host) {
     canvas.append(content, loading.element); shadow.append(sheet, canvas); container.append(element);
     appearance(element, paletteOwner);
     let disposed = false, instance: DocumentViewInstance | undefined, ready = false, failure: HTMLElement | undefined;
+    let intrinsic: { width: number; height: number } | undefined;
+    const sizeCanvas = () => {
+      if (!intrinsic || disposed || mode === 'fullscreen') return;
+      const scale = Math.min(1, Math.max(1, canvas.clientWidth - 32) / intrinsic.width);
+      const height = Math.ceil(Math.max(120, Math.min(480, intrinsic.height * scale + 48)));
+      if (canvas.style.height !== `${height}px`) canvas.style.height = `${height}px`;
+    };
+    const resize = new ResizeObserver(sizeCanvas); resize.observe(canvas);
     const image = () => ready ? canvas : null;
     const unregisterImage = registerGraphImageRoot(container, image);
     const run = (id: string) => { if (ready) void Promise.resolve(instance?.actions?.find(action => action.id === id)?.run()).catch(console.error); };
@@ -144,8 +152,12 @@ export function createDocumentBlocks(host: Host) {
       instance = module.mountBlock(content, {
         language: host.getLanguage(), contentClass: 'meo-document-content', interactive,
         presentation: mode === 'fullscreen' ? 'fullscreen' : 'inline',
-        viewState: interactive ? memories.get(key) : undefined,
-        saveViewState: state => { if (interactive && !disposed) save(key, state); },
+        reportContentSize(size) {
+          if (!Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) return;
+          intrinsic = size; sizeCanvas();
+        },
+        viewState: mode === 'fullscreen' ? memories.get(key) : undefined,
+        saveViewState: state => { if (mode === 'fullscreen' && !disposed) save(key, state); },
         renderContent: snapshot => host.renderContent(snapshot.text), revealLine() {},
         getAvailableViewport() { return { x: 16, y: 16, width: Math.max(0, content.clientWidth - 32), height: Math.max(0, content.clientHeight - (mode === 'fullscreen' ? 80 : 48)) }; }
       });
@@ -166,7 +178,7 @@ export function createDocumentBlocks(host: Host) {
       },
       dispose() {
         if (disposed) return;
-        instance?.dispose(); disposed = true; loading.finish(); mounted.delete(refresh);
+        instance?.dispose(); disposed = true; resize.disconnect(); loading.finish(); mounted.delete(refresh);
         detachControls(); unregisterImage(); element.remove(); delete container.dataset.meoMermaidRendering;
       }
     };
@@ -210,6 +222,7 @@ export function createDocumentBlocks(host: Host) {
       previous?.dispose(); previewBlocks.delete(block);
       const rect = block.getBoundingClientRect(); if (rect.bottom < -800 || rect.top > (doc.defaultView?.innerHeight ?? 1000) + 800) continue;
       const holder = doc.createElement('div'); block.append(holder);
+      block.classList.add('meo-export-graph');
       const originals = Array.from(block.children).filter(child => child.tagName === 'PRE') as HTMLElement[];
       const displays = originals.map(child => child.style.display); originals.forEach(child => { child.style.display = 'none'; });
       const input = { language, text, line: Number(block.dataset.sourceLine) || 1 };
@@ -217,7 +230,7 @@ export function createDocumentBlocks(host: Host) {
       const unregister = registerPreviewGraphActions(block, { image: rendered.image,
         open: (trigger, pointer) => openFullscreen(input, trigger, block, pointer) });
       addPreviewCodeCopyControls(block, host.getLanguage());
-      previewBlocks.set(block, { source: text, element: holder, dispose() { unregister(); rendered.dispose(); holder.remove(); originals.forEach((child, i) => { child.style.display = displays[i]; }); } });
+      previewBlocks.set(block, { source: text, element: holder, dispose() { unregister(); rendered.dispose(); holder.remove(); block.classList.remove('meo-export-graph'); originals.forEach((child, i) => { child.style.display = displays[i]; }); } });
     }
   }
   const port: DocumentBlocksPort = { supports: language => !!descriptor(language), mount };

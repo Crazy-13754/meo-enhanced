@@ -1150,7 +1150,7 @@ th:empty::before {
   margin-bottom: 0;
 }
 
-.meo-export-mermaid {
+.meo-export-mermaid, .meo-export-graph {
   margin: 0 0 1em;
   border-radius: 6px;
   border: 1px solid var(--meo-code-border);

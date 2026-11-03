@@ -60,6 +60,8 @@ export interface DocumentBlockContext extends DocumentViewContext {
   readonly interactive: boolean;
   /** Inline scrolling belongs to the document; fullscreen may consume wheel zoom. */
   readonly presentation: 'inline' | 'fullscreen';
+  /** Unscaled rendered bounds in CSS pixels. Host owns inline height and its limits. */
+  reportContentSize?(size: { readonly width: number; readonly height: number }): void;
   readonly viewState?: unknown;
   /** Small JSON viewing state, scoped to this block; do not store source, camera or HTML. */
   saveViewState(state: unknown): void;
