@@ -12,7 +12,7 @@ Write, preview, and review complex Markdown seamlessly in VS Code, switch freely
   <a href="https://marketplace.visualstudio.com/items?itemName=huangko555.meo-enhanced"><strong>Install from VS Code Marketplace</strong></a> ·
   <a href="https://github.com/huangko555/meo-enhanced/releases">Download VSIX</a> ·
   <a href="https://github.com/huangko555/meo-enhanced/blob/main/CHANGELOG.md">Changelog</a> ·
-  <a href="https://github.com/huangko555/meo-enhanced/blob/main/docs/sponsor.md">Sponsor</a>
+  <a href="#sponsor">Sponsor</a>
 </p>
 
 ![MEO Enhanced showing the same Live document in Dark and Light appearances](docs/readme/en/product-overview.png)
@@ -151,7 +151,10 @@ For offline installation, download a `.vsix` package from [GitHub Releases](http
 
 If MEO Enhanced helps you, you can support its ongoing development and maintenance with a voluntary tip.
 
-[Choose a sponsorship option](https://github.com/huangko555/meo-enhanced/blob/main/docs/sponsor.md): Afdian for Alipay / WeChat Pay, or Ko-fi for international supporters. The page includes payment details in Chinese and English.
+- **[Ko-fi — international supporters](https://ko-fi.com/meoenhanced)**: One-time tips with an amount you choose.
+- **[Afdian — Alipay / WeChat Pay](https://afdian.com/a/meoenhanced)**: Choose your amount. Support is displayed in months; choose one month for a single payment. Check the amount and renewal settings at checkout.
+
+MEO Enhanced remains free and open source. Tips are entirely voluntary and do not include membership benefits or service commitments.
 
 ## Project origin
 
