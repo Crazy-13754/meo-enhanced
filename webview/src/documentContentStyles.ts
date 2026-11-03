@@ -3,7 +3,7 @@ import { buildMarkdownContentStyleCss } from '../../src/shared/markdownContentSt
 /** Host owns ordinary content appearance; contributed canvases only constrain layout. */
 const root = ':is(.mm-view-panel,.meo-contributed-canvas) .meo-document-content';
 export const documentContentStyles = `
-${root}{color:inherit;font:inherit;--meo-content-code-font:var(--meo-view-code-font-family);--meo-content-code-background:var(--meo-view-hover-background);--meo-content-quote-border:var(--meo-view-muted-foreground);--meo-content-quote-foreground:inherit;--meo-content-highlight:color-mix(in srgb,#ffd60a 34%,transparent)}
+${root}{color:inherit;font:inherit;white-space:normal;--meo-content-code-font:var(--meo-view-code-font-family);--meo-content-code-background:var(--meo-view-hover-background);--meo-content-quote-border:var(--meo-view-muted-foreground);--meo-content-quote-foreground:inherit;--meo-content-highlight:color-mix(in srgb,#ffd60a 34%,transparent)}
 ${buildMarkdownContentStyleCss({
   emphasis: `${root} :is(em,i)`, strong: `${root} :is(strong,b)`, strikethrough: `${root} :is(s,del)`,
   subscript: `${root} sub`, superscript: `${root} sup`, underline: `${root} :is(ins,u)`,

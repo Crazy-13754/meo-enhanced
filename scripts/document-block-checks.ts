@@ -4,7 +4,30 @@ import { writeFileSync } from 'node:fs';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
 
 export async function checkDocumentBlocks(page: Page, out: string) {
-  const text = '# Embedded map\n\n```markmap\n# Trip\n## Travel\n- Train\n- Bus\n## Visit\n- Museum\n- Park\n```\n\nEnd.\n';
+  const checkWheel = async (fullscreen = false) => {
+    const snapshot = () => page.evaluate(fullscreen => {
+      const preview = document.querySelector('#app')?.getAttribute('data-mode') === 'preview';
+      const frame = document.querySelector<HTMLIFrameElement>('.preview-frame');
+      const doc = preview && !fullscreen ? frame!.contentDocument! : document;
+      const owner = doc.querySelector(fullscreen ? '.meo-mermaid-fullscreen-scrim .meo-contributed-block' : '.editor-host .meo-contributed-block,.meo-contributed-block')!;
+      const svg = owner.shadowRoot!.querySelector('svg.meo-markmap')!;
+      const rect = svg.getBoundingClientRect();
+      const offset = preview && !fullscreen ? frame!.getBoundingClientRect() : { left: 0, top: 0 };
+      const scroller = preview && !fullscreen ? doc.scrollingElement! : (window as any).__viewportTestView().scrollDOM;
+      return { camera: JSON.stringify((svg as any).__zoom), scroll: scroller.scrollTop,
+        x: rect.left + offset.left + rect.width / 2, y: rect.top + offset.top + Math.min(rect.height / 2, 120) };
+    }, fullscreen);
+    const before = await snapshot();
+    await page.mouse.move(before.x, before.y); await page.mouse.wheel({ deltaY: 120 });
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const after = await snapshot();
+    if (fullscreen) assert.notEqual(after.camera, before.camera, 'Fullscreen wheel still operates the canvas');
+    else {
+      assert.equal(after.camera, before.camera, 'Inline wheel must not move or zoom the graph');
+      assert(after.scroll > before.scroll, 'Inline wheel scrolls the document');
+    }
+  };
+  const text = '# Embedded map\n\n```markmap\n# Trip\n## Travel\n- Train\n- Bus\n> Outer quote\n>\n> > Inner quote\n\n<table><tr><td><blockquote><p>Cell outer</p>\n<blockquote><p>Cell inner</p></blockquote>\n</blockquote></td></tr></table>\n## Visit\n- Museum\n- Park\n```\n\nEnd.\n' + 'Following paragraph.\n\n'.repeat(30);
   await page.evaluate(text => {
     const view = (window as any).__viewportTestView();
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: 0 } });
@@ -41,7 +64,42 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     return getComputedStyle(canvas).backgroundColor === getComputedStyle(owner).backgroundColor;
   }), true, 'Mounted graph inherits the actual code surface, not detached default colors');
   await assertCanvasPalette();
+  const quoteStyle = () => page.evaluate(() => {
+    const owner = document.querySelector('.meo-mermaid-fullscreen-scrim .meo-contributed-block') ?? document.querySelector('.editor-host .meo-contributed-block');
+    const quotes = [...owner!.shadowRoot!.querySelectorAll('blockquote')].filter(q => q.querySelector('blockquote'));
+    return quotes.map(quote => {
+    const inner = quote.querySelector('blockquote')!;
+    const p = quote.querySelector('p')!;
+    const scale = (owner!.shadowRoot!.querySelector('svg') as any).__zoom.k;
+    return { whitespace: getComputedStyle(quote).whiteSpace, gap: (inner.getBoundingClientRect().top - p.getBoundingClientRect().bottom) / scale };
+    });
+  });
+  const inlineQuote = await quoteStyle();
+  const drag = await page.evaluate(() => {
+    const svg = document.querySelector('.editor-host .meo-contributed-block')!.shadowRoot!.querySelector('svg')!;
+    const r = svg.getBoundingClientRect(); return { x: r.left + 20, y: r.top + 20, camera: JSON.stringify((svg as any).__zoom) };
+  });
+  await page.mouse.move(drag.x, drag.y); await page.mouse.down();
+  await page.mouse.move(drag.x + 35, drag.y + 25, { steps: 5 }); await page.mouse.up();
+  assert.notEqual(await page.evaluate(() => JSON.stringify((document.querySelector('.editor-host .meo-contributed-block')!.shadowRoot!.querySelector('svg') as any).__zoom)), drag.camera, 'Inline mouse drag moves the canvas');
+  assert.equal(await page.$('.meo-mermaid-editing-preview'), null, 'Dragging the canvas does not enter source editing');
+  await page.mouse.click(drag.x, drag.y);
+  assert.equal(await page.$('.meo-mermaid-editing-preview'), null, 'Clicking blank canvas does not enter source editing');
+  const label = await page.evaluate(() => {
+    const rect = document.querySelector('.editor-host .meo-contributed-block')!.shadowRoot!.querySelector('foreignObject')!.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.click(label.x, label.y);
+  assert.equal(await page.$('.meo-mermaid-editing-preview'), null, 'Clicking a node does not enter source editing');
+  await checkWheel();
   await full(); await waitFull(); const initial = await nodeCount();
+  const fullQuote = await quoteStyle();
+  assert.equal(inlineQuote.length, 2, 'Cover standalone and table-cell nested quotes');
+  inlineQuote.forEach((quote, index) => {
+    assert.equal(quote.whitespace, fullQuote[index]!.whitespace);
+    assert(Math.abs(quote.gap - fullQuote[index]!.gap) < 0.1, 'Inline and fullscreen nested quotes have the same spacing');
+  });
+  await checkWheel(true);
   await page.evaluate(() => {
     const root = document.querySelector('.meo-mermaid-fullscreen-scrim .meo-contributed-block')!.shadowRoot!;
     const travel = [...root.querySelectorAll('g.markmap-node')].find(node => node.textContent?.includes('Travel'))!;
@@ -69,6 +127,7 @@ export async function checkDocumentBlocks(page: Page, out: string) {
   await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'preview');
   await waitInline();
   const previewCount = await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector('.meo-contributed-block')!.shadowRoot!.querySelectorAll('g.markmap-node').length);
+  await checkWheel();
   assert.equal(previewCount, initial, 'Preview uses authored folds, not fullscreen viewing folds');
   await full(); await waitFull(); assert.equal(await nodeCount(), folded, 'Live and Preview share local fullscreen folding');
   await page.keyboard.press('Escape');
@@ -145,6 +204,7 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     if (large) await page.waitForFunction(() => (window as any).__viewportTestLargeBudget());
     await waitInline();
     assert.equal(await page.evaluate(() => (window as any).__viewportTestLargeBudget()), large);
+    await checkWheel();
     await page.click('.meo-mermaid-mode-btn');
     await page.waitForFunction(() => !!document.querySelector('.meo-mermaid-toolbar[data-meo-mermaid-mode=edit]'));
     await page.keyboard.press('End'); await page.keyboard.type(' revised');
