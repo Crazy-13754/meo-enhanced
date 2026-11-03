@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 import exportRuntime from '../src/export/runtime';
 import { launchTestBrowser } from './browser-test-helpers';
+import { checkDocumentViewContent } from './document-view-content-checks';
 
 const root = process.cwd(), out = path.join(root, '.local/document-view-tests');
 const markmapDirectory = process.env.MEO_MARKMAP_DIR;
@@ -20,6 +21,7 @@ try {
   page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
   await page.setRequestInterception(true);
   page.on('request', request => {
+    if (request.url().startsWith('https://example.invalid/')) { void request.respond({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>' }); return; }
     if (!request.url().startsWith('https://document-view.test/')) { void request.continue(); return; }
     requests.push(request.url());
     const asset = request.url().endsWith('/worker.js') ? 'worker.js' : 'view.js';
@@ -47,6 +49,11 @@ try {
   assert.equal(await page.$('.mm-view-entry'), null); assert.deepEqual(requests, []);
   const catalog = { type: 'documentViewsChanged', views: [{ ...contribution, id: 'test/mindmap', entryUri: 'https://document-view.test/view.js' }] };
   await send(catalog); await page.waitForSelector('.mm-view-entry'); assert.deepEqual(requests, []);
+  if (process.argv.includes('--content-only')) {
+    await checkDocumentViewContent(page, out);
+    assert.deepEqual(errors, []);
+    console.log('PASS: document fonts, formatted content geometry and contrast in light/dark themes.');
+  } else {
   assert.equal(await page.$eval('.mm-view-entry svg path', e => e.getAttribute('d')), contribution.iconPaths[0]);
   assert.equal(await page.$eval('.mm-view-entry', e => e.textContent), '');
   const waitMap = () => page.waitForFunction(() => !!document.querySelector('.meo-markmap g.markmap-node') && !document.querySelector('.meo-map-status')?.textContent);
@@ -350,9 +357,11 @@ try {
     await assertPreviewPalette();
     await page.screenshot({ path: path.join(out, `environment-preview-${appearance}.png`) });
   }
+  const ordinaryDocumentFont = await page.$eval('.meo-markmap', e => getComputedStyle(e).fontFamily);
   await page.select('.preview-preset-control select', 'newsprint');
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === 'newsprint');
   await assertPreviewPalette();
+  assert.equal(await page.$eval('.meo-markmap', e => getComputedStyle(e).fontFamily), ordinaryDocumentFont, 'Preview preset typography must not change the map font');
   await page.screenshot({ path: path.join(out, 'environment-preview-newsprint.png') });
   await page.select('.preview-preset-control select', 'default');
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === 'default');
@@ -414,4 +423,5 @@ try {
   assert.deepEqual(compatibility, { folded: true, math: true, task: true, otherFolded: true, color: 'white', selected: 8, scalePreserved: true, smallZoomRecovered: true, largeZoomRecovered: true, centered: true, authorColorsPreserved: true, unsafe: false, updatingTranslated: true, emptyEnglish: true, emptyChinese: true });
   assert.deepEqual(errors, []);
   console.log('PASS: optional lazy loading, real Markmap worker, full/side layout, Source exclusivity, document transactions, folds, navigation, close/Escape, unregister.');
+  }
 } finally { await browser.close(); }

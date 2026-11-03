@@ -45,6 +45,8 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 
 主体在容器作用域内提供 `--meo-view-background`、`--meo-view-foreground`、`--meo-view-muted-foreground`、`--meo-view-hover-background`、`--meo-view-visible-background`、`--meo-view-border` 和 `--meo-view-focus`。这些变量随当前正文配色、Preview 预设和高对比度设置更新。默认内容使用这套角色，公共工具栏继续使用 `--meo-ui-*`；不缓存变量的初始计算值。完整规则见[扩展的语言与配色](ui-design-guidelines.md#扩展的语言与配色)。
 
+字体由主体提供 `--meo-view-font-family`、`--meo-view-font-size`、`--meo-view-font-weight` 和 `--meo-view-code-font-family`。前三者始终跟随普通文档（Live）的字体及用户字号，代码字体跟随文档的 Source 字体；不采用 Preview 预设的排版。变量实时继承，无须重新解析快照或重建视图。扩展负责字体变化后的内容测量和布局，保留选择、折叠、平移与缩放。公共工具栏仍使用界面字体。
+
 这是供可信、已安装 VS Code 扩展使用的协作接口，不是执行不可信第三方脚本的沙箱。Markdown 中的脚本、事件属性及任意外部资源由渲染扩展自行限制；主编辑器不负责理解扩展语法。
 
 ## 当前公共交互
@@ -72,8 +74,11 @@ bun scripts/test-document-views.ts
 $env:MEO_MARKMAP_DIR = '<独立导图扩展目录>'
 bun scripts/test-document-views-browser.ts
 bun scripts/test-document-views-browser.ts --dark --english
+bun scripts/test-document-views-browser.ts --content-only
 ```
 
 覆盖未安装时无入口、按需加载、侧边预览互斥、分栏和全屏、文字及空白处拖动、双向定位、底部工具栏、适应画布避让、正文更新和关闭释放。该测试不替代 VS Code 内安装 VSIX 后的实际激活验证。
+
+`--content-only` 检查真实导图中的格式、节点与单元格边界、三种字体的动态切换、明暗主题下的文字对比度，以及切换字体后的视图状态保持。检查图片替代文字时使用本地拦截资源，不访问外部图片服务。
 
 两个项目分别打包 VSIX，主编辑器不包含 Markmap 依赖。体验安装时先安装支持此 API 的主编辑器包，再安装导图包；仅安装导图包到尚无此 API 的旧版主编辑器上会激活失败。
