@@ -805,6 +805,7 @@ async function assertMarkerContinuity(page: import('puppeteer-core').Page, bundl
       const host = document.querySelector<HTMLElement>('.preview-host');
       const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument;
       return host?.inert === false && getComputedStyle(host).visibility !== 'hidden'
+        && document.querySelector<HTMLElement>('.preview-loading')?.hidden === true
         && doc?.body.textContent?.includes('Typing target.') && Boolean(doc.querySelector('[data-meo-preview-document]')) === windowed;
     }, {}, windowed);
     if (imageAbove && !windowed) assert.ok(await page.evaluate(() => [...document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.images]
