@@ -229,6 +229,16 @@
       "kind": "targeted",
       "command": "bun scripts/test-native-input-delivery.ts",
       "reason": "Native acceptance driver preflight: real browser pointer receipts and negative controls; optional --browser-url attaches to an already scoped disposable Workbench. External application/OS acceptance remains separate, so this driver contract is not part of quick."
+    },
+    "scripts/test-document-views.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-document-views.ts",
+      "reason": "Optional document view registration, disposal, allowed resource paths and protocol validation."
+    },
+    "scripts/test-document-views-browser.ts": {
+      "kind": "targeted",
+      "command": "MEO_MARKMAP_DIR=<companion-directory> bun scripts/test-document-views-browser.ts [--dark]",
+      "reason": "Requires the separately built Markmap companion; verifies real rendering, updates, layout, navigation and removal."
     }
   },
   "repeats": [
@@ -306,6 +316,7 @@
       "scripts/test-document-session-replacement.ts",
       "scripts/test-document-session-webview-adapter.ts",
       "scripts/test-document-session.ts",
+      "scripts/test-document-views.ts",
       "scripts/test-docx-export-runtime.ts",
       "scripts/test-draft-recovery-transfer-budget.ts",
       "scripts/test-draft-recovery-transport.ts",
@@ -485,6 +496,7 @@
       "scripts/test-document-session-cutover.ts",
       "scripts/test-document-sync-recovery.ts",
       "scripts/test-document-toolbar.ts",
+      "scripts/test-document-views-browser.ts",
       "scripts/test-docx-export-browser.ts",
       "scripts/test-editing-features-production.ts",
       "scripts/test-editor-background-theme.ts",
@@ -552,9 +564,9 @@
       "scripts/test-line-number-typing-stability.ts",
       "scripts/test-link-candidates-production.ts",
       "scripts/test-link-cursor-production.ts",
-      "scripts/test-linked-image-tooltips-production.ts",
       "scripts/test-link-destinations-production.ts",
       "scripts/test-link-status-work-budget.ts",
+      "scripts/test-linked-image-tooltips-production.ts",
       "scripts/test-linked-preview-cold-scroll.ts",
       "scripts/test-list-editing-transaction.ts",
       "scripts/test-list-layout-interaction.ts",
@@ -622,8 +634,8 @@
       "scripts/test-preview-deferred-math.ts",
       "scripts/test-preview-font-refresh-browser.ts",
       "scripts/test-preview-giant-code-highlight.ts",
-      "scripts/test-preview-image-layout.ts",
       "scripts/test-preview-image-actions.ts",
+      "scripts/test-preview-image-layout.ts",
       "scripts/test-preview-layout.ts",
       "scripts/test-preview-links.ts",
       "scripts/test-preview-loading-presentation.ts",

@@ -1,3 +1,5 @@
+import { createDocumentViewsRegistry } from './extension/documentViews';
+import type { DocumentViewsApi } from './documentViews';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as vscode from 'vscode';
@@ -194,7 +196,7 @@ const createVscodeAppearanceSettingsStore = (context: vscode.ExtensionContext): 
   updateLegacy: (key, value) => Promise.resolve(context.globalState.update(key, value))
 });
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export async function activate(context: vscode.ExtensionContext): Promise<DocumentViewsApi> {
   context.subscriptions.push({ dispose: disposeWikiResources });
   const appearanceSettings = await createAppearanceSettingsOwner(createVscodeAppearanceSettingsStore(context));
   void vscode.commands.executeCommand('setContext', ACTIVE_EDITOR_CONTEXT_KEY, false);
@@ -217,7 +219,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get('language', 'auto'), vscode.env.language
   ), context);
   const customPreviewPresets = await createVscodePreviewPresets(context);
-  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage(), customPreviewPresets);
+  const documentViews = createDocumentViewsRegistry();
+  context.subscriptions.push(documentViews);
+  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage(), customPreviewPresets, documentViews);
   context.subscriptions.push(vscode.commands.registerCommand('meoEnhanced.managePreviewPresets', () => provider.managePreviewPresets()));
   void provider.initializeGitWatcher();
   provider.initializeDevelopmentStyleWatcher();
@@ -383,6 +387,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await provider.exportActiveDocument('docx');
     })
   );
+  return documentViews.api;
 }
 
 class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
@@ -402,7 +407,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     private readonly appearanceSettings: AppearanceSettingsOwner,
     private readonly editingPreferences: Awaited<ReturnType<typeof createVscodeEditingPreferences>>,
     private readonly imageStorage: ReturnType<typeof createVscodeImageStorage>,
-    private readonly customPreviewPresets: Awaited<ReturnType<typeof createVscodePreviewPresets>>
+    private readonly customPreviewPresets: Awaited<ReturnType<typeof createVscodePreviewPresets>>,
+    private readonly documentViews: ReturnType<typeof createDocumentViewsRegistry>
   ) {
     this.previewRenderer = createBackgroundPreviewRenderer(
       vscode.Uri.joinPath(context.extensionUri, 'dist', 'preview-render-worker.js').fsPath);
@@ -759,6 +765,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       }
     });
 
+    this.documentViews.attach(panel, () => controller.session.ensureInitDelivered());
+
     // A conservative hint preserves immediate diagram transitions without a
     // second Markdown parser. New diagrams can still load the runtime later.
     panel.webview.html = this.getWebviewHtml(panel.webview, shouldPreloadMermaid(document.getText()));
@@ -1074,7 +1082,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         <link href="${styleUri}" rel="stylesheet" />
         ${preloadMermaid ? `<link rel="modulepreload" href="${mermaidModuleUri}" />` : ''}
       </head>
-      <body data-meo-mindmap-prototype="${this.context.extensionMode === vscode.ExtensionMode.Development}" data-meo-katex-src="${katexStyleUri}" data-meo-mermaid-src="${mermaidRuntimeUri}" data-meo-mermaid-module-src="${mermaidModuleUri}" data-meo-git-diff-worker-src="${gitDiffWorkerUri}" data-meo-shiki-worker-src="${shikiWorkerUri}" data-meo-markdown-worker-src="${markdownWorkerUri}" data-meo-script-nonce="${nonce}">
+      <body data-meo-katex-src="${katexStyleUri}" data-meo-mermaid-src="${mermaidRuntimeUri}" data-meo-mermaid-module-src="${mermaidModuleUri}" data-meo-git-diff-worker-src="${gitDiffWorkerUri}" data-meo-shiki-worker-src="${shikiWorkerUri}" data-meo-markdown-worker-src="${markdownWorkerUri}" data-meo-script-nonce="${nonce}">
         <div id="app" class="editor-root">
           ${getWebviewPreloadShellMarkup()}
         </div>

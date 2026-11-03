@@ -1,3 +1,4 @@
+import { mountDocumentViews } from './documentViews';
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
 import { createEditorFontWheel } from './adapters/editorFontWheel';
@@ -1405,8 +1406,9 @@ moreToolsWrapper.className = 'more-tools-wrapper';
 moreToolsWrapper.append(moreToolsButton, moreToolsPanel);
 
 const rightToolsSeparator = document.createElement('div');
-rightToolsSeparator.className = 'format-separator preview-hidden-toolbar-control';
+rightToolsSeparator.className = 'format-separator right-tools-separator';
 rightToolsSeparator.setAttribute('role', 'separator');
+rightToolsSeparator.hidden = true;
 
 const setMoreToolsVisible = (visible: boolean) => {
   moreToolsPanel.hidden = !visible;
@@ -1489,9 +1491,8 @@ const presentModePreparation = (mode: 'live' | 'source' | null): void => {
 const sourcePreviewButton = document.createElement('button');
 sourcePreviewButton.type = 'button';
 sourcePreviewButton.className = 'format-button source-preview-button';
-sourcePreviewButton.dataset.tooltip = activeUiStrings.showSidePreview;
-sourcePreviewButton.dataset.tooltipLiveUpdate = 'true';
-sourcePreviewButton.setAttribute('aria-label', activeUiStrings.showSidePreview);
+sourcePreviewButton.dataset.tooltip = activeUiStrings.sidePreview;
+sourcePreviewButton.setAttribute('aria-label', activeUiStrings.sidePreview);
 sourcePreviewButton.setAttribute('aria-pressed', 'false');
 sourcePreviewButton.appendChild(createCodicon('open-preview'));
 rightGroup.insertBefore(sourcePreviewButton, changesControls);
@@ -1624,6 +1625,14 @@ const moveToolbarItemToOverflow = (item: HTMLElement): void => {
 };
 
 const syncToolbarOverflow = () => {
+  // Separate search from preceding actions only when one is actually visible,
+  // including contributed entries in Preview mode.
+  let hasLeadingAction = false;
+  for (let item = rightToolsSeparator.previousElementSibling; item; item = item.previousElementSibling) {
+    const buttons = item.matches('button') ? [item] : Array.from(item.querySelectorAll('button'));
+    if (buttons.some(button => button.getClientRects().length > 0)) { hasLeadingAction = true; break; }
+  }
+  rightToolsSeparator.hidden = !hasLeadingAction;
   const nextLayoutKey = `${toolbar.clientWidth}:${rightGroup.offsetWidth}:${root.dataset.mode ?? ''}:${activeUiLanguage}:${previewController.getPresetState().preset}`;
   if (nextLayoutKey === toolbarOverflowLayoutKey) return;
   toolbarOverflowLayoutKey = nextLayoutKey;
@@ -2024,10 +2033,13 @@ root.replaceChildren(toolbar, editorNoticeBanner, editorWrapper, previewOptionsP
 const editorModeApplication = createEditorModeApplication();
 let editorModeRuntime: EditorModeRuntime;
 let sourcePreviewEnabled = false;
+let documentViews: ReturnType<typeof mountDocumentViews> | null = null;
 // This preference belongs to one open document session. Keep it out of
 // WebviewUiState so reopening the document starts from synchronized scrolling.
 let sourcePreviewScrollSyncEnabled = true;
 let sourcePreviewPosition = { line: 1, active: false };
+let documentViewPreviewPosition: { line: number; text: string } | null = null;
+let documentViewPreviewPositionTimer: ReturnType<typeof setTimeout> | undefined;
 let splitModeTransition: {
   readonly viewport: EditorModeViewportToken;
   readonly editorScrollTop: number;
@@ -2077,19 +2089,23 @@ const isSidePreviewVisible = (): boolean => (
 const isPreviewSurfaceVisible = (): boolean => (
   getActiveEditorMode() === 'preview' || isSidePreviewVisible()
 );
-const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = false): boolean => (
-  previewController.setSourcePositionMarker({
-    visible: isSidePreviewVisible(),
-    line: sourcePreviewPosition.line,
-    active: sourcePreviewPosition.active
-  }, { revealIfOutside, deferLayout }) === true
-);
+const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = false): boolean => {
+  if (documentViewPreviewPosition && (getActiveEditorMode() !== 'preview'
+    || documentViewPreviewPosition.text !== getCurrentEditorText())) {
+    documentViewPreviewPosition = null;
+    clearTimeout(documentViewPreviewPositionTimer);
+  }
+  const documentPosition = getActiveEditorMode() === 'preview' ? documentViewPreviewPosition : null;
+  return previewController.setSourcePositionMarker({
+    visible: isSidePreviewVisible() || documentPosition !== null,
+    line: documentPosition?.line ?? sourcePreviewPosition.line,
+    active: documentPosition !== null || sourcePreviewPosition.active
+  }, { revealIfOutside, deferLayout }) === true;
+};
 function presentSourcePreviewControls(): void {
   const split = isSidePreviewVisible();
   previewController.setSourcePreviewControls(split, sourcePreviewScrollSyncEnabled);
-  const sourcePreviewLabel = split
-    ? activeUiStrings.hideSidePreview
-    : activeUiStrings.showSidePreview;
+  const sourcePreviewLabel = activeUiStrings.sidePreview;
   sourcePreviewButton.dataset.tooltip = sourcePreviewLabel;
   sourcePreviewButton.setAttribute('aria-label', sourcePreviewLabel);
 
@@ -2878,6 +2894,7 @@ const runDocumentDerivedUiRefresh = (): void => {
   }
 };
 const scheduleDocumentDerivedUiRefresh = (text: DocumentText): void => {
+  documentViews?.documentChanged();
   pendingDocumentDerivedText = text;
   editor?.requestDerivedWork(runDocumentDerivedUiRefresh);
 };
@@ -3720,6 +3737,7 @@ window.addEventListener('message', (event) => {
   }
 
   const message = decodeHostToWebviewMessage(rawMessage);
+  if (message?.type === 'documentViewsChanged') { documentViews?.setViews(message.views); return; }
   if (!message) {
     return;
   }
@@ -4212,6 +4230,7 @@ sourceButton.addEventListener('click', () => {
 
 sourcePreviewButton.addEventListener('click', () => {
   if (getActiveEditorMode() !== 'source' || !editor) return;
+  documentViews?.close(false);
   const viewport = editor.captureViewportAnchorToken?.('editor') ?? null;
   sourcePreviewEnabled = !sourcePreviewEnabled;
   const { split } = presentPreviewSurface(false, { atomicSplit: sourcePreviewEnabled });
@@ -4441,16 +4460,42 @@ window.addEventListener('pagehide', () => readingPositionLifecycle?.flush());
 scheduleReadyHandshake();
 scheduleEditorBundleWarmupAfterReady();
 
-// Temporary comparison UI; only the Development Host opts into this prototype.
-if (document.body.dataset.meoMindmapPrototype === 'true') {
-  void import('./mindmap.prototype').then(({ mountMindmapPrototype }) => {
-    mountMindmapPrototype({
-      root, editorSurface: editorWrapper, entryContainer: toolbarRight,
+documentViews = mountDocumentViews({
+      root, editorSurface: editorWrapper, contentSurface: editorSurface,
+      entryContainer: rightGroup,
+      disableSidePreview() {
+        if (!sourcePreviewEnabled) return;
+        const anchor = editor?.captureViewportAnchorToken?.('editor');
+        sourcePreviewEnabled = false;
+        presentPreviewSurface(getActiveEditorMode() === 'preview');
+        editor?.refreshLayout?.();
+        if (anchor) editor?.restoreViewportAnchorToken?.(anchor, 'editor');
+      },
       getText: getCurrentEditorText,
+      getReadingLine: () => getActiveEditorMode() === 'preview'
+        ? previewController.getTopVisiblePosition()?.topLine ?? 1
+        : editor?.getTopVisibleLine() ?? 1,
       getLanguage: () => activeUiLanguage,
-      revealLine(line) {
-        if (root.dataset.mode === 'preview') void previewController.revealSourcePosition(line, () => true);
-        else editor?.scrollToLine(line, 'upper');
+      async revealLine(line) {
+        if (getActiveEditorMode() !== 'preview') { editor?.scrollToLine(line, 'upper'); return; }
+        clearTimeout(documentViewPreviewPositionTimer);
+        const position = { line, text: getCurrentEditorText() };
+        documentViewPreviewPosition = position;
+        const isCurrent = () => documentViewPreviewPosition === position
+          && getActiveEditorMode() === 'preview' && getCurrentEditorText() === position.text;
+        // Share the side preview's source mapping, reveal and background marker.
+        presentSourcePreviewPosition(false, true);
+        try { await previewController.revealSourcePosition(line, isCurrent); }
+        catch (error) { console.error('Document view navigation failed', error); }
+        finally {
+          if (documentViewPreviewPosition === position) {
+            documentViewPreviewPositionTimer = setTimeout(() => {
+              if (documentViewPreviewPosition !== position) return;
+              documentViewPreviewPosition = null;
+              presentSourcePreviewPosition();
+            }, 1000);
+          }
+        }
       },
       preserveReading() {
         const owner = root.dataset.mode === 'preview' ? 'preview' : 'editor';
@@ -4459,9 +4504,8 @@ if (document.body.dataset.meoMindmapPrototype === 'true') {
           if (anchor) editor?.restoreViewportAnchorToken?.(anchor, owner);
         };
       }
-    });
-  });
-}
+});
+window.addEventListener('pagehide', () => documentViews?.dispose(), { once: true });
 
 function refreshShortcutHints(): void {
   shortcutHints = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');

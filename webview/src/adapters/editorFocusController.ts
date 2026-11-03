@@ -29,7 +29,7 @@ type InputSelection = {
 };
 
 const focusTakingSelector = 'input, textarea, select, [role="textbox"], [role="combobox"], [role="listbox"], [role="option"], [contenteditable]:not([contenteditable="false"])';
-const focusTransferSelector = 'iframe, dialog[open], [aria-modal="true"], [draggable="true"]';
+const focusTransferSelector = 'iframe, dialog[open], [aria-modal="true"], [draggable="true"], [data-editor-focus-transfer]';
 const windowReturnPaintGraceMs = 50;
 
 /** Owns focus handoffs between an editable document, window activation, and Webview chrome. */

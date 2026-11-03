@@ -2192,6 +2192,18 @@ button:focus-visible > .menu-switch {
   overflow: visible;
 }
 
+/* Contributed view entries use the editor's shared toolbar button states. */
+.document-view-entry {
+  flex: 0 0 auto;
+  color: var(--meo-ui-text-muted);
+}
+
+.document-view-entry > svg {
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
 .heading-dropdown-option:hover {
   background-color: var(--meo-ui-surface-hover);
 }
