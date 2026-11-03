@@ -11,7 +11,8 @@ Write, preview, and review complex Markdown seamlessly in VS Code, switch freely
 <p align="center">
   <a href="https://marketplace.visualstudio.com/items?itemName=huangko555.meo-enhanced"><strong>Install from VS Code Marketplace</strong></a> ·
   <a href="https://github.com/huangko555/meo-enhanced/releases">Download VSIX</a> ·
-  <a href="https://github.com/huangko555/meo-enhanced/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/huangko555/meo-enhanced/blob/main/CHANGELOG.md">Changelog</a> ·
+  <a href="https://github.com/huangko555/meo-enhanced/blob/main/docs/sponsor.md">Sponsor</a>
 </p>
 
 ![MEO Enhanced showing the same Live document in Dark and Light appearances](docs/readme/en/product-overview.png)
@@ -145,6 +146,12 @@ For offline installation, download a `.vsix` package from [GitHub Releases](http
 - Requires VS Code `1.94.0` or newer.
 - Supports `.md`, `.markdown`, `.mdx`, and `.mdc` files.
 - Can be installed alongside the original MEO extension; each extension uses independent editors, commands, and settings.
+
+## Sponsor
+
+If MEO Enhanced helps you, you can support its ongoing development and maintenance with a voluntary tip.
+
+[Choose a sponsorship option](https://github.com/huangko555/meo-enhanced/blob/main/docs/sponsor.md): Afdian for Alipay / WeChat Pay, or Ko-fi for international supporters. The page includes payment details in Chinese and English.
 
 ## Project origin
 

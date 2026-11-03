@@ -11,7 +11,8 @@ Write, preview, and review complex Markdown seamlessly in VS Code, switch freely
 <p align="center">
   <a href="https://marketplace.visualstudio.com/items?itemName=huangko555.meo-enhanced"><strong>从 VS Code Marketplace 安装</strong></a> ·
   <a href="https://github.com/huangko555/meo-enhanced/releases">下载 VSIX</a> ·
-  <a href="https://github.com/huangko555/meo-enhanced/blob/main/CHANGELOG.md">变更记录</a>
+  <a href="https://github.com/huangko555/meo-enhanced/blob/main/CHANGELOG.md">变更记录</a> ·
+  <a href="https://github.com/huangko555/meo-enhanced/blob/main/docs/sponsor.md">赞助</a>
 </p>
 
 ![MEO Enhanced 在深色和浅色外观下显示同一份 Live 文档](docs/readme/zh-cn/product-overview.png)
@@ -145,6 +146,12 @@ code --install-extension huangko555.meo-enhanced
 - 需要 VS Code `1.94.0` 或更高版本。
 - 支持 `.md`、`.markdown`、`.mdx` 和 `.mdc` 文件。
 - 可以与原版 MEO 同时安装，两者使用独立的编辑器、命令和设置。
+
+## 赞助
+
+如果 MEO Enhanced 对你有帮助，欢迎自愿赞助，支持项目持续开发与维护。
+
+[选择赞助方式](https://github.com/huangko555/meo-enhanced/blob/main/docs/sponsor.md)：支付宝 / 微信支付使用爱发电，国际用户可使用 Ko-fi。页面提供中英文付款说明。
 
 ## 项目来源
 
