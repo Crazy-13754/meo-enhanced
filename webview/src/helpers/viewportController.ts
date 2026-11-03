@@ -1848,13 +1848,15 @@ export class ViewportController {
     if (tableRow && blockTop !== undefined && !this.isUserScrolling()) {
       const ownerGeneration = this.generation + 1;
       const correctTableRow = () => {
-        if (this.destroyed || this.generation !== ownerGeneration || this.isUserScrolling()) return;
+        if (this.destroyed || this.generation !== ownerGeneration || this.isUserScrolling()
+          || this.activeElementRetentionCorrection !== correctTableRow) return;
         const row = resolveTableRow();
         if (row) this.writeScrollPosition({
           top: scroller.scrollTop + row.getBoundingClientRect().top - blockTop,
           left: scroller.scrollLeft
         });
       };
+      this.activeElementRetentionCorrection = correctTableRow;
       const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(correctTableRow);
       observer?.observe(this.view.contentDOM);
       const mutations = new MutationObserver(correctTableRow);
@@ -1862,7 +1864,9 @@ export class ViewportController {
       scroller.addEventListener('scroll', correctTableRow, { passive: true });
       let remainingFrames = 15;
       const release = () => {
-        if (--remainingFrames <= 0 || this.destroyed || this.generation !== ownerGeneration) {
+        if (--remainingFrames <= 0 || this.destroyed || this.generation !== ownerGeneration
+          || this.activeElementRetentionCorrection !== correctTableRow) {
+          if (this.activeElementRetentionCorrection === correctTableRow) this.activeElementRetentionCorrection = null;
           observer?.disconnect();
           mutations.disconnect();
           scroller.removeEventListener('scroll', correctTableRow);
@@ -1885,10 +1889,14 @@ export class ViewportController {
           : null;
       };
       const correctAnchorLine = () => {
-        if (this.destroyed || this.generation !== ownerGeneration || this.isUserScrolling()) return;
+        if (this.destroyed || this.generation !== ownerGeneration || this.isUserScrolling()
+          || this.activeElementRetentionCorrection !== correctAnchorLine) return;
         const top = trackedLineTarget();
         if (top !== null) this.writeScrollPosition({ top, left: scroller.scrollLeft });
       };
+      // A measured update can adjust CodeMirror's scroll after DOM observers
+      // have run. Retain the same line in that pre-paint reconciliation too.
+      this.activeElementRetentionCorrection = correctAnchorLine;
       scroller.addEventListener('scroll', correctAnchorLine, { passive: true });
       const mutations = new MutationObserver(correctAnchorLine);
       mutations.observe(this.view.contentDOM, { childList: true, attributes: true, subtree: true });
@@ -1899,7 +1907,9 @@ export class ViewportController {
         observer.observe(this.view.contentDOM);
         let remainingFrames = 15;
         const release = () => {
-          if (--remainingFrames <= 0 || this.destroyed || this.generation !== ownerGeneration) {
+          if (--remainingFrames <= 0 || this.destroyed || this.generation !== ownerGeneration
+            || this.activeElementRetentionCorrection !== correctAnchorLine) {
+            if (this.activeElementRetentionCorrection === correctAnchorLine) this.activeElementRetentionCorrection = null;
             observer.disconnect();
             mutations.disconnect();
             scroller.removeEventListener('scroll', correctAnchorLine);
@@ -1909,6 +1919,7 @@ export class ViewportController {
         requestAnimationFrame(release);
       } else {
         requestAnimationFrame(() => {
+          if (this.activeElementRetentionCorrection === correctAnchorLine) this.activeElementRetentionCorrection = null;
           mutations.disconnect();
           scroller.removeEventListener('scroll', correctAnchorLine);
         });

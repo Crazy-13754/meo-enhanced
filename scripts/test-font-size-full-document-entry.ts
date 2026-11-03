@@ -17,3 +17,11 @@ import { getViewportController } from '../webview/src/helpers/viewportController
   const view = (window as any).__fontTestView() as EditorView;
   getViewportController(view).preserveDocumentAnchorWhileMutation(mutate, true);
 };
+
+// CodeMirror can compensate for a late height-map receipt after DOM observers.
+// Drive that existing post-measure boundary without adding a second owner.
+(window as any).__fontTestMeasuredScrollRewrite = (delta: number) => {
+  const view = (window as any).__fontTestView() as EditorView;
+  view.scrollDOM.scrollTop += delta;
+  getViewportController(view).reconcileAfterEditorUpdate(undefined, true);
+};

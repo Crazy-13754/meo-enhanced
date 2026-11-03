@@ -169,6 +169,10 @@ deltas, Ctrl/Cmd modifiers, font bounds, and bilingual light/dark settings at
 normal and narrow widths. It runs in regression, targeted appearance and browser gates;
 visual evidence is saved under `.local/font-wheel-acceptance/`. The existing
 font-size viewport contract covers reading-anchor continuity during layout changes.
+It also drives a late measured scroll rewrite on the fourteenth rendering
+opportunity, after the twelve-stable-frame task can finish. Text and table anchors
+retain the existing 12px bound through the same post-measure owner; a newer native
+wheel or navigation still takes precedence. Keep the original observation budgets.
 
 Retained Preview settings are covered by `test-preview-webview-adapter.ts`
 (cache invalidation, delayed preload/render retirement, coalescing and unchanged
