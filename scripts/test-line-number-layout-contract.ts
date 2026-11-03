@@ -51,7 +51,7 @@ try {
       host.ed = host.MermaidEditingHarness.createEditor({ parent: document.querySelector('#app'), initialMode: 'live',
         text, sourceLineNumbers: 'on', onApplyChanges() {} });
       host.headingSamples = [];
-      let observing = true;
+      let observing = false;
       let frame = 0;
       host.stopHeadingSamples = () => { observing = false; cancelAnimationFrame(frame); };
       host.readHeadingNumbers = () => {
@@ -71,10 +71,20 @@ try {
         host.headingSamples.push(...host.readHeadingNumbers());
         frame = requestAnimationFrame(() => setTimeout(sample, 0));
       };
-      frame = requestAnimationFrame(() => setTimeout(sample, 0));
+      host.startHeadingSamples = () => {
+        observing = true;
+        frame = requestAnimationFrame(() => setTimeout(sample, 0));
+      };
     }, text);
     assert.equal(await page.evaluate(() => (window as any).ed.prepareLiveSyntax(() => true)), true,
       name + ': production Live preparation completes before accepting the visible surface');
+    await page.evaluate(async () => {
+      const host = window as any;
+      // The production bootstrap keeps its cover until this same readiness
+      // boundary. Sample its first accepted frame, not covered preparation DOM.
+      await host.ed.whenVisiblePresentationReady(500);
+      host.startHeadingSamples();
+    });
     await settle();
     if (name === 'deep') await page.evaluate(line => (window as any).ed.scrollToLine(line - 2, 'top'), targetLine);
     await page.waitForFunction(line => (window as any).readHeadingNumbers().some((row: any) => row.line === line), {}, targetLine)
