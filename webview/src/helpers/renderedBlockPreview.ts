@@ -87,7 +87,7 @@ export function hasRenderedBlockPreview(widget: unknown): boolean {
 
 export function createRenderedBlockPreviewShell(options: {
   kind: RenderedBlockPreviewKind;
-  language: 'mermaid' | 'latex';
+  language: string;
   startLine: number;
   endLine: number;
   indentColumns: LiveBlockIndentValue;

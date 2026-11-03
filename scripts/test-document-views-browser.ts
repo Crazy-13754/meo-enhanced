@@ -19,7 +19,7 @@ const browser = await launchTestBrowser();
 try {
   const page = await browser.newPage(); await page.setViewport({ width: 1280, height: 800 });
   const errors: string[] = [], requests: string[] = [];
-  page.on('pageerror', error => errors.push(String(error)));
+  page.on('pageerror', error => errors.push(error instanceof Error ? error.stack ?? String(error) : String(error)));
   page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
   await page.setRequestInterception(true);
   let assetGate: Promise<void> | undefined;
@@ -38,6 +38,19 @@ try {
   await page.setContent('<!doctype html><html lang="zh-CN"><body class="vscode-light"><div id="app" class="editor-root"></div></body></html>');
   await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
   await page.addStyleTag({ content: ':root{--vscode-editor-background:#fff;--vscode-editor-foreground:#24292f;--vscode-sideBar-background:#f6f8fa;--vscode-panel-border:#d0d7de;--vscode-toolbar-hoverBackground:#eaeef2;--vscode-font-family:system-ui;--vscode-editor-font-family:system-ui;--vscode-editor-font-size:15px}html,body,#app{height:100%;margin:0}' });
+  if (process.argv.includes('--blocks-only')) {
+    const worker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
+    assert(worker.success, worker.logs.map(String).join('\n'));
+    await page.evaluate(source => {
+      document.body.dataset.meoMarkdownWorkerSrc = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      const send = Worker.prototype.postMessage;
+      (window as any).__blockWorkerContexts = 0;
+      Worker.prototype.postMessage = function(message: any, ...rest: any[]) {
+        if (message?.blocks === true) (window as any).__blockWorkerContexts++;
+        return send.call(this, message, ...rest);
+      };
+    }, await worker.outputs[0]!.text());
+  }
   await page.exposeFunction('__fixtureHost', async (message: any) => {
     if (message.type === 'requestDocumentContent') return { type: 'documentContentResult', requestId: message.requestId,
       result: { ok: true, value: exportRuntime.renderDocumentContent(message.text) } };

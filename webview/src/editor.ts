@@ -53,7 +53,7 @@ import { getCodeBlockSourceLines } from './helpers/blockIndent';
 import { markdownContentStyleTheme } from './helpers/markdownContentStyleTheme';
 import { markdownTagField } from './helpers/tags';
 import { findDocumentFragmentPosition, getLinkHrefAtPointer, getLinkHrefAtSourcePosition, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
-import { documentBlocksFacet } from './helpers/contributedCodeBlocks';
+import { documentBlocksFacet } from './editor/documentBlocks';
 import type { DocumentBlocksPort } from './editor/documentBlocks';
 import {
   gitDiffGutterBaselineExtensions,

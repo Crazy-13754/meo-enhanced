@@ -20,7 +20,7 @@ import { html } from '@codemirror/lang-html';
 import { Language, LanguageSupport, syntaxHighlighting } from '@codemirror/language';
 import type { MarkdownParser } from '@lezer/markdown';
 import { certifyMarkdownStructure, markdownStructureAvailable, preparedMarkdownStructure } from './editor/markdownStructure';
-import { addContributedCodeBlock } from './helpers/contributedCodeBlocks';
+import { isGraphBlockLanguage } from './editor/documentBlocks';
 import {
   Decoration,
   EditorView,
@@ -2109,13 +2109,8 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
         ranges.push(lineStyleDecos.codeBlockStart.range(state.doc.lineAt(node.from).from));
         ranges.push(lineStyleDecos.codeBlockEnd.range(lastCodeLine.from));
         if (node.name === 'FencedCode') {
-          const contributedStart = ranges.length;
-          if (addContributedCodeBlock(ranges, state, node)) {
-            ranges.splice(sourceDecorationStart, contributedStart - sourceDecorationStart);
-            return false;
-          }
           const codeInfo = getFencedCodeInfo(state, node);
-          const mermaidEditing = codeInfo === 'mermaid' && getMermaidBlockMode(
+          const mermaidEditing = isGraphBlockLanguage(state, codeInfo) && getMermaidBlockMode(
             state, state.doc.lineAt(node.from).from, state.doc.lineAt(Math.max(node.to - 1, node.from)).to
           ).manual === 'edit';
           addFenceOpeningLineMarker(
@@ -2128,7 +2123,7 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
             fenceMarkerDeco
           );
 
-          if (codeInfo === 'mermaid') {
+          if (isGraphBlockLanguage(state, codeInfo)) {
             const sourceDecorationEnd = ranges.length;
             if (addMermaidDiagram(ranges, state, node)) {
               ranges.splice(sourceDecorationStart, sourceDecorationEnd - sourceDecorationStart);
@@ -2335,7 +2330,7 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
       if (node.name === 'HeaderMark' && node.node.parent?.name.startsWith('SetextHeading')) return;
       if (isFenceMarker(state, node.from, node.to)) {
         const parent = node.node.parent;
-        const mermaidEditing = parent?.name === 'FencedCode' && getFencedCodeInfo(state, { node: parent }) === 'mermaid'
+        const mermaidEditing = parent?.name === 'FencedCode' && isGraphBlockLanguage(state, getFencedCodeInfo(state, { node: parent }))
           && getMermaidBlockMode(state, state.doc.lineAt(parent.from).from, state.doc.lineAt(Math.max(parent.from, parent.to - 1)).to).manual === 'edit';
         if (mermaidEditing) addRange(ranges, node.from, node.to, activeLineMarkerDeco);
         else addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, fenceMarkerDeco, activeLineMarkerDeco);
@@ -3633,7 +3628,7 @@ function projectInputCodeBlockLines(
     const contentTo = startDocument.line(lastContentLine).to;
     if (fenced && (fromA < contentFrom || toA > contentTo)) return;
 
-    if (language === 'mermaid') {
+    if (isGraphBlockLanguage(transaction.state, language)) {
       projected = projectInputMermaidSourceLines(projected, transaction, fromA, fromB, toB);
       return;
     }

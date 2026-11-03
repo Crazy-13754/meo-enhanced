@@ -1,7 +1,7 @@
 import { mountDocumentViews } from './documentViews';
 import { createDocumentBlocks } from './documentBlocks';
 import { StateEffect } from '@codemirror/state';
-import { documentBlocksFacet } from './helpers/contributedCodeBlocks';
+import { documentBlocksFacet } from './editor/documentBlocks';
 import { createDocumentContentTransport } from './adapters/documentContentTransport';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { effectiveShortcuts } from '../../src/application/editingPreferences';

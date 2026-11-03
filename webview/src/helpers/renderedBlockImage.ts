@@ -3,6 +3,14 @@ import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 
 const imageButtonLabels = new WeakMap<HTMLElement, (language: UiLanguage) => void>();
 const imageButtonAvailability = new WeakMap<HTMLElement, () => void>();
+const graphImageRoots = new WeakMap<HTMLElement, () => HTMLElement | null>();
+export function registerGraphImageRoot(owner: HTMLElement, resolve: () => HTMLElement | null): () => void {
+  graphImageRoots.set(owner, resolve);
+  return () => { graphImageRoots.delete(owner); };
+}
+export function renderedGraphImageRoot(owner: HTMLElement): HTMLElement | null {
+  return graphImageRoots.get(owner)?.() ?? (graphImageRoots.has(owner) ? null : owner);
+}
 
 export function refreshRenderedBlockImageLabel(button: HTMLElement, language: UiLanguage): void {
   imageButtonLabels.get(button)?.(language);

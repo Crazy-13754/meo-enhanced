@@ -53,11 +53,13 @@ export interface DocumentViewModule {
   mountBlock?(container: HTMLElement, context: DocumentBlockContext): DocumentViewInstance;
 }
 
-/** Inline results are static; fullscreen permits viewing gestures, never source edits. */
+/** Preview inline results are static. Viewing gestures never edit source. */
 export interface DocumentBlockContext extends DocumentViewContext {
   /** SVG renderers may mark their complete untransformed result group with
    * data-meo-image-content for host-owned PNG copying, independently of camera fit. */
   readonly interactive: boolean;
+  /** Inline scrolling belongs to the document; fullscreen may consume wheel zoom. */
+  readonly presentation: 'inline' | 'fullscreen';
   readonly viewState?: unknown;
   /** Small JSON viewing state, scoped to this block; do not store source, camera or HTML. */
   saveViewState(state: unknown): void;

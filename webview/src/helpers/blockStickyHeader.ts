@@ -91,7 +91,7 @@ function readBlockHeader(view: EditorView, position: number): BlockHeader | null
       const mode = getMermaidBlockMode(
         state, opening.from, ending.to
       );
-      return { from: opening.from, to: ending.to, language: 'mermaid', kind: 'mermaid', quoted,
+      return { from: opening.from, to: ending.to, language: getFencedCodeInfo(state, node) ?? 'mermaid', kind: 'mermaid', quoted,
         languageClass: mode.decision.effectiveMode === 'preview' ? 'meo-rendered-block-preview-language' : 'meo-code-language-label',
         widget: createFloatingMermaidToolbarWidget(opening.from, opening.number, mode.decision.effectiveMode, content, ending.to, state.facet(uiLanguageFacet)) };
     }

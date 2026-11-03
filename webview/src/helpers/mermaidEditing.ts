@@ -1,3 +1,5 @@
+import { documentBlocksFacet, isGraphBlockLanguage } from '../editor/documentBlocks';
+import { createGraphDiagramWidget, type GraphDiagramWidget } from './graphDiagramWidget';
 import { editorScrollIntoView } from '../editor/scrollEffects';
 import { mapLiveWidgetPositions, liveWidgetPositionsIndependent } from '../editor/liveWidgetPositions';
 import { EditorSelection, MapMode, StateEffect, StateField, type ChangeDesc, type EditorState } from '@codemirror/state';
@@ -17,12 +19,11 @@ import { isCompleteMarkdownStructure } from '../editor/markdownStructure';
 import { resolvedSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
 import { isExternalDocumentPresentation } from '../editor/externalDocumentPresentation';
 import {
-  MermaidDiagramWidget,
   createMermaidViewportState,
   type MermaidViewportState
 } from './mermaidDiagram';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
-import { createRenderedBlockImageButton } from './renderedBlockImage';
+import { createRenderedBlockImageButton, renderedGraphImageRoot } from './renderedBlockImage';
 import {
   applyLiveBlockIndent,
   liveBlockIndentKey,
@@ -65,12 +66,9 @@ export function isMermaidOpeningLine(lineText: string): boolean {
 function isMermaidAnchor(state: EditorState, anchor: number): boolean {
   if (!Number.isFinite(anchor) || anchor < 0 || anchor > state.doc.length) return false;
   const line = state.doc.lineAt(anchor);
-  return (
-    line.from === anchor &&
-    /^[ \t]*(?:(?:[-+*]|\d+[.)])[ \t]+)?(?:`{3,}|~{3,})\s*mermaid\b/i.test(
-      parseBlockLinePrefix(line.text, state.tabSize).content
-    )
-  );
+  const language = /^[ \t]*(?:(?:[-+*]|\d+[.)])[ \t]+)?(?:`{3,}|~{3,})\s*(\S+)/.exec(
+    parseBlockLinePrefix(line.text, state.tabSize).content)?.[1]?.toLowerCase();
+  return line.from === anchor && isGraphBlockLanguage(state, language);
 }
 
 export const mermaidEditingStateField = StateField.define<MermaidEditingState>({
@@ -203,6 +201,16 @@ function activeMermaidSource(state: EditorState) {
   const anchor = state.field(mermaidEditingStateField, false)?.activeAnchor;
   return anchor == null ? null : mermaidSourceForAnchor(state, anchor);
 }
+function currentGraphRange(state: EditorState, anchor: number) {
+  const source = mermaidSourceForAnchor(state, anchor);
+  if (source) return { anchor, from: source.opening.from, to: source.closing.to };
+  const editing = state.field(mermaidEditingStateField, false);
+  // A command can arrive immediately after undo, before the Worker publishes syntax.
+  // Closing an already accepted session needs its mapped bounds, not a fresh parse.
+  return editing?.activeAnchor === anchor && editing.activeTo !== null && isMermaidAnchor(state, anchor)
+    && !isCompleteMarkdownStructure(resolvedSyntaxTree(state, 0), state.doc.length)
+    ? { anchor, from: anchor, to: editing.activeTo } : null;
+}
 function blockMode(view: EditorView, anchor: number) {
   const source = mermaidSourceForAnchor(view.state, anchor);
   if (source) return getMermaidBlockMode(view.state, anchor, source.closing.to);
@@ -256,10 +264,10 @@ export function focusMermaidEditingOffset(
   return true;
 }
 function setMermaidEditingMode(view: EditorView, anchor: number, editing: boolean, isCurrent: () => boolean): void {
-  const source = mermaidSourceForAnchor(view.state, anchor);
-  if (!source || !isCurrent()) return;
+  const range = currentGraphRange(view.state, anchor);
+  if (!range || !isCurrent()) return;
   if (!editing) {
-    focusBlockReading(view, { kind: 'mermaid', from: source.opening.from, to: source.closing.to },
+    focusBlockReading(view, { kind: 'mermaid', from: range.from, to: range.to },
       [setMermaidSearchRevealEffect.of(null), supersedeLiveInputDerivedWork()]);
     return;
   }
@@ -288,11 +296,13 @@ function setMermaidEditingMode(view: EditorView, anchor: number, editing: boolea
 export function finishMermaidEditing(view: EditorView): boolean {
   if (!view.dom.classList.contains('meo-mode-live') || view.composing || view.state.selection.ranges.length !== 1) return false;
   const source = activeMermaidSource(view.state) ?? mermaidSourceAt(view.state);
-  if (!source || blockMode(view, source.anchor)?.manual !== 'edit') return false;
+  const anchor = source?.anchor ?? view.state.field(mermaidEditingStateField, false)?.activeAnchor;
+  const range = anchor == null ? null : currentGraphRange(view.state, anchor);
+  if (!range || blockMode(view, range.anchor)?.manual !== 'edit') return false;
   const selection = view.state.selection.main;
-  if (selection.from < source.opening.from || selection.to > source.closing.to) return false;
+  if (selection.from < range.from || selection.to > range.to) return false;
   const isCurrent = getViewportController(view)?.beginNavigationReveal() ?? (() => true);
-  setMermaidEditingMode(view, source.anchor, false, isCurrent);
+  setMermaidEditingMode(view, range.anchor, false, isCurrent);
   return true;
 }
 function toggleLayout(view: EditorView, anchor: number): void {
@@ -396,7 +406,8 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
       () => {
         const current = anchor();
         if (current === null) return null;
-        const chart = chartFor(view, current);
+        const owner = chartFor(view, current);
+        const chart = owner && renderedGraphImageRoot(owner);
         return chart &&
           !chart.closest('[data-meo-mermaid-rendering="true"]') &&
           !chart.querySelector('.meo-mermaid-error-badge') &&
@@ -424,7 +435,7 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
     toolbar.dataset.meoBlockTo = String(this.blockTo);
     toolbar.dataset.meoMermaidMode = this.mode;
     toolbar.dataset.meoUiLanguage = view.state.facet(uiLanguageFacet);
-    toolbar.setAttribute('aria-label', strings.mermaidBlockControls(this.lineNumber));
+    toolbar.setAttribute('aria-label', strings.mermaidBlockControls(this.lineNumber).replace('Mermaid', mermaidSourceForAnchor(view.state, this.anchor)?.language ?? 'Mermaid'));
     const editing = this.mode === 'edit',
       mode = toolbar.querySelector<HTMLButtonElement>('.meo-mermaid-mode-btn')!;
     const label = editing ? strings.hideMermaidSource : strings.editMermaidSource;
@@ -480,7 +491,7 @@ export function addMermaidToolbar(
 }
 
 type PreviewElement = HTMLElement & {
-  mermaidPreview?: { widget: MermaidDiagramWidget; timer?: number; source: string; startLine: number; endLine: number; viewport: MermaidViewportState };
+  mermaidPreview?: { widget: GraphDiagramWidget; timer?: number; source: string; startLine: number; endLine: number; viewport: MermaidViewportState };
 };
 /** The same preview action is used in document flow and opaque floating chrome. */
 export function createMermaidPreviewHeading(view: EditorView, anchor: number): HTMLElement {
@@ -542,7 +553,7 @@ export class MermaidSourcePreviewWidget extends UiLanguageSensitiveWidget {
     const anchor = changes.mapPos(this.anchor, 1), startLine = state.doc.lineAt(anchor).number;
     return anchor === this.anchor && startLine === this.startLine ? this
       : new MermaidSourcePreviewWidget(anchor, this.source, startLine, this.endLine + startLine - this.startLine,
-        this.indent, this.language, this.viewport);
+        this.indent, this.language, this.viewport, this.graphLanguage);
   }
   constructor(
     readonly anchor: number,
@@ -551,7 +562,8 @@ export class MermaidSourcePreviewWidget extends UiLanguageSensitiveWidget {
     readonly endLine: number,
     readonly indent: LiveBlockIndentValue,
     readonly language: UiLanguage,
-    readonly viewport: MermaidViewportState
+    readonly viewport: MermaidViewportState,
+    readonly graphLanguage = 'mermaid'
   ) {
     super();
   }
@@ -561,6 +573,7 @@ export class MermaidSourcePreviewWidget extends UiLanguageSensitiveWidget {
       this.hasSameUiLanguageEpoch(other) &&
       this.anchor === other.anchor &&
       this.source === other.source &&
+      this.graphLanguage === other.graphLanguage &&
       this.viewport === other.viewport &&
       this.language === other.language &&
       liveBlockIndentKey(this.indent) === liveBlockIndentKey(other.indent)
@@ -572,20 +585,25 @@ export class MermaidSourcePreviewWidget extends UiLanguageSensitiveWidget {
     root.contentEditable = 'false';
     root.dataset.meoMermaidAnchor = String(this.anchor);
     root.dataset.meoUiLanguage = view.state.facet(uiLanguageFacet);
+    root.dataset.meoGraphLanguage = this.graphLanguage;
     applyLiveBlockIndent(root, this.indent);
     const label = createMermaidPreviewHeading(view, this.anchor);
-    const widget = new MermaidDiagramWidget(this.source, this.startLine, this.endLine, {
+    const widget = createGraphDiagramWidget(this.source, this.startLine, this.endLine, {
       presentationFactory: getMermaidDiagramPresentationFactory(view.state),
       viewportState: this.viewport,
       cachePreviewHeight: false,
       uiLanguage: view.state.facet(uiLanguageFacet)
-    });
+    }, (() => {
+      const language = mermaidSourceForAnchor(view.state, this.anchor)?.language;
+      const port = view.state.facet(documentBlocksFacet);
+      return language && port?.supports(language) ? { language, port } : undefined;
+    })());
     root.append(label, widget.toDOM(view));
     root.mermaidPreview = { widget, source: this.source, startLine: this.startLine, endLine: this.endLine, viewport: this.viewport };
     return root;
   }
   updateDOM(root: PreviewElement, view: EditorView): boolean {
-    if (root.dataset.meoUiLanguage !== view.state.facet(uiLanguageFacet)) return false;
+    if (root.dataset.meoUiLanguage !== view.state.facet(uiLanguageFacet) || root.dataset.meoGraphLanguage !== this.graphLanguage) return false;
     const preview = root.mermaidPreview;
     // Replacing the entire fenced block creates a new camera, even at the same position.
     if (!preview || preview.viewport !== this.viewport) return false;
@@ -791,7 +809,7 @@ class MermaidInlinePreview {
       source.closing.number,
       0,
       view.state.facet(uiLanguageFacet),
-      getMermaidBlockViewport(view.state, source.anchor)
+      getMermaidBlockViewport(view.state, source.anchor), source.language
     );
     let replacing = false;
     if (

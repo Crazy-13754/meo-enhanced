@@ -1,6 +1,5 @@
+import { createGraphBlockControls } from './graphBlockControls';
 import { WidgetType, type EditorView } from '@codemirror/view';
-import { createElement, ZoomIn, ZoomOut, Maximize2 } from 'lucide';
-import { ZoomReset } from './zoomResetIcon';
 import type { EditorState } from '@codemirror/state';
 import type { SyntaxNodeRef } from '@lezer/common';
 import type { MermaidConfig } from 'mermaid';
@@ -1183,76 +1182,13 @@ export class MermaidDiagramWidget extends WidgetType {
   }
 
   createZoomControls(svgContainer: HTMLElement): HTMLElement {
-    const strings = getUiStrings(this.uiLanguage);
-    const controls = document.createElement('div');
-    controls.className = 'meo-visual-controls meo-mermaid-zoom-controls';
-    controls.setAttribute('role', 'group');
-    controls.setAttribute('aria-label', strings.previewTools);
+    const controls = createGraphBlockControls(document, this.uiLanguage, {
+      zoomIn: () => this.setZoom(svgContainer, stepVisualZoom(this.zoom, 1)),
+      zoomOut: () => this.setZoom(svgContainer, stepVisualZoom(this.zoom, -1)),
+      fit: () => { this.zoom = 1; this.panX = 0; this.panY = 0; this.applyTransform(svgContainer); },
+      fullscreen: pointer => this.toggleFullscreen(svgContainer, pointer)
+    }).element;
     applyMermaidThemeClass(controls);
-
-    const zoomIn = document.createElement('button');
-    zoomIn.type = 'button';
-    zoomIn.className = 'meo-visual-control-btn meo-mermaid-zoom-btn';
-    zoomIn.appendChild(createElement(ZoomIn, { width: 16, height: 16 }));
-    zoomIn.setAttribute('aria-label', strings.zoomIn);
-
-    const zoomOut = document.createElement('button');
-    zoomOut.type = 'button';
-    zoomOut.className = 'meo-visual-control-btn meo-mermaid-zoom-btn';
-    zoomOut.appendChild(createElement(ZoomOut, { width: 16, height: 16 }));
-    zoomOut.setAttribute('aria-label', strings.zoomOut);
-
-    const reset = document.createElement('button');
-    reset.type = 'button';
-    reset.className = 'meo-visual-control-btn meo-mermaid-zoom-btn';
-    reset.appendChild(createElement(ZoomReset, { width: 16, height: 16 }));
-    reset.setAttribute('aria-label', strings.resetZoom);
-
-    const fullscreen = document.createElement('button');
-    fullscreen.type = 'button';
-    fullscreen.className = 'meo-visual-control-btn meo-mermaid-zoom-btn meo-mermaid-fullscreen-btn';
-    fullscreen.appendChild(createElement(Maximize2, { width: 16, height: 16 }));
-    fullscreen.setAttribute('aria-label', strings.fullscreen);
-
-    zoomIn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.setZoom(svgContainer, stepVisualZoom(this.zoom, 1));
-    });
-
-    zoomOut.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.setZoom(svgContainer, stepVisualZoom(this.zoom, -1));
-    });
-
-    reset.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.zoom = 1;
-      this.panX = 0;
-      this.panY = 0;
-      this.applyTransform(svgContainer);
-    });
-
-    fullscreen.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.toggleFullscreen(svgContainer, e.detail > 0);
-    });
-
-    controls.addEventListener('pointerdown', (event) => {
-      event.preventDefault(); event.stopPropagation();
-    });
-    for (const button of [zoomIn, zoomOut, reset, fullscreen]) {
-      button.dataset.tooltip = button.getAttribute('aria-label')!;
-    }
-
-    controls.appendChild(zoomIn);
-    controls.appendChild(zoomOut);
-    controls.appendChild(reset);
-    controls.appendChild(fullscreen);
-
     return controls;
   }
 

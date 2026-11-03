@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { Page } from 'puppeteer-core';
 import { writeFileSync } from 'node:fs';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 
 export async function checkDocumentBlocks(page: Page, out: string) {
   const text = '# Embedded map\n\n```markmap\n# Trip\n## Travel\n- Train\n- Bus\n## Visit\n- Museum\n- Park\n```\n\nEnd.\n';
@@ -12,14 +13,13 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     const doc = document.querySelector('#app')?.getAttribute('data-mode') === 'preview'
       ? document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument! : document;
     const root = doc.querySelector('.meo-contributed-block')?.shadowRoot;
-    const buttons = root?.querySelectorAll<HTMLButtonElement>('button');
-    return root?.querySelector('g.markmap-node') && buttons?.length && !buttons[buttons.length - 1].disabled;
+    const button = doc.querySelector<HTMLElement>('.meo-mermaid-fullscreen-btn,.meo-preview-fullscreen-btn');
+    return root?.querySelector('g.markmap-node') && button && !button.hasAttribute('disabled') && button.getAttribute('aria-disabled') !== 'true';
   });
   const full = () => page.evaluate(() => {
     const doc = document.querySelector('#app')?.getAttribute('data-mode') === 'preview'
       ? document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument! : document;
-    const buttons = doc.querySelector('.meo-contributed-block')!.shadowRoot!.querySelectorAll<HTMLButtonElement>('button');
-    buttons[buttons.length - 1].click();
+    doc.querySelector<HTMLElement>('.meo-mermaid-fullscreen-btn,.meo-preview-fullscreen-btn')!.click();
   });
   const waitFull = async () => {
     try { await page.waitForFunction(() => document.querySelector('.meo-mermaid-fullscreen-scrim .meo-contributed-block')?.shadowRoot?.querySelectorAll('g.markmap-node').length
@@ -34,7 +34,13 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     console.log(await page.evaluate(() => ({ host: document.querySelector('.editor-host')?.innerHTML.slice(0,16000), map: document.querySelector('.meo-contributed-block')?.shadowRoot?.innerHTML.slice(-1500) })));
     await page.screenshot({ path: out + '/embedded-map-failure.png' }); throw error;
   }
-  assert.equal(await page.evaluate(() => document.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector('.meo-contributed-content')!.hasAttribute('inert')), true);
+  assert.equal(await page.evaluate(() => document.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector('.meo-contributed-content')!.hasAttribute('inert')), false);
+  const assertCanvasPalette = async () => assert.equal(await page.evaluate(() => {
+    const owner = document.querySelector('.editor-host .meo-graph-block')!;
+    const canvas = owner.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector('.meo-contributed-canvas')!;
+    return getComputedStyle(canvas).backgroundColor === getComputedStyle(owner).backgroundColor;
+  }), true, 'Mounted graph inherits the actual code surface, not detached default colors');
+  await assertCanvasPalette();
   await full(); await waitFull(); const initial = await nodeCount();
   await page.evaluate(() => {
     const root = document.querySelector('.meo-mermaid-fullscreen-scrim .meo-contributed-block')!.shadowRoot!;
@@ -76,7 +82,7 @@ export async function checkDocumentBlocks(page: Page, out: string) {
       const ctx = canvas.getContext('2d')!; ctx.drawImage(bitmap, 0, 0);
       (window as any).__blockCopy = { width: bitmap.width, height: bitmap.height, png: canvas.toDataURL('image/png') };
     } } });
-    document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector<HTMLElement>('.meo-copy-image-btn')!.click();
+    document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector<HTMLElement>('.meo-copy-image-btn')!.click();
   });
   await page.waitForFunction(() => (window as any).__blockCopy);
   const copied = await page.evaluate(() => (window as any).__blockCopy);
@@ -96,8 +102,19 @@ export async function checkDocumentBlocks(page: Page, out: string) {
   await page.click('button[data-mode="live"]');
   await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'live' && document.querySelector<HTMLElement>('.preview-host')?.hidden);
   await waitInline();
-  await page.evaluate(() => document.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector<HTMLButtonElement>('button')!.click());
-  await page.waitForFunction(() => !document.querySelector('.editor-host .meo-contributed-block'));
+  await page.click('.meo-mermaid-mode-btn');
+  await page.waitForFunction(() => document.querySelector('.meo-mermaid-toolbar[data-meo-mermaid-mode=edit]') && document.querySelector('.meo-mermaid-editing-preview .meo-contributed-block'));
+  await waitInline();
+  assert.equal(await page.$eval('.meo-mermaid-mode-btn', e => e.getAttribute('aria-label')), '完成编辑');
+  await assertCanvasPalette();
+  await page.screenshot({ path: out + '/embedded-map-editing.png' });
+  await page.click('.meo-mermaid-layout-btn');
+  await page.waitForFunction(() => !!document.querySelector('.meo-mermaid-inline-preview'));
+  await waitInline();
+  await page.screenshot({ path: out + '/embedded-map-editing-side.png' });
+  await page.click('.meo-mermaid-mode-btn');
+  await page.waitForFunction(() => !document.querySelector('.meo-mermaid-editing-preview'));
+  await waitInline();
   assert.equal(await page.evaluate(() => (window as any).__viewportTestText()), text, 'Edit source only moves the caret');
   await page.evaluate(() => {
     const view = (window as any).__viewportTestView();
@@ -112,10 +129,45 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     view.dispatch({ changes: { from: 0, insert: 'New paragraph.\n\n' }, selection: { anchor: 0 } });
   });
   await waitInline();
-  await page.evaluate(() => document.querySelector('.editor-host .meo-contributed-block')!.shadowRoot!.querySelector<HTMLButtonElement>('button')!.click());
+  await page.click('.meo-mermaid-mode-btn');
   assert.equal(await page.evaluate(() => {
     const view = (window as any).__viewportTestView(); return view.state.doc.lineAt(view.state.selection.main.head).text;
   }), '---', 'Editing above a block maps its source action to the current body');
+  // The same native editor path must work when the production Worker/budget takes over.
+  for (const large of [false, true]) {
+    const source = text + 'Following paragraph.\n\n'.repeat(large ? 12000 : 15);
+    assert.equal(assessLargeDocument(source).boundedEditorWork, large);
+    await page.evaluate(source => {
+      const view = (window as any).__viewportTestView();
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: source }, selection: { anchor: 0 } });
+      view.scrollDOM.scrollTop = 0;
+    }, source);
+    if (large) await page.waitForFunction(() => (window as any).__viewportTestLargeBudget());
+    await waitInline();
+    assert.equal(await page.evaluate(() => (window as any).__viewportTestLargeBudget()), large);
+    await page.click('.meo-mermaid-mode-btn');
+    await page.waitForFunction(() => !!document.querySelector('.meo-mermaid-toolbar[data-meo-mermaid-mode=edit]'));
+    await page.keyboard.press('End'); await page.keyboard.type(' revised');
+    await page.waitForFunction(() => [...document.querySelectorAll('.meo-contributed-block')].some(e => e.shadowRoot?.textContent?.includes('Trip revised')));
+    assert.equal(await page.evaluate(() => (window as any).__viewportTestText()), source.replace('# Trip', '# Trip revised'));
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+    await page.waitForFunction(source => (window as any).__viewportTestText() === source, {}, source);
+    await page.keyboard.press('Escape');
+    try { await page.waitForFunction(() => !!document.querySelector('.meo-rendered-block-preview .meo-contributed-block') && !document.querySelector('.meo-mermaid-editing-preview')); }
+    catch (error) {
+      console.log('Graph finish diagnostic', large, await page.evaluate(() => {
+        const view = (window as any).__viewportTestView();
+        return { selection: view.state.selection.main.toJSON(), focus: document.activeElement?.className,
+          source: view.state.doc.sliceString(0, 200), blocks: [...document.querySelectorAll('.meo-mermaid-toolbar')].map(e => e.outerHTML),
+          preview: document.querySelector('.meo-mermaid-editing-preview')?.outerHTML.slice(0, 1000) };
+      })); throw error;
+    }
+    await waitInline();
+    if (large) {
+      assert(await page.evaluate(() => (window as any).__blockWorkerContexts > 0), 'Large source uses the actual Markdown Worker');
+      assert(await page.$$eval('.cm-line', lines => lines.length < 200), 'Large document keeps mounted source bounded');
+    }
+  }
   await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'documentViewsChanged', views: [] } })));
   await page.waitForFunction(() => !document.querySelector('.editor-host .meo-contributed-block'));
   assert((await page.evaluate(() => (window as any).__viewportTestText())).includes('```markmap'), 'Uninstalling the extension preserves source');

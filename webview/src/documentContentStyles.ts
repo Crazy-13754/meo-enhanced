@@ -11,6 +11,8 @@ ${buildMarkdownContentStyleCss({
 })}
 ${root} p:last-child{margin-bottom:0}
 ${root} blockquote{margin:0 0 .5em;padding-left:.6em}
+${root} blockquote>p{margin-bottom:.25em}
+${root} blockquote>:last-child{margin-bottom:0}
 ${root} :is(ul,ol){margin:.25em 0;padding-left:1.4em}
 ${root} table{border-collapse:collapse;color:inherit}
 ${root} :is(th,td){padding:.15em .4em;vertical-align:top;border:1px solid var(--meo-view-muted-foreground)}

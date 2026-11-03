@@ -56,6 +56,7 @@ const markdown = [
   '## 长文字 Wrap',
   '- ' + '长中文换行 '.repeat(15),
   '- https://example.invalid/' + 'long-path-without-spaces'.repeat(8),
+  '> 第一层引用', '> ', '> > 第二层引用，含 `code`', '',
   '## 作者配色 Authored <!-- color: white; bgColor: #703060 -->',
   '- 保留指定颜色',
 ].join('\n');
@@ -109,6 +110,13 @@ export async function checkDocumentViewContent(page: Page, out: string) {
             }
           }
           if (foreign.getBoundingClientRect().width / scale > 282) problems.push('long content exceeds the configured 280px node width');
+        }
+        const outerQuote = [...svg.querySelectorAll('blockquote > p')].find(p => p.textContent === '第一层引用');
+        const innerQuote = outerQuote?.parentElement?.querySelector(':scope > blockquote p');
+        if (!outerQuote || !innerQuote) problems.push('nested quote paragraphs missing');
+        else {
+          const gap = (innerQuote.getBoundingClientRect().top - outerQuote.getBoundingClientRect().bottom) / scale;
+          if (gap < 0 || gap > parseFloat(getComputedStyle(outerQuote).fontSize) * .5) problems.push(`nested quote gap too large: ${gap}`);
         }
         const table = svg.querySelector('table')!;
         const headings = [...table.querySelectorAll('th')].map(e => getComputedStyle(e).textAlign);
