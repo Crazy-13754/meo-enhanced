@@ -27,6 +27,9 @@
     "type": "git",
     "url": "https://github.com/huangko555/meo-enhanced.git"
   },
+  "sponsor": {
+    "url": "https://github.com/huangko555/meo-enhanced/blob/main/docs/sponsor.md"
+  },
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished"

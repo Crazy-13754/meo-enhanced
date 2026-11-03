@@ -1020,6 +1020,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   private getWebviewHtml(webview: vscode.Webview, preloadMermaid: boolean): string {
+    const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'logo.png')).toString();
     const scriptUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'index.js'))
       .toString();
@@ -1067,6 +1068,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="meo-logo" content="${logoUri}" />
         <meta http-equiv="Content-Security-Policy" content="${csp};" />
         <title>MEO Enhanced</title>
         <style>${getWebviewPreloadShellCss()}</style>

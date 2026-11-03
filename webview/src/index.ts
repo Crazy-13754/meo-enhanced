@@ -1,4 +1,5 @@
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
+import { version as productVersion } from '../../package.json';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
 import { createEditorFontWheel } from './adapters/editorFontWheel';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
@@ -15,7 +16,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, isEditorCommandId, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, CircleQuestionMark, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, ArrowRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, CircleQuestionMark, ExternalLink, Heart, History, Info } from 'lucide';
 import { createCodicon } from './helpers/codicons';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
@@ -1294,6 +1295,8 @@ const applyUiLanguage = (language: UiLanguage): void => {
   supportHeading.textContent = strings.supportHeading;
   feedbackPrompt.textContent = strings.feedbackPrompt;
   reportIssueLabel.textContent = strings.reportIssue;
+  sponsorProjectLabel.textContent = strings.sponsorProject;
+  sponsorActionLabel.textContent = strings.sponsorAction;
   toolbarOverflowIndicator.dataset.tooltip = strings.toolbarOverflow;
   toolbarOverflowIndicator.setAttribute('aria-label', strings.toolbarOverflow);
   toolbarOverflowSection.setAttribute('aria-label', strings.toolbarOverflow);
@@ -1356,6 +1359,20 @@ const reportIssueLabel = document.createElement('span');
 reportIssueLabel.textContent = activeUiStrings.reportIssue;
 reportIssueAction.append(reportIssueLabel, createElement(ExternalLink, { width: 13, height: 13, 'aria-hidden': 'true' }));
 reportIssueButton.append(createMoreToolsControlHeading(CircleQuestionMark, feedbackPrompt), reportIssueAction);
+const sponsorProjectLabel = document.createElement('span');
+sponsorProjectLabel.className = 'more-tools-option-label';
+sponsorProjectLabel.textContent = activeUiStrings.sponsorProject;
+const sponsorProjectButton = document.createElement('button');
+sponsorProjectButton.type = 'button';
+sponsorProjectButton.className = 'more-tools-option more-tools-navigation-option more-tools-sponsor-button';
+sponsorProjectButton.setAttribute('role', 'menuitem');
+sponsorProjectButton.setAttribute('aria-haspopup', 'dialog');
+const sponsorProjectAction = document.createElement('span');
+sponsorProjectAction.className = 'more-tools-navigation-action more-tools-sponsor-action';
+const sponsorActionLabel = document.createElement('span');
+sponsorActionLabel.textContent = activeUiStrings.sponsorAction;
+sponsorProjectAction.append(sponsorActionLabel, createElement(ArrowRight, { width: 13, height: 13, 'aria-hidden': 'true' }));
+sponsorProjectButton.append(createMoreToolsControlHeading(Heart, sponsorProjectLabel), sponsorProjectAction);
 moreToolsPanel.append(
   displaySettingsHeading,
   sourceLineNumbersBtn,
@@ -1369,7 +1386,8 @@ moreToolsPanel.append(
   preferencesHeading,
   moreSettingsButton,
   supportHeading,
-  reportIssueButton
+  reportIssueButton,
+  sponsorProjectButton
 );
 
 const moreToolsWrapper = document.createElement('div');
@@ -1408,6 +1426,7 @@ reportIssueButton.addEventListener('click', () => {
   });
   setMoreToolsVisible(false);
 });
+sponsorProjectButton.addEventListener('click', () => { setMoreToolsVisible(false); settingsWindow?.open('about'); });
 
 document.addEventListener('pointerdown', (event) => {
   if (!moreToolsWrapper.contains(event.target as Node)) {
@@ -3632,6 +3651,11 @@ const previewPresetSettings = createPreviewPresetSettings({
   changed: () => settingsWindow?.present()
 });
 settingsWindow = createSettingsWindow({
+  productVersion,
+  openLink: href => vscode.postMessage({ type: 'openLink', href }),
+  logoUrl: document.querySelector<HTMLMetaElement>('meta[name="meo-logo"]')?.content ?? '',
+  readEnvironment: async () => { const result = await editorServicesTransport.request({ action: 'environment' }); return result && 'environment' in result ? result.environment : null; },
+  copyText: async text => { const result = await editorServicesTransport.request({ action: 'writeClipboard', text }); return !!result && 'text' in result; },
   appearance: {
     getColors: () => uiColors, getMode: () => themeAdapter.getPreference(), getScheme: () => themeAdapter.getAppearance(),
     getFontSize: () => editorFontSizePreference,

@@ -90,6 +90,7 @@ writeFileSync(
 );
 
 cpSync(path.join(root, 'webview', 'src', 'styles.css'), path.join(dist, 'index.css'));
+cpSync(path.join(root, 'logo.png'), path.join(dist, 'logo.png'));
 cpSync(path.join(root, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js'), path.join(dist, 'mermaid.min.js'));
 const katexSourceDir = path.join(root, 'node_modules', 'katex', 'dist');
 const katexCss = readFileSync(path.join(katexSourceDir, 'katex.min.css'), 'utf8');

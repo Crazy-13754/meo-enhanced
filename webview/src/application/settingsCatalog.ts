@@ -1,6 +1,21 @@
 import type { EditorCommandId, InputAssistance } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts';
+export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts' | 'about';
+
+export const aboutCatalog = [
+  { id: 'project', section: 'aboutProject', title: ['项目主页', 'Project home'],
+    description: ['在 VS Code 中，专注于 Markdown 写作。', 'A Markdown editor for VS Code.'],
+    href: 'https://github.com/huangko555/meo-enhanced', keywords: ['关于 项目 版本 版本信息 免费开源 源码 系统 系统版本 复制 复制版本信息 环境 远程 架构', 'about project version information free open source repository GitHub VS Code VSCode system OS copy version info environment remote architecture'] },
+  { id: 'feedback', section: 'aboutFeedback', title: ['问题反馈', 'Give feedback'],
+    description: ['欢迎分享使用中遇到的问题，以及让编辑器更好用的想法。', 'Share a problem you encountered or an idea to improve the editor.'],
+    href: 'https://github.com/huangko555/meo-enhanced/issues/new', keywords: ['反馈 问题 建议 帮助 支持', 'feedback issue bug suggestion help support'] },
+  { id: 'afdian', section: 'aboutSupport', title: ['爱发电（支付宝 / 微信支付）', 'Afdian (Alipay / WeChat Pay)'],
+    description: ['可自选金额。单次支持请选择 1 个月，并在付款前确认金额与续费设置。', 'Choose your own amount. For a one-time tip, select one month and check the amount and renewal settings before paying.'],
+    href: 'https://afdian.com/a/meoenhanced', keywords: ['赞助 支持持续开发 打赏 捐赠 爱发电 支付宝 微信', 'sponsor support development donate donation tip Afdian Alipay WeChat Pay'] },
+  { id: 'kofi', section: 'aboutSupport', title: ['Ko-fi', 'Ko-fi'],
+    description: ['一次性打赏，可自选金额。', 'One-time tips with an amount you choose.'],
+    href: 'https://ko-fi.com/meoenhanced', keywords: ['赞助 支持持续开发 打赏 捐赠 国际', 'sponsor support development donate donation tip international Ko-fi'] }
+] as const;
 
 export const appearanceCatalog = [
   { id: 'fontSize', title: ['字号大小', 'Font size'], description: ['字号用于编辑、预览和导出。自动时跟随 VS Code 字号，修改后立即保存。', 'Font size applies to editing, preview and export. Auto follows VS Code. Changes save immediately.'], keywords: ['字号 字体大小 文字大小 放大 缩小 缩放 自动字号 自定义字号 排版', 'font size text size zoom scale larger smaller auto custom typography'], advanced: false },
@@ -29,6 +44,7 @@ export const sectionTitles = {
   appearanceMode: ['界面模式', 'Interface mode'], appearanceTypography: ['文档排版', 'Document typography'], appearanceColors: ['基础颜色', 'Basic colors'], appearanceAdvanced: ['高级颜色', 'Advanced colors'],
   display: ['文档显示', 'Document display'], opening: ['打开文档时', 'Opening documents'], interface: ['界面设置', 'Interface'],
   presetList: ['预设列表', 'Preset list'], presetFiles: ['导入与制作', 'Import and authoring'],
+  aboutProject: ['MEO Enhanced', 'MEO Enhanced'], aboutFeedback: ['问题与建议', 'Questions and ideas'], aboutSupport: ['支持持续开发', 'Support development'],
   symbols: ['符号与选区', 'Symbols and selections'], structure: ['列表与结构', 'Lists and structure'], paste: ['粘贴', 'Pasting'], candidates: ['输入候选', 'Suggestions'],
   document: ['文档与编辑', 'Document and editing'], format: ['文字格式', 'Text formatting'], blocks: ['段落与块', 'Paragraphs and blocks'],
   table: ['表格', 'Tables'], selection: ['选择与光标', 'Selections and cursors'], lines: ['行操作', 'Line operations'], navigation: ['模式与导航', 'Modes and navigation']

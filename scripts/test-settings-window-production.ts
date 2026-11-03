@@ -8,6 +8,8 @@ import { createImageStorageHost, type ImageStorageContext } from '../src/host/im
 import type { ImageLocationRequest } from '../src/protocol/imageStorage';
 import { editorCommandIds } from '../src/foundation/editingPreferences';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
+import { version as productVersion } from '../package.json';
+const logoDataUrl = 'data:image/png;base64,' + (await fs.readFile('logo.png')).toString('base64');
 const build = await Bun.build({ entrypoints: ['scripts/test-settings-window-production-entry.ts'], target: 'browser', format: 'iife' });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const browser = await launchTestBrowser();
@@ -80,7 +82,7 @@ try {
       imagePages.add(page);
     }
     await page.setViewport({ width: 1100, height: 780 });
-    await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
+    await page.setContent(`<!doctype html><meta name="meo-logo" content="${logoDataUrl}"><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>`);
     await page.addStyleTag({ path: 'webview/src/styles.css' });
     await page.addScriptTag({ content: `
       window.__messages=[]; window.__revision=0; window.__clipboard='';
@@ -115,10 +117,15 @@ try {
           });
         }
         if(message.type==='editorService') {
-          const value=message.action==='links'?{candidates:window.__linkCandidates??[]}:{text:message.action==='readClipboard'?window.__clipboard:''};
+          if((message.action==='environment' && window.__failNextEnvironment) || (message.action==='writeClipboard' && window.__failNextClipboardWrite)) {
+            window.__failNextEnvironment=window.__failNextClipboardWrite=false;
+            queueMicrotask(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'editorServiceResult',requestId:message.requestId,result:{ok:false,error:{code:'operation-failed',message:'fixture failure'}}}}))); return;
+          }
+          const value=message.action==='environment'?{environment:window.__environment??{appName:'Visual Studio Code',appVersion:'1.140.0',system:'Windows 11 (10.0.26200)',architecture:'x64',remoteName:''}}:message.action==='links'?{candidates:window.__linkCandidates??[]}:{text:message.action==='readClipboard'?window.__clipboard:''};
           if(message.action==='writeClipboard') window.__clipboard=message.text;
           const reply=()=>queueMicrotask(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'editorServiceResult',requestId:message.requestId,result:{ok:true,value}}})));
-          if(message.action==='readClipboard' && window.__holdNextClipboardRead) { window.__holdNextClipboardRead=false; window.__flushClipboardRead=reply; } else reply();
+          if(message.action==='readClipboard' && window.__holdNextClipboardRead) { window.__holdNextClipboardRead=false; window.__flushClipboardRead=reply; }
+          else if(message.action==='writeClipboard' && window.__holdNextClipboardWrite) { window.__holdNextClipboardWrite=false; window.__flushClipboardWrite=reply; } else reply();
         }
       }});
     ` });
@@ -235,10 +242,71 @@ try {
   await page.waitForSelector('.cm-editor.meo-mode-source');
   await page.click('.more-tools-wrapper > .format-button');
   assert.equal(await page.$eval('.more-tools-panel', element => element.getBoundingClientRect().width), 288);
-  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 6);
+  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 7);
   assert.deepEqual(await page.$$eval('.more-tools-panel [role="menuitemcheckbox"]', elements => elements.map(element => (element as HTMLElement).dataset.action)), ['sourceLineNumbers', 'longCodeBlockFolding', 'contentMaxWidth', 'liveStrongColoring']);
   assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置', '关于与支持']);
+  assert.equal(await page.$eval('.more-tools-sponsor-button', element => element.previousElementSibling?.classList.contains('more-tools-feedback-link')), true);
+  await page.evaluate(() => { (window as any).__failNextEnvironment = true; });
+  await page.click('.more-tools-sponsor-button');
+  await page.waitForSelector('.settings-window[open][data-tab="about"]');
+  await page.waitForSelector('.settings-about-retry:not([hidden])');
+  assert.equal(await page.$eval('.settings-about-copy', element => (element as HTMLButtonElement).disabled), true);
+  await page.click('.settings-about-retry');
+  await page.waitForSelector('.settings-about-copy:not([disabled])');
+  assert.equal(await page.$eval('.settings-about-retry', element => getComputedStyle(element).display), 'none');
+  assert.match(await page.$eval('.settings-about-versions', element => element.textContent!), /1\.140\.0.*Windows 11.*26200.*x64/s);
+  assert.equal(await page.$eval('.settings-about-logo', element => (element as HTMLImageElement).naturalWidth > 0), true);
+  assert.equal(await page.$eval('.settings-about-copy', element => element.textContent), '', 'Copy is an icon-only action');
+  assert.deepEqual(await page.$eval('.settings-about-copy', element => [element.getBoundingClientRect().width, element.getBoundingClientRect().height]), [28, 28]);
+  assert.deepEqual(await page.$$eval('.settings-about-payment-icon', elements => elements.map(element => (element as HTMLElement).dataset.paymentMethod)), ['alipay', 'wechat', 'paypal', 'visa', 'mastercard']);
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('.settings-about-payment-icon img')].length === 5 && [...document.querySelectorAll<HTMLImageElement>('.settings-about-payment-icon img')].every(image => image.complete && image.naturalWidth > 0));
+  await page.hover('.settings-about-copy');
+  await page.waitForFunction(() => document.querySelector('.meo-tooltip.is-visible')?.textContent === '复制版本信息');
+  for (const selector of ['.settings-about-platform[href*="afdian"]', '.settings-about-platform[href*="ko-fi"]', ...['alipay', 'wechat', 'paypal', 'visa', 'mastercard'].map(method => `[data-payment-method="${method}"] img`)]) {
+    await page.hover(selector);
+    // Observe past the shared tooltip's 200ms reveal delay, including dismissal
+    // of the copy hint when entering a sponsor card.
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(await page.$('.meo-tooltip.is-visible'), null, `${selector}: sponsor cards have no hover hint`);
+  }
+  await page.hover('.settings-about-runtime .settings-about-section-title');
+  assert.equal(await page.$eval('.settings-about-page', element => /1 个月|one month/.test(element.textContent!)), false);
+  assert.equal(await page.evaluate(() => {
+    const surfaces = [...document.querySelectorAll('.settings-about-runtime, .settings-about-platform')].map(element => { const style = getComputedStyle(element); return [style.backgroundColor, style.borderColor, style.borderRadius].join('|'); });
+    return surfaces.every(surface => surface === surfaces[0]);
+  }), true, 'Version and sponsor cards share their surface, border and radius');
+  assert.equal(await page.$eval('.more-tools-panel', element => (element as HTMLElement).hidden), true);
+  assert.equal(await page.$eval('.settings-tab:last-child .settings-tab-label', element => element.textContent), '关于');
+  for (const href of ['https://github.com/huangko555/meo-enhanced', 'https://github.com/huangko555/meo-enhanced/issues/new', 'https://afdian.com/a/meoenhanced', 'https://ko-fi.com/meoenhanced']) {
+    await page.locator(`.settings-about-link[href="${href}"]`).click();
+    assert.deepEqual(await page.evaluate(() => (window as any).__messages.at(-1)), { type: 'openLink', href });
+    assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true, 'External links retain the About page');
+  }
+  await page.evaluate(() => { (window as any).__failNextClipboardWrite = true; });
+  await page.click('.settings-about-copy');
+  await page.waitForSelector('.settings-about-status.is-error:not([hidden])');
+  await page.click('.settings-about-copy');
+  await page.waitForFunction(() => document.querySelector('.settings-about-copy')?.getAttribute('aria-label') === '已复制');
+  assert.equal(await page.evaluate(() => (window as any).__clipboard), `MEO Enhanced: ${productVersion}\nVisual Studio Code: 1.140.0\nOS: Windows 11 (10.0.26200) (x64)`);
+  await page.evaluate(() => { (window as any).__holdNextClipboardWrite = true; });
+  await page.click('.settings-about-copy');
+  assert.equal(await page.$eval('.settings-about-copy', element => (element as HTMLButtonElement).disabled), true);
+  await closeSettings('escape');
+  await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-sponsor-button');
+  await page.evaluate(() => { (window as any).__flushClipboardWrite(); });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+  assert.equal(await page.$eval('.settings-about-copy', element => element.getAttribute('aria-label')), '复制版本信息', 'Late clipboard completion cannot update a reopened About page');
+  await page.type('.settings-search', 'Alipay');
+  assert.equal(await page.$$eval('.settings-about-link', elements => elements.length), 1);
+  assert.equal(await page.$eval('.settings-about-link', element => (element as HTMLAnchorElement).href), 'https://afdian.com/a/meoenhanced');
+  await page.click('.settings-search-clear');
+  await page.click('.settings-tab[data-tab="general"]');
+  await closeSettings('escape');
+  await page.click('.more-tools-wrapper > .format-button');
   await page.click('.more-tools-settings-button');
+  await page.click('.settings-tab[data-tab="about"]');
+  assert.equal(await page.$eval('.settings-about-copy', element => element.getAttribute('aria-label')), '复制版本信息', 'Reopening retires prior clipboard feedback');
+  await page.click('.settings-tab[data-tab="general"]');
   assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true);
   assert.equal(await page.$$eval('.settings-item', elements => elements.length), 9);
   for (const [setting, type] of [['boldHeadings', 'setBoldHeadings'], ['stickyHeader', 'setTableStickyHeader']]) {
@@ -571,7 +639,7 @@ try {
   const cursors = await page.$$eval('.settings-radio-input', elements => elements.map(element => [getComputedStyle(element).cursor, getComputedStyle(element.parentElement!).cursor]));
   assert.ok(cursors.every(([input, label]) => input === 'pointer' && label === 'pointer'));
   await page.click('.settings-search'); await page.keyboard.type('空符号');
-  assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => [element.textContent, (element as HTMLElement).hidden])), [['0', false], ['0', false], ['1', false], ['0', false], ['0', false]]);
+  assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => [element.textContent, (element as HTMLElement).hidden])), [['0', false], ['0', false], ['1', false], ['0', false], ['0', false], ['0', false]]);
   assert.equal(await page.$eval('.settings-searchbox svg', element => getComputedStyle(element).display), 'block');
   await page.click('.settings-tab[data-tab="shortcuts"]');
   assert.equal(await page.$eval('.settings-search-clear', element => (element as HTMLElement).hidden), false);
@@ -942,7 +1010,7 @@ try {
     await page.click('.settings-search-clear'); await page.keyboard.type('图片 path');
     assert.deepEqual(await page.$$eval('.settings-item', elements => elements.map(element => (element as HTMLElement).dataset.setting)), ['imageStorage']);
     await page.click('.settings-search-clear'); await page.keyboard.type('图片 theme');
-    assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => element.textContent)), ['0', '0', '0', '0', '0']);
+    assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => element.textContent)), ['0', '0', '0', '0', '0', '0']);
     assert.ok(await page.$('.settings-empty'));
     await page.click('.settings-search-clear'); await page.keyboard.type('不自动补全');
     assert.deepEqual(await page.$$eval('.settings-item', elements => elements.map(element => (element as HTMLElement).dataset.setting)), ['pairMode'], 'choice labels are searchable in the other UI language');
@@ -1200,6 +1268,12 @@ try {
     for (const [language, appearance] of [['zh-CN', 'dark'], ['zh-CN', 'light'], ['en', 'dark'], ['en', 'light']]) {
       await page.setViewport({ width: 1100, height: 780 });
       await page.click('.settings-tab[data-tab="general"]'); await page.click(`[data-setting="language"] [data-value="${language}"]`); await page.click('.settings-tab[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`);
+      await page.click('.settings-tab[data-tab="about"]');
+      await page.screenshot({ path: path.join(directory, `about-${language}-${appearance}.png`) });
+      await page.setViewport({ width: 430, height: 740 });
+      await page.screenshot({ path: path.join(directory, `about-narrow-${language}-${appearance}.png`) });
+      assert.equal(await page.$eval('.settings-content', element => element.scrollWidth <= element.clientWidth), true, 'About content fits the narrow settings pane');
+      await page.setViewport({ width: 1100, height: 780 });
       await page.click('.settings-tab[data-tab="typing"]');
       await page.click('.settings-jump[data-section="symbols"]');
       await page.screenshot({ path: path.join(directory, `settings-${language}-${appearance}.png`) });
@@ -1239,6 +1313,19 @@ try {
   assert.equal(await page.$eval('.more-tools-panel', element => (element as HTMLElement).hidden), true);
   assert.deepEqual(await page.evaluate(() => (window as any).__messages.at(-1)), { type: 'openLink', href: 'https://github.com/huangko555/meo-enhanced/issues/new' },
     'The feedback description activates its whole row in the optimized document');
+  await page.click('.more-tools-wrapper > .format-button');
+  await page.evaluate(() => { (window as any).__environment = {appName:'Visual Studio Code',appVersion:'1.140.0',system:'Linux 6.8.0',architecture:'arm64',remoteName:'ssh-remote'}; });
+  await page.locator('.more-tools-sponsor-button').click();
+  await page.waitForSelector('.settings-window[open][data-tab="about"]');
+  await page.waitForSelector('.settings-about-copy:not([disabled])');
+  await page.focus('.settings-about-copy'); await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.settings-about-copy')?.getAttribute('aria-label') === '已复制');
+  assert.match(await page.evaluate(() => (window as any).__clipboard), /OS: Linux 6\.8\.0 \(arm64\)\nRemote: ssh-remote$/);
+  await closeSettings('escape');
+  assert.deepEqual(await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+    return { text: view.state.doc.toString(), focus: view.hasFocus };
+  }), { text: largeText, focus: true }, 'The sponsor entry restores the unchanged optimized document');
   assert.deepEqual(errors, []);
   console.log('Production settings: flat sections, narrow/desktop, real controls, live search, recording/conflict, actual reassigned format operation, reset scope, modal return focus/caret/selection in prose, native cells and embedded editors; scrolled viewport, first-character input, animation/reduced motion, failure/retry, late clipboard and native key rebinding; selection toolbar toggle, drag direction, reload and native cells; full-row entry pointer/keyboard and optimized-document return passed');
 } catch (error) {
