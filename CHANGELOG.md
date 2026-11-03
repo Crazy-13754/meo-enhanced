@@ -3,6 +3,13 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## 0.3.40
+- Aligned HTML rendering across Live, Preview and exports, including omitted child end tags, native author-defined sizing and supported SVG fill rules, while preserving source-completion boundaries.
+- Reused identical pasted images within the selected destination folder, retaining collision-safe naming, concurrent-save ordering and symbolic-link protections.
+- Added an About settings page with project and feedback links, version information, a copy action and voluntary sponsorship options, with shared English and Chinese presentation.
+- Simplified document settings and support navigation, clarified Source/Preview alignment labels and tooltips, and made the outline close action visually consistent with neighboring controls.
+- Deferred toolbar overflow updates outside ResizeObserver delivery to avoid resize-loop warnings while keeping responsive controls available.
+
 ## 0.3.39
 - Aligned Live heading line numbers as background parsing completes, including initial display and large-document remounts.
 - Added image refresh, external-open and fullscreen actions to full and side Preview, preserving image dimensions, linked destinations and reading positions while resources reload.
