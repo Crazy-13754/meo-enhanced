@@ -56,6 +56,8 @@ export function mountDocumentViews(host: Host) {
     if (line !== null) afterLayout(() => host.revealLine(line));
   });
   toView.dataset.meoAlignViewport = 'preview'; toDocument.dataset.meoAlignViewport = 'source';
+  toDocument.removeAttribute('title');
+  toDocument.dataset.tooltipLiveUpdate = 'true';
   for (const control of [toView, toDocument]) {
     control.className = 'format-button meo-preview-viewport-align-button';
     control.dataset.tooltipPlacement = 'left';
@@ -66,6 +68,9 @@ export function mountDocumentViews(host: Host) {
     alignment.hidden = !active || !side || !instance?.revealLine;
     toView.disabled = running || dirty || !instance?.revealLine;
     toDocument.disabled = running || dirty || selectedLine === null;
+    const selectionHint = selectedLine === null ? t('请先选择', 'Select an item first') : t('按所选内容定位正文', 'Locate selection in document');
+    toDocument.dataset.tooltip = selectionHint;
+    toDocument.setAttribute('aria-label', selectionHint);
     if (locate) locate.disabled = running || dirty || selectedLine === null;
     for (const action of actionButtons) action.disabled = running || dirty;
   }
