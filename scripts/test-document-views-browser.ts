@@ -232,7 +232,7 @@ try {
   await page.click(layout); await settle();
   await dragCanvas();
   const sideCamera = await page.$eval('.meo-markmap > g', e => e.getAttribute('transform'));
-  assert(Number(sideCamera?.match(/scale\(([^)]+)\)/)?.[1]) < Number(camera?.match(/scale\(([^)]+)\)/)?.[1]));
+  assert.equal(Number(sideCamera?.match(/scale\(([^)]+)\)/)?.[1]), Number(camera?.match(/scale\(([^)]+)\)/)?.[1]), 'Switching to the side preserves the chosen zoom');
   assert(await page.evaluate(() => {
     const map = document.querySelector('.mm-view-panel')!.getBoundingClientRect(), outline = document.querySelector('.outline-sidebar')!.getBoundingClientRect();
     return Math.abs(map.right - outline.left) < 2 && outline.width > 0 && document.querySelector('.mm-view-panel')!.parentElement!.classList.contains('editor-surface');
@@ -335,11 +335,27 @@ try {
   await waitMap();
   await page.setViewport({ width: 1280, height: 480 }); await settle();
   await page.click('[data-view-action="fit"]'); await settle(); await assertMapFits();
+  const usableCamera = () => page.evaluate(() => {
+    const svg = document.querySelector('.meo-markmap')!;
+    const bounds = svg.getBoundingClientRect();
+    const height = document.querySelector('.document-view-toolbar')!.getBoundingClientRect().top - bounds.top - 8;
+    const { k, x, y } = (svg as any).__zoom;
+    return { scalePerHeight: k / height, x: (bounds.width / 2 - x) / k, y: (height / 2 - y) / k };
+  });
+  const tallCenter = await usableCamera();
+  const tallScale = await page.$eval('.meo-markmap', e => (e as any).__zoom.k as number);
   await page.click(layout); await settle();
+  assert(Math.abs(await page.$eval('.meo-markmap', e => (e as any).__zoom.k as number) - tallScale) < 0.001, 'Side to fullscreen preserves scale when usable height is unchanged');
+  const fullCenter = await usableCamera();
+  assert(Math.abs(fullCenter.x - tallCenter.x) < 0.1 && Math.abs(fullCenter.y - tallCenter.y) < 0.1, 'Layout switches retain the content at the usable viewport center');
   await page.click('[data-view-action="fit"]'); await settle(); await assertMapFits();
   await page.screenshot({ path: path.join(out, 'fit-above-toolbar.png') });
   await page.click(layout); await settle();
+  assert(Math.abs(await page.$eval('.meo-markmap', e => (e as any).__zoom.k as number) - tallScale) < 0.001, 'Returning to the side does not shrink a tall map by the width ratio');
   await page.setViewport({ width: 1280, height: 800 }); await settle();
+  const tallerCamera = await usableCamera();
+  assert(Math.abs(tallerCamera.scalePerHeight - tallCenter.scalePerHeight) < 0.00001, 'Window height changes use available height after deducting the toolbar');
+  await assertMapFits();
   // Preview navigation shares the source marker and must reveal an offscreen block.
   const longText = '# 旅行计划\n\n' + Array.from({ length: 60 }, (_, i) => `第 ${i + 1} 段行程说明。\n\n`).join('') + '## 终点\n\n到达目的地。\n\n' + '后续说明。\n\n'.repeat(25);
   await page.evaluate(text => {
