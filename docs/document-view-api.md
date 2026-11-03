@@ -36,11 +36,14 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 | `context.revealLine(line)` | 请求定位到正文的 1 起始行；主编辑器按当前模式定位。全屏视图会切到分栏，保留视图。 |
 | `context.selectionChanged(line \| null)` | 通知当前选中内容对应的源码行；主编辑器据此启用正文定位按钮。文档更新时选择失效。 |
 | `revealLine(line)`（可选） | 接收正文阅读位置，定位扩展内对应内容；扩展负责节点映射、折叠与选择。 |
-| `actions`（可选） | 扩展提供操作名称、图标和执行回调，主编辑器与定位、布局、关闭按钮一起呈现。 |
+| `actions`（可选） | 扩展提供英文 `label`、中文 `labelZh`、图标和执行回调。主体按当前语言呈现，并在切换时刷新。 |
+| `setLanguage(language)`（可选） | 主体在语言切换时调用，扩展更新内部状态文案及无障碍名称；不解析文档、不重置视图状态。首次语言通过 `context.language` 提供。 |
 | `context.getAvailableViewport()`（可选） | 返回容器坐标系中的可用 CSS 像素矩形，扣除浮动工具栏及安全间距。适应画布时重新读取；缩放计算属于扩展。 |
 | `dispose()` | 释放 Worker、事件监听、观察器、异步请求和渲染器。关闭后迟到的异步结果不得重建界面或定位正文。 |
 
 扩展只管理传入容器中的内容，不查询或修改主编辑器的其他 DOM。样式限制在扩展自己的 class 范围内，使用主编辑器已有主题变量。脚本与依赖随扩展本地打包；VS Code Webview 中的 Worker 使用本地资源 fetch 后创建 blob Worker，释放时终止。
+
+主体在容器作用域内提供 `--meo-view-background`、`--meo-view-foreground`、`--meo-view-muted-foreground`、`--meo-view-hover-background`、`--meo-view-visible-background`、`--meo-view-border` 和 `--meo-view-focus`。这些变量随当前正文配色、Preview 预设和高对比度设置更新。默认内容使用这套角色，公共工具栏继续使用 `--meo-ui-*`；不缓存变量的初始计算值。完整规则见[扩展的语言与配色](ui-design-guidelines.md#扩展的语言与配色)。
 
 这是供可信、已安装 VS Code 扩展使用的协作接口，不是执行不可信第三方脚本的沙箱。Markdown 中的脚本、事件属性及任意外部资源由渲染扩展自行限制；主编辑器不负责理解扩展语法。
 
