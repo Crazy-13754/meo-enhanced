@@ -14,8 +14,10 @@ export async function checkDocumentBlocks(page: Page, out: string) {
       const rect = svg.getBoundingClientRect();
       const offset = preview && !fullscreen ? frame!.getBoundingClientRect() : { left: 0, top: 0 };
       const scroller = preview && !fullscreen ? doc.scrollingElement! : (window as any).__viewportTestView().scrollDOM;
+      const visibleTop = Math.max(rect.top + offset.top, preview && !fullscreen ? offset.top : 40);
+      const visibleBottom = Math.min(rect.bottom + offset.top, window.innerHeight);
       return { camera: JSON.stringify((svg as any).__zoom), scroll: scroller.scrollTop,
-        x: rect.left + offset.left + rect.width / 2, y: rect.top + offset.top + Math.min(rect.height / 2, 120) };
+        x: rect.left + offset.left + rect.width / 2, y: (visibleTop + visibleBottom) / 2 };
     }, fullscreen);
     const before = await snapshot();
     await page.mouse.move(before.x, before.y); await page.mouse.wheel({ deltaY: 120 });
@@ -24,7 +26,7 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     if (fullscreen) assert.notEqual(after.camera, before.camera, 'Fullscreen wheel still operates the canvas');
     else {
       assert.equal(after.camera, before.camera, 'Inline wheel must not move or zoom the graph');
-      assert(after.scroll > before.scroll, 'Inline wheel scrolls the document');
+      assert(after.scroll > before.scroll, `Inline wheel scrolls the document: ${JSON.stringify({ before, after })}`);
     }
   };
   const text = '# Embedded map\n\n```markmap\n# Trip\n## Travel\n- Train\n- Bus\n> Outer quote\n>\n> > Inner quote\n\n<table><tr><td><blockquote><p>Cell outer</p>\n<blockquote><p>Cell inner</p></blockquote>\n</blockquote></td></tr></table>\n## Visit\n- Museum\n- Park\n```\n\nEnd.\n' + 'Following paragraph.\n\n'.repeat(30);
@@ -264,6 +266,16 @@ export async function checkDocumentBlocks(page: Page, out: string) {
   });
   await waitInline();
   assert(await page.evaluate(() => document.querySelector('.meo-contributed-block')!.getBoundingClientRect().height < 260), 'Small maps shrink instead of reserving a fixed 360px canvas');
+  const spacing = await page.evaluate(() => {
+    const owner = document.querySelector('.editor-host .meo-graph-block')!;
+    const nodes = [...owner.querySelector('.meo-contributed-block')!.shadowRoot!.querySelectorAll('g.markmap-node')].map(node => node.getBoundingClientRect());
+    const rect = owner.getBoundingClientRect(), style = getComputedStyle(owner);
+    return { top: Math.min(...nodes.map(node => node.top)) - rect.top,
+      bottom: rect.bottom - Math.max(...nodes.map(node => node.bottom)),
+      paddingTop: parseFloat(style.paddingTop), paddingBottom: parseFloat(style.paddingBottom) };
+  });
+  assert(spacing.top <= spacing.paddingTop + 8, `Small Live graphs do not reserve the top toolbar twice: ${JSON.stringify(spacing)}`);
+  assert(spacing.bottom <= Math.max(32, spacing.paddingBottom) + 8, `Small Live graphs do not reserve excess bottom space: ${JSON.stringify(spacing)}`);
   await page.screenshot({ path: out + '/embedded-map-compact.png' });
   await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'documentViewsChanged', views: [] } })));
   await page.waitForFunction(() => !document.querySelector('.editor-host .meo-contributed-block'));

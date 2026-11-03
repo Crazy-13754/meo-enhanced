@@ -97,10 +97,19 @@ export function createDocumentBlocks(host: Host) {
     appearance(element, paletteOwner);
     let disposed = false, instance: DocumentViewInstance | undefined, ready = false, failure: HTMLElement | undefined;
     let intrinsic: { width: number; height: number } | undefined;
+    const canvasInsets = () => {
+      if (mode === 'fullscreen') return { top: 16, bottom: 64 };
+      // The shared Live shell already reserves toolbar space. Only add what
+      // that shell has not provided; Preview has no surrounding canvas padding.
+      const style = doc.defaultView!.getComputedStyle(container);
+      return { top: Math.max(0, 16 - (parseFloat(style.paddingTop) || 0)),
+        bottom: Math.max(0, 32 - (parseFloat(style.paddingBottom) || 0)) };
+    };
     const sizeCanvas = () => {
       if (!intrinsic || disposed || mode === 'fullscreen') return;
+      const insets = canvasInsets();
       const scale = Math.min(1, Math.max(1, canvas.clientWidth - 32) / intrinsic.width);
-      const height = Math.ceil(Math.max(120, Math.min(480, intrinsic.height * scale + 48)));
+      const height = Math.ceil(Math.max(1, Math.min(480, intrinsic.height * scale + insets.top + insets.bottom)));
       if (canvas.style.height !== `${height}px`) canvas.style.height = `${height}px`;
     };
     const resize = new ResizeObserver(sizeCanvas); resize.observe(canvas);
@@ -159,7 +168,10 @@ export function createDocumentBlocks(host: Host) {
         viewState: mode === 'fullscreen' ? memories.get(key) : undefined,
         saveViewState: state => { if (mode === 'fullscreen' && !disposed) save(key, state); },
         renderContent: snapshot => host.renderContent(snapshot.text), revealLine() {},
-        getAvailableViewport() { return { x: 16, y: 16, width: Math.max(0, content.clientWidth - 32), height: Math.max(0, content.clientHeight - (mode === 'fullscreen' ? 80 : 48)) }; }
+        getAvailableViewport() {
+          const insets = canvasInsets();
+          return { x: 16, y: insets.top, width: Math.max(0, content.clientWidth - 32), height: Math.max(0, content.clientHeight - insets.top - insets.bottom) };
+        }
       });
       await present();
     })().catch(error => { modules.delete(view.entryUri); failed(error); }).finally(() => { initializing = undefined; });
