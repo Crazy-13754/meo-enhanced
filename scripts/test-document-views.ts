@@ -26,7 +26,10 @@ const panel = { webview: { options: { enableScripts: true, localResourceRoots: [
 let options = panel.webview.options, optionWrites = 0;
 Object.defineProperty(panel.webview, 'options', { get: () => options, set: next => { options = next; optionWrites++; } });
 registry.attach(panel as any, async () => { initialized = true; });
-const descriptor = { id: 'mindmap', label: 'Mind map', labelZh: '思维导图', entry: 'dist/view.js', iconPaths: ['M2 12H22'], iconOffset: { x: -0.5, y: 0 } };
+const descriptor = { id: 'mindmap', label: 'Mind map', labelZh: '思维导图', entry: 'dist/view.js', iconPaths: ['M2 12H22'], iconOffset: { x: -0.5, y: 0 }, codeBlockLanguages: ['markmap'] };
+for (const codeBlockLanguages of [[], ['mermaid'], ['markmap', 'markmap'], ['<script>']]) {
+  assert.throws(() => registry.api.registerDocumentView('test.markmap', { ...descriptor, codeBlockLanguages }));
+}
 for (const x of [NaN, Infinity, 2]) assert.throws(() => registry.api.registerDocumentView('test.markmap', { ...descriptor, iconOffset: { x, y: 0 } }));
 assert.throws(() => registry.api.registerDocumentView('test.markmap', { ...descriptor, iconPaths: ['<svg onload="alert(1)">'] }));
 for (const entry of ['../view.js', 'dist/../view.js', '/dist/view.js', 'https://untrusted/view.js']) {
@@ -34,6 +37,7 @@ for (const entry of ['../view.js', 'dist/../view.js', '/dist/view.js', 'https://
 }
 assert.throws(() => registry.api.registerDocumentView('missing', descriptor));
 const contribution = registry.api.registerDocumentView('test.markmap', descriptor);
+assert.throws(() => registry.api.registerDocumentView('test.markmap', { ...descriptor, id: 'duplicate-language' }));
 assert.throws(() => registry.api.registerDocumentView('test.markmap', descriptor));
 assert.equal(messages.length, 0);
 ready.fire({ type: 'ready' }); await Promise.resolve(); await Promise.resolve();

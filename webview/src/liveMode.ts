@@ -20,6 +20,7 @@ import { html } from '@codemirror/lang-html';
 import { Language, LanguageSupport, syntaxHighlighting } from '@codemirror/language';
 import type { MarkdownParser } from '@lezer/markdown';
 import { certifyMarkdownStructure, markdownStructureAvailable, preparedMarkdownStructure } from './editor/markdownStructure';
+import { addContributedCodeBlock } from './helpers/contributedCodeBlocks';
 import {
   Decoration,
   EditorView,
@@ -2108,6 +2109,11 @@ function buildDecorationRanges(state: EditorState, previous?: DecorationSet, cha
         ranges.push(lineStyleDecos.codeBlockStart.range(state.doc.lineAt(node.from).from));
         ranges.push(lineStyleDecos.codeBlockEnd.range(lastCodeLine.from));
         if (node.name === 'FencedCode') {
+          const contributedStart = ranges.length;
+          if (addContributedCodeBlock(ranges, state, node)) {
+            ranges.splice(sourceDecorationStart, contributedStart - sourceDecorationStart);
+            return false;
+          }
           const codeInfo = getFencedCodeInfo(state, node);
           const mermaidEditing = codeInfo === 'mermaid' && getMermaidBlockMode(
             state, state.doc.lineAt(node.from).from, state.doc.lineAt(Math.max(node.to - 1, node.from)).to

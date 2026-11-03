@@ -53,6 +53,8 @@ import { getCodeBlockSourceLines } from './helpers/blockIndent';
 import { markdownContentStyleTheme } from './helpers/markdownContentStyleTheme';
 import { markdownTagField } from './helpers/tags';
 import { findDocumentFragmentPosition, getLinkHrefAtPointer, getLinkHrefAtSourcePosition, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
+import { documentBlocksFacet } from './helpers/contributedCodeBlocks';
+import type { DocumentBlocksPort } from './editor/documentBlocks';
 import {
   gitDiffGutterBaselineExtensions,
   gitDiffGutterLiveRenderExtensions,
@@ -276,6 +278,7 @@ type CreateEditorOptions = {
   initialDiagnostics?: readonly EditorDiagnostic[];
   initialImageIntrinsicSizes?: readonly import('../../src/foundation/imageDimensions').ImageIntrinsicSize[];
   mermaidDiagramPresentationFactory: MermaidDiagramPresentationFactory;
+  documentBlocks?: DocumentBlocksPort;
   previewViewportSurface?: PreviewViewportSurface;
   uiLanguage?: UiLanguage;
   sourceLineNumbers?: SourceLineNumberMode;
@@ -430,6 +433,7 @@ export function createEditor({
   initialDiagnostics = [],
   initialImageIntrinsicSizes = [],
   mermaidDiagramPresentationFactory,
+  documentBlocks,
   previewViewportSurface,
   uiLanguage = 'en',
   sourceLineNumbers = 'on'
@@ -2672,6 +2676,7 @@ export function createEditor({
         mermaidDiagramPresentationConsumer
       ),
       markdownContentStyleTheme,
+      ...(documentBlocks ? [documentBlocksFacet.of(documentBlocks)] : []),
       sourcePreparationCompartment.of(lightweightSourceSyntax ? [] : sourceSyntaxPreparation),
       createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork })] : sourceMode(boundedEditorWork, lightweightSourceSyntax)),

@@ -1,7 +1,7 @@
 import type { DocumentContentRequest, DocumentContentResponse, DocumentContentValue } from '../../../src/protocol/documentContent';
 
 /** Requests are scoped to one mounted view. Closing rejects waiters and ignores late replies. */
-export function createDocumentContentTransport(post: (request: DocumentContentRequest) => void) {
+export function createDocumentContentTransport(post: (request: DocumentContentRequest) => void, scope = 'content') {
   let counter = 0;
   const pending = new Map<string, { resolve(value: DocumentContentValue): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   const cancel = () => {
@@ -10,7 +10,7 @@ export function createDocumentContentTransport(post: (request: DocumentContentRe
   };
   return {
     render(text: string): Promise<DocumentContentValue> {
-      const requestId = `content-${Date.now()}-${counter++}`;
+      const requestId = `${scope}-${Date.now()}-${counter++}`;
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => { pending.delete(requestId); reject(new Error('Document content rendering timed out')); }, 15_000);
         pending.set(requestId, { resolve, reject, timer });

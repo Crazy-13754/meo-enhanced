@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { DocumentViewRegistration, DocumentViewsApi } from '../documentViews';
 import type { DocumentViewsChanged } from '../protocol/documentViews';
-import { isDocumentViewIconPaths, isDocumentViewIconOffset } from '../protocol/documentViews';
+import { isDocumentViewIconPaths, isDocumentViewIconOffset, isDocumentBlockLanguages } from '../protocol/documentViews';
 import { decodeReadyMessage } from '../protocol/readyInit';
 
 export function createDocumentViewsRegistry() {
@@ -14,11 +14,15 @@ export function createDocumentViewsRegistry() {
       if (!extension || !/^[a-zA-Z0-9-]+$/.test(view.id) || !view.label?.trim()
         || !/^dist\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.js$/.test(view.entry)
         || (view.iconPaths !== undefined && !isDocumentViewIconPaths(view.iconPaths))
+        || (view.codeBlockLanguages !== undefined && !isDocumentBlockLanguages(view.codeBlockLanguages))
         || (view.iconOffset !== undefined && !isDocumentViewIconOffset(view.iconOffset))) {
         throw new Error('Invalid document view registration');
       }
       const id = `${extension.id}/${view.id}`;
       if (views.has(id)) throw new Error(`Document view already registered: ${id}`);
+      if ([...views.values()].some(existing => existing.codeBlockLanguages?.some(language => view.codeBlockLanguages?.includes(language)))) {
+        throw new Error('Code block language already registered');
+      }
       const registration = { ...view, id, uri: vscode.Uri.joinPath(extension.extensionUri, view.entry), root: vscode.Uri.joinPath(extension.extensionUri, 'dist') };
       views.set(id, registration);
       changed.fire();
@@ -47,7 +51,7 @@ export function createDocumentViewsRegistry() {
       await ensureInit();
       if (disposed) return;
       updateRoots();
-      const event: DocumentViewsChanged = { type: 'documentViewsChanged', views: [...views.values()].map(v => ({ id: v.id, label: v.label, labelZh: v.labelZh, iconPaths: v.iconPaths, iconOffset: v.iconOffset, entryUri: panel.webview.asWebviewUri(v.uri).toString() })) };
+      const event: DocumentViewsChanged = { type: 'documentViewsChanged', views: [...views.values()].map(v => ({ id: v.id, label: v.label, labelZh: v.labelZh, iconPaths: v.iconPaths, iconOffset: v.iconOffset, codeBlockLanguages: v.codeBlockLanguages, entryUri: panel.webview.asWebviewUri(v.uri).toString() })) };
       await panel.webview.postMessage(event);
     };
     const refresh = () => { void publish().catch(error => console.error('Document views could not be delivered', error)); };

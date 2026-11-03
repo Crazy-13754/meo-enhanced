@@ -242,8 +242,8 @@
     },
     "scripts/test-document-views-browser.ts": {
       "kind": "targeted",
-      "command": "MEO_MARKMAP_DIR=<companion-directory> bun scripts/test-document-views-browser.ts [--dark]",
-      "reason": "Requires the separately built Markmap companion; verifies real rendering, updates, layout, navigation and removal."
+      "command": "MEO_MARKMAP_DIR=<companion-directory> bun scripts/test-document-views-browser.ts [--dark] [--blocks-only]",
+      "reason": "Requires the separately built Markmap companion; verifies real rendering, updates, layout, navigation and removal. --blocks-only covers embedded Live/Preview blocks, fullscreen folds, PNG copying and preset fallback."
     }
   },
   "repeats": [

@@ -6,6 +6,7 @@ import exportRuntime from '../src/export/runtime';
 import { launchTestBrowser } from './browser-test-helpers';
 import { checkDocumentViewContent } from './document-view-content-checks';
 import { checkDocumentViewLoading } from './document-view-loading-checks';
+import { checkDocumentBlocks } from './document-block-checks';
 
 const root = process.cwd(), out = path.join(root, '.local/document-view-tests');
 const markmapDirectory = process.env.MEO_MARKMAP_DIR;
@@ -45,7 +46,7 @@ try {
     }) } };
     return null;
   });
-  await page.addScriptTag({ content: 'window.acquireVsCodeApi=()=>({postMessage(message){window.__fixtureHost(message).then(reply=>{if(reply)window.dispatchEvent(new MessageEvent("message",{data:reply}))})},getState(){return null},setState(){}});' });
+  await page.addScriptTag({ content: 'let fixtureState=null;window.acquireVsCodeApi=()=>({postMessage(message){window.__fixtureHost(message).then(reply=>{if(reply)window.dispatchEvent(new MessageEvent("message",{data:reply}))})},getState(){return fixtureState},setState(state){fixtureState=state}});' });
   await page.addScriptTag({ path: path.join(out, 'editor.js') });
   const text = '# 旅行计划\n\n## 交通\n\n- 高铁\n- 市内公交\n\n## 行程\n\n- 博物馆\n- 公园\n\n## 注意事项\n\n提前预约。\n\n- `示例代码`\n';
   const send = (data: unknown) => page.evaluate(data => window.dispatchEvent(new MessageEvent('message', { data })), data);
@@ -58,7 +59,9 @@ try {
   assert.equal(await page.$('.mm-view-entry'), null); assert.deepEqual(requests, []);
   const catalog = { type: 'documentViewsChanged', views: [{ ...contribution, id: 'test/mindmap', entryUri: 'https://document-view.test/view.js' }] };
   await send(catalog); await page.waitForSelector('.mm-view-entry'); assert.deepEqual(requests, []);
-  if (process.argv.includes('--loading-only')) {
+  if (process.argv.includes('--blocks-only')) {
+    await checkDocumentBlocks(page, out); assert.deepEqual(errors, []); console.log('PASS: embedded map source, static Preview, shared fullscreen folding and unchanged Markdown.');
+  } else if (process.argv.includes('--loading-only')) {
     await checkDocumentViewLoading(page, out, holdAssets);
     assert.deepEqual(errors, []);
     console.log('PASS: shared delayed loading, runtime language, background updates and close/reopen cancellation.');

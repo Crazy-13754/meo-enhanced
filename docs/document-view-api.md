@@ -1,6 +1,6 @@
 # 独立扩展接入：只读文档视图（API v1）
 
-当前接口用于将整篇 Markdown 投影为一个可选视图，首个使用者是独立的 MEO Mind Map。它不提供正文内代码块渲染、文档编辑事务或双链索引接口；这些能力有实际需求时再增加。职责归属遵循[扩展边界规则](extension-boundaries.md)。
+当前接口用于将整篇 Markdown 投影为可选视图，也支持通过可选能力渲染正文代码块，首个使用者是独立的 MEO Mind Map。不提供文档编辑事务或双链索引接口。职责归属遵循[扩展边界规则](extension-boundaries.md)。
 
 ## 注册与加载
 
@@ -74,6 +74,38 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 
 ## 开发与验证
 
+### 正文代码块
+
+注册时可提供 `codeBlockLanguages: ['markmap']`，同一语言只能由一个扩展注册，不能覆盖 Mermaid、数学和 HTML 等内置渲染。模块另外导出 `mountBlock(container, context)`，返回同样的实例契约；整个文档的 `mount` 保持原有行为。未注册、扩展移除或旧主体不支持此能力时保留普通代码块。
+
+主体拥有代码块容器、原生源码编辑、加载/失败反馈、全屏、图片复制和环境刷新。扩展只负责内容投影、画布和折叠算法。块没有分栏和正文定位：Live 中通过“编辑源码”进入原生编辑，移出块后恢复图形；Source 保留代码；Preview 正文为静态最终结果，块外保留全屏和复制图片。
+
+`context.interactive` 为 false 时不得启用内容点击、折叠、拖动和缩放；主体也会将静态内容置为 inert。全屏传 true，允许查看操作，`revealLine` 在块上下文中不执行导航。全屏共用底部单行工具栏，Escape/关闭直接退出；重新打开只恢复折叠并重新适应画布，不恢复平移、缩放。可用视口扣除工具栏和间距。
+
+`viewState` / `saveViewState` 仅保存小型 JSON 查看状态，由主体保存在当前文档 Webview 的本地 UI 状态中，不写入 Markdown。正文和全屏状态隔离，Live/Preview 全屏共享。当前以语言、起始行和源码指纹识别块，最多保留 100 条，每条最多 32 KiB；修改块源码或移动其起始行会按源码重新初始化，避免旧记忆覆盖作者配置。扩展只记节点键摘要和折叠值，不保存 HTML、源码或镜头位置。
+
+复制图片使用正文静态结果的完整内容边界，保留源码定义的折叠，不使用全屏临时状态或视口裁剪。SVG 渲染器将完整结果组标为 `data-meo-image-content`，主体复用现有 SVG/公式图片生成和剪贴板流程。共享内容样式在隔离的 Shadow DOM 中应用；字体沿用普通文档，内容色取当前正文，操作按钮取界面色。
+
+普通 Preview 预设（默认、Newsprint、Whitey、Obsidian Minimal）支持此能力；自定义预设按实际 renderer 处理。GitHub README renderer 保持代码块，与 GitHub 阅读语义一致。导出的 HTML/PDF/Word 当前保留源码，不加载独立扩展脚本，不生成导图快照。
+
+示例：
+
+````markdown
+```markmap
+---
+markmap:
+  initialExpandLevel: 2
+---
+# 项目计划
+## 实现
+- 主体接入
+- 独立渲染
+## 验证
+- Live 与 Preview
+- 浅色与深色
+```
+````
+
 独立构建扩展后，在主编辑器项目选择 `Run with Markmap`，输入扩展目录。此调试配置构建主编辑器，并同时加载两个扩展；扩展自身修改后需要单独重新构建。
 
 主编辑器注册、资源根目录及协议检查：
@@ -91,10 +123,13 @@ bun scripts/test-document-views-browser.ts
 bun scripts/test-document-views-browser.ts --dark --english
 bun scripts/test-document-views-browser.ts --content-only
 bun scripts/test-document-views-browser.ts --loading-only
+bun scripts/test-document-views-browser.ts --blocks-only
 ```
 
 覆盖未安装时无入口、按需加载、侧边预览互斥、分栏和全屏、文字及空白处拖动、双向定位、底部工具栏、适应画布避让、正文更新和关闭释放。该测试不替代 VS Code 内安装 VSIX 后的实际激活验证。
 
 `--content-only` 检查真实导图中的格式、节点与单元格边界、三种字体的动态切换、明暗主题下的文字对比度，以及切换字体后的视图状态保持。检查图片替代文字时使用本地拦截资源，不访问外部图片服务。
+
+`--blocks-only` 检查正文原生编辑、静态 Preview、两种模式共享的全屏折叠、重新适应画布、运行中语言和字体切换、完整 PNG、常用预设及 GitHub 回退、作者折叠配置优先和扩展移除保留源码。
 
 两个项目分别打包 VSIX，主编辑器不包含 Markmap 依赖。体验安装时先安装支持此 API 的主编辑器包，再安装导图包；仅安装导图包到尚无此 API 的旧版主编辑器上会激活失败。

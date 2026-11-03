@@ -9,6 +9,8 @@ export interface DocumentViewRegistration {
   readonly iconOffset?: { readonly x: number; readonly y: number };
   /** Path relative to the contributing extension, inside dist/. */
   readonly entry: string;
+  /** Optional fenced languages rendered by mountBlock. Built-in languages cannot be replaced. */
+  readonly codeBlockLanguages?: readonly string[];
 }
 export interface DocumentViewsApi {
   readonly version: 1;
@@ -48,4 +50,15 @@ export interface DocumentViewAction {
 export interface DocumentViewModule {
   readonly apiVersion: 1;
   mount(container: HTMLElement, context: DocumentViewContext): DocumentViewInstance;
+  mountBlock?(container: HTMLElement, context: DocumentBlockContext): DocumentViewInstance;
+}
+
+/** Inline results are static; fullscreen permits viewing gestures, never source edits. */
+export interface DocumentBlockContext extends DocumentViewContext {
+  /** SVG renderers may mark their complete untransformed result group with
+   * data-meo-image-content for host-owned PNG copying, independently of camera fit. */
+  readonly interactive: boolean;
+  readonly viewState?: unknown;
+  /** Small JSON viewing state, scoped to this block; do not store source, camera or HTML. */
+  saveViewState(state: unknown): void;
 }

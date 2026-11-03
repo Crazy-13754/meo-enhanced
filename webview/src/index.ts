@@ -1,4 +1,7 @@
 import { mountDocumentViews } from './documentViews';
+import { createDocumentBlocks } from './documentBlocks';
+import { StateEffect } from '@codemirror/state';
+import { documentBlocksFacet } from './helpers/contributedCodeBlocks';
 import { createDocumentContentTransport } from './adapters/documentContentTransport';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
@@ -1237,6 +1240,7 @@ const applyUiLanguage = (language: UiLanguage): void => {
   preferencesLabel.textContent = language === 'zh-CN' ? '外观 · 输入 · 快捷键' : 'Appearance · Input · Shortcuts';
   settingsWindow?.setLanguage(language);
   activeUiLanguage = language;
+  documentBlocks.refreshAppearance();
   activeUiStrings = strings;
   updateTableGridHighlight(selectedTableCols, selectedTableRows);
   editor?.setUiLanguage?.(language);
@@ -1785,6 +1789,12 @@ const waitForInitialPreviewPaint = (): Promise<void> => {
 let previewViewportInteractionGeneration = 0;
 const previewFontsTransport = createPreviewFontsTransport(request => vscode.postMessage(request));
 const documentContentTransport = createDocumentContentTransport(request => vscode.postMessage(request));
+const blockContentTransport = createDocumentContentTransport(request => vscode.postMessage(request), 'block');
+const documentBlocks = createDocumentBlocks({
+  renderContent: text => blockContentTransport.render(text), getLanguage: () => activeUiLanguage,
+  getState: () => (vscode.getState() as { documentBlockViews?: unknown } | undefined)?.documentBlockViews,
+  saveState: documentBlockViews => vscode.setState({ ...(vscode.getState() as object ?? {}), documentBlockViews })
+});
 let imageDimensionDocumentId: string | null = null;
 const imageIntrinsicSizes = new Map<string, ImageIntrinsicSize>();
 const acceptImageIntrinsicSizes = (entries: readonly ImageIntrinsicSize[]) => {
@@ -1798,6 +1808,7 @@ const acceptImageIntrinsicSizes = (entries: readonly ImageIntrinsicSize[]) => {
 };
 let documentViews: ReturnType<typeof mountDocumentViews> | null = null;
 const previewController = createPreviewController({
+  refreshDocumentBlocks: documentBlocks.refreshPreview,
   getImageIntrinsicSize: src => imageIntrinsicSizes.get(imageDimensionSourceKey(src)) ?? null,
   onFontSizeWheel: event => editorFontWheel.handleWheel(event),
   requestFonts: previewFontsTransport.request,
@@ -1813,7 +1824,7 @@ const previewController = createPreviewController({
     persistUiState();
     syncToolbarOverflow();
   },
-  onPaletteChanged: () => { outlineController?.refreshAppearance(); documentViews?.refreshAppearance(); },
+  onPaletteChanged: () => { outlineController?.refreshAppearance(); documentViews?.refreshAppearance(); documentBlocks.refreshAppearance(); },
   mermaidRenderResources: mermaidDiagramRenderPool,
   // The side Preview is also read-only, even while Source is the active mode.
   onShortcut: event => handleEditorShortcut(event, { ...shortcutHandlerContext, editorSurfaceActive: false }),
@@ -2164,6 +2175,7 @@ const markSourcePreviewEditorReady = (): void => {
   pendingSourcePreviewReveal.editorReady = true;
   finishSourcePreviewReveal();
 };
+let lastBlockPresentation = '';
 const presentPreviewSurface = (
   fullPreview: boolean,
   {
@@ -2175,6 +2187,9 @@ const presentPreviewSurface = (
   } = {}
 ): { readonly split: boolean; readonly visible: boolean } => {
   const split = !fullPreview && isSidePreviewVisible();
+  const blockPresentation = `${getActiveEditorMode()}:${fullPreview}:${split}`;
+  if (lastBlockPresentation !== blockPresentation) documentBlocks.closeFullscreen();
+  lastBlockPresentation = blockPresentation;
   const visible = fullPreview || split;
   const hadSplit = editorSurface.hasAttribute('data-source-preview');
   const splitGeometryChanged = split !== hadSplit;
@@ -2487,6 +2502,7 @@ const acknowledgeReadyHandshake = () => {
 };
 
 type WebviewUiState = {
+  documentBlockViews?: unknown;
   previewPresetState?: import('../../src/foundation/previewPresets').PreviewPresetState;
   mode?: 'live' | 'source' | 'preview';
   lastEditableMode?: 'live' | 'source';
@@ -2503,6 +2519,7 @@ const persistUiState = (
   // Do not turn that temporary default into a preference for the next reload.
   if (editorModeApplication.getState().lifecycle !== 'ready') return;
   const state: WebviewUiState = {
+    documentBlockViews: (vscode.getState() as WebviewUiState | undefined)?.documentBlockViews,
     previewPresetState: previewController.getPresetState(),
     mode,
     lastEditableMode,
@@ -2882,6 +2899,7 @@ const runDocumentDerivedUiRefresh = (): void => {
 };
 const scheduleDocumentDerivedUiRefresh = (text: DocumentText): void => {
   documentViews?.documentChanged();
+  documentBlocks.closeFullscreen();
   pendingDocumentDerivedText = text;
   editor?.requestDerivedWork(runDocumentDerivedUiRefresh);
 };
@@ -3099,6 +3117,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
   if (initialDocument === null) throw new Error('Document Session is not initialized');
 
   editor = createEditor({
+    documentBlocks: documentBlocks.port,
     parent: editorHost,
     text: codeMirrorDocumentText(initialDocument),
     initialMode: mode,
@@ -3724,7 +3743,10 @@ window.addEventListener('message', (event) => {
   }
 
   const message = decodeHostToWebviewMessage(rawMessage);
-  if (message?.type === 'documentViewsChanged') { documentViews?.setViews(message.views); return; }
+  if (message?.type === 'documentViewsChanged') {
+    documentViews?.setViews(message.views); documentBlocks.setViews(message.views);
+    editor?.view.dispatch({ effects: StateEffect.appendConfig.of(documentBlocksFacet.of(documentBlocks.port)) }); return;
+  }
   if (!message) {
     return;
   }
@@ -3737,7 +3759,7 @@ window.addEventListener('message', (event) => {
   if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
   if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
   if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }
-  if (message.type === 'documentContentResult') { documentContentTransport.accept(message); return; }
+  if (message.type === 'documentContentResult') { documentContentTransport.accept(message); blockContentTransport.accept(message); return; }
   if (message.type === 'previewFontsResult') { previewFontsTransport.accept(message); return; }
   if (message.type === 'previewPresetResult') { previewPresetTransport.accept(message); return; }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
@@ -4505,7 +4527,7 @@ documentViews = mountDocumentViews({
         };
       }
 });
-window.addEventListener('pagehide', () => documentViews?.dispose(), { once: true });
+window.addEventListener('pagehide', () => { documentViews?.dispose(); documentBlocks.dispose(); blockContentTransport.cancel(); }, { once: true });
 
 function refreshShortcutHints(): void {
   shortcutHints = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');

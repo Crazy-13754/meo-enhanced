@@ -58,7 +58,7 @@ function fontStyles(ownerDocument: Document): string {
 async function renderBlockPng(block: HTMLElement): Promise<Blob> {
   const ownerDocument = block.ownerDocument;
   await ownerDocument.fonts.ready;
-  const svgSource = block.querySelector<SVGSVGElement>(':scope > .meo-export-mermaid-svg > svg, :scope > .meo-mermaid-svg-wrapper > svg');
+  const svgSource = block.querySelector<SVGSVGElement>(':scope > .meo-export-mermaid-svg > svg, :scope > .meo-mermaid-svg-wrapper > svg, :scope > .meo-contributed-content > svg');
   const mathSource = block.querySelector<HTMLElement>(':scope > .meo-latex-math-canvas > .katex-display, :scope > .katex-display');
   const source = svgSource ?? mathSource;
   if (!block.isConnected || !source || block.querySelector('.katex-error')
@@ -77,6 +77,16 @@ async function renderBlockPng(block: HTMLElement): Promise<Blob> {
   if (svgSource) {
     width = svgSource.viewBox.baseVal.width || svgSource.getBoundingClientRect().width;
     height = svgSource.viewBox.baseVal.height || svgSource.getBoundingClientRect().height;
+    // Optional renderers expose a complete result group; copy its content bounds,
+    // independently of the fitted viewport or temporary fullscreen camera.
+    const result = svgSource.querySelector<SVGGElement>('[data-meo-image-content]');
+    if (result) {
+      const box = result.getBBox(); width = box.width; height = box.height;
+      const group = clone.querySelector<SVGGElement>('[data-meo-image-content]');
+      group?.removeAttribute('transform'); if (group) group.style.transform = 'none';
+      clone.setAttribute('viewBox', `${box.x} ${box.y} ${width} ${height}`);
+      clone.setAttribute('width', String(width)); clone.setAttribute('height', String(height));
+    }
     style.width = `${width}px`; style.height = `${height}px`;
   } else {
     contentWidth = Math.max(mathSource!.offsetWidth, mathSource!.scrollWidth);

@@ -65,6 +65,7 @@ import {
 } from './previewTableLayout';
 
 type PreviewControllerOptions = {
+  refreshDocumentBlocks?: (document: Document) => void;
   vscode: { postMessage: (message: WebviewMessage) => void };
   uiLanguage: UiLanguage;
   getEditorAppearance: () => 'light' | 'dark';
@@ -809,6 +810,7 @@ function collectPreviewKatexStyles(katexHref: string): string {
 }
 
 export function createPreviewController({
+  refreshDocumentBlocks,
   vscode,
   uiLanguage: initialUiLanguage,
   getEditorAppearance,
@@ -1467,6 +1469,7 @@ export function createPreviewController({
           return;
         }
         addPreviewCodeCopyControls(frameDocument, uiLanguage);
+        refreshDocumentBlocks?.(frameDocument);
         if (currentCodeHighlight(frameDocument)()) {
           applyPreviewCodeHighlight(frameDocument, true, currentCodeHighlight(frameDocument));
         }
@@ -2212,6 +2215,7 @@ export function createPreviewController({
       scrollToTopController.setScrollElement(frameDocument.scrollingElement, frameDocument);
       frameDocument.body.tabIndex = -1;
       addPreviewCodeCopyControls(frameDocument, uiLanguage);
+      refreshDocumentBlocks?.(frameDocument);
       attachPreviewMathViewports(frameDocument);
       syncPreviewCodeHighlight(frameDocument);
       ensureReadableCode(frameDocument);

@@ -5,10 +5,17 @@ export interface DocumentViewDescriptor {
   readonly iconPaths?: readonly string[];
   readonly iconOffset?: { readonly x: number; readonly y: number };
   readonly entryUri: string;
+  readonly codeBlockLanguages?: readonly string[];
 }
 export interface DocumentViewsChanged {
   readonly type: 'documentViewsChanged';
   readonly views: readonly DocumentViewDescriptor[];
+}
+export function isDocumentBlockLanguages(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.length > 0 && value.length <= 16
+    && new Set(value).size === value.length
+    && value.every(language => typeof language === 'string' && /^[a-z][a-z0-9-]{0,39}$/.test(language)
+      && !['mermaid', 'math', 'latex', 'html'].includes(language));
 }
 export function isDocumentViewIconPaths(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.length > 0 && value.length <= 16
@@ -32,11 +39,13 @@ export function decodeDocumentViewsChanged(value: unknown): DocumentViewsChanged
     if (typeof v.id !== 'string' || !v.id || ids.has(v.id)
       || typeof v.label !== 'string' || !v.label || typeof v.entryUri !== 'string' || !v.entryUri
       || (v.labelZh !== undefined && typeof v.labelZh !== 'string')
+      || (v.codeBlockLanguages !== undefined && !isDocumentBlockLanguages(v.codeBlockLanguages))
       || (v.iconPaths !== undefined && !isDocumentViewIconPaths(v.iconPaths))
       || (v.iconOffset !== undefined && !isDocumentViewIconOffset(v.iconOffset))) return null;
     ids.add(v.id);
     views.push({ id: v.id, label: v.label, labelZh: v.labelZh as string | undefined, iconPaths: v.iconPaths as readonly string[] | undefined,
-      iconOffset: v.iconOffset as DocumentViewDescriptor['iconOffset'], entryUri: v.entryUri });
+      iconOffset: v.iconOffset as DocumentViewDescriptor['iconOffset'], entryUri: v.entryUri,
+      codeBlockLanguages: v.codeBlockLanguages as readonly string[] | undefined });
   }
   return { type: 'documentViewsChanged', views };
 }
