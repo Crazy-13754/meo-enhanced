@@ -10,6 +10,7 @@ Optimized project. New MEO Enhanced releases start from version 0.1.0.
 - Simplified document settings and support navigation, clarified Source/Preview alignment labels and tooltips, and made the outline close action visually consistent with neighboring controls.
 - Deferred toolbar overflow updates outside ResizeObserver delivery to avoid resize-loop warnings while keeping responsive controls available.
 - Retired Mermaid source editing after pointer navigation even when a diagram render is still pending, preserving the clicked text and neighboring block positions.
+- Kept Live HTML tables fitted between history updates and size observation, avoiding a transient return to native column widths after undo or redo.
 
 ## 0.3.39
 - Aligned Live heading line numbers as background parsing completes, including initial display and large-document remounts.

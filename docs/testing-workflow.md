@@ -459,6 +459,8 @@ Pending source discovery must not copy empty text. Use `--controls-only` for thi
 `bun scripts/test-preview-table-layout-production.ts --live-update-only` isolates
 Live HTML table input stability. Caption/cell typing and undo/redo check every
 sampled layout and actual compositor PNG column widths, including rowspan/colspan.
+  Undo/redo also checks fitted columns at the next microtask, before a later
+  resize delivery can conceal an unfitted accepted HTML result.
 Ordinary and optimized fixtures verify the real Worker and derived-work budget,
 unrelated node reuse, source preservation, mode remount, hidden-table reveal and
 pending-update disposal. The full table-layout owner includes these checks;
@@ -914,6 +916,13 @@ the original 16 sampled epochs. Side-layout keyboard exits similarly require all
 18 epochs. A rAF geometry read can precede CodeMirror's write in that same frame;
 keep those readings as diagnostics and use the corresponding painted target for
 the unchanged 2px bound. Missing epochs or an invisible target fail the check.
+  Preflight capture with an editor-free page at the same resolution and marker
+  cadence. If the browser drops required epochs, use a supported capture-capable
+  executable through `MEO_TEST_BROWSER` (for example Chrome for Testing's
+  `chrome-headless-shell`) and verify the full epoch control first. Keep the
+  original frame counts, immediate input, lossless PNGs and pixel bounds; a later
+  screenshot cannot fill missing intermediate epochs. Record the executable's
+  version and hash separately from the ordinary browser and installed checks.
 Start capture before the deliberate native input, so the pending-work handoff
 remains immediate; retain held-pointer DOM, source, focus and final-position checks.
 

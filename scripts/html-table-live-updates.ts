@@ -98,6 +98,17 @@ export async function checkHtmlTableLiveUpdates(browser: Browser, bundle: string
         assert.equal(await page.evaluate(() => (window as any).unchangedHtml === document.querySelector('#html-update-witness')), true,
           'Editing this block retains unrelated HTML nodes');
       };
+      const applyHistory = async (action: 'undo' | 'redo') => {
+        const layout = await page.evaluate(async action => {
+          const g = window as any;
+          (action === 'undo' ? g.undoTableInput : g.redoTableInput)(g.widthEditor.view);
+          await new Promise<void>(resolve => queueMicrotask(resolve));
+          const table = document.querySelector<HTMLTableElement>('.meo-md-html-live-result table');
+          return { connected: table?.isConnected, layout: table?.style.tableLayout };
+        }, action);
+        assert.deepEqual(layout, { connected: true, layout: 'fixed' },
+          `${large ? 'optimized' : 'ordinary'}/${action}: accepted HTML history keeps fitted columns between tasks`);
+      };
       await page.keyboard.type('789', { delay: 80 });
       await checkFrames('Caption789');
       assert.equal(await page.evaluate(() => (window as any).widthEditor.getText()), text.replace('Caption', 'Caption789'));
@@ -113,9 +124,9 @@ export async function checkHtmlTableLiveUpdates(browser: Browser, bundle: string
         const view = (window as any).widthEditor.view;
         return view.state.doc.sliceString(view.state.selection.main.head - 4, view.state.selection.main.head);
       }), '6789', 'Native input retains its caret');
-      await page.evaluate(() => (window as any).undoTableInput((window as any).widthEditor.view));
+      await applyHistory('undo');
       await checkFrames('Caption789', `文字${'5'.repeat(55)}阴影`);
-      await page.evaluate(() => (window as any).redoTableInput((window as any).widthEditor.view));
+      await applyHistory('redo');
       await checkFrames('Caption789', `文字${'5'.repeat(55)}6789阴影`);
       assert.equal(await page.evaluate(() => (window as any).widthEditor.getText()), edited, 'History preserves raw HTML');
       await client.send('Page.stopScreencast');
