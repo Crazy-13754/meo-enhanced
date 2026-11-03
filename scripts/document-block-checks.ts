@@ -277,6 +277,50 @@ export async function checkDocumentBlocks(page: Page, out: string) {
   assert(spacing.top <= spacing.paddingTop + 8, `Small Live graphs do not reserve the top toolbar twice: ${JSON.stringify(spacing)}`);
   assert(spacing.bottom <= Math.max(32, spacing.paddingBottom) + 8, `Small Live graphs do not reserve excess bottom space: ${JSON.stringify(spacing)}`);
   await page.screenshot({ path: out + '/embedded-map-compact.png' });
+  // Inline resize must use intrinsic content, not multiply the current camera
+  // by the window-width ratio when the map already fits at its reading scale.
+  const resizeFailures: string[] = [];
+  const measureInline = () => page.evaluate(() => {
+    const doc = document.querySelector('#app')?.getAttribute('data-mode') === 'preview'
+      ? document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument! : document;
+    const root = doc.querySelector('.meo-contributed-block')!.shadowRoot!;
+    const svg = root.querySelector('svg')!, graph = root.querySelector('[data-meo-image-content]')!;
+    const canvas = root.querySelector('.meo-contributed-canvas')!.getBoundingClientRect(), bounds = graph.getBoundingClientRect();
+    return { width: canvas.width, height: canvas.height, graphWidth: bounds.width, graphHeight: bounds.height,
+      centerX: bounds.left + bounds.width / 2 - canvas.left - canvas.width / 2, scale: (svg as any).__zoom.k };
+  });
+  const settleResize = () => page.evaluate(() => new Promise<void>(resolve => {
+    let frames = 0; const frame = () => ++frames === 10 ? resolve() : requestAnimationFrame(frame); requestAnimationFrame(frame);
+  }));
+  for (const large of [false, true]) {
+    if (large) {
+      await page.click('button[data-mode="live"]');
+      await page.evaluate(() => {
+        const view = (window as any).__viewportTestView();
+        view.dispatch({ changes: { from: view.state.doc.length, insert: '\nParagraph.\n\n'.repeat(24000) } });
+      });
+      await page.waitForFunction(() => (window as any).__viewportTestLargeBudget());
+    }
+    const unchanged = await page.evaluate(() => (window as any).__viewportTestText());
+    for (const mode of ['live', 'preview'] as const) {
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.click(`button[data-mode="${mode}"]`); await waitInline(); await settleResize();
+      const wide = await measureInline();
+      for (const width of [900, 440, 1280, 600, 1280]) {
+        await page.setViewport({ width, height: 800 }); await settleResize();
+        const current = await measureInline();
+        const expected = Math.min(wide.scale, (current.width - 32) * 0.95 / (wide.graphWidth / wide.scale));
+        if (Math.abs(current.scale - expected) > 0.06) resizeFailures.push(`${mode}/${width}: readable scale, ${JSON.stringify({wide, current, expected})}`);
+        if (current.height - current.graphHeight > wide.height - wide.graphHeight + 12) resizeFailures.push(`${mode}/${width}: excess canvas height, ${JSON.stringify({wide, current})}`);
+        if (expected < wide.scale * 0.8 && current.height >= wide.height - 2) resizeFailures.push(`${mode}/${width}: constrained map must shorten its canvas`);
+        if (Math.abs(current.centerX) > 3) resizeFailures.push(`${mode}/${width}: map must stay horizontally centered, ${JSON.stringify(current)}`);
+        if (!large && (width === 440 || width === 900)) await page.screenshot({ path: out + `/embedded-resize-${mode}-${width}.png` });
+      }
+    }
+    assert.equal(await page.evaluate(() => (window as any).__viewportTestText()), unchanged, 'Resize never edits ordinary or large documents');
+  }
+  assert.deepEqual(resizeFailures, [], 'Inline Live/Preview maps retain readable size while they fit, then reduce both diagram and canvas height');
+  await page.click('button[data-mode="live"]'); await waitInline();
   await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'documentViewsChanged', views: [] } })));
   await page.waitForFunction(() => !document.querySelector('.editor-host .meo-contributed-block'));
   assert((await page.evaluate(() => (window as any).__viewportTestText())).includes('```markmap'), 'Uninstalling the extension preserves source');
