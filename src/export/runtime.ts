@@ -1,4 +1,5 @@
 import { prepareMarkdownPresentation, renderMarkdownToHtml } from './renderMarkdown';
+import { renderDocumentContent } from './documentContent';
 import { buildExportHtmlDocument as buildStandaloneExportHtmlDocument } from './exportHtmlTemplate';
 import { buildExportStyles, type ExportStyleEnvironment } from './exportStyles';
 import { writeHtmlExport } from './htmlExport';
@@ -203,6 +204,7 @@ async function importPresetCodeTheme(name: string): Promise<CodeThemeDto> {
 }
 
 const exportRuntime = {
+  renderDocumentContent,
   renderExportHtmlDocument,
   renderPreviewDocument,
   writeHtmlExport,

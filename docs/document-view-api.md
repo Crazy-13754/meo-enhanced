@@ -33,6 +33,8 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 | 接口 | 约定 |
 | --- | --- |
 | `update({ text, revision })` | 接收完整文档快照，只读。更新按顺序执行，编辑期间合并中间变更；revision 用于区分当前实例的快照，不是文档保存版本。 |
+| `context.renderContent(snapshot)`（可选能力） | 使用主体普通 Markdown 规则生成只读 `{ html }`，沿用现有解析、嵌套表格单元格和源码映射；不使用 Preview 预设。关闭会拒绝未完成请求，迟到结果忽略。 |
+| `context.contentClass`（可选能力） | 将此 class 放到内容根元素上，消费主体的普通内容样式。扩展只补充节点宽度、折行等容器约束。 |
 | `context.revealLine(line)` | 请求定位到正文的 1 起始行；主编辑器按当前模式定位。全屏视图会切到分栏，保留视图。 |
 | `context.selectionChanged(line \| null)` | 通知当前选中内容对应的源码行；主编辑器据此启用正文定位按钮。文档更新时选择失效。 |
 | `revealLine(line)`（可选） | 接收正文阅读位置，定位扩展内对应内容；扩展负责节点映射、折叠与选择。 |
@@ -51,6 +53,16 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 
 这是供可信、已安装 VS Code 扩展使用的协作接口，不是执行不可信第三方脚本的沙箱。Markdown 中的脚本、事件属性及任意外部资源由渲染扩展自行限制；主编辑器不负责理解扩展语法。
 
+### 共享内容呈现
+
+`renderContent` 在主体已有的后台渲染 Worker 中运行，与 Preview 共用普通 Markdown 渲染链路及有界队列。返回的是便于遍历的语义 HTML 树，不是 Preview 页面，也不包含编辑器 DOM。带位置的元素使用 `data-source-line`、`data-source-end-line`，均为 1 起始、两端包含的原文行号；布局包装元素可能没有位置，消费者可从其内容元素取得范围。
+
+链接保留文字，图片保留替代文字；不读取文件或网络资源、不保留导航、事件、文档样式和交互控件。代码保留原文，公式复用主体扫描与 KaTeX，输出本地 MathML。HTML 注释以 `data-comment="true"` 的文本元素提供，消费者应从可见内容中移除；是否解释注释由扩展决定。Frontmatter 不作为正文呈现，扩展从快照读取自己的配置。
+
+主体维护普通语义及基础样式，扩展维护自己的结构投影。例如导图将标题和列表组织成分支，表格、引用等复合内容保持完整，不能因后续子标题而丢弃此前正文。导图的分支线、节点间距、宽度、折叠、缩放及专属注释仍在独立扩展中。普通语法按主体规则呈现，不能继续通过另一套 Markdown 解析器补齐不同语义；有意支持的独有语法应单独说明边界。
+
+这是 API v1 的增量能力，已有消费者不受影响。需要共享渲染的新消费者必须检查 `renderContent` 和 `contentClass` 是否存在；缺少时提示升级匹配的主体构建，不静默退回独立解析器。
+
 ## 当前公共交互
 
 - 点击入口默认在正文右侧、目录左侧打开；同一入口再次点击关闭。
@@ -68,6 +80,7 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 
 ```shell
 bun scripts/test-document-views.ts
+bun scripts/test-document-content.ts
 ```
 
 真实主编辑器与导图渲染器的隔离浏览器联调（PowerShell）：

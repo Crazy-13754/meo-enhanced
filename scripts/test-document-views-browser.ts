@@ -38,6 +38,8 @@ try {
   await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
   await page.addStyleTag({ content: ':root{--vscode-editor-background:#fff;--vscode-editor-foreground:#24292f;--vscode-sideBar-background:#f6f8fa;--vscode-panel-border:#d0d7de;--vscode-toolbar-hoverBackground:#eaeef2;--vscode-font-family:system-ui;--vscode-editor-font-family:system-ui;--vscode-editor-font-size:15px}html,body,#app{height:100%;margin:0}' });
   await page.exposeFunction('__fixtureHost', async (message: any) => {
+    if (message.type === 'requestDocumentContent') return { type: 'documentContentResult', requestId: message.requestId,
+      result: { ok: true, value: exportRuntime.renderDocumentContent(message.text) } };
     if (message.type === 'requestPreviewRender') return { type: 'previewRenderResult', requestId: message.requestId, result: { ok: true, value: exportRuntime.renderPreviewDocument({
       markdownText: message.text, sourceDocumentPath: 'C:/fixture/mindmap.md', uiLanguage: message.uiLanguage, styleEnvironment: message.environment, preset: message.preset, contentWidth: message.contentWidth, layout: message.layout
     }) } };
@@ -71,13 +73,15 @@ try {
   const settle = () => page.evaluate(async () => { for (let i = 0; i < 8; i++) await new Promise(requestAnimationFrame); });
   const layout = '[data-view-action="layout"]', close = '[data-view-action="close"]';
   async function assertMapFits() {
-    assert(await page.evaluate(() => {
+    const result = await page.evaluate(() => {
       const canvas = document.querySelector('.meo-markmap')!.getBoundingClientRect();
       const toolbar = document.querySelector('.document-view-toolbar')!.getBoundingClientRect();
       const nodes = [...document.querySelectorAll('g.markmap-node')].map(node => node.getBoundingClientRect());
-      return nodes.length > 0 && nodes.every(node => node.top >= canvas.top - 1
-        && node.bottom <= toolbar.top - 8 + 1 && node.left >= canvas.left - 1 && node.right <= canvas.right + 1);
-    }), 'Fit keeps every visible node inside the canvas above the floating toolbar');
+      return { fits: nodes.length > 0 && nodes.every(node => node.top >= canvas.top - 1
+        && node.bottom <= toolbar.top - 8 + 1 && node.left >= canvas.left - 1 && node.right <= canvas.right + 1),
+        canvas: canvas.toJSON(), toolbar: toolbar.toJSON(), nodes: nodes.map(n => n.toJSON()) };
+    });
+    assert(result.fits, `Fit keeps every visible node inside the canvas above the floating toolbar: ${JSON.stringify(result)}`);
   }
   async function dragCanvas() {
     const box = await page.$eval('.meo-markmap', e => { const r = e.getBoundingClientRect(); return { x: r.left + 35, y: r.top + 65 }; });
@@ -388,9 +392,14 @@ try {
     const moduleUri = 'https://document-view.test/view.js';
     const renderer = await import(moduleUri);
     const container = document.createElement('div');
+    container.className = 'mm-view-panel';
     container.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--meo-background)'; document.body.append(container);
     let selected: number | null = null;
-    const instance = renderer.mount(container, { language: 'zh-CN', revealLine() {}, selectionChanged(line: number | null) { selected = line; },
+    const instance = renderer.mount(container, { language: 'zh-CN', contentClass: 'meo-document-content',
+      renderContent: async (snapshot: { text: string }) => {
+        const reply = await (window as any).__fixtureHost({ type: 'requestDocumentContent', requestId: 'direct', text: snapshot.text });
+        return reply.result.value;
+      }, revealLine() {}, selectionChanged(line: number | null) { selected = line; },
       getAvailableViewport: () => ({ x: 0, y: 0, width: container.clientWidth, height: container.clientHeight - 80 }) });
     const text = '---\nmarkmap:\n  maxWidth: 240\n---\n# Project\n## Risks <!-- fold: this; color: white; bgColor: red -->\n- [x] Done\n- Formula $x^2$\n## Goals <!-- fold: tree -->\n- [[Note|Alias]]\n';
     try {

@@ -25,13 +25,13 @@ function cacheMathHtml(key: string, value: string | null): void {
   }
 }
 
-export function renderMathToHtml(content: string, mode: SharedMathMode): string | null {
+export function renderMathToHtml(content: string, mode: SharedMathMode, output: 'html' | 'mathml' = 'html'): string | null {
   const normalized = String(content ?? '').trim();
   if (!normalized) {
     return null;
   }
 
-  const cacheKey = `${mode}:${normalized}`;
+  const cacheKey = `${output}:${mode}:${normalized}`;
   const cached = getCachedMathHtml(cacheKey);
   if (cached !== undefined) {
     return cached;
@@ -46,7 +46,7 @@ export function renderMathToHtml(content: string, mode: SharedMathMode): string 
       throwOnError: false,
       strict: 'ignore',
       trust: false,
-      output: 'html',
+      output,
       errorColor: 'inherit'
     }).replaceAll(
       // Fitted canvases shrink to their contents. KaTeX's absolute tag would

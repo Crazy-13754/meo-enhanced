@@ -24,13 +24,13 @@ export function renderLatexMathToHtml(content: string, mode: LatexMathMode): str
 /** Preview can postpone display formulas until their reading band is visible.
  * Keep copy source separate: optional fence wrappers and whitespace are not
  * necessarily the expression passed to the renderer. */
-export function renderLatexMathPresentation(content: string, mode: LatexMathMode, deferDisplay = false): { html: string; attributes: string } | null {
+export function renderLatexMathPresentation(content: string, mode: LatexMathMode, deferDisplay = false, output: 'html' | 'mathml' = 'html'): { html: string; attributes: string } | null {
   if (deferDisplay && mode === 'display' && content.trim()) {
     return {
       html: content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
       attributes: ` data-meo-deferred-math="${Buffer.from(content, 'utf8').toString('base64')}"`
     };
   }
-  const html = renderLatexMathToHtml(content, mode);
+  const html = renderMathToHtml(content, mode, output);
   return html === null ? null : { html, attributes: '' };
 }

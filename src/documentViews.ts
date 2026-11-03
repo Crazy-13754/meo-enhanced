@@ -17,6 +17,10 @@ export interface DocumentViewsApi {
 export interface DocumentViewSnapshot { readonly text: string; readonly revision: number }
 export interface DocumentViewContext {
   readonly language: string;
+  /** Host-owned ordinary Markdown; safe, inert HTML with one-based inclusive source ranges.
+   * Apply contentClass to label roots to share document styles. No Preview preset, assets or scripts. */
+  readonly contentClass?: string;
+  renderContent?(snapshot: DocumentViewSnapshot): Promise<{ readonly html: string }>;
   /** Unobstructed area in canvas-local CSS pixels, excluding host overlay controls. Read when fitting content. */
   getAvailableViewport?(): { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   /** One-based source line. Navigation never edits the document. */

@@ -1,4 +1,5 @@
 import { mountDocumentViews } from './documentViews';
+import { createDocumentContentTransport } from './adapters/documentContentTransport';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
@@ -1783,6 +1784,7 @@ const waitForInitialPreviewPaint = (): Promise<void> => {
 };
 let previewViewportInteractionGeneration = 0;
 const previewFontsTransport = createPreviewFontsTransport(request => vscode.postMessage(request));
+const documentContentTransport = createDocumentContentTransport(request => vscode.postMessage(request));
 let imageDimensionDocumentId: string | null = null;
 const imageIntrinsicSizes = new Map<string, ImageIntrinsicSize>();
 const acceptImageIntrinsicSizes = (entries: readonly ImageIntrinsicSize[]) => {
@@ -3735,6 +3737,7 @@ window.addEventListener('message', (event) => {
   if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
   if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
   if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }
+  if (message.type === 'documentContentResult') { documentContentTransport.accept(message); return; }
   if (message.type === 'previewFontsResult') { previewFontsTransport.accept(message); return; }
   if (message.type === 'previewPresetResult') { previewPresetTransport.accept(message); return; }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
@@ -4455,6 +4458,8 @@ function getDocumentSurfacePalette(usePreview: boolean) {
     foreground: previewStyles.getPropertyValue('--meo-preview-foreground').trim() || foreground };
 }
 documentViews = mountDocumentViews({
+      renderContent: text => documentContentTransport.render(text),
+      cancelContent: () => documentContentTransport.cancel(),
       root, editorSurface: editorWrapper, contentSurface: editorSurface,
       entryContainer: rightGroup,
       getPalette: () => getDocumentSurfacePalette(getActiveEditorMode() === 'preview'),

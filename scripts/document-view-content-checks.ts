@@ -7,7 +7,7 @@ const markdown = [
   '## 文字 Text',
   '- 普通文字 plain text',
   '- **粗体 bold**、*斜体 italic*、~~删除线 deleted~~',
-  '- ==高亮 Highlight==、++插入 Inserted++、H~2~O、x^2^',
+  '- ==高亮 Highlight==、++插入 Inserted++、<ins>HTML inserted</ins>、H~2~O、x^2^',
   '- `const x = 1` 与普通文字',
   '- [链接文字 Link](https://example.invalid) 与 [[Note|链接别名 Alias]]',
   '- ![图片替代文字 Image alt](https://example.invalid/image.png)',
@@ -30,6 +30,18 @@ const markdown = [
   '| `const x = 1` | **bold** | *italic* |',
   '| example | ~~old value~~ | $x^2$ |',
   '| `abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789` | 中文 | last |',
+  '',
+  '## 嵌套 Nested',
+  '- 父列表 Nested parent',
+  '',
+  '  | Quote cell | Code/math |',
+  '  | --- | --- |',
+  '  | > Outer<br>> > Inner<br>> > - Cell list | `nested code` $x^2$ |',
+  '',
+  '  > 列表项下引用 Nested quote',
+  '  > - Quote child',
+  '',
+  '  - List child after table',
   '',
   '## 代码 Code',
   '```ts',
@@ -112,6 +124,11 @@ export async function checkDocumentViewContent(page: Page, out: string) {
           if (!text.includes(sample)) problems.push(`content lost: ${sample}`);
         }
         if (svg.querySelectorAll('math').length < 3) problems.push('formula missing');
+        const nested = [...svg.querySelectorAll('table')].find(e => e.textContent?.includes('Quote cell'));
+        if (!nested || nested.querySelectorAll('td blockquote').length !== 2 || !nested.querySelector('td blockquote ul li')) problems.push('nested quote/list cell structure lost');
+        for (const sample of ['Nested parent', 'Nested quote', 'Quote child', 'List child after table']) if (!text.includes(sample)) problems.push(`nested block lost: ${sample}`);
+        const tableNode = (nested?.closest('g.markmap-node') as any)?.__data__;
+        if (tableNode && Number(String(tableNode.payload?.lines).split(',')[0]) !== 36) problems.push(`nested table source range changed: ${tableNode.payload?.lines}`);
         if (!svg.querySelector('mark') || !svg.querySelector('ins') || !svg.querySelector('sub') || !svg.querySelector('sup')) problems.push('extended inline formatting missing');
         const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
         const ctx = canvas.getContext('2d')!;

@@ -1,4 +1,5 @@
 import { decodeDocumentViewsChanged, type DocumentViewsChanged } from './documentViews';
+import { decodeDocumentContentRequest, decodeDocumentContentResponse, type DocumentContentRequest, type DocumentContentResponse } from './documentContent';
 import { decodePreviewFontsRequest, decodePreviewFontsResponse, type PreviewFontsRequest, type PreviewFontsResponse } from './previewFonts';
 import { decodeImageIntrinsicSizesEvent, type ImageIntrinsicSizesEvent } from './imageDimensions';
 import { decodeEditorServiceRequest, decodeEditorServiceResponse, type EditorServiceRequest, type EditorServiceResponse } from './editorServices';
@@ -29,6 +30,7 @@ import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageSto
 import { decodeUpdateUiColorsRequest, decodeUiColorsResult, type UpdateUiColorsRequest, type UiColorsResult } from './uiColors';
 
 export type WebviewToHostMessage =
+  | DocumentContentRequest
   | PreviewFontsRequest
   | WebviewVisibilityRequest
   | UpdateUiColorsRequest
@@ -54,6 +56,7 @@ export type WebviewToHostMessage =
   | ExportSnapshotResponse;
 
 export type HostToWebviewMessage =
+  | DocumentContentResponse
   | DocumentViewsChanged
   | ImageIntrinsicSizesEvent
   | PreviewFontsResponse
@@ -87,7 +90,8 @@ export type HostToWebviewMessage =
   | GitBaselineChangedEvent;
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
-  return decodePreviewFontsRequest(value)
+  return decodeDocumentContentRequest(value)
+    ?? decodePreviewFontsRequest(value)
     ?? decodeWebviewVisibilityRequest(value)
     ?? decodePreviewPresetRequest(value)
     ?? decodeImageLocationRequest(value)
@@ -116,7 +120,8 @@ export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage
   const imageDimensions = decodeImageIntrinsicSizesEvent(value);
   if (imageDimensions) return imageDimensions;
   if (value && typeof value === 'object' && 'type' in value && value.type === 'openPreviewPresetSettings') return { type: 'openPreviewPresetSettings' };
-  return decodeDocumentViewsChanged(value)
+  return decodeDocumentContentResponse(value)
+    ?? decodeDocumentViewsChanged(value)
     ?? decodePreviewFontsResponse(value)
     ?? decodeWebviewVisibilityResponse(value)
     ?? decodePreviewPresetsChanged(value)

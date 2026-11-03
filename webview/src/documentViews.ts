@@ -2,12 +2,15 @@ import { createElement, FileText, X, Maximize2, PanelLeftRightDashed, ArrowLeft,
 import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
 import { documentViewStyles } from './documentViewStyles';
+import { documentContentStyles } from './documentContentStyles';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { applyDocumentViewPalette, type DocumentSurfacePaletteInput } from './helpers/uiTheme';
 
 type Host = {
   root: HTMLElement; editorSurface: HTMLElement; contentSurface: HTMLElement; entryContainer: HTMLElement;
   disableSidePreview(): void;
+  renderContent?(text: string): Promise<{ html: string }>;
+  cancelContent?(): void;
   getPalette(): DocumentSurfacePaletteInput;
   getText(): string; getReadingLine(): number; revealLine(line: number): void; preserveReading(): () => void; getLanguage(): string;
 };
@@ -30,7 +33,7 @@ function fitEntryIcon(svg: SVGSVGElement, offset?: DocumentViewDescriptor['iconO
 export function mountDocumentViews(host: Host) {
   const t = (zh: string, en: string) => host.getLanguage().startsWith('zh') ? zh : en;
   const label = (v: { label: string; labelZh?: string }) => host.getLanguage().startsWith('zh') ? v.labelZh ?? v.label : v.label;
-  const sheet = document.createElement('style'); sheet.textContent = documentViewStyles; document.head.append(sheet);
+  const sheet = document.createElement('style'); sheet.textContent = documentViewStyles + documentContentStyles; document.head.append(sheet);
   const entries = document.createElement('span'); entries.style.display = 'contents'; host.entryContainer.prepend(entries);
   const panel = document.createElement('section'); panel.className = 'mm-view-panel'; panel.hidden = true; host.root.append(panel);
   const toolbar = document.createElement('div'); toolbar.className = 'document-view-toolbar'; toolbar.setAttribute('role', 'toolbar');
@@ -130,6 +133,7 @@ export function mountDocumentViews(host: Host) {
     const id = active.id;
     if (side) restoreReading = host.preserveReading();
     ++generation; ++transition; clearTimeout(timer); dirty = false; running = false;
+    host.cancelContent?.();
     finishLoading();
     try { instance?.dispose(); } catch (error) { console.error('Document view disposal failed', error); }
     instance = undefined; active = undefined; selectedLine = null; status = null; canvas.replaceChildren(); layout();
@@ -184,7 +188,13 @@ export function mountDocumentViews(host: Host) {
       if (current !== generation || disposed) return;
       if (renderer.apiVersion !== 1 || typeof renderer.mount !== 'function') throw new Error('Unsupported document view API');
       canvas.replaceChildren();
-      instance = renderer.mount(canvas, { language: host.getLanguage(), getAvailableViewport() {
+      instance = renderer.mount(canvas, { language: host.getLanguage(), contentClass: 'meo-document-content',
+        ...(host.renderContent ? { renderContent: async (snapshot: { text: string; revision: number }) => {
+          if (disposed || current !== generation) throw new Error('Document view closed');
+          const content = await host.renderContent!(snapshot.text);
+          if (disposed || current !== generation) throw new Error('Document view closed');
+          return content;
+        } } : {}), getAvailableViewport() {
         if (disposed || current !== generation) return { x: 0, y: 0, width: 0, height: 0 };
         const bounds = canvas.getBoundingClientRect();
         const bottom = toolbar.hidden ? bounds.height : toolbar.getBoundingClientRect().top - bounds.top - 8;

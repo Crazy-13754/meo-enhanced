@@ -170,6 +170,7 @@ type PanelSessionControllerParams = {
     layout?: 'side' | 'full';
     window?: { documentId: string; anchorLine: number };
   }) => Promise<PreviewRenderResult>;
+  renderDocumentContent?: (text: string) => Promise<{ html: string }>;
   operatePreviewDocument?: (documentId: string, operation: PreviewDocumentOperation) => Promise<PreviewDocumentResult>;
   getFindOptions: () => FindOptions;
   getUiLanguage: () => InitMessage['uiLanguage'];
@@ -1013,6 +1014,17 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       case 'exportSnapshotResult':
         exportSnapshotTransport.accept(raw);
         return;
+      case 'requestDocumentContent': {
+        try {
+          if (!params.renderDocumentContent) throw new Error('Document content renderer unavailable');
+          const value = await params.renderDocumentContent(raw.text);
+          await postToWebview({ type: 'documentContentResult', requestId: raw.requestId, result: { ok: true, value } });
+        } catch (error) {
+          await postToWebview({ type: 'documentContentResult', requestId: raw.requestId,
+            result: { ok: false, error: { code: 'operation-failed', message: error instanceof Error ? error.message : 'Content rendering failed' } } });
+        }
+        return;
+      }
       case 'requestPreviewRender': {
         let response: PreviewRenderResponse;
         try {

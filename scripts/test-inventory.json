@@ -1,5 +1,10 @@
 {
   "separate": {
+    "scripts/test-document-content.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-document-content.ts",
+      "reason": "Shared ordinary Markdown for optional views: nested cell semantics, original source positions, inert resources, typed protocol and cancellation."
+    },
     "scripts/test-editor-loading-presentation.ts": {
       "kind": "targeted",
       "command": "bun scripts/test-editor-loading-presentation.ts",
@@ -287,6 +292,7 @@
   ],
   "resources": {
     "process": [
+      "scripts/test-document-content.ts",
       "scripts/test-appearance-settings.ts",
       "scripts/test-appearance-webview-adapter.ts",
       "scripts/test-browser-discovery.ts",

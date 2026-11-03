@@ -697,6 +697,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       saveAsViewStateHandoff: this.saveAsViewStateHandoff,
       saveDocument: async () => document.save(),
       onExportDocument: (session, options) => this.exportSessionDocument(session, options),
+      renderDocumentContent: text => this.previewRenderer.renderContent(text),
       renderPreview: async (options) => {
         const definition = options.preset?.startsWith('user:') ? this.customPreviewPresets.get(options.preset) : getPreviewPreset(options.preset);
         if (!definition || definition.custom && definition.custom.revision !== options.presetRevision) throw new Error('Preview preset was removed or updated; select it again.');
