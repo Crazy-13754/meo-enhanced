@@ -11,6 +11,8 @@ export function createDocumentViewsRegistry() {
     version: 1,
     registerDocumentView(extensionId, view) {
       const extension = vscode.extensions.getExtension(extensionId);
+      // The development companion was renamed; never run both implementations.
+      if (extensionId === 'huangko555.meo-mindmap' && vscode.extensions.getExtension('huangko555.meo-extras')) return new vscode.Disposable(() => {});
       if (!extension || !/^[a-zA-Z0-9-]+$/.test(view.id) || !view.label?.trim()
         || !/^dist\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.js$/.test(view.entry)
         || (view.iconPaths !== undefined && !isDocumentViewIconPaths(view.iconPaths))
@@ -19,6 +21,7 @@ export function createDocumentViewsRegistry() {
         throw new Error('Invalid document view registration');
       }
       const id = `${extension.id}/${view.id}`;
+      if (extension.id === 'huangko555.meo-extras') views.delete(`huangko555.meo-mindmap/${view.id}`);
       if (views.has(id)) throw new Error(`Document view already registered: ${id}`);
       if ([...views.values()].some(existing => existing.codeBlockLanguages?.some(language => view.codeBlockLanguages?.includes(language)))) {
         throw new Error('Code block language already registered');
@@ -35,9 +38,14 @@ export function createDocumentViewsRegistry() {
   };
   function attach(panel: vscode.WebviewPanel, ensureInit: () => Promise<void>) {
     const baseRoots = panel.webview.options.localResourceRoots ?? [];
+    const rootsByUri = new Map(baseRoots.map(uri => [uri.toString(), uri]));
+    const extras = vscode.extensions.getExtension('huangko555.meo-extras');
+    if (extras) { const root = vscode.Uri.joinPath(extras.extensionUri, 'dist'); rootsByUri.set(root.toString(), root); }
     let ready = false, disposed = false;
     const updateRoots = () => {
-      const roots = [...baseRoots, ...[...views.values()].map(v => v.root)];
+      // Retain granted roots for this panel lifetime: a feature toggle must not reload the editor.
+      for (const view of views.values()) rootsByUri.set(view.root.toString(), view.root);
+      const roots = [...rootsByUri.values()];
       const current = panel.webview.options.localResourceRoots ?? [];
       // Updating Webview options can reload its document. Repeated ready/catalog
       // delivery must not reset the editor or an already-open contributed view.

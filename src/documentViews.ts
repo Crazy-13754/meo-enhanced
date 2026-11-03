@@ -15,6 +15,9 @@ export interface DocumentViewRegistration {
 export interface DocumentViewsApi {
   readonly version: 1;
   registerDocumentView(extensionId: string, view: DocumentViewRegistration): { dispose(): void };
+  /** Register metadata even when disabled. Activation must return all owned registrations. */
+  registerFeature?(extensionId: string, feature: { readonly id: string; readonly label: string; readonly labelZh?: string; readonly description?: string; readonly descriptionZh?: string },
+    activate: () => { dispose(): void }): { dispose(): void };
 }
 export interface DocumentViewSnapshot { readonly text: string; readonly revision: number }
 export interface DocumentViewContext {

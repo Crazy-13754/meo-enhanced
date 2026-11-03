@@ -86,6 +86,15 @@ try {
       window.__messages=[]; window.__revision=0; window.__clipboard='';
       window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){
         window.__messages.push(message);
+        if(message.type==='extensionFeaturesRequest') {
+          const state = window.__extrasState ?? {installed:false,version:'',features:[]};
+          const failed = !!window.__extrasFail;
+          if(!failed && message.action==='setEnabled') {
+            const feature = state.features.find(feature => feature.id===message.id);
+            if(feature) { feature.enabled=message.enabled; feature.active=message.enabled; }
+          }
+          queueMicrotask(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'extensionFeaturesResult',requestId:message.requestId,state,failed}})));
+        }
         if(message.type==='updateEditingPreferences') {
           const apply = () => {
           if(window.__failNextUpdate) {
@@ -132,6 +141,55 @@ try {
       window.dispatchEvent(new MessageEvent('message', { data: global.__initMessage }));
     }, { text, mode, outline });
   };
+  if (process.argv.includes('--extras-only')) {
+    for (const text of ['# Notes\n\nUnchanged content', '# Notes\n\n' + 'Document paragraph.\n\n'.repeat(7000)]) {
+      await openFixture(text);
+      await page.waitForSelector('.editor-wrapper:not(.meo-preload-editor-shell) .cm-content');
+      await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button');
+      await page.click('[data-tab="extensions"]');
+      await page.waitForFunction(() => document.querySelector('#meo-settings-extras')?.textContent?.includes('MEO Extras'));
+      assert.equal(await page.$eval('#meo-settings-extras .settings-button', e => (e as HTMLButtonElement).disabled), true);
+      assert.equal(await page.$('#meo-settings-extras a'), null, 'Unpublished package has no pretend install URL');
+      await page.evaluate(() => {
+        const state = { installed: true, version: '0.1.0', features: [{ id: 'mindmap', label: 'Mind map', labelZh: '思维导图', description: 'Document mind maps.', descriptionZh: '全文与正文导图。', enabled: true, active: true, failed: false }] };
+        (window as any).__extrasState = state;
+        window.dispatchEvent(new MessageEvent('message', { data: { type: 'extensionFeaturesChanged', state } }));
+      });
+      const toggle = '[data-extra-feature="mindmap"] [role="switch"]';
+      await page.click(toggle);
+      await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('aria-checked') === 'false' && !(document.querySelector(selector) as HTMLButtonElement).disabled, {}, toggle);
+      await page.click(toggle);
+      await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('aria-checked') === 'true' && !(document.querySelector(selector) as HTMLButtonElement).disabled, {}, toggle);
+      await page.evaluate(() => { (window as any).__extrasFail = true; });
+      await page.click(toggle); await page.waitForSelector('#meo-settings-extras [role="status"]');
+      assert.equal(await page.$eval(toggle, e => e.getAttribute('aria-checked')), 'true');
+      await page.evaluate(() => { (window as any).__extrasFail = false; });
+      await page.click('#meo-settings-extras [role="status"] + button');
+      await page.waitForFunction(() => !document.querySelector('#meo-settings-extras [role="status"]'));
+      for (const language of ['en', 'zh-CN']) for (const appearance of ['light', 'dark']) {
+        await page.click('[data-tab="general"]'); await page.click(`[data-setting="language"] [data-value="${language}"]`);
+        await page.click('[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`);
+        await page.click('[data-tab="extensions"]');
+        assert.equal(await page.$eval(toggle, e => e.getAttribute('aria-label')), language === 'en' ? 'Mind map' : '思维导图');
+        assert.equal(await page.$eval('#meo-settings-extras .settings-button', e => e.textContent), language === 'en' ? 'Not published' : '尚未发布');
+        await page.focus('.settings-search'); await page.keyboard.type('mind map');
+        assert.ok(await page.$(toggle)); await page.click('.settings-search-clear');
+        await page.setViewport({width: 640, height: 640});
+        assert.equal(await page.$eval('.settings-content', e => e.scrollWidth <= e.clientWidth + 1), true, 'Feature management fits narrow settings');
+        await fs.mkdir('.local/document-view-tests', {recursive: true});
+        await page.screenshot({path: `.local/document-view-tests/extras-${language}-${appearance}.png`});
+        await page.setViewport({width: 1100, height: 780});
+      }
+      await page.click('.settings-close');
+      assert.equal(await page.evaluate(() => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString()), text, 'Feature settings never edit ordinary or large documents');
+      await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button'); await page.click('[data-tab="extensions"]');
+      assert.equal(await page.$eval(toggle, e => e.getAttribute('aria-checked')), 'true');
+      await page.click('.settings-close');
+    }
+    assert.deepEqual(errors, []);
+    console.log('PASS Extras settings: install placeholder, toggles, errors, languages, themes, narrow UI, ordinary/large unchanged documents');
+    await closeTestBrowser(browser); process.exit(0);
+  }
   // Use the real outline controller: its position is owned by the wrapper,
   // and floating outlines overlap the editor rather than reserving a column.
   for (const mode of ['source', 'live'] as const) for (const outline of ['left', 'right', 'hidden'] as const) for (const floating of outline === 'hidden' ? [false] : [false, true]) {
@@ -561,7 +619,7 @@ try {
   const cursors = await page.$$eval('.settings-radio-input', elements => elements.map(element => [getComputedStyle(element).cursor, getComputedStyle(element.parentElement!).cursor]));
   assert.ok(cursors.every(([input, label]) => input === 'pointer' && label === 'pointer'));
   await page.click('.settings-search'); await page.keyboard.type('空符号');
-  assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => [element.textContent, (element as HTMLElement).hidden])), [['0', false], ['0', false], ['1', false], ['0', false], ['0', false]]);
+  assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => [element.textContent, (element as HTMLElement).hidden])), [['0', false], ['0', false], ['1', false], ['0', false], ['0', false], ['0', false]]);
   assert.equal(await page.$eval('.settings-searchbox svg', element => getComputedStyle(element).display), 'block');
   await page.click('.settings-tab[data-tab="shortcuts"]');
   assert.equal(await page.$eval('.settings-search-clear', element => (element as HTMLElement).hidden), false);
@@ -932,7 +990,7 @@ try {
     await page.click('.settings-search-clear'); await page.keyboard.type('图片 path');
     assert.deepEqual(await page.$$eval('.settings-item', elements => elements.map(element => (element as HTMLElement).dataset.setting)), ['imageStorage']);
     await page.click('.settings-search-clear'); await page.keyboard.type('图片 theme');
-    assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => element.textContent)), ['0', '0', '0', '0', '0']);
+    assert.deepEqual(await page.$$eval('.settings-tab-badge', elements => elements.map(element => element.textContent)), ['0', '0', '0', '0', '0', '0']);
     assert.ok(await page.$('.settings-empty'));
     await page.click('.settings-search-clear'); await page.keyboard.type('不自动补全');
     assert.deepEqual(await page.$$eval('.settings-item', elements => elements.map(element => (element as HTMLElement).dataset.setting)), ['pairMode'], 'choice labels are searchable in the other UI language');

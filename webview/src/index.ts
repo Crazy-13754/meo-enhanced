@@ -1,3 +1,4 @@
+import { createExtensionFeatureSettings } from './adapters/extensionFeatureSettings';
 import { mountDocumentViews } from './documentViews';
 import { createDocumentBlocks } from './documentBlocks';
 import { StateEffect } from '@codemirror/state';
@@ -3682,7 +3683,9 @@ const previewPresetSettings = createPreviewPresetSettings({
   getDiagnostics: () => previewController.getPresetDiagnostics(),
   changed: () => settingsWindow?.present()
 });
+const extensionFeatureSettings = createExtensionFeatureSettings(request => vscode.postMessage(request), () => settingsWindow?.present());
 settingsWindow = createSettingsWindow({
+  extensionFeatures: extensionFeatureSettings,
   appearance: {
     getColors: () => uiColors, getMode: () => themeAdapter.getPreference(), getScheme: () => themeAdapter.getAppearance(),
     getFontSize: () => editorFontSizePreference,
@@ -3761,6 +3764,7 @@ window.addEventListener('message', (event) => {
   if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }
   if (message.type === 'documentContentResult') { documentContentTransport.accept(message); blockContentTransport.accept(message); return; }
   if (message.type === 'previewFontsResult') { previewFontsTransport.accept(message); return; }
+  if (message.type === 'extensionFeaturesChanged' || message.type === 'extensionFeaturesResult') { extensionFeatureSettings.accept(message); return; }
   if (message.type === 'previewPresetResult') { previewPresetTransport.accept(message); return; }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
   if (message.type === 'imageStorageChanged') { if (settingsWindow?.isOpen()) void imageLocationSettings.refresh(); return; }
@@ -4166,6 +4170,7 @@ window.addEventListener('beforeunload', () => {
   imageStorageTransport.dispose();
   previewPresetSettings.dispose();
   previewPresetTransport.dispose();
+  extensionFeatureSettings.dispose();
   editingPreferencesTransport.dispose();
   uiColorsTransport.dispose();
   editorServicesTransport.dispose();

@@ -40,7 +40,7 @@ export function createDocumentBlocks(host: Host) {
   const memories = new Map<string, unknown>();
   const restored = host.getState();
   if (Array.isArray(restored)) for (const entry of restored.slice(-100)) {
-    if (Array.isArray(entry) && typeof entry[0] === 'string') memories.set(entry[0], entry[1]);
+    if (Array.isArray(entry) && typeof entry[0] === 'string') memories.set(entry[0].replace(/^huangko555\.meo-mindmap\//, 'huangko555.meo-extras/'), entry[1]);
   }
   let closeFullscreen: (() => void) | undefined;
   let previewDocument: Document | undefined, previewObserver: MutationObserver | undefined;

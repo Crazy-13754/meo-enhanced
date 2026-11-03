@@ -1,6 +1,6 @@
 import type { EditorCommandId, InputAssistance } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts';
+export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts' | 'extensions';
 
 export const appearanceCatalog = [
   { id: 'fontSize', title: ['字号大小', 'Font size'], description: ['字号用于编辑、预览和导出。自动时跟随 VS Code 字号，修改后立即保存。', 'Font size applies to editing, preview and export. Auto follows VS Code. Changes save immediately.'], keywords: ['字号 字体大小 文字大小 放大 缩小 缩放 自动字号 自定义字号 排版', 'font size text size zoom scale larger smaller auto custom typography'], advanced: false },

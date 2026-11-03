@@ -714,6 +714,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       case 'requestWebviewVisibility':
         await postToWebview({ type: 'webviewVisibilityResult', requestId: raw.requestId, visible: panel.visible });
         return;
+      case 'extensionFeaturesRequest':
+        // The extension feature owner handles this on the same validated channel.
+        return;
       case 'previewPresetRequest':
         await postToWebview(params.performPreviewPresetAction ? await params.performPreviewPresetAction(raw) : {
           type: 'previewPresetResult', requestId: raw.requestId,

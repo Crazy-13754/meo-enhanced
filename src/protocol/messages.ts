@@ -1,4 +1,5 @@
 import { decodeDocumentViewsChanged, type DocumentViewsChanged } from './documentViews';
+import { decodeExtensionFeaturesRequest, decodeExtensionFeaturesEvent, type ExtensionFeaturesRequest, type ExtensionFeaturesEvent } from './extensionFeatures';
 import { decodeDocumentContentRequest, decodeDocumentContentResponse, type DocumentContentRequest, type DocumentContentResponse } from './documentContent';
 import { decodePreviewFontsRequest, decodePreviewFontsResponse, type PreviewFontsRequest, type PreviewFontsResponse } from './previewFonts';
 import { decodeImageIntrinsicSizesEvent, type ImageIntrinsicSizesEvent } from './imageDimensions';
@@ -30,6 +31,7 @@ import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageSto
 import { decodeUpdateUiColorsRequest, decodeUiColorsResult, type UpdateUiColorsRequest, type UiColorsResult } from './uiColors';
 
 export type WebviewToHostMessage =
+  | ExtensionFeaturesRequest
   | DocumentContentRequest
   | PreviewFontsRequest
   | WebviewVisibilityRequest
@@ -56,6 +58,7 @@ export type WebviewToHostMessage =
   | ExportSnapshotResponse;
 
 export type HostToWebviewMessage =
+  | ExtensionFeaturesEvent
   | DocumentContentResponse
   | DocumentViewsChanged
   | ImageIntrinsicSizesEvent
@@ -91,6 +94,7 @@ export type HostToWebviewMessage =
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
   return decodeDocumentContentRequest(value)
+    ?? decodeExtensionFeaturesRequest(value)
     ?? decodePreviewFontsRequest(value)
     ?? decodeWebviewVisibilityRequest(value)
     ?? decodePreviewPresetRequest(value)
@@ -121,6 +125,7 @@ export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage
   if (imageDimensions) return imageDimensions;
   if (value && typeof value === 'object' && 'type' in value && value.type === 'openPreviewPresetSettings') return { type: 'openPreviewPresetSettings' };
   return decodeDocumentContentResponse(value)
+    ?? decodeExtensionFeaturesEvent(value)
     ?? decodeDocumentViewsChanged(value)
     ?? decodePreviewFontsResponse(value)
     ?? decodeWebviewVisibilityResponse(value)

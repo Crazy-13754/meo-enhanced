@@ -1,4 +1,5 @@
 import { createDocumentViewsRegistry } from './extension/documentViews';
+import { createExtensionFeatures } from './extension/extensionFeatures';
 import type { DocumentViewsApi } from './documentViews';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -220,8 +221,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Docume
   ), context);
   const customPreviewPresets = await createVscodePreviewPresets(context);
   const documentViews = createDocumentViewsRegistry();
-  context.subscriptions.push(documentViews);
-  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage(), customPreviewPresets, documentViews);
+  const extensionFeatures = createExtensionFeatures();
+  documentViews.api.registerFeature = extensionFeatures.registerFeature;
+  context.subscriptions.push(documentViews, extensionFeatures);
+  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage(), customPreviewPresets, documentViews, extensionFeatures);
   context.subscriptions.push(vscode.commands.registerCommand('meoEnhanced.managePreviewPresets', () => provider.managePreviewPresets()));
   void provider.initializeGitWatcher();
   provider.initializeDevelopmentStyleWatcher();
@@ -408,7 +411,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     private readonly editingPreferences: Awaited<ReturnType<typeof createVscodeEditingPreferences>>,
     private readonly imageStorage: ReturnType<typeof createVscodeImageStorage>,
     private readonly customPreviewPresets: Awaited<ReturnType<typeof createVscodePreviewPresets>>,
-    private readonly documentViews: ReturnType<typeof createDocumentViewsRegistry>
+    private readonly documentViews: ReturnType<typeof createDocumentViewsRegistry>,
+    private readonly extensionFeatures: ReturnType<typeof createExtensionFeatures>
   ) {
     this.previewRenderer = createBackgroundPreviewRenderer(
       vscode.Uri.joinPath(context.extensionUri, 'dist', 'preview-render-worker.js').fsPath);
@@ -767,6 +771,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     });
 
     this.documentViews.attach(panel, () => controller.session.ensureInitDelivered());
+    this.extensionFeatures.attach(panel, () => controller.session.ensureInitDelivered());
 
     // A conservative hint preserves immediate diagram transitions without a
     // second Markdown parser. New diagrams can still load the runtime later.

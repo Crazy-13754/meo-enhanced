@@ -606,6 +606,17 @@
               "default": "documentSequence"
             }
           }
+        },
+        "meoEnhanced.disabledExtraFeatures": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9-]{1,80}$"
+          },
+          "uniqueItems": true,
+          "default": [],
+          "scope": "application",
+          "description": "%config.disabledExtraFeatures%"
         }
       }
     }

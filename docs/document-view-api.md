@@ -1,6 +1,6 @@
 # 独立扩展接入：只读文档视图（API v1）
 
-当前接口用于将整篇 Markdown 投影为可选视图，也支持通过可选能力渲染正文代码块，首个使用者是独立的 MEO Mind Map。不提供文档编辑事务或双链索引接口。职责归属遵循[扩展边界规则](extension-boundaries.md)。
+当前接口用于将整篇 Markdown 投影为可选视图，也支持通过可选能力渲染正文代码块，首个使用者是独立的 MEO Extras。不提供文档编辑事务或双链索引接口。职责归属遵循[扩展边界规则](extension-boundaries.md)。
 
 ## 注册与加载
 
@@ -22,7 +22,25 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 
 接口类型以 [`src/documentViews.ts`](../src/documentViews.ts) 为准。独立扩展可以复制这份仅含类型的契约，并在接口变化时核对更新，无需引用主编辑器源码或安装其运行时依赖。
 
-`id` 只允许英文字母、数字和连字符；同一扩展内不可重复。`entry` 必须是扩展 `dist/` 下的 JavaScript 文件，打包为浏览器可加载的 ES module。主编辑器只发布注册信息，用户首次打开视图时才加载模块。注册返回的 disposable 用于移除入口、关闭活动视图并撤销资源根目录。未安装扩展时没有入口，也不加载它的运行资源。
+`id` 只允许英文字母、数字和连字符；同一扩展内不可重复。`entry` 必须是扩展 `dist/` 下的 JavaScript 文件，打包为浏览器可加载的 ES module。主编辑器只发布注册信息，用户首次打开视图时才加载模块。注册返回的 disposable 用于移除入口、关闭活动视图并释放实例。已授权的资源根目录保留至编辑器面板关闭，避免功能启停重载编辑器。未安装扩展时没有入口，也不加载它的运行资源。
+
+## MEO Extras 功能管理
+
+MEO Extras 是独立安装的可选功能集合；当前只有思维导图。主编辑器的「设置 > 扩展功能」显示安装状态和实际登记的功能，开关保存为应用级 `meoEnhanced.disabledExtraFeatures`。关闭功能移除入口和渲染实例，保留 Markdown 原文；重新开启恢复注册。
+
+MEO Extras 使用 API v1 的可选 `registerFeature`，先检查该方法存在。功能说明独立于启用状态登记，激活回调返回负责释放该功能全部资源的 disposable：
+
+```ts
+context.subscriptions.push(api.registerFeature(context.extension.id, {
+  id: 'mindmap', label: 'Mind map', labelZh: '思维导图',
+  description: 'Whole-document mind maps and embedded markmap blocks.',
+  descriptionZh: '全文思维导图与文档内的 markmap 图块。',
+}, () => api.registerDocumentView(context.extension.id, contribution)));
+```
+
+功能 ID 保持稳定。此生命周期入口目前只接受 MEO Extras，不是任意第三方插件市场。主编辑器拥有设置、持久化、启停和共用容器；Extras 按 `src/features/<feature>/` 组织实现，负责解析、渲染和资源释放。语言、主题、文档配色仍遵循公共扩展边界规则。
+
+当前仅完成本地体验前置：安装按钮显示「尚未发布」，没有外部链接或下载行为。待 Extras 单独发布并核验安装页后再接入真实链接。旧开发版 `meo-mindmap` 与新包并存时优先新包，旧图块本地折叠记录迁移至新身份；这两处开发版兼容在本地迁移结束后可以删除。
 
 可选的 `iconPaths` 使用 24×24 坐标系内的单色 SVG path 数据；主编辑器统一控制颜色、实际图形尺寸、居中、固定名称提示和启用背景。确有光学校正需求时可提供 `iconOffset`，每个轴最多 ±1px。
 
@@ -124,7 +142,7 @@ bun scripts/test-document-content.ts
 真实主编辑器与导图渲染器的隔离浏览器联调（PowerShell）：
 
 ```powershell
-$env:MEO_MARKMAP_DIR = '<独立导图扩展目录>'
+$env:MEO_EXTRAS_DIR = '<独立导图扩展目录>'
 bun scripts/test-document-views-browser.ts
 bun scripts/test-document-views-browser.ts --dark --english
 bun scripts/test-document-views-browser.ts --content-only

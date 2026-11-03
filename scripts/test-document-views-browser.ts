@@ -9,9 +9,9 @@ import { checkDocumentViewLoading } from './document-view-loading-checks';
 import { checkDocumentBlocks } from './document-block-checks';
 
 const root = process.cwd(), out = path.join(root, '.local/document-view-tests');
-const markmapDirectory = process.env.MEO_MARKMAP_DIR;
-if (!markmapDirectory) throw new Error('Set MEO_MARKMAP_DIR to the independent meoenhancedmarkmap project directory.');
-const { contribution } = await import(pathToFileURL(path.join(markmapDirectory, 'src/contribution.ts')).href);
+const markmapDirectory = process.env.MEO_EXTRAS_DIR;
+if (!markmapDirectory) throw new Error('Set MEO_EXTRAS_DIR to the independent meoextras project directory.');
+const { contribution } = await import(pathToFileURL(path.join(markmapDirectory, 'src/features/mindmap/contribution.ts')).href);
 mkdirSync(out, { recursive: true });
 const build = await Bun.build({ entrypoints: [path.join(root, 'scripts/test-webview-viewport-entry.ts')], outdir: out, target: 'browser', format: 'iife', minify: true, naming: 'editor.js' });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));

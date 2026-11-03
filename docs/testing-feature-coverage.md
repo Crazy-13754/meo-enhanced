@@ -60,6 +60,7 @@
 
 | 设置 | 结果与证据 |
 | --- | --- |
+| `meoEnhanced.disabledExtraFeatures` | MEO Extras 功能按项启停、跨面板同步、重开保留、失败不伪报成功；关闭不改文档或重载 Webview。未发布安装入口禁用，中英文/明暗/窄屏及普通和大文档检查：`bun scripts/test-document-views.ts`、`bun scripts/test-settings-window-production.ts --extras-only`；配套渲染见 `MEO_EXTRAS_DIR` 浏览器专项。 |
 | `meoEnhanced.editing.preferences` | 输入偏好与快捷键跨面板合并、重载保持、保存失败不伪报成功、旧版本消息不覆盖新值；[偏好合同](../scripts/test-editing-preferences.ts)、[正式窗口](../scripts/test-settings-window-production.ts) |
 | `meoEnhanced.language` | 中英文与自动跟随改变实际标签，[语言切换](../scripts/test-live-ui-language-switch.ts) |
 | `meoEnhanced.appearance.editor`、`meoEnhanced.appearance.preview` | 独立亮暗外观和主题更新有效，[主题过渡](../scripts/test-vscode-theme-transition.ts) |

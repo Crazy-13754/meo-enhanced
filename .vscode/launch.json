@@ -16,14 +16,14 @@
       "preLaunchTask": "build"
     },
     {
-      "name": "Run with Markmap",
+      "name": "Run with MEO Extras",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
         "--disable-extension=vadimmelnicuk.meo",
-        "--extensionDevelopmentPath=${input:markmapExtensionPath}"
+        "--extensionDevelopmentPath=${input:extrasExtensionPath}"
       ],
       "outFiles": [
         "${workspaceFolder}/dist/**/*.js"
@@ -33,9 +33,9 @@
   ],
   "inputs": [
     {
-      "id": "markmapExtensionPath",
+      "id": "extrasExtensionPath",
       "type": "promptString",
-      "description": "Path to the separately built meoenhancedmarkmap extension"
+      "description": "Path to the separately built meoextras extension"
     }
   ]
 }
