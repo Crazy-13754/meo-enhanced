@@ -36,7 +36,7 @@ try {
   });
   await page.addScriptTag({ content: 'window.acquireVsCodeApi=()=>({postMessage(message){window.__fixtureHost(message).then(reply=>{if(reply)window.dispatchEvent(new MessageEvent("message",{data:reply}))})},getState(){return null},setState(){}});' });
   await page.addScriptTag({ path: path.join(out, 'editor.js') });
-  const text = '# 旅行计划\n\n## 交通\n\n- 高铁\n- 市内公交\n\n## 行程\n\n- 博物馆\n- 公园\n\n## 注意事项\n\n提前预约。\n';
+  const text = '# 旅行计划\n\n## 交通\n\n- 高铁\n- 市内公交\n\n## 行程\n\n- 博物馆\n- 公园\n\n## 注意事项\n\n提前预约。\n\n- `示例代码`\n';
   const send = (data: unknown) => page.evaluate(data => window.dispatchEvent(new MessageEvent('message', { data })), data);
   await send({ type: 'init', documentId: 'file:///mindmap.md', text, version: 1, savedRevision: { version: 1, text }, diagnostics: [],
     mode: 'live', uiLanguage: process.argv.includes('--english') ? 'en' : 'zh-CN', sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, editorAppearance: process.argv.includes('--dark') ? 'dark' : 'light',
@@ -83,6 +83,65 @@ try {
   await settle(); await assertMapFits();
   assert.equal(await page.$eval('.meo-markmap .markmap-node > circle', e => getComputedStyle(e).cursor), 'default');
   assert.equal(await page.$eval('.mm-view-panel [data-meo-align-viewport="preview"]', e => (e as HTMLElement).dataset.tooltip), process.argv.includes('--english') ? 'Locate in side view' : '按正文定位侧边视图');
+  const originalLanguage = process.argv.includes('--english') ? 'en' : 'zh-CN';
+  const changedLanguage = originalLanguage === 'en' ? 'zh-CN' : 'en';
+  await page.click('g.markmap-node[aria-label="交通"] foreignObject');
+  await page.click('g.markmap-node[aria-label="交通"] circle'); await settle();
+  await page.evaluate(() => { (window as any).__viewEnvironmentWitness = {
+    svg: document.querySelector('.meo-markmap'), transform: document.querySelector('.meo-markmap > g')!.getAttribute('transform'),
+    folds: document.querySelectorAll('.meo-markmap .markmap-fold').length,
+  }; });
+  await page.click('[data-action="settings"]');
+  await page.click(`.ui-language-button[data-ui-language="${changedLanguage}"]`); await settle();
+  assert.equal(await page.$eval('[data-view-action="zoom-in"]', e => (e as HTMLElement).dataset.tooltip || e.getAttribute('title')), changedLanguage === 'en' ? 'Zoom in' : '放大', 'An open view must translate its contributed controls after a language change');
+  for (const [id, en, zh] of [['zoom-out', 'Zoom out', '缩小'], ['fit', 'Fit map', '适应画布'], ['close', 'Close', '关闭'], ['locate', 'Show in document', '在正文中查看']]) {
+    assert.equal(await page.$eval(`[data-view-action="${id}"]`, e => (e as HTMLElement).dataset.tooltip || e.getAttribute('title')), changedLanguage === 'en' ? en : zh);
+  }
+  assert.equal(await page.$eval('.meo-markmap', e => e.getAttribute('aria-label')), changedLanguage === 'en' ? 'Mind map canvas' : '思维导图画布');
+  await page.click(`.ui-language-button[data-ui-language="${originalLanguage}"]`); await settle();
+  await page.click('[data-action="settings"]');
+  await send({ type: 'uiColorsChanged', colors: {
+    light: { surface: '#EEEBDD', text: '#181818', documentBackground: '#1B2430' },
+    dark: { surface: '#293241', text: '#F3F4F6', documentBackground: '#FFF4DC' }
+  } });
+  await page.click('[data-action="settings"]');
+  for (const appearance of ['light', 'dark']) {
+    await page.click(`.editor-appearance-button[data-editor-appearance="${appearance}"]`); await settle();
+    const colors = await page.evaluate(() => {
+      const canvas = document.querySelector('.mm-view-panel')!, toolbar = document.querySelector('.document-view-toolbar')!;
+      const color = getComputedStyle(document.querySelector('.markmap-foreign')!).color, background = getComputedStyle(canvas).backgroundColor;
+      const numbers = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+      const luminance = (value: string) => numbers(value).map(n => n / 255).map(n => n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4).reduce((sum, n, i) => sum + n * [0.2126, 0.7152, 0.0722][i]!, 0);
+      const a = luminance(color), b = luminance(background);
+      const role = (name: string) => {
+        const probe = document.createElement('span'); (canvas as HTMLElement).append(probe);
+        probe.style.backgroundColor = `var(--meo-view-${name})`;
+        const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color;
+      };
+      const code = getComputedStyle(document.querySelector('.meo-markmap code')!);
+      return { background, toolbar: getComputedStyle(toolbar).backgroundColor, contrast: (Math.max(a, b) + .05) / (Math.min(a, b) + .05),
+        circle: getComputedStyle(document.querySelector('.meo-markmap .markmap-node[aria-label="行程"] > circle')!).fill,
+        codeBackground: code.backgroundColor, expectedCodeBackground: role('hover-background'), codeColor: code.color,
+        highlight: getComputedStyle(document.querySelector('.markmap-highlight rect')!).fill, expectedHighlight: role('visible-background'), color };
+    });
+    assert.equal(colors.background, appearance === 'light' ? 'rgb(27, 36, 48)' : 'rgb(255, 244, 220)', 'Canvas follows the document background independently of UI appearance');
+    assert.notEqual(colors.background, colors.toolbar, 'Floating controls retain their own UI surface');
+    assert(colors.contrast >= 4.5, `Generated map text must remain readable: ${JSON.stringify(colors)}`);
+    assert.equal(colors.circle, colors.background, 'Expanded circles follow the canvas instead of Markmap default white');
+    assert.equal(colors.codeBackground, colors.expectedCodeBackground);
+    assert.equal(colors.codeColor, colors.color);
+    assert.equal(colors.highlight, colors.expectedHighlight, 'Third-party default yellow must not override selected-state colors');
+    await page.screenshot({ path: path.join(out, `environment-ui-${appearance}.png`) });
+  }
+  await send({ type: 'uiColorsChanged', colors: { light: {}, dark: {} } });
+  await page.click(`.editor-appearance-button[data-editor-appearance="${process.argv.includes('--dark') ? 'dark' : 'light'}"]`); await settle();
+  await page.click('[data-action="settings"]');
+  assert(await page.evaluate(() => {
+    const witness = (window as any).__viewEnvironmentWitness;
+    return witness.svg === document.querySelector('.meo-markmap') && witness.transform === document.querySelector('.meo-markmap > g')!.getAttribute('transform')
+      && witness.folds === document.querySelectorAll('.meo-markmap .markmap-fold').length && !(document.querySelector('[data-view-action="locate"]') as HTMLButtonElement).disabled;
+  }), 'Language and color changes preserve renderer identity, camera, folds and selection');
+  await page.click('g.markmap-node[aria-label="交通"] circle'); await settle();
   assert(await page.$eval('.mm-view-panel', e => e.classList.contains('is-side')), 'The toolbar opens the map beside the document');
   assert.equal(await page.$('.mm-view-head'), null);
   assert.equal(await page.$('.meo-map-tools'), null);
@@ -218,6 +277,7 @@ try {
   await page.screenshot({ path: path.join(out, process.argv.includes('--dark') ? 'toolbar-narrow-dark.png' : 'toolbar-narrow-light.png') });
   await page.setViewport({ width: 1280, height: 800 }); await settle();
   await page.click(layout); await settle();
+  await page.click('[data-view-action="fit"]'); await settle();
   await page.waitForSelector('[data-view-action="locate"]:not(:disabled)');
   await page.screenshot({ path: path.join(out, process.argv.includes('--dark') ? 'full-dark.png' : 'full-light.png') });
   await page.click('g.markmap-node[aria-label="交通"] foreignObject', { clickCount: 2 }); await settle();
@@ -275,6 +335,28 @@ try {
   assert.equal(await page.$eval('#app', e => (e as HTMLElement).dataset.mode), 'preview');
   await page.screenshot({ path: path.join(out, 'preview-navigation.png') });
   await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector<HTMLElement>('.meo-preview-source-position-marker')?.hidden);
+  const assertPreviewPalette = async () => {
+    await page.waitForFunction(() => {
+      const panel = document.querySelector<HTMLElement>('.mm-view-panel')!;
+      const preview = getComputedStyle(document.querySelector('.preview-host')!);
+      const probe = document.createElement('span'); panel.append(probe);
+      probe.style.backgroundColor = preview.getPropertyValue('--meo-preview-background');
+      const matches = getComputedStyle(panel).backgroundColor === getComputedStyle(probe).backgroundColor;
+      probe.remove(); return matches;
+    });
+  };
+  for (const appearance of ['dark', 'light']) {
+    await page.click(`[data-preview-appearance-choice="${appearance}"]`); await settle();
+    await assertPreviewPalette();
+    await page.screenshot({ path: path.join(out, `environment-preview-${appearance}.png`) });
+  }
+  await page.select('.preview-preset-control select', 'newsprint');
+  await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === 'newsprint');
+  await assertPreviewPalette();
+  await page.screenshot({ path: path.join(out, 'environment-preview-newsprint.png') });
+  await page.select('.preview-preset-control select', 'default');
+  await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.documentElement.dataset.meoPreviewPreset === 'default');
+  await assertPreviewPalette();
   await page.focus('.mm-view-canvas');
   await page.keyboard.press('Escape');
   assert(await page.$eval('.mm-view-panel', e => (e as HTMLElement).hidden));
@@ -309,14 +391,27 @@ try {
       const selectedBounds = container.querySelector('.markmap-highlight rect')!.getBoundingClientRect();
       const centered = Math.abs((selectedBounds.top + selectedBounds.bottom) / 2 - (container.clientHeight - 80) / 2) < 2;
       const risk = [...container.querySelectorAll('g.markmap-node')].find(n => n.textContent?.trim() === 'Risks');
-      return { folded, math: !!container.querySelector('math'), task: container.textContent?.includes('☑ Done'),
+      container.style.setProperty('--meo-view-background', '#fff');
+      container.style.setProperty('--meo-view-foreground', '#111');
+      instance.setLanguage('en');
+      const authored = getComputedStyle(risk!.querySelector('foreignObject > div > div')!);
+      const authorColorsPreserved = authored.color === 'rgb(255, 255, 255)' && authored.backgroundColor === 'rgb(255, 0, 0)';
+      const result = { folded, math: !!container.querySelector('math'), task: container.textContent?.includes('☑ Done'),
         otherFolded: [...container.querySelectorAll('.markmap-fold')].some(n => n.textContent?.trim() === 'Goals'),
         color: (risk?.querySelector('foreignObject > div > div') as HTMLElement)?.style.color,
-        selected, scalePreserved, smallZoomRecovered, largeZoomRecovered, centered,
+        selected, scalePreserved, smallZoomRecovered, largeZoomRecovered, centered, authorColorsPreserved,
         unsafe: !!container.querySelector('img, a, script') };
+      const empty = instance.update({ text: '', revision: 2 });
+      instance.setLanguage('en');
+      const updatingTranslated = container.querySelector('.meo-map-status')!.textContent === 'Updating…';
+      await empty;
+      const emptyEnglish = container.querySelector('.meo-map-status')!.textContent === 'The document is empty';
+      instance.setLanguage('zh-CN');
+      const emptyChinese = container.querySelector('.meo-map-status')!.textContent === '文档为空';
+      return { ...result, updatingTranslated, emptyEnglish, emptyChinese };
     } finally { instance.dispose(); container.remove(); }
   });
-  assert.deepEqual(compatibility, { folded: true, math: true, task: true, otherFolded: true, color: 'white', selected: 8, scalePreserved: true, smallZoomRecovered: true, largeZoomRecovered: true, centered: true, unsafe: false });
+  assert.deepEqual(compatibility, { folded: true, math: true, task: true, otherFolded: true, color: 'white', selected: 8, scalePreserved: true, smallZoomRecovered: true, largeZoomRecovered: true, centered: true, authorColorsPreserved: true, unsafe: false, updatingTranslated: true, emptyEnglish: true, emptyChinese: true });
   assert.deepEqual(errors, []);
   console.log('PASS: optional lazy loading, real Markmap worker, full/side layout, Source exclusivity, document transactions, folds, navigation, close/Escape, unregister.');
 } finally { await browser.close(); }

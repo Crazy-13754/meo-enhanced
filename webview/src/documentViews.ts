@@ -2,10 +2,12 @@ import { createElement, FileText, X, Maximize2, PanelLeftRightDashed, ArrowLeft,
 import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
 import { documentViewStyles } from './documentViewStyles';
+import { applyDocumentViewPalette, type DocumentSurfacePaletteInput } from './helpers/uiTheme';
 
 type Host = {
   root: HTMLElement; editorSurface: HTMLElement; contentSurface: HTMLElement; entryContainer: HTMLElement;
   disableSidePreview(): void;
+  getPalette(): DocumentSurfacePaletteInput;
   getText(): string; getReadingLine(): number; revealLine(line: number): void; preserveReading(): () => void; getLanguage(): string;
 };
 
@@ -26,7 +28,7 @@ function fitEntryIcon(svg: SVGSVGElement, offset?: DocumentViewDescriptor['iconO
 /** Owns the shared layout and document lifecycle. Renderers own only their canvas. */
 export function mountDocumentViews(host: Host) {
   const t = (zh: string, en: string) => host.getLanguage().startsWith('zh') ? zh : en;
-  const label = (v: DocumentViewDescriptor) => host.getLanguage().startsWith('zh') ? v.labelZh ?? v.label : v.label;
+  const label = (v: { label: string; labelZh?: string }) => host.getLanguage().startsWith('zh') ? v.labelZh ?? v.label : v.label;
   const sheet = document.createElement('style'); sheet.textContent = documentViewStyles; document.head.append(sheet);
   const entries = document.createElement('span'); entries.style.display = 'contents'; host.entryContainer.prepend(entries);
   const panel = document.createElement('section'); panel.className = 'mm-view-panel'; panel.hidden = true; host.root.append(panel);
@@ -46,6 +48,17 @@ export function mountDocumentViews(host: Host) {
   let selectedLine: number | null = null;
   let locate: HTMLButtonElement | undefined;
   let actionButtons: HTMLButtonElement[] = [];
+  let status: 'loading' | 'failure' | null = null;
+  function presentStatus() {
+    if (!status) return;
+    const message = document.createElement('p'); message.className = 'mm-view-empty';
+    message.textContent = status === 'loading' ? t('正在生成…', 'Loading…')
+      : t('视图加载失败，请关闭后重新打开。', 'The view could not load. Close it and try again.');
+    canvas.replaceChildren(message);
+  }
+  function refreshAppearance() {
+    if (active && !disposed) applyDocumentViewPalette(panel, host.getPalette());
+  }
   const alignment = document.createElement('div'); alignment.className = 'meo-preview-viewport-alignment'; alignment.hidden = true;
   const toView = button(t('按正文定位侧边视图', 'Locate in side view'), ArrowLeft, () => {
     if (!instance?.revealLine || running || dirty) return;
@@ -89,6 +102,7 @@ export function mountDocumentViews(host: Host) {
     requestAnimationFrame(() => { if (!disposed && current === transition) restore(); });
   }
   function layout() {
+    if (active) panel.setAttribute('aria-label', label(active));
     panel.hidden = !active; panel.classList.toggle('is-side', side);
     const parent = active && side ? host.contentSurface : host.root;
     if (panel.parentElement !== parent) parent.append(panel);
@@ -100,6 +114,7 @@ export function mountDocumentViews(host: Host) {
       entry.classList.toggle('is-active', selected); entry.setAttribute('aria-pressed', String(selected));
     }
     renderToolbar();
+    refreshAppearance();
     updateAlignment();
   }
   function close(restore = true) {
@@ -108,7 +123,7 @@ export function mountDocumentViews(host: Host) {
     if (side) restoreReading = host.preserveReading();
     ++generation; ++transition; clearTimeout(timer); dirty = false; running = false;
     try { instance?.dispose(); } catch (error) { console.error('Document view disposal failed', error); }
-    instance = undefined; active = undefined; selectedLine = null; canvas.replaceChildren(); layout();
+    instance = undefined; active = undefined; selectedLine = null; status = null; canvas.replaceChildren(); layout();
     if (restore) afterLayout(restoreReading);
     entries.querySelector<HTMLButtonElement>(`[data-view-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
   }
@@ -116,8 +131,7 @@ export function mountDocumentViews(host: Host) {
     console.error('Document view failed', error);
     canvas.replaceChildren();
     renderToolbar();
-    const message = document.createElement('p'); message.className = 'mm-view-empty';
-    message.textContent = t('视图加载失败，请关闭后重新打开。', 'The view could not load. Close it and try again.'); canvas.append(message);
+    status = 'failure'; presentStatus();
   }
   async function flush() {
     if (!active || !instance || running || !dirty) return;
@@ -141,7 +155,7 @@ export function mountDocumentViews(host: Host) {
     restoreReading = previousReading; host.disableSidePreview();
     active = view; side = inSide; const current = ++generation;
     panel.setAttribute('aria-label', label(view)); layout();
-    canvas.textContent = t('正在生成…', 'Loading…');
+    status = 'loading'; presentStatus();
     if (side) afterLayout(restoreReading);
     try {
       let module = modules.get(view.entryUri);
@@ -149,7 +163,7 @@ export function mountDocumentViews(host: Host) {
       const renderer = await module;
       if (current !== generation || disposed) return;
       if (renderer.apiVersion !== 1 || typeof renderer.mount !== 'function') throw new Error('Unsupported document view API');
-      canvas.replaceChildren();
+      status = null; canvas.replaceChildren();
       instance = renderer.mount(canvas, { language: host.getLanguage(), getAvailableViewport() {
         if (disposed || current !== generation) return { x: 0, y: 0, width: 0, height: 0 };
         const bounds = canvas.getBoundingClientRect();
@@ -180,7 +194,7 @@ export function mountDocumentViews(host: Host) {
     locate.dataset.viewAction = 'locate'; toolbar.append(locate);
     const target = instance, current = generation;
     for (const action of target?.actions ?? []) {
-      const control = button(action.label, action.iconPaths.map(d => ['path', { d }]), () => {
+      const control = button(label(action), action.iconPaths.map(d => ['path', { d }]), () => {
         void Promise.resolve().then(() => {
           if (current === generation && instance === target) return action.run();
         }).catch(error => console.error('Document view action failed', error));
@@ -209,8 +223,11 @@ export function mountDocumentViews(host: Host) {
   const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && active) { event.preventDefault(); close(); } };
   const onMode = (event: Event) => { if (!side && (event.target as Element).closest('button[data-mode]')) close(false); };
   document.addEventListener('keydown', onKey); host.root.addEventListener('click', onMode, true);
-  const languageObserver = new MutationObserver(() => setViews(views)); languageObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
-  return { close, setViews, documentChanged, dispose() {
+  const languageObserver = new MutationObserver(() => {
+    try { instance?.setLanguage?.(host.getLanguage()); } catch (error) { console.error('Document view language update failed', error); }
+    setViews(views); presentStatus();
+  }); languageObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
+  return { close, setViews, documentChanged, refreshAppearance, dispose() {
     close(false); disposed = true; ++transition; clearTimeout(timer); languageObserver.disconnect();
     document.removeEventListener('keydown', onKey); host.root.removeEventListener('click', onMode, true);
     entries.remove(); panel.remove(); sheet.remove(); modules.clear();

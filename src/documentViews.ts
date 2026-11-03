@@ -25,6 +25,8 @@ export interface DocumentViewContext {
   selectionChanged?(line: number | null): void;
 }
 export interface DocumentViewInstance {
+  /** Refresh owned labels/status without reparsing or resetting view state. */
+  setLanguage?(language: string): void;
   /** Optional view operations rendered by the host beside layout and close controls. */
   readonly actions?: readonly DocumentViewAction[];
   update(snapshot: DocumentViewSnapshot): void | Promise<void>;
@@ -35,6 +37,7 @@ export interface DocumentViewInstance {
 export interface DocumentViewAction {
   readonly id: string;
   readonly label: string;
+  readonly labelZh?: string;
   readonly iconPaths: readonly string[];
   run(): void | Promise<void>;
 }
