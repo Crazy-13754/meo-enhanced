@@ -1,11 +1,11 @@
-import { createElement, FileText, X, Maximize2, Columns2, ArrowLeft, FileSearch } from 'lucide';
+import { createElement, FileText, X, Maximize2, Minimize2, ArrowLeft, FileSearch } from 'lucide';
 import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
 import { documentViewStyles } from './documentViewStyles';
 import { documentContentStyles } from './documentContentStyles';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { applyDocumentViewPalette, type DocumentSurfacePaletteInput } from './helpers/uiTheme';
-import { graphCameraIcon } from './helpers/graphBlockControls';
+import { FitCanvas, graphCameraIcon } from './helpers/graphBlockControls';
 
 type Host = {
   root: HTMLElement; editorSurface: HTMLElement; contentSurface: HTMLElement; entryContainer: HTMLElement;
@@ -230,26 +230,24 @@ export function mountDocumentViews(host: Host) {
       if (selectedLine !== null) revealDocumentLine(selectedLine);
     });
     locate.dataset.viewAction = 'locate';
+    toolbar.append(locate); separator();
     const target = instance, current = generation;
-    for (const action of target?.actions ?? []) {
-      const control = button(label(action), graphCameraIcon(action.id) ?? action.iconPaths.map(d => ['path', { d }]), () => {
+    const order = (id: string) => ({ 'zoom-in': 0, 'zoom-out': 1, fit: 2 }[id] ?? 3);
+    for (const action of [...target?.actions ?? []].sort((a, b) => order(a.id) - order(b.id))) {
+      const control = button(label(action), action.id === 'fit' ? FitCanvas : graphCameraIcon(action.id) ?? action.iconPaths.map(d => ['path', { d }]), () => {
         void Promise.resolve().then(() => {
           if (current === generation && instance === target) return action.run();
         }).catch(error => console.error('Document view action failed', error));
       });
-      if (action.id === 'fit') {
-        const text = document.createElement('span'); text.textContent = t('适应', 'Fit'); control.append(text); control.classList.add('has-label');
-      }
       control.dataset.viewAction = action.id; actionButtons.push(control); toolbar.append(control);
     }
-    if (actionButtons.length) separator();
-    const layoutButton = button(side ? t('全屏查看', 'Fullscreen') : t('左右分栏', 'Split view'), side ? Maximize2 : Columns2, () => {
+    const layoutButton = button(side ? t('全屏查看', 'Fullscreen') : t('退出全屏，左右分栏', 'Exit fullscreen to split view'), side ? Maximize2 : Minimize2, () => {
       if (side) restoreReading = host.preserveReading();
       side = !side; layout(); if (side) afterLayout(restoreReading);
     });
     layoutButton.dataset.viewAction = 'layout';
     const closeButton = button(t('关闭', 'Close'), X, () => close()); closeButton.dataset.viewAction = 'close';
-    toolbar.append(locate, layoutButton); separator(); toolbar.append(closeButton);
+    toolbar.append(layoutButton); separator(); toolbar.append(closeButton);
     for (const control of toolbar.querySelectorAll<HTMLButtonElement>('button')) {
       control.dataset.tooltip = control.title; control.dataset.tooltipPlacement = 'top'; control.dataset.tooltipLiveUpdate = 'true'; control.removeAttribute('title');
       control.querySelector('svg')?.setAttribute('aria-hidden', 'true');
