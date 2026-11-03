@@ -12,7 +12,7 @@ import {
 import { getMermaidDiagramPresentationFactory } from '../editor/mermaidDiagramPresentation';
 import { UiLanguageSensitiveWidget, uiLanguageFacet } from '../editor/uiLanguage';
 import { setLivePointerSelectionActiveEffect, sourcePresentationSelection } from '../editor/livePointerSelection';
-import { supersedeLiveInputDerivedWork, isLiveInputDerivedWorkRefresh, usesLargeDocumentDerivedWorkBudget, liveInputQuietDelay } from '../editor/liveInputDerivedWork';
+import { supersedeLiveInputDerivedWork, isLiveInputDerivedWorkRefresh, liveInputDerivedWorkReadiness, usesLargeDocumentDerivedWorkBudget, liveInputQuietDelay } from '../editor/liveInputDerivedWork';
 import { isCompleteMarkdownStructure } from '../editor/markdownStructure';
 import { resolvedSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
 import { isExternalDocumentPresentation } from '../editor/externalDocumentPresentation';
@@ -163,6 +163,15 @@ export const mermaidEditingStateField = StateField.define<MermaidEditingState>({
     }
     return { activeAnchor, activeTo, layouts, viewports, searchReveal, narrow, sideSpace };
   }
+});
+
+/** A pending diagram delays source refresh only while that edit session owns
+ * presentation. A completed navigation must not wait on the retired preview. */
+export const mermaidEditingReadiness = liveInputDerivedWorkReadiness.of((state, view) => {
+  const anchor = state.field(mermaidEditingStateField, false)?.activeAnchor;
+  if (!view || anchor == null) return true;
+  const preview = `.meo-mermaid-editing-preview[data-meo-mermaid-anchor="${anchor}"]`;
+  return !view.dom.querySelector(`${preview}[data-meo-mermaid-rendering="true"], ${preview} [data-meo-mermaid-rendering="true"]`);
 });
 
 export function getMermaidBlockViewport(state: EditorState, anchor: number): MermaidViewportState {

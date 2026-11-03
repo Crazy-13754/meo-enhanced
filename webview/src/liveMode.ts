@@ -114,6 +114,7 @@ import {
   getMermaidBlockMode,
   isMermaidPresentationEffect,
   mermaidEditingStateField,
+  mermaidEditingReadiness,
   mermaidInlinePreviewExtension,
 } from './helpers/mermaidEditing';
 import { collectMarkdownLiteralRanges } from './helpers/markdownLiteralRanges';
@@ -4902,6 +4903,7 @@ export function liveModeExtensions(options: { readonly largeDocument?: boolean }
     livePointerSelectionActiveField,
     liveDocumentIdleField,
     mermaidEditingStateField,
+    mermaidEditingReadiness,
     mermaidInlinePreviewExtension,
     latexMathEditingStateField,
     displayMathResultField,
