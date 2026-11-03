@@ -3847,7 +3847,7 @@ export function createPreviewController({
       restoreTopVisiblePosition(position, isCurrent, true),
     isCurrentDocument: () => frameRenderedText !== null && isCurrentText?.(frameRenderedText) !== false
       && getFrameDocument()?.documentElement.dataset.meoPreviewLayout === previewLayout,
-    revealSourcePosition: (line: number, isCurrent: () => boolean) => {
+    revealSourcePosition: (line: number, isCurrent: () => boolean, align: 'nearest' | 'upper' = 'nearest') => {
       if (isCurrent()) previewScrollRange?.interrupt();
       const current = previewViewport, generation = frameGeneration;
       const valid = () => !disposed && !host.hidden && isCurrent() && generation === frameGeneration
@@ -3855,6 +3855,15 @@ export function createPreviewController({
         && frameRenderedText !== null && isCurrentText?.(frameRenderedText) !== false;
       const reveal = () => {
         if (!valid()) return;
+        if (align === 'upper') {
+          const scroll = getFrameDocument()?.scrollingElement;
+          const offset = Math.round((scroll?.clientHeight ?? 0) * 0.3);
+          const projection = projectSourcePositionMarker(line);
+          if (scroll && projection) scroll.scrollTop = projection.top - offset;
+          else restoreTopLine(line, 0, offset, undefined, valid);
+          refreshSourcePositionMarker();
+          return;
+        }
         refreshSourcePositionMarker(true);
         if (projectSourcePositionMarker(line)) return;
         // A source-only gap has no highlight, but navigation still owns its

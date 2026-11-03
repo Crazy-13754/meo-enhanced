@@ -82,6 +82,7 @@ try {
   await page.click('.mm-view-entry'); await waitMap();
   await settle(); await assertMapFits();
   assert.equal(await page.$eval('.meo-markmap .markmap-node > circle', e => getComputedStyle(e).cursor), 'default');
+  assert.equal(await page.$eval('.mm-view-panel [data-meo-align-viewport="preview"]', e => (e as HTMLElement).dataset.tooltip), process.argv.includes('--english') ? 'Locate in side view' : '按正文定位侧边视图');
   assert(await page.$eval('.mm-view-panel', e => e.classList.contains('is-side')), 'The toolbar opens the map beside the document');
   assert.equal(await page.$('.mm-view-head'), null);
   assert.equal(await page.$('.meo-map-tools'), null);
@@ -94,6 +95,22 @@ try {
   await page.click('[data-view-action="fit"]'); await settle();
   await page.click(layout); await settle();
   await dragCanvas();
+  // Model a mouseup lost when releasing outside the Webview: the next move has no button held.
+  const recoveryPoint = await page.$eval('.meo-markmap', e => { const r = e.getBoundingClientRect(); return { x: r.left + 35, y: r.top + 65 }; });
+  await page.evaluate(() => window.addEventListener('mouseup', e => e.stopImmediatePropagation(), { capture: true, once: true }));
+  await page.mouse.move(recoveryPoint.x, recoveryPoint.y); await page.mouse.down();
+  await page.mouse.move(recoveryPoint.x + 30, recoveryPoint.y + 20); await page.mouse.up();
+  const releasedCamera = await page.$eval('.meo-markmap > g', e => e.getAttribute('transform'));
+  await page.mouse.move(recoveryPoint.x + 60, recoveryPoint.y + 40);
+  assert.equal(await page.$eval('.meo-markmap > g', e => e.getAttribute('transform')), releasedCamera, 'A move with no button held must not continue a drag after a lost mouseup');
+  await dragCanvas();
+  await page.mouse.move(recoveryPoint.x, recoveryPoint.y); await page.mouse.down();
+  await page.mouse.move(recoveryPoint.x + 20, recoveryPoint.y + 15);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  const blurredCamera = await page.$eval('.meo-markmap > g', e => e.getAttribute('transform'));
+  await page.mouse.move(recoveryPoint.x + 40, recoveryPoint.y + 30); await page.mouse.up();
+  assert.equal(await page.$eval('.meo-markmap > g', e => e.getAttribute('transform')), blurredCamera, 'Window blur must end the actual pan gesture');
+  await page.click('[data-view-action="fit"]'); await settle();
   const label = await page.$('g.markmap-node[aria-label="交通"] foreignObject');
   assert(label);
   assert.equal(await label.evaluate(e => getComputedStyle(e).cursor), 'default');
@@ -226,7 +243,7 @@ try {
   await page.click(layout); await settle();
   await page.setViewport({ width: 1280, height: 800 }); await settle();
   // Preview navigation shares the source marker and must reveal an offscreen block.
-  const longText = '# 旅行计划\n\n' + Array.from({ length: 60 }, (_, i) => `第 ${i + 1} 段行程说明。\n\n`).join('') + '## 终点\n\n到达目的地。\n';
+  const longText = '# 旅行计划\n\n' + Array.from({ length: 60 }, (_, i) => `第 ${i + 1} 段行程说明。\n\n`).join('') + '## 终点\n\n到达目的地。\n\n' + '后续说明。\n\n'.repeat(25);
   await page.evaluate(text => {
     const view = (window as any).__viewportTestView();
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
@@ -242,7 +259,18 @@ try {
     const marker = doc?.querySelector<HTMLElement>('.meo-preview-source-position-marker');
     const target = doc?.querySelector('h2')?.getBoundingClientRect();
     return marker && !marker.hidden && marker.dataset.meoSourcePositionLine === '123'
-      && target && target.top >= 0 && target.bottom <= doc!.documentElement.clientHeight;
+      && target && Math.abs(target.top - doc!.documentElement.clientHeight * 0.3) < 4;
+  });
+  // Explicit map navigation should improve a target already visible near the bottom, too.
+  await page.evaluate(() => {
+    const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+    const target = doc.querySelector('h2')!.getBoundingClientRect();
+    doc.scrollingElement!.scrollTop += target.top - doc.documentElement.clientHeight * 0.85;
+  });
+  await page.$eval('g.markmap-node[aria-label="终点"] foreignObject', e => e.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+  await page.waitForFunction(() => {
+    const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+    return Math.abs(doc.querySelector('h2')!.getBoundingClientRect().top - doc.documentElement.clientHeight * 0.3) < 4;
   });
   assert.equal(await page.$eval('#app', e => (e as HTMLElement).dataset.mode), 'preview');
   await page.screenshot({ path: path.join(out, 'preview-navigation.png') });
@@ -260,23 +288,35 @@ try {
     const container = document.createElement('div');
     container.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--meo-background)'; document.body.append(container);
     let selected: number | null = null;
-    const instance = renderer.mount(container, { language: 'zh-CN', revealLine() {}, selectionChanged(line: number | null) { selected = line; } });
+    const instance = renderer.mount(container, { language: 'zh-CN', revealLine() {}, selectionChanged(line: number | null) { selected = line; },
+      getAvailableViewport: () => ({ x: 0, y: 0, width: container.clientWidth, height: container.clientHeight - 80 }) });
     const text = '---\nmarkmap:\n  maxWidth: 240\n---\n# Project\n## Risks <!-- fold: this; color: white; bgColor: red -->\n- [x] Done\n- Formula $x^2$\n## Goals <!-- fold: tree -->\n- [[Note|Alias]]\n';
     try {
       await instance.update({ text, revision: 1 });
       const folded = !!container.querySelector('.markmap-fold[aria-label="Risks "]') || [...container.querySelectorAll('.markmap-fold')].some(n => n.textContent?.trim() === 'Risks');
+      await instance.actions.find((a: any) => a.id === 'zoom-out').run();
+      await instance.actions.find((a: any) => a.id === 'zoom-out').run();
       const scale = (container.querySelector('svg') as any).__zoom.k;
       await instance.revealLine(8);
+      const scalePreserved = (container.querySelector('svg') as any).__zoom.k === scale;
+      for (let i = 0; i < 12; i++) await instance.actions.find((a: any) => a.id === 'zoom-out').run();
+      await instance.revealLine(8);
+      const smallZoomRecovered = Math.abs((container.querySelector('svg') as any).__zoom.k - 1) < .001;
+      for (let i = 0; i < 12; i++) await instance.actions.find((a: any) => a.id === 'zoom-in').run();
+      await instance.revealLine(8);
+      const largeZoomRecovered = Math.abs((container.querySelector('svg') as any).__zoom.k - 1) < .001;
       for (let i = 0; i < 5; i++) await new Promise(requestAnimationFrame);
+      const selectedBounds = container.querySelector('.markmap-highlight rect')!.getBoundingClientRect();
+      const centered = Math.abs((selectedBounds.top + selectedBounds.bottom) / 2 - (container.clientHeight - 80) / 2) < 2;
       const risk = [...container.querySelectorAll('g.markmap-node')].find(n => n.textContent?.trim() === 'Risks');
       return { folded, math: !!container.querySelector('math'), task: container.textContent?.includes('☑ Done'),
         otherFolded: [...container.querySelectorAll('.markmap-fold')].some(n => n.textContent?.trim() === 'Goals'),
         color: (risk?.querySelector('foreignObject > div > div') as HTMLElement)?.style.color,
-        selected, scalePreserved: (container.querySelector('svg') as any).__zoom.k === scale,
+        selected, scalePreserved, smallZoomRecovered, largeZoomRecovered, centered,
         unsafe: !!container.querySelector('img, a, script') };
     } finally { instance.dispose(); container.remove(); }
   });
-  assert.deepEqual(compatibility, { folded: true, math: true, task: true, otherFolded: true, color: 'white', selected: 8, scalePreserved: true, unsafe: false });
+  assert.deepEqual(compatibility, { folded: true, math: true, task: true, otherFolded: true, color: 'white', selected: 8, scalePreserved: true, smallZoomRecovered: true, largeZoomRecovered: true, centered: true, unsafe: false });
   assert.deepEqual(errors, []);
   console.log('PASS: optional lazy loading, real Markmap worker, full/side layout, Source exclusivity, document transactions, folds, navigation, close/Escape, unregister.');
 } finally { await browser.close(); }

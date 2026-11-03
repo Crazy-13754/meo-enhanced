@@ -4485,7 +4485,7 @@ documentViews = mountDocumentViews({
           && getActiveEditorMode() === 'preview' && getCurrentEditorText() === position.text;
         // Share the side preview's source mapping, reveal and background marker.
         presentSourcePreviewPosition(false, true);
-        try { await previewController.revealSourcePosition(line, isCurrent); }
+        try { await previewController.revealSourcePosition(line, isCurrent, 'upper'); }
         catch (error) { console.error('Document view navigation failed', error); }
         finally {
           if (documentViewPreviewPosition === position) {
