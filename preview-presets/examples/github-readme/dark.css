@@ -1,1 +1,3 @@
 /* Inherits the dark github-readme base. Add .meo-export-doc overrides here. */
+/* Preserve image proportions when their width is constrained by the reading area. */
+.meo-export-doc img { height: auto; }
