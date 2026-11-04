@@ -119,7 +119,8 @@ try {
   }
   await page.click('.mm-view-entry'); await waitMap();
   await settle(); await assertMapFits();
-  assert.equal(await page.$eval('.meo-markmap .markmap-node > circle', e => getComputedStyle(e).cursor), 'default');
+  assert.equal(await page.$eval('.meo-markmap circle[data-meo-graph-action]', e => getComputedStyle(e).cursor), 'pointer');
+  assert(await page.$$eval('.meo-markmap circle:not([data-meo-graph-action])', nodes => nodes.every(e => getComputedStyle(e).cursor === 'default')));
   assert.equal(await page.$eval('.mm-view-panel [data-meo-align-viewport="preview"]', e => (e as HTMLElement).dataset.tooltip), process.argv.includes('--english') ? 'Locate in side view' : '按正文定位侧边视图');
   const originalLanguage = process.argv.includes('--english') ? 'en' : 'zh-CN';
   const changedLanguage = originalLanguage === 'en' ? 'zh-CN' : 'en';

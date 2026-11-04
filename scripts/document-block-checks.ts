@@ -16,10 +16,11 @@ export async function checkDocumentBlocks(page: Page, out: string) {
       const scroller = preview && !fullscreen ? doc.scrollingElement! : (window as any).__viewportTestView().scrollDOM;
       const visibleTop = Math.max(rect.top + offset.top, preview && !fullscreen ? offset.top : 40);
       const visibleBottom = Math.min(rect.bottom + offset.top, window.innerHeight);
-      return { camera: JSON.stringify((svg as any).__zoom), scroll: scroller.scrollTop,
+      return { cursor: doc.defaultView!.getComputedStyle(svg).cursor, camera: JSON.stringify((svg as any).__zoom), scroll: scroller.scrollTop,
         x: rect.left + offset.left + rect.width / 2, y: (visibleTop + visibleBottom) / 2 };
     }, fullscreen);
     const before = await snapshot();
+    assert.equal(before.cursor, 'default', 'Inline and fullscreen idle canvas use an arrow');
     await page.mouse.move(before.x, before.y); await page.mouse.wheel({ deltaY: 120 });
     await new Promise(resolve => setTimeout(resolve, 250));
     const after = await snapshot();
@@ -79,9 +80,12 @@ export async function checkDocumentBlocks(page: Page, out: string) {
       const root = document.querySelector(fullscreen ? '.meo-mermaid-fullscreen-scrim .meo-contributed-block' : '.editor-host .meo-contributed-block')!.shadowRoot!;
       const outline = getComputedStyle(root.querySelector('foreignObject > div > div')!).outlineStyle;
       if (!fullscreen) root.querySelector('circle')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      return { outline, count: root.querySelectorAll('g.markmap-node').length, buttons: root.querySelectorAll('circle[role=button]').length };
+      return { outline, cursor: getComputedStyle(root.querySelector('foreignObject > div > div')!).cursor,
+        circle: getComputedStyle(root.querySelector('circle')!).cursor, count: root.querySelectorAll('g.markmap-node').length, buttons: root.querySelectorAll('circle[role=button]').length };
     }, fullscreen);
     assert.equal(result.outline, 'none', 'Block labels do not highlight on hover');
+    assert.equal(result.cursor, 'default', 'Labels keep the arrow in both presentations');
+    assert.equal(result.circle, fullscreen ? 'pointer' : 'default', 'Only fullscreen folding circles advertise clicks');
     assert.equal(result.count, before.count, 'Content clicks do not change nodes');
     if (!fullscreen) assert.equal(result.buttons, 0, 'Inline nodes do not expose folding controls');
   };
@@ -101,8 +105,16 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     const svg = document.querySelector('.editor-host .meo-contributed-block')!.shadowRoot!.querySelector('svg')!;
     const r = svg.getBoundingClientRect(); return { x: r.left + 20, y: r.top + 20, camera: JSON.stringify((svg as any).__zoom) };
   });
+  const inlineCursor = () => page.evaluate(() => getComputedStyle(document.querySelector('.editor-host .meo-contributed-block')!.shadowRoot!.querySelector('svg')!).cursor);
+  assert.equal(await inlineCursor(), 'default');
   await page.mouse.move(drag.x, drag.y); await page.mouse.down();
-  await page.mouse.move(drag.x + 35, drag.y + 25, { steps: 5 }); await page.mouse.up();
+  assert.equal(await inlineCursor(), 'default');
+  await page.mouse.move(drag.x + 2, drag.y + 1);
+  assert.equal(await inlineCursor(), 'default');
+  await page.mouse.move(drag.x + 35, drag.y + 25, { steps: 5 });
+  assert.equal(await inlineCursor(), 'grabbing');
+  await page.mouse.up();
+  assert.equal(await inlineCursor(), 'default');
   assert.notEqual(await page.evaluate(() => JSON.stringify((document.querySelector('.editor-host .meo-contributed-block')!.shadowRoot!.querySelector('svg') as any).__zoom)), drag.camera, 'Inline mouse drag moves the canvas');
   assert.equal(await page.$('.meo-mermaid-editing-preview'), null, 'Dragging the canvas does not enter source editing');
   await page.mouse.click(drag.x, drag.y);

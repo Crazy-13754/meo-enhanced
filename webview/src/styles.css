@@ -5034,7 +5034,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   text-align: center;
   color: var(--meo-foreground);
   background: var(--meo-code-background);
-  cursor: grab;
+  cursor: var(--meo-graph-drag-cursor, default);
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-code-block-start + .meo-mermaid-block {
@@ -5598,7 +5598,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   align-items: center;
   justify-content: center;
   position: relative;
-  cursor: grab;
+  cursor: default;
   color: var(--meo-foreground);
   background-color: var(--meo-code-background);
   user-select: none;

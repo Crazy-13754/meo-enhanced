@@ -1,3 +1,4 @@
+import { mountGraphCanvasPointer } from './helpers/graphCanvasPointer';
 import { createElement, FileText, X, Maximize2, Minimize2, ArrowLeft, FileSearch } from 'lucide';
 import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
@@ -43,6 +44,7 @@ export function mountDocumentViews(host: Host) {
   // Contributed canvases own their gestures; suppressing pointerdown here would
   // also suppress the compatibility mouse events used by renderers such as D3.
   canvas.setAttribute('data-editor-focus-transfer', ''); canvas.tabIndex = -1;
+  const pointer = mountGraphCanvasPointer(canvas);
   const original = { visibility: host.editorSurface.style.visibility, inert: host.editorSurface.inert };
   let views: readonly DocumentViewDescriptor[] = [];
   let active: DocumentViewDescriptor | undefined, side = false, disposed = false;
@@ -139,14 +141,14 @@ export function mountDocumentViews(host: Host) {
     if (side) restoreReading = host.preserveReading();
     ++generation; ++transition; clearTimeout(timer); dirty = false; running = false;
     host.cancelContent?.();
-    finishLoading();
+    pointer.reset(); finishLoading();
     try { instance?.dispose(); } catch (error) { console.error('Document view disposal failed', error); }
     instance = undefined; active = undefined; selectedLine = null; status = null; canvas.replaceChildren(); layout();
     if (restore) afterLayout(restoreReading);
     entries.querySelector<HTMLButtonElement>(`[data-view-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
   }
   function failure(error: unknown) {
-    console.error('Document view failed', error);
+    pointer.reset(); console.error('Document view failed', error);
     finishLoading();
     canvas.replaceChildren();
     renderToolbar();
@@ -275,6 +277,6 @@ export function mountDocumentViews(host: Host) {
   return { close, setViews, documentChanged, refreshAppearance, dispose() {
     close(false); disposed = true; ++transition; clearTimeout(timer); languageObserver.disconnect();
     document.removeEventListener('keydown', onKey); host.root.removeEventListener('click', onMode, true);
-    entries.remove(); panel.remove(); sheet.remove(); modules.clear();
+    pointer.dispose(); entries.remove(); panel.remove(); sheet.remove(); modules.clear();
   } };
 }

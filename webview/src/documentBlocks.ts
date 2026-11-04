@@ -1,3 +1,4 @@
+import { mountGraphCanvasPointer } from './helpers/graphCanvasPointer';
 import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
 import type { DocumentBlockInput, DocumentBlocksPort } from './editor/documentBlocks';
@@ -94,6 +95,7 @@ export function createDocumentBlocks(host: Host) {
     if (!interactive) { content.dataset.static = ''; content.inert = true; }
     const loading = createLoadingPresentation('document-block-loading');
     canvas.append(content, loading.element); shadow.append(sheet, canvas); container.append(element);
+    const pointer = mountGraphCanvasPointer(canvas, { interactive });
     appearance(element, paletteOwner);
     let disposed = false, instance: DocumentViewInstance | undefined, ready = false, failure: HTMLElement | undefined;
     let intrinsic: { width: number; height: number } | undefined;
@@ -131,7 +133,7 @@ export function createDocumentBlocks(host: Host) {
       if (disposed) return;
       console.error('Contributed block failed', error); ready = false; loading.finish(); element.removeAttribute('aria-busy');
       failure = doc.createElement('pre'); failure.className = 'failure';
-      instance?.dispose(); instance = undefined;
+      pointer.reset(); instance?.dispose(); instance = undefined;
       failure.textContent = (host.getLanguage() === 'zh-CN' ? '渲染失败，源码保留如下：\n\n' : 'Rendering failed. Original source:\n\n') + input.text;
       content.replaceChildren(failure); availability();
     };
@@ -190,7 +192,7 @@ export function createDocumentBlocks(host: Host) {
       },
       dispose() {
         if (disposed) return;
-        instance?.dispose(); disposed = true; resize.disconnect(); loading.finish(); mounted.delete(refresh);
+        pointer.dispose(); instance?.dispose(); disposed = true; resize.disconnect(); loading.finish(); mounted.delete(refresh);
         detachControls(); unregisterImage(); element.remove(); delete container.dataset.meoMermaidRendering;
       }
     };

@@ -63,6 +63,8 @@ context.subscriptions.push(api.registerFeature(context.extension.id, {
 
 扩展只管理传入容器中的内容，不查询或修改主编辑器的其他 DOM。样式限制在扩展自己的 class 范围内，使用主编辑器已有主题变量。脚本与依赖随扩展本地打包；VS Code Webview 中的 Worker 使用本地资源 fetch 后创建 blob Worker，释放时终止。
 
+画布光标由主体统一管理：默认箭头，主键移动超过 4 CSS px 才显示抓手；释放、取消、丢失捕获、失焦或关闭时恢复。文字与图形共用状态，静态 Preview 不进入拖动状态。扩展保留自己的平移引擎和异常结束清理，不另写光标状态机；允许点击折叠的节点圆点标记 `data-meo-graph-action`，主体显示指向手形，拖动时仍统一显示抓手。叶节点和不可操作的内联节点不标记。按钮、源码输入和分割线沿用各自控件的光标。
+
 主体在容器作用域内提供 `--meo-view-background`、`--meo-view-foreground`、`--meo-view-muted-foreground`、`--meo-view-hover-background`、`--meo-view-visible-background`、`--meo-view-border` 和 `--meo-view-focus`。这些变量随当前正文配色、Preview 预设和高对比度设置更新。默认内容使用这套角色，公共工具栏继续使用 `--meo-ui-*`；不缓存变量的初始计算值。完整规则见[扩展的语言与配色](ui-design-guidelines.md#扩展的语言与配色)。
 
 字体由主体提供 `--meo-view-font-family`、`--meo-view-font-size`、`--meo-view-font-weight` 和 `--meo-view-code-font-family`。前三者始终跟随普通文档（Live）的字体及用户字号，代码字体跟随文档的 Source 字体；不采用 Preview 预设的排版。变量实时继承，无须重新解析快照或重建视图。扩展负责字体变化后的内容测量和布局，保留选择、折叠、平移与缩放。公共工具栏仍使用界面字体。

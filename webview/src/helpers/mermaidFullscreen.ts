@@ -1,3 +1,4 @@
+import { mountGraphCanvasPointer } from './graphCanvasPointer';
 import { openGraphFullscreen, type GraphFullscreenExitCause } from './graphFullscreen';
 import type { UiLanguage } from '../application/uiLanguage';
 import { stepVisualZoom, visualZoomPanAtPoint } from './visualZoom';
@@ -47,25 +48,23 @@ export function openMermaidFullscreen(options: {
       const release = () => {
         const pointer = pointerId; pointerId = null;
         if (pointer !== null && container.hasPointerCapture(pointer)) container.releasePointerCapture(pointer);
-        container.style.cursor = 'grab';
       };
+      const pointer = mountGraphCanvasPointer(container, { onEnd: release });
       container.addEventListener('pointerdown', event => {
-        if (event.button !== 0 || (event.target as Element).closest('button, [role="button"]')) return;
+        if (event.button !== 0 || event.ctrlKey || (event.target as Element).closest('button, [role="button"]')) return;
         pointerId = event.pointerId; lastX = event.clientX; lastY = event.clientY;
-        container.style.cursor = 'grabbing'; container.setPointerCapture(pointerId);
+        container.setPointerCapture(pointerId);
       }, { signal });
       container.addEventListener('pointermove', event => {
-        if (event.pointerId !== pointerId) return;
+        if (event.pointerId !== pointerId || !pointer.isDragging()) return;
         if (!(event.buttons & 1)) { release(); return; }
         panX += event.clientX - lastX; panY += event.clientY - lastY;
         lastX = event.clientX; lastY = event.clientY; applyTransform();
       }, { signal });
-      for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) container.addEventListener(type, release, { signal });
-      window.addEventListener('blur', release, { signal });
       container.addEventListener('wheel', event => { event.preventDefault(); changeZoom(event.deltaY > 0 ? -1 : 1, event); }, { signal, passive: false });
       const resize = new ResizeObserver(fit); resize.observe(container); requestAnimationFrame(fit);
       return { zoomIn: () => changeZoom(1), zoomOut: () => changeZoom(-1), fit,
-        dispose() { closed = true; events.abort(); resize.disconnect(); release(); } };
+        dispose() { closed = true; events.abort(); resize.disconnect(); pointer.dispose(); } };
     }
   });
   return { update(svg) { wrapper.innerHTML = svg; }, refreshTheme() { modal.refresh(options.uiLanguage); }, close: modal.close };

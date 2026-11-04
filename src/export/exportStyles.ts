@@ -1151,10 +1151,15 @@ th:empty::before {
 }
 
 .meo-export-mermaid, .meo-export-graph {
+  cursor: default;
   margin: 0 0 1em;
   border-radius: 6px;
   border: 1px solid var(--meo-code-border);
   background: var(--meo-code-bg);
+}
+.meo-export-mermaid .meo-export-mermaid-svg,
+.meo-export-mermaid .meo-export-mermaid-svg * {
+  cursor: default !important;
 }
 .meo-export-mermaid .meo-export-mermaid-svg {
   display: flex;

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { assertReadableMermaidTasks } from './mermaid-contrast-helpers';
 import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
+import { buildPreviewStyles } from '../src/export/exportStyles';
 
 const build = await Bun.build({ entrypoints: ['scripts/test-block-sticky-header-production-entry.ts'], target: 'browser', format: 'iife' });
 assert.ok(build.success, build.logs.map(String).join('\n'));
@@ -10,6 +11,12 @@ const browser = await launchTestBrowser();
 let primary: unknown;
 try {
   const page = await browser.newPage();
+  for (const appearance of ['light', 'dark'] as const) {
+    await page.setContent('<div class="meo-export-mermaid"><div class="meo-export-mermaid-svg"><svg id="chart"><style>#chart .clickable{cursor:pointer}</style><g class="clickable"><text>Static node</text></g></svg></div></div><div class="meo-export-graph"></div>');
+    await page.addStyleTag({ content: buildPreviewStyles({ previewFontFamily: '' }, appearance) });
+    assert.equal(await page.$eval('#chart text', node => getComputedStyle(node).cursor), 'default', appearance + ': static Preview overrides SVG click cursors');
+    assert.equal(await page.$eval('.meo-export-graph', node => getComputedStyle(node).cursor), 'default');
+  }
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewport({ width: 1050, height: 650 });
@@ -146,7 +153,44 @@ try {
     assert.equal(await page.$$eval('.meo-mermaid-preview-controls', nodes => nodes.length), 1, 'One owner/group, including floating headers');
     assert.equal(await page.$$eval('.meo-mermaid-toolbar .meo-visual-control-btn', nodes => nodes.length), 0);
   };
+  const assertCanvasPointer = async (selector: string, context: string) => {
+    const cursor = () => page.$eval(selector, node => getComputedStyle(node).cursor);
+    const point = await page.$eval(selector, node => {
+      const r = node.getBoundingClientRect();
+      return { x: (Math.max(0, r.left) + Math.min(innerWidth, r.right)) / 2,
+        y: (Math.max(80, r.top) + Math.min(innerHeight - 70, r.bottom)) / 2 };
+    });
+    const documentBefore = await page.evaluate(() => (window as any).controlsEditor.getText());
+    for (const ending of ['release', 'cancel', 'capture', 'blur', 'buttons']) {
+      await page.mouse.move(point.x, point.y);
+      assert.equal(await cursor(), 'default', context + ': idle arrow');
+      const initialTransform = await page.$eval(selector + ' .meo-mermaid-svg-wrapper', node => (node as HTMLElement).style.transform);
+      await page.mouse.down();
+      assert.equal(await cursor(), 'default', context + ': press arrow');
+      await page.mouse.move(point.x + 2, point.y + 1);
+      assert.equal(await cursor(), 'default', context + ': jitter arrow');
+      await page.mouse.move(point.x + 24, point.y + 14);
+      assert.equal(await cursor(), 'grabbing', context + ': dragging hand');
+      assert.notEqual(await page.$eval(selector + ' .meo-mermaid-svg-wrapper', node => (node as HTMLElement).style.transform), initialTransform, context + ': pan engine moves the graph');
+      assert.equal(await page.$eval(selector + ' svg text', node => getComputedStyle(node).cursor), 'grabbing', context + ': text shares drag cursor');
+      if (ending !== 'release') await page.$eval(selector, (node, ending) => {
+        if (ending === 'blur') window.dispatchEvent(new Event('blur'));
+        else node.dispatchEvent(new PointerEvent(ending === 'cancel' ? 'pointercancel' : ending === 'capture' ? 'lostpointercapture' : 'pointermove',
+          { bubbles: true, pointerId: 1, buttons: 0 }));
+      }, ending);
+      else await page.mouse.up();
+      assert.equal(await cursor(), 'default', context + ': restored after ' + ending);
+      const transform = await page.$eval(selector + ' .meo-mermaid-svg-wrapper', node => (node as HTMLElement).style.transform);
+      await page.mouse.move(point.x + 50, point.y + 35);
+      assert.equal(await page.$eval(selector + ' .meo-mermaid-svg-wrapper', node => (node as HTMLElement).style.transform), transform,
+        context + ': no stuck pan after ' + ending);
+      if (ending !== 'release') await page.mouse.up();
+    }
+    assert.equal(await page.$eval(selector + ' svg text', node => getComputedStyle(node).cursor), 'default');
+    assert.equal(await page.evaluate(() => (window as any).controlsEditor.getText()), documentBefore, context + ': pan never edits source');
+  };
   await mount(false); await assertPosition('short');
+  await assertCanvasPointer('.meo-mermaid-block', 'Live');
   await page.mouse.move(0, 0);
   await page.$eval(dock + ' button', button => (button as HTMLElement).focus({ preventScroll: true }));
   await settle();
@@ -191,6 +235,7 @@ try {
       await page.$eval(action, node => (node as HTMLElement).blur());
     }
     await assertPosition(mode);
+    if (mode === 'edit') await assertCanvasPointer('.meo-mermaid-block', 'Editing result');
     if (mode === 'preview' && await page.evaluate(() => (window as any).__cycled)) break;
     await page.$eval('.meo-mermaid-mode-btn', node => (node as HTMLElement).click()); await settle();
     await page.evaluate(() => { (window as any).__cycled = true; });
@@ -214,6 +259,7 @@ try {
   }; }), before, 'Preview actions do not modify document layout, selection or history');
   await page.click(dock + ' button:nth-child(4)'); await settle();
   assert.ok(await page.$('.meo-mermaid-fullscreen-scrim')); assert.equal(await page.$(dock), null);
+  await assertCanvasPointer('.meo-graph-fullscreen-canvas', 'Fullscreen');
   await page.keyboard.press('Escape'); await settle(); await assertPosition('fullscreen return');
   await page.evaluate(() => { document.querySelector<HTMLElement>('#app')!.style.transform = 'scale(0.85)'; document.querySelector<HTMLElement>('#app')!.style.transformOrigin = 'top left'; });
   await settle(); await assertPosition('transformed host'); await assertZoomAnchor('transformed host');
@@ -355,6 +401,7 @@ try {
   await mount(true, true, true);
   await page.evaluate(() => { (window as any).controlsEditor.view.scrollDOM.scrollTop = 700; }); await settle();
   await assertZoomAnchor('optimized reading');
+  await assertCanvasPointer('.meo-mermaid-block', 'Large document');
   await page.$eval('.meo-mermaid-mode-btn', node => (node as HTMLElement).click()); await settle();
   for (const layout of ['side', 'stacked']) {
     if (!!await page.$('.meo-mermaid-inline-preview') !== (layout === 'side')) {
