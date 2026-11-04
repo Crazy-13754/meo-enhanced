@@ -362,12 +362,16 @@ async function main(): Promise<void> {
     await page.click('.more-tools-wrapper > button');
     const settingsMenuGeometry = await page.evaluate(() => {
       const panel = document.querySelector<HTMLElement>('.more-tools-panel')!;
-      const separator = panel.querySelector<HTMLElement>('.more-tools-separator')!;
+      const separator = panel.querySelector<HTMLElement>('.more-tools-section-label:not(:first-child)')!;
       const panelRect = panel.getBoundingClientRect();
       const separatorRect = separator.getBoundingClientRect();
+      const separatorStyle = getComputedStyle(separator, '::before');
+      if (separatorStyle.content === 'none' || Number.parseFloat(separatorStyle.height) <= 0) {
+        throw new Error('Settings section divider must be visible');
+      }
       return {
-        leftInset: separatorRect.left - panelRect.left,
-        rightInset: panelRect.right - separatorRect.right
+        leftInset: separatorRect.left + Number.parseFloat(separatorStyle.left) - panelRect.left,
+        rightInset: panelRect.right - separatorRect.right + Number.parseFloat(separatorStyle.right)
       };
     });
     const expectedLeft = changesMenuGeometry.panelLeft + settingsMenuGeometry.leftInset;
@@ -533,7 +537,7 @@ async function main(): Promise<void> {
         assert.deepEqual(state, selected ? selectedState : settingsHover, `${appearance}: ${selector} preserves its radio-selection/hover state`);
       }
       const headings = await page.$$eval('.more-tools-panel .more-tools-section-label, .changes-review-panel .changes-review-section-label', elements => elements.map(element => getComputedStyle(element).color));
-      assert.equal(headings.length, 5, 'Both menus expose all five group headings');
+      assert.equal(headings.length, 6, 'Both menus expose all six group headings');
       assert.equal(new Set(headings).size, 1, 'Both menus share the same weaker heading color');
       for (const color of headings) {
         assert.ok(contrast(color, idle.backgrounds[1]!) < contrast(settingsHover.color, idle.backgrounds[1]!), `${appearance}: group headings are weaker than ordinary options`);

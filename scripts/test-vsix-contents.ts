@@ -64,6 +64,7 @@ const requiredFiles = [
   'webview/dist/shiki-highlight-worker.js',
   'webview/dist/markdown-parse-worker.js',
   'webview/dist/index.css',
+  'webview/dist/logo.png',
   'webview/dist/mermaid.min.js',
   'webview/dist/mermaid/mermaidRuntime.js',
   'webview/dist/mermaid/elk-layout-worker.js',

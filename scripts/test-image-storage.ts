@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { defaultImageStorage, type ImageStoragePreferences } from '../src/foundation/imageStorage';
@@ -15,6 +15,82 @@ import { encodeMarkdownPath } from '../src/foundation/linkDestination';
 await mkdir(path.join(process.cwd(), '.local'), { recursive: true });
 const root = await mkdtemp(path.join(process.cwd(), '.local', 'image-storage-test-'));
 try {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j6L0AAAAASUVORK5CYII=', 'base64');
+  const differentBytes = Buffer.from(png);
+  differentBytes[differentBytes.length - 1] ^= 1;
+  for (const naming of ['documentSequence', 'imageSequence', 'dateTime', 'timestamp'] as const) {
+    const directory = path.join(root, 'dedupe', naming);
+    const request = { documentFsPath: path.join(directory, 'note.md'), extension: 'png', contents: png,
+      imageStorage: { ...defaultImageStorage, naming } };
+    const first = await saveClipboardImageFile(request);
+    assert.deepEqual(await saveClipboardImageFile(request), first, `${naming}: identical images reuse the saved path and name`);
+    assert.deepEqual(await saveClipboardImageFile({ ...request, documentFsPath: path.join(directory, 'other.md') }), first,
+      'documents sharing an image directory reuse the same image');
+    const different = await saveClipboardImageFile({ ...request, contents: differentBytes });
+    assert.notEqual(different.relativePath, first.relativePath, 'same-size images with different bytes stay separate');
+    assert.deepEqual(await readFile(path.join(directory, first.relativePath)), png, 'deduplication never overwrites an existing image');
+    assert.equal((await readdir(path.join(directory, 'assets'))).length, 2);
+
+    const concurrentDirectory = path.join(directory, 'concurrent');
+    const concurrentRequest = { ...request, documentFsPath: path.join(concurrentDirectory, 'note.md') };
+    const concurrent = await Promise.all(Array.from({ length: 6 }, () => saveClipboardImageFile(concurrentRequest)));
+    assert.equal(new Set(concurrent.map(value => value.relativePath)).size, 1, 'concurrent identical images create one file');
+    assert.equal((await readdir(path.join(concurrentDirectory, 'assets'))).length, 1);
+    const nested = await saveClipboardImageFile({ ...request, documentFsPath: path.join(directory, 'nested', 'other.md'),
+      imageStorage: { ...request.imageStorage, mode: 'advanced', rule: '../assets' } });
+    assert.equal(nested.relativePath, '../' + first.relativePath, 'reuse returns a path relative to the current document');
+    assert.equal(nested.fileName, first.fileName);
+  }
+
+  const existingDirectory = path.join(root, 'existing images');
+  const existingAssets = path.join(existingDirectory, 'assets');
+  await mkdir(existingAssets, { recursive: true });
+  const existingName = '已有 图片[甲]#50%.PNG';
+  await writeFile(path.join(existingAssets, existingName), png);
+  const existingRequest = { documentFsPath: path.join(existingDirectory, 'note.md'), extension: 'png', contents: png };
+  const existing = await saveClipboardImageFile(existingRequest);
+  assert.equal(existing.fileName, existingName, 'pre-existing images with arbitrary names and uppercase extensions are reused');
+  assert.equal(existing.relativePath, 'assets/' + existingName);
+  await rename(path.join(existingAssets, existingName), path.join(existingAssets, 'renamed.png'));
+  assert.equal((await saveClipboardImageFile(existingRequest)).fileName, 'renamed.png', 'renamed files are found on disk');
+  await writeFile(path.join(existingAssets, 'renamed.png'), differentBytes);
+  const afterEdit = await saveClipboardImageFile(existingRequest);
+  assert.notEqual(afterEdit.fileName, 'renamed.png', 'a modified file is not reused even when its size is unchanged');
+  assert.deepEqual(await readFile(path.join(existingAssets, 'renamed.png')), differentBytes);
+  await rm(path.join(existingDirectory, afterEdit.relativePath));
+  const afterDelete = await saveClipboardImageFile(existingRequest);
+  assert.deepEqual(await readFile(path.join(existingDirectory, afterDelete.relativePath)), png, 'deleted files are recreated rather than returned as stale matches');
+
+  const isolatedRequest = { ...existingRequest, imageStorage: { ...defaultImageStorage, folder: 'other-assets' } };
+  const isolated = await saveClipboardImageFile(isolatedRequest);
+  assert.ok(isolated.relativePath.startsWith('other-assets/'), 'deduplication stays within the configured image directory');
+  const nonImageDirectory = path.join(root, 'non-image candidates');
+  await mkdir(path.join(nonImageDirectory, 'assets', 'directory.png'), { recursive: true });
+  await writeFile(path.join(nonImageDirectory, 'assets', 'bytes.txt'), png);
+  const nonImage = await saveClipboardImageFile({ ...existingRequest, documentFsPath: path.join(nonImageDirectory, 'note.md') });
+  assert.equal(nonImage.fileName, 'note-1.png', 'directories and non-image files cannot be reused as images');
+
+  const chunkedBytes = Buffer.alloc(150_000, 37);
+  const chunkedRequest = { ...existingRequest, documentFsPath: path.join(root, 'chunked', 'note.md'), contents: chunkedBytes };
+  const chunked = await saveClipboardImageFile(chunkedRequest);
+  assert.deepEqual(await saveClipboardImageFile(chunkedRequest), chunked, 'comparison spans multiple bounded read buffers');
+  const changedTail = Buffer.from(chunkedBytes);
+  changedTail[changedTail.length - 1] ^= 1;
+  assert.notEqual((await saveClipboardImageFile({ ...chunkedRequest, contents: changedTail })).relativePath, chunked.relativePath,
+    'images differing only after the first read buffer remain distinct');
+  for (const [extension, alias] of [['jpg', 'jpeg'], ['tif', 'tiff']] as const) {
+    const request = { ...existingRequest, documentFsPath: path.join(root, 'aliases', extension, 'note.md'), extension };
+    const saved = await saveClipboardImageFile(request);
+    assert.deepEqual(await saveClipboardImageFile({ ...request, extension: alias }), saved, 'image type aliases share identical contents');
+  }
+  if (process.platform !== 'win32') {
+    const linkedDirectory = path.join(root, 'linked candidate');
+    await mkdir(path.join(linkedDirectory, 'assets'), { recursive: true });
+    await symlink(path.join(existingDirectory, afterDelete.relativePath), path.join(linkedDirectory, 'assets', 'linked.png'));
+    const linked = await saveClipboardImageFile({ ...existingRequest, documentFsPath: path.join(linkedDirectory, 'note.md') });
+    assert.equal(linked.fileName, 'note-1.png', 'file symlinks cannot be reused as images');
+  }
+
   const namingContext = { documentName: '中文 方案[甲]', extension: 'png', timestamp: new Date(2026, 9, 20, 14, 30, 25).getTime(), existingNames: [] };
   const firstName = (naming: NonNullable<ImageStoragePreferences['naming']>, existingNames: string[] = []) =>
     imageFileNameCandidates({ ...namingContext, naming, existingNames }).next().value;
@@ -32,19 +108,19 @@ try {
   await mkdir(chineseDirectory);
   const chineseDocument = path.join(chineseDirectory, '中文 方案[甲].md');
   const chinesePreferences = {...defaultImageStorage, folder: '图片 资源(一)#50%'};
-  const saveChinese = (extension = 'png', documentFsPath = chineseDocument) => saveClipboardImageFile({
-    documentFsPath, imageStorage: chinesePreferences, extension, contents: Buffer.from('中文图片')
+  const saveChinese = (extension = 'png', documentFsPath = chineseDocument, contents = '中文图片') => saveClipboardImageFile({
+    documentFsPath, imageStorage: chinesePreferences, extension, contents: Buffer.from(contents)
   });
   const chineseFirst = await saveChinese();
   assert.equal(chineseFirst.fileName, '中文 方案[甲]-1.png');
   assert.equal(chineseFirst.relativePath, '图片 资源(一)#50%/中文 方案[甲]-1.png');
   assert.equal(await readFile(path.join(chineseDirectory, chineseFirst.relativePath), 'utf8'), '中文图片');
   assert.equal(encodeMarkdownPath(chineseFirst.relativePath), '图片%20资源%28一%29%2350%25/中文%20方案%5B甲%5D-1.png');
-  const chineseSecond = await saveChinese('jpg');
+  const chineseSecond = await saveChinese('jpg', chineseDocument, '第二张图片');
   assert.equal(chineseSecond.fileName, '中文 方案[甲]-2.jpg', 'sequence survives a new call and spans image formats');
-  const concurrent = await Promise.all([saveChinese(), saveChinese(), saveChinese()]);
+  const concurrent = await Promise.all(['并发图片一', '并发图片二', '并发图片三'].map(contents => saveChinese('png', chineseDocument, contents)));
   assert.deepEqual(concurrent.map(value => value.fileName).sort(), ['中文 方案[甲]-3.png', '中文 方案[甲]-4.png', '中文 方案[甲]-5.png']);
-  const renamedImage = await saveChinese('png', path.join(chineseDirectory, '新文档.md'));
+  const renamedImage = await saveChinese('png', path.join(chineseDirectory, '新文档.md'), '改名后新图片');
   assert.equal(renamedImage.fileName, '新文档-1.png');
   assert.equal(await readFile(path.join(chineseDirectory, chineseFirst.relativePath), 'utf8'), '中文图片', 'renaming a document leaves older files intact');
   const chineseHost = createImageStorageHost({ read: () => ({documentFsPath: chineseDocument, imageStorage: chinesePreferences}), write: async () => {}, selectFolder: async () => null });

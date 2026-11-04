@@ -1,5 +1,7 @@
 import type { createExtensionFeatureSettings } from './extensionFeatureSettings';
 import { createElement, X } from 'lucide';
+import { createAboutSettings } from './aboutSettings';
+import type { EditorEnvironment } from '../../../src/protocol/editorServices';
 import { createMenuSwitch } from './menuSwitch';
 import { createSegmentedControl } from './segmentedControl';
 import { createAppearanceSettings, type AppearanceSettingsOptions } from './appearanceSettings';
@@ -7,7 +9,7 @@ import type { createPreviewPresetSettings } from './previewPresetSettings';
 import { canBindCommand, commandContext, effectiveShortcuts, shortcutConflicts, shortcutFromStroke, type ShortcutPlatform } from '../../../src/application/editingPreferences';
 import type { EditingPreferences, EditingPreferencesChange, EditorCommandId } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-import { commandTitle, commandTitles, generalSearchKeywords, imageLocationSearchKeywords, modeOptions, nativeShortcutLabels, normalizeSettingsSearch, sectionTitles, settingsSearchMatches, settingsText, shortcutSearchKeywords, shortcutSections, shortcutDescriptions, tablePasteContexts, typingCatalog, typingSearchKeywords, typingSections, type SettingsTab } from '../application/settingsCatalog';
+import { aboutCatalog, commandTitle, commandTitles, generalSearchKeywords, imageLocationSearchKeywords, modeOptions, nativeShortcutLabels, normalizeSettingsSearch, sectionTitles, settingsSearchMatches, settingsText, shortcutSearchKeywords, shortcutSections, shortcutDescriptions, tablePasteContexts, typingCatalog, typingSearchKeywords, typingSections, type SettingsTab } from '../application/settingsCatalog';
 
 type Section = keyof typeof sectionTitles;
 export type GeneralSetting = {
@@ -36,6 +38,11 @@ export function createSettingsWindow(options: {
   readonly returnFocus: () => { focus(): void } | null;
   readonly registerInput?: (input: HTMLInputElement) => () => void;
   readonly initialLanguage: UiLanguage;
+  readonly productVersion: string;
+  readonly openLink: (href: string) => void;
+  readonly logoUrl: string;
+  readonly readEnvironment: () => Promise<EditorEnvironment | null>;
+  readonly copyText: (text: string) => Promise<boolean>;
   readonly imageLocation?: { element: HTMLDivElement; present(language: UiLanguage): void; refresh(): Promise<void>; flush(): void };
   readonly previewPresets?: ReturnType<typeof createPreviewPresetSettings>;
   readonly extensionFeatures?: ReturnType<typeof createExtensionFeatureSettings>;
@@ -48,8 +55,9 @@ export function createSettingsWindow(options: {
   let renderedSignature = '';
   let valuePresenters: (() => void)[] = [];
   const pending = new Set<string>();
-  const scrollPositions: Record<SettingsTab, number> = { general: 0, appearance: 0, typing: 0, presets: 0, shortcuts: 0, extensions: 0 };
+  const scrollPositions: Record<SettingsTab, number> = { general: 0, appearance: 0, typing: 0, presets: 0, shortcuts: 0, extensions: 0, about: 0 };
   const appearance = createAppearanceSettings({ ...options.appearance, registerInput: options.registerInput });
+  const about = createAboutSettings(options);
   const abort = new AbortController();
   const dialog = element('dialog', 'settings-window'); dialog.dataset.meoSettings = '';
   const titlebar = element('header', 'settings-titlebar');
@@ -58,7 +66,7 @@ export function createSettingsWindow(options: {
   const top = element('div', 'settings-top');
   const tabs = element('div', 'settings-tabs'); tabs.setAttribute('role', 'tablist');
   const tabButtons = new Map<SettingsTab, { button: HTMLButtonElement; label: HTMLSpanElement; badge: HTMLSpanElement }>();
-  for (const id of ['general', 'appearance', 'typing', 'presets', 'shortcuts', ...(options.extensionFeatures ? ['extensions'] as const : [])] as const) {
+  for (const id of ['general', 'appearance', 'typing', 'presets', 'shortcuts', ...(options.extensionFeatures ? ['extensions'] as const : []), 'about'] as const) {
     const control = button('', 'settings-tab'); control.dataset.tab = id; control.setAttribute('role', 'tab');
     const label = element('span', 'settings-tab-label'); const badge = element('span', 'settings-tab-badge');
     control.append(label, badge); tabs.append(control); tabButtons.set(id, { button: control, label, badge });
@@ -217,7 +225,8 @@ export function createSettingsWindow(options: {
     const shortcuts = Object.entries(shortcutSections).flatMap(([section, commands]) => commands.filter(command => matches(command, '快捷键 键位 绑定 Shortcuts hotkeys keybindings', ...commandTitles[command], ...sectionTitles[section as Section], ...(shortcutDescriptions[command] ?? []), ...shortcutSearchKeywords[command], ...(keys[command].length ? keys[command] : [nativeShortcutLabels[command]]))).map(command => ({ section: section as Section, command })));
     const imageLocation = !!options.imageLocation && matches('imageStorage', '输入 Input', ...imageLocationSearchKeywords, ...sectionTitles.paste);
     const presets = options.previewPresets?.items(query()) ?? [];
-    return { general, typing, shortcuts, imageLocation, presets };
+    const about = aboutCatalog.filter(item => matches(item.id, '关于 About', ...item.title, ...item.description, ...sectionTitles[item.section], ...item.keywords, item.id === 'project' ? options.productVersion : ''));
+    return { general, typing, shortcuts, imageLocation, presets, about };
   }
   function renderContent() {
     if (disposed) return;
@@ -252,7 +261,8 @@ export function createSettingsWindow(options: {
     valuePresenters = []; content.replaceChildren(); navigation.replaceChildren();
     if (tab === 'extensions' && options.extensionFeatures?.count(query())) content.append(options.extensionFeatures.render(language, query()));
     if (tab === 'appearance') content.append(appearance.render(language, query()));
-    const groups = tab === 'appearance' || tab === 'extensions' ? [] : tab === 'general' ? ['display', 'opening', 'interface'] : tab === 'typing' ? typingSections : tab === 'presets' ? ['presetList', 'presetFiles'] : Object.keys(shortcutSections);
+    if (tab === 'about' && visible.about.length) content.append(about.render(language, visible.about));
+    const groups = tab === 'appearance' || tab === 'extensions' || tab === 'about' ? [] : tab === 'general' ? ['display', 'opening', 'interface'] : tab === 'typing' ? typingSections : tab === 'presets' ? ['presetList', 'presetFiles'] : Object.keys(shortcutSections);
     for (const name of groups) {
       const section = name as Section;
       const items = tab === 'general' ? visible.general.filter(item => item.section === section).map(renderGeneral)
@@ -295,19 +305,21 @@ export function createSettingsWindow(options: {
     }
   }
   function selectTab(next: SettingsTab) {
+    if (tab === 'about' && next !== 'about') about.close();
     scrollPositions[tab] = content.scrollTop; tab = next; recording = null; dismissReset(); renderContent(); content.scrollTop = scrollPositions[next]; updateNavigation();
+    if (tab === 'about' && dialog.open) about.open();
   }
   function present() {
     options.imageLocation?.present(language);
     title.textContent = t('设置', 'Settings'); close.setAttribute('aria-label', t('关闭设置', 'Close settings'));
     tabs.setAttribute('aria-label', t('设置分类', 'Settings categories')); navigation.setAttribute('aria-label', t('跳转到章节', 'Jump to section'));
-    for (const [id, control] of tabButtons) control.label.textContent = id === 'extensions' ? t('扩展功能', 'Extensions') : id === 'general' ? t('常规', 'General') : id === 'appearance' ? t('外观', 'Appearance') : id === 'typing' ? t('输入', 'Input') : id === 'presets' ? t('预览预设', 'Preview presets') : t('快捷键', 'Shortcuts');
+    for (const [id, control] of tabButtons) control.label.textContent = id === 'extensions' ? t('扩展功能', 'Extensions') : id === 'general' ? t('常规', 'General') : id === 'appearance' ? t('外观', 'Appearance') : id === 'typing' ? t('输入', 'Input') : id === 'presets' ? t('预览预设', 'Preview presets') : id === 'about' ? t('关于', 'About') : t('快捷键', 'Shortcuts');
     search.placeholder = t('搜索设置', 'Search settings'); search.setAttribute('aria-label', search.placeholder); clear.setAttribute('aria-label', t('清除搜索', 'Clear search'));
     reset.textContent = t('恢复默认快捷键', 'Reset shortcuts'); reset.setAttribute('aria-expanded', String(resetOpen));
     resetTitle.textContent = t('恢复全部快捷键？', 'Reset all shortcuts?'); resetDescription.textContent = t('自定义绑定将被替换，其他设置保持不变。', 'Custom bindings will be replaced. Other settings stay unchanged.');
     cancelReset.textContent = t('取消', 'Cancel'); confirmReset.textContent = t('恢复默认', 'Reset'); renderContent();
   }
-  function closeWindow() { appearance.close(); options.imageLocation?.flush(); recording = null; dismissReset(); if (dialog.open) dialog.close(); options.returnFocus()?.focus(); }
+  function closeWindow() { appearance.close(); about.close(); options.imageLocation?.flush(); recording = null; dismissReset(); if (dialog.open) dialog.close(); options.returnFocus()?.focus(); }
   close.addEventListener('click', closeWindow);
   dialog.addEventListener('cancel', event => { event.preventDefault(); if (resetOpen) { dismissReset(); reset.focus(); } else if (recording) finishRecording(); else closeWindow(); });
   dialog.addEventListener('click', event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeWindow(); } });
@@ -321,7 +333,7 @@ export function createSettingsWindow(options: {
   document.addEventListener('focusin', event => { if (resetOpen && event.target instanceof Node && !resetPopover.contains(event.target) && !reset.contains(event.target)) dismissReset(); }, { signal: abort.signal });
   window.addEventListener('blur', dismissReset, { signal: abort.signal });
   present();
-  return { open(next?: SettingsTab) { if (disposed) return; if (next) { search.value = ''; selectTab(next); } if (dialog.open) return; appearance.open(); present(); void options.imageLocation?.refresh(); options.extensionFeatures?.refresh(); dialog.showModal(); updateNavigation(); search.focus(); }, close: closeWindow,
+  return { open(next?: SettingsTab) { if (disposed) return; if (next) { search.value = ''; selectTab(next); } if (dialog.open) return; appearance.open(); present(); void options.imageLocation?.refresh(); options.extensionFeatures?.refresh(); dialog.showModal(); if (tab === 'about') about.open(); updateNavigation(); search.focus(); }, close: closeWindow,
     isOpen: () => dialog.open, present, setLanguage(next: UiLanguage) { language = next; present(); },
-    dispose() { disposed = true; appearance.dispose(); abort.abort(); disposeSearchFocus?.(); options.previewPresets?.clear(); if (dialog.open) dialog.close(); dialog.remove(); } };
+    dispose() { disposed = true; appearance.dispose(); about.dispose(); abort.abort(); disposeSearchFocus?.(); options.previewPresets?.clear(); if (dialog.open) dialog.close(); dialog.remove(); } };
 }

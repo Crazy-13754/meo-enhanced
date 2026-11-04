@@ -488,8 +488,11 @@ async function headingWeightPreference(browser: Browser): Promise<void> {
     await page.waitForSelector(selector);
     assert.equal(await page.$eval(selector, element => getComputedStyle(element).fontWeight), '700');
     await page.click('[data-action="settings"]');
-    const option = '[data-action="boldHeadings"]';
-    assert.equal(await page.$eval(option, element => element.querySelector('.more-tools-option-label')?.textContent), 'Bold headings');
+    await page.click('.more-tools-settings-button');
+    await page.waitForSelector('.settings-window[open]');
+    await page.click('.settings-tab[data-tab="general"]');
+    const option = '[data-setting="boldHeadings"] .settings-switch';
+    assert.equal(await page.$eval(option, element => element.getAttribute('aria-label')), 'Bold headings');
     assert.equal(await page.$eval(option, element => element.getAttribute('aria-checked')), 'true');
     await page.click(option);
     await page.waitForFunction(() => getComputedStyle(document.querySelector<HTMLElement>('.cm-line.meo-md-h1')!).fontWeight === '400');

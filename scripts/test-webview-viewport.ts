@@ -635,8 +635,8 @@ async function main() {
         labels: labels.map((label) => label.textContent),
         headerText: header.textContent,
         settingsHeading: document.querySelector<HTMLElement>('.more-tools-section-label')?.textContent,
-        stickyHeaderLabel: document.querySelector<HTMLElement>(
-          '[data-action="tableStickyHeader"] .more-tools-option-label'
+        strongColorLabel: document.querySelector<HTMLElement>(
+          '[data-action="liveStrongColoring"] .more-tools-option-label'
         )?.textContent,
         clipped: labels.some((label) => label.scrollWidth > label.clientWidth)
           || header.scrollWidth > header.clientWidth
@@ -654,24 +654,26 @@ async function main() {
       ],
       headerText: 'No Changes·vs. Last Saved Version',
       settingsHeading: 'Document display',
-      stickyHeaderLabel: 'Keep table headers visible',
+      strongColorLabel: 'Color bold text',
       clipped: false
     })) {
       throw new Error(`English change review labels did not fit the shared menu width: ${JSON.stringify(englishReviewMenu)}`);
     }
+    await page.evaluate(() => document.querySelector<HTMLButtonElement>('.more-tools-settings-button')!.click());
+    await page.waitForSelector('.settings-window[open]');
+    await page.click('.settings-tab[data-tab="general"]');
     const stickyHeaderSetting = await page.evaluate(() => {
       const messages = (window as typeof window & { __hostMessages?: Array<Record<string, unknown>> })
         .__hostMessages ?? [];
-      const button = document.querySelector<HTMLButtonElement>('[data-action="tableStickyHeader"]')!;
+      const button = document.querySelector<HTMLButtonElement>('[data-setting="stickyHeader"] .settings-switch')!;
       button.click();
+      const current = document.querySelector<HTMLButtonElement>('[data-setting="stickyHeader"] .settings-switch')!;
       return {
-        active: button.classList.contains('is-active'),
-        checked: button.getAttribute('aria-checked'),
+        checked: current.getAttribute('aria-checked'),
         message: messages.at(-1)
       };
     });
     if (JSON.stringify(stickyHeaderSetting) !== JSON.stringify({
-      active: false,
       checked: 'false',
       message: { type: 'setTableStickyHeader', enabled: false }
     })) {
@@ -681,27 +683,26 @@ async function main() {
       data: { type: 'tableStickyHeaderChanged', enabled: true }
     })));
     await waitForFrames(page, 2);
-    const restoredStickyHeaderSetting = await page.$eval<HTMLElement, [boolean, string | null]>(
-      '[data-action="tableStickyHeader"]',
-      (button) => [button.classList.contains('is-active'), button.getAttribute('aria-checked')]
+    const restoredStickyHeaderSetting = await page.$eval<HTMLElement, string | null>(
+      '[data-setting="stickyHeader"] .settings-switch',
+      (button) => button.getAttribute('aria-checked')
     );
-    if (JSON.stringify(restoredStickyHeaderSetting) !== JSON.stringify([true, 'true'])) {
+    if (restoredStickyHeaderSetting !== 'true') {
       throw new Error(`Sticky table header host update was not applied: ${JSON.stringify(restoredStickyHeaderSetting)}`);
     }
     const boldHeadingSetting = await page.evaluate(() => {
       const messages = (window as typeof window & { __hostMessages?: Array<Record<string, unknown>> })
         .__hostMessages ?? [];
-      const button = document.querySelector<HTMLButtonElement>('[data-action="boldHeadings"]')!;
+      const button = document.querySelector<HTMLButtonElement>('[data-setting="boldHeadings"] .settings-switch')!;
       button.click();
+      const current = document.querySelector<HTMLButtonElement>('[data-setting="boldHeadings"] .settings-switch')!;
       return {
-        active: button.classList.contains('is-active'),
-        checked: button.getAttribute('aria-checked'),
+        checked: current.getAttribute('aria-checked'),
         weight: document.documentElement.style.getPropertyValue('--meo-editor-heading-weight'),
         message: messages.at(-1)
       };
     });
     if (JSON.stringify(boldHeadingSetting) !== JSON.stringify({
-      active: false,
       checked: 'false',
       weight: '400',
       message: { type: 'setBoldHeadings', enabled: false }
@@ -711,40 +712,44 @@ async function main() {
     await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', {
       data: { type: 'boldHeadingsChanged', enabled: true }
     })));
-    const restoredBoldHeadingSetting = await page.$eval<HTMLElement, [boolean, string | null]>(
-      '[data-action="boldHeadings"]',
-      (button) => [button.classList.contains('is-active'), button.getAttribute('aria-checked')]
+    await waitForFrames(page, 2);
+    const restoredBoldHeadingSetting = await page.$eval<HTMLElement, string | null>(
+      '[data-setting="boldHeadings"] .settings-switch',
+      (button) => button.getAttribute('aria-checked')
     );
-    if (JSON.stringify(restoredBoldHeadingSetting) !== JSON.stringify([true, 'true'])) {
+    if (restoredBoldHeadingSetting !== 'true') {
       throw new Error(`Bold heading host update was not applied: ${JSON.stringify(restoredBoldHeadingSetting)}`);
     }
-    const recentSaveHeaders = await page.evaluate(() => {
-      const read = () => {
-        const header = document.querySelector<HTMLElement>('.changes-review-header')!;
-        const baseline = header.querySelector<HTMLElement>('.changes-review-header-baseline')!;
-        return {
-          text: header.textContent,
-          clipped: header.scrollWidth > header.clientWidth || baseline.scrollWidth > baseline.clientWidth
-        };
+    await page.click('.settings-close');
+    const readRecentSaveHeader = () => page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>('.changes-review-header')!;
+      const baseline = header.querySelector<HTMLElement>('.changes-review-header-baseline')!;
+      return {
+        text: header.textContent,
+        clipped: header.scrollWidth > header.clientWidth || baseline.scrollWidth > baseline.clientWidth
       };
-      window.dispatchEvent(new MessageEvent('message', { data: {
-        type: 'diffBaselineModeChanged', mode: 'recent-save'
-      }}));
-      const english = read();
-      document.querySelector<HTMLButtonElement>('[data-ui-language="zh-CN"]')!.click();
-      const chinese = read();
-      window.dispatchEvent(new MessageEvent('message', { data: {
-        type: 'diffBaselineModeChanged', mode: 'current-edit'
-      }}));
-      return { english, chinese };
     });
+    // Settings closes transient menus; observe the accepted visible comparison surface.
+    await page.click('.changes-review-trigger');
+    await page.waitForSelector('.changes-review-panel:not([hidden])');
+    await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'diffBaselineModeChanged', mode: 'recent-save'
+    }})));
+    const englishRecentSaveHeader = await readRecentSaveHeader();
+    await page.click('.more-tools-wrapper > button');
+    await page.click('[data-ui-language="zh-CN"]');
+    await page.click('.changes-review-trigger');
+    await page.waitForSelector('.changes-review-panel:not([hidden])');
+    const recentSaveHeaders = { english: englishRecentSaveHeader, chinese: await readRecentSaveHeader() };
+    await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'diffBaselineModeChanged', mode: 'current-edit'
+    }})));
     if (JSON.stringify(recentSaveHeaders) !== JSON.stringify({
       english: { text: 'No Changes·vs. Before Agent Edits', clipped: false },
       chinese: { text: '无更改·与Agent 编辑前版本对比', clipped: false }
     })) {
       throw new Error(`Recent-save headers did not fit both languages: ${JSON.stringify(recentSaveHeaders)}`);
     }
-    await page.evaluate(() => document.querySelector<HTMLButtonElement>('[data-ui-language="zh-CN"]')!.click());
     await waitForFrames(page, 2);
     await page.click('[data-baseline="git-head"]');
     await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: {
@@ -910,8 +915,8 @@ async function main() {
     });
     if (
       JSON.stringify(moreToolsLayout.labels) !== JSON.stringify([
-        '显示行号', '折叠长代码块', '限制宽度', '粗体文字着色', '标题加粗',
-        '表格浮动表头', '外观 · 输入 · 快捷键', '遇到问题或有建议？'
+        '显示行号', '折叠长代码块', '限制宽度', '粗体文字着色',
+        '外观 · 输入 · 快捷键', '遇到问题或有建议？', '支持项目'
       ]) ||
       moreToolsLayout.topHeading !== '文档显示' ||
       moreToolsLayout.languageAutoLabel !== '自动' ||
@@ -1640,10 +1645,10 @@ async function main() {
         };
       });
       const before = await readHeadingWeight();
-      await page.evaluate(() => document.querySelector<HTMLButtonElement>('[data-action="boldHeadings"]')!.click());
+      await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'boldHeadingsChanged', enabled: false } })));
       await waitForFrames(page, 2);
       const off = await readHeadingWeight();
-      await page.evaluate(() => document.querySelector<HTMLButtonElement>('[data-action="boldHeadings"]')!.click());
+      await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'boldHeadingsChanged', enabled: true } })));
       await waitForFrames(page, 2);
       const restored = await readHeadingWeight();
       const headingWeights = { before, off, restored };

@@ -337,6 +337,52 @@ try {
     || sample.mappedLine !== anchorLine || Math.abs(sample.top - samples[0].top!) > 12)) {
     throw new Error(`Font change after a tall table lost the reading line: ${JSON.stringify(samples)}`);
   }
+  // A late measured scroll can arrive after the 12 stable-frame task has ended,
+  // while the font anchor still owns its original 15-frame observation window.
+  for (const kind of ['line', 'table'] as const) {
+    const late = await regressionPage.evaluate(async ({ kind, target }) => {
+      const host = window as any, view = host.__fontTestView();
+      host.__fontTestScrollToLine(target);
+      for (let frame = 0; frame < 20; frame++) await new Promise(requestAnimationFrame);
+      const bounds = view.scrollDOM.getBoundingClientRect();
+      const content = view.contentDOM as HTMLElement;
+      const shell = [...content.querySelectorAll<HTMLElement>('.meo-md-html-table-shell')]
+        .find(element => { const rect = element.getBoundingClientRect(); return rect.top <= bounds.top + 2 && rect.bottom > bounds.top + 2; });
+      const node = view.domAtPos(view.state.doc.line(target).from).node;
+      const sourceElement: HTMLElement | null = node instanceof HTMLElement ? node : node.parentElement;
+      const line = sourceElement?.closest<HTMLElement>('.cm-line');
+      const row = shell && [...shell.querySelectorAll<HTMLElement>('.meo-md-html-table:not(.meo-md-html-table-sticky-table) tr[data-source-line-number]')]
+        .find(element => element.getBoundingClientRect().bottom > bounds.top + 2);
+      const witness = kind === 'line' ? line : row;
+      if (!witness || (kind === 'line' && shell)) throw new Error('Expected a visible ' + kind + ' font witness');
+      const top = witness.getBoundingClientRect().top;
+      const positions = [top];
+      document.querySelector<HTMLButtonElement>('.editor-font-size-stepper-button:last-child')!.click();
+      let injected = 0;
+      for (let frame = 0; frame < 14; frame++) {
+        await new Promise<void>((resolve, reject) => requestAnimationFrame(() => {
+          try {
+            if (frame === 13) {
+              const before = view.scrollDOM.scrollTop;
+              if (before + 147 >= view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight) throw new Error('Late-height control must not be bottom constrained');
+              host.__fontTestMeasuredScrollRewrite(147); injected++;
+            }
+          } catch (error) { reject(error); return; }
+          setTimeout(resolve, 0);
+        }));
+        positions.push(witness.isConnected ? witness.getBoundingClientRect().top : null);
+      }
+      return { kind, top, positions, injected };
+    }, { kind, target: kind === 'line' ? anchorLine : anchorLine - 4 });
+    if (late.injected !== 1 || late.positions.some(top => top === null || Math.abs(top - late.top) > 12)) {
+      throw new Error('Late measured font scroll displaced its ' + kind + ' witness: ' + JSON.stringify(late));
+    }
+  }
+  console.log('Late measured font anchors passed: text and table, unchanged 12px bound');
+  await regressionPage.evaluate(async target => {
+    (window as any).__fontTestScrollToLine(target);
+    for (let frame = 0; frame < 20; frame++) await new Promise(requestAnimationFrame);
+  }, anchorLine);
   const wheelStart = await regressionPage.evaluate(() => {
     const scroller = (window as any).__fontTestView().scrollDOM;
     const rect = scroller.getBoundingClientRect();

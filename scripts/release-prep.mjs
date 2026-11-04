@@ -215,7 +215,7 @@ function prependChangelog(version, items) {
   }
 
   const changelogPath = "CHANGELOG.md";
-  const current = fs.readFileSync(changelogPath, "utf8");
+  const current = fs.readFileSync(changelogPath, "utf8").replace(/\r\n/g, "\n");
   const marker = "---\n";
   const idx = current.indexOf(marker);
   if (idx === -1) {
@@ -235,7 +235,7 @@ function ensureTagDoesNotExist(version) {
 }
 
 function ensureChangelogHasVersion(version) {
-  const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
+  const changelog = fs.readFileSync("CHANGELOG.md", "utf8").replace(/\r\n/g, "\n");
   if (!changelog.includes(`## ${version}\n`)) {
     fail(`CHANGELOG.md does not contain a '## ${version}' section.`);
   }

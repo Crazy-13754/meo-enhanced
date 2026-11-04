@@ -171,11 +171,12 @@ const liveInputDerivedWorkLargeDocumentFacet = Facet.define<boolean, boolean>({
 });
 
 /** Async producers keep their ownership outside the input scheduler. A refresh
- * can consume their result only after it belongs to the published revision. */
-export const liveInputDerivedWorkReadiness = Facet.define<(state: EditorState) => boolean>();
+ * consumes only the published revision; a renderer may also inspect its current
+ * editing surface when the scheduler supplies the owning view. */
+export const liveInputDerivedWorkReadiness = Facet.define<(state: EditorState, view?: EditorView) => boolean>();
 
-export function isLiveInputDerivedWorkReady(state: EditorState): boolean {
-  return state.facet(liveInputDerivedWorkReadiness).every(ready => ready(state));
+export function isLiveInputDerivedWorkReady(state: EditorState, view?: EditorView): boolean {
+  return state.facet(liveInputDerivedWorkReadiness).every(ready => ready(state, view));
 }
 
 export function usesLargeDocumentDerivedWorkBudget(state: EditorState): boolean {
@@ -691,14 +692,10 @@ function createCodeMirrorLiveInputDerivedWorkPlugin(view: EditorView) {
   const schedulerOptions = {
     requestFrame: (callback: () => void) => window.requestAnimationFrame(() => callback()),
     cancelFrame: (frameId: number) => window.cancelAnimationFrame(frameId),
-    // Mermaid yields internally while measuring SVG labels. A full-document
-    // rebuild in those gaps can turn a tiny split edit into a second-long wait.
+    // Renderer owners may yield while measuring. Rebuilding in those gaps can
+    // turn a tiny split edit into a second-long wait.
     shouldWaitForPresentation: () => activePointers.size > 0
-      || !isLiveInputDerivedWorkReady(view.state)
-      || Boolean(view.dom.querySelector(
-      '.meo-mermaid-editing-preview[data-meo-mermaid-rendering="true"], '
-        + '.meo-mermaid-editing-preview [data-meo-mermaid-rendering="true"]'
-    )),
+      || !isLiveInputDerivedWorkReady(view.state, view),
     apply() {
       try {
         view.dispatch({ effects: refreshLiveInputDerivedWorkEffect.of(true) });

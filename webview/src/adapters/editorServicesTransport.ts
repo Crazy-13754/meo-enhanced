@@ -4,7 +4,7 @@ export function createEditorServicesTransport(post: (request: EditorServiceReque
   const pending = new Map<string, { resolve: (value: EditorServiceValue | null) => void; timer: ReturnType<typeof setTimeout> }>();
   const prefix = createRequestPrefix(); let sequence = 0; let disposed = false;
   return {
-    request(operation: Omit<Extract<EditorServiceRequest, { action: 'links' }>, 'type' | 'requestId'> | { action: 'readClipboard' } | { action: 'writeClipboard'; text: string }): Promise<EditorServiceValue | null> {
+    request(operation: Omit<Extract<EditorServiceRequest, { action: 'links' }>, 'type' | 'requestId'> | { action: 'readClipboard' | 'environment' } | { action: 'writeClipboard'; text: string }): Promise<EditorServiceValue | null> {
       if (disposed) return Promise.resolve(null);
       const requestId = `${prefix}-${++sequence}`;
       return new Promise(resolve => {

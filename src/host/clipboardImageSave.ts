@@ -1,4 +1,4 @@
-import { constants } from 'node:fs';
+import { constants, type Stats } from 'node:fs';
 import { lstat, mkdir, open, readdir, realpath, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { expandImageStorage, imageFileNameCandidates } from '../application/imageStorage';
@@ -20,6 +20,9 @@ export type SavedClipboardImageFile = {
 
 export type ClipboardImageDirectoryRequest = Pick<ClipboardImageFileRequest,
   'documentFsPath' | 'workspaceFsPath' | 'configuredFolder' | 'imageStorage'>;
+
+// Only pending saves are retained. Disk contents remain authoritative between pastes.
+const pendingDirectorySaves = new Map<string, Promise<void>>();
 
 /** Used by both settings previews and clipboard writes; resolving never creates directories. */
 export function resolveClipboardImageDirectory(request: ClipboardImageDirectoryRequest) {
@@ -68,36 +71,100 @@ export async function saveClipboardImageFile(
   // Bun omits the separator for Windows volume roots; retain an absolute root.
   const canonicalBaseDirectory = (await realpath(baseDirectory)).replace(/^([a-z]:)$/i, '$1' + path.sep);
   await ensureCanonicalDirectory(canonicalBaseDirectory, baseDirectory, targetDirectory);
-  const candidates = fileNameCandidates(request, await readdir(targetDirectory));
-  for (const candidateName of candidates) {
-    const candidatePath = resolveContainedPath(targetDirectory, candidateName, 'Image file name');
-    let handle;
-    try {
-      await ensureCanonicalDirectory(canonicalBaseDirectory, baseDirectory, targetDirectory);
-      handle = await open(
-        candidatePath,
-        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0)
-      );
-    } catch (error) {
-      if (isAlreadyExistsError(error)) {
-        continue;
+  return withImageDirectoryLock(await realpath(targetDirectory), async () => {
+    await ensureCanonicalDirectory(canonicalBaseDirectory, baseDirectory, targetDirectory);
+    const entries = await readdir(targetDirectory, { withFileTypes: true });
+    const matchingNames = entries.filter(entry => entry.isFile()
+      && normalizedImageExtension(path.extname(entry.name).slice(1)) === normalizedImageExtension(request.extension))
+      .map(entry => entry.name).sort();
+    for (const fileName of matchingNames) {
+      const imagePath = resolveContainedPath(targetDirectory, fileName, 'Image file name');
+      if (await imageFileMatches(imagePath, request.contents)) {
+        await ensureCanonicalDirectory(canonicalBaseDirectory, baseDirectory, targetDirectory);
+        return { relativePath: path.relative(documentDirectory, imagePath).replace(/\\/g, '/'), fileName };
       }
-      throw error;
     }
 
-    try {
-      await handle.writeFile(request.contents);
-    } catch (error) {
-      await handle.close().catch(() => undefined);
-      await unlink(candidatePath).catch(() => undefined);
-      throw error;
+    const candidates = fileNameCandidates(request, entries.map(entry => entry.name));
+    for (const candidateName of candidates) {
+      const candidatePath = resolveContainedPath(targetDirectory, candidateName, 'Image file name');
+      let handle;
+      try {
+        await ensureCanonicalDirectory(canonicalBaseDirectory, baseDirectory, targetDirectory);
+        handle = await open(
+          candidatePath,
+          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0)
+        );
+      } catch (error) {
+        if (isAlreadyExistsError(error)) {
+          continue;
+        }
+        throw error;
+      }
+
+      try {
+        await handle.writeFile(request.contents);
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        await unlink(candidatePath).catch(() => undefined);
+        throw error;
+      }
+      await handle.close();
+      return {
+        relativePath: path.relative(documentDirectory, candidatePath).replace(/\\/g, '/'), fileName: candidateName
+      };
     }
-    await handle.close();
-    return {
-      relativePath: path.relative(documentDirectory, candidatePath).replace(/\\/g, '/'), fileName: candidateName
-    };
+    throw new Error('No available image file name.');
+  });
+}
+
+async function withImageDirectoryLock<T>(directory: string, save: () => Promise<T>): Promise<T> {
+  const key = process.platform === 'win32' ? directory.toLowerCase() : directory;
+  const result = (pendingDirectorySaves.get(key) ?? Promise.resolve()).then(save);
+  const settled = result.then(() => undefined, () => undefined);
+  pendingDirectorySaves.set(key, settled);
+  try {
+    return await result;
+  } finally {
+    if (pendingDirectorySaves.get(key) === settled) pendingDirectorySaves.delete(key);
   }
-  throw new Error('No available image file name.');
+}
+
+function normalizedImageExtension(extension: string): string {
+  return extension.toLowerCase().replace(/^jpeg$/, 'jpg').replace(/^tiff$/, 'tif');
+}
+
+async function imageFileMatches(imagePath: string, contents: Uint8Array): Promise<boolean> {
+  try {
+    const before = await lstat(imagePath);
+    if (!before.isFile() || before.size !== contents.byteLength) return false;
+    const handle = await open(imagePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile() || !sameImageFile(before, opened)) return false;
+      const chunk = Buffer.allocUnsafe(Math.min(contents.byteLength, 64 * 1024));
+      let offset = 0;
+      while (offset < contents.byteLength) {
+        const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, contents.byteLength - offset), offset);
+        if (!bytesRead || !chunk.subarray(0, bytesRead).equals(contents.subarray(offset, offset + bytesRead))) return false;
+        offset += bytesRead;
+      }
+      const after = await lstat(imagePath);
+      return after.isFile() && sameImageFile(opened, await handle.stat()) && sameImageFile(opened, after);
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    // An unrelated unreadable, removed or replaced candidate must not prevent a new image save.
+    if (typeof error === 'object' && error !== null && 'code' in error
+      && ['ENOENT', 'EACCES', 'EPERM', 'ELOOP'].includes(String(error.code))) return false;
+    throw error;
+  }
+}
+
+function sameImageFile(left: Stats, right: Stats): boolean {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size
+    && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 
 function fileNameCandidates(request: ClipboardImageDirectoryRequest & { readonly extension: string }, existingNames: readonly string[]) {

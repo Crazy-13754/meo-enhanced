@@ -9,6 +9,7 @@ import { documentBlocksFacet } from './editor/documentBlocks';
 import { createDocumentContentTransport } from './adapters/documentContentTransport';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
+import { version as productVersion } from '../../package.json';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
 import { createEditorFontWheel } from './adapters/editorFontWheel';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
@@ -25,7 +26,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, isEditorCommandId, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, CircleQuestionMark, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, ArrowRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, CircleQuestionMark, ExternalLink, Heart, History, Info } from 'lucide';
 import { createCodicon } from './helpers/codicons';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
@@ -360,14 +361,6 @@ liveStrongColoringBtn.setAttribute('role', 'menuitemcheckbox');
 liveStrongColoringBtn.setAttribute('aria-checked', 'false');
 appendMoreToolsOptionContent(liveStrongColoringBtn, Bold, activeUiStrings.strongColoring);
 
-const boldHeadingsBtn = document.createElement('button');
-boldHeadingsBtn.type = 'button';
-boldHeadingsBtn.className = 'more-tools-option more-tools-toggle-option is-active';
-boldHeadingsBtn.dataset.action = 'boldHeadings';
-boldHeadingsBtn.setAttribute('role', 'menuitemcheckbox');
-boldHeadingsBtn.setAttribute('aria-checked', 'true');
-appendMoreToolsOptionContent(boldHeadingsBtn, Heading, activeUiStrings.boldHeadings);
-
 const sourceLineNumbersBtn = document.createElement('button');
 sourceLineNumbersBtn.type = 'button';
 sourceLineNumbersBtn.className = 'more-tools-option more-tools-toggle-option is-active';
@@ -394,14 +387,6 @@ const largeDocumentTooltip = appendMoreToolsOptionContent(
   activeUiStrings.largeDocumentStartup,
   { id: 'large-document-startup-tooltip', text: activeUiStrings.largeDocumentStartupHint }
 );
-
-const tableStickyHeaderBtn = document.createElement('button');
-tableStickyHeaderBtn.type = 'button';
-tableStickyHeaderBtn.className = 'more-tools-option more-tools-toggle-option is-active';
-tableStickyHeaderBtn.dataset.action = 'tableStickyHeader';
-tableStickyHeaderBtn.setAttribute('role', 'menuitemcheckbox');
-tableStickyHeaderBtn.setAttribute('aria-checked', 'true');
-appendMoreToolsOptionContent(tableStickyHeaderBtn, Table2, activeUiStrings.stickyTableHeader);
 
 const restoreReadingPositionBtn = document.createElement('button');
 restoreReadingPositionBtn.type = 'button';
@@ -535,8 +520,6 @@ const setBoldHeadingsEnabled = (enabled: boolean, { post = true }: PostUpdateOpt
   } else {
     mutate();
   }
-  boldHeadingsBtn.classList.toggle('is-active', nextEnabled);
-  boldHeadingsBtn.setAttribute('aria-checked', nextEnabled ? 'true' : 'false');
   if (post && changed) vscode.postMessage({ type: 'setBoldHeadings', enabled: nextEnabled });
 };
 
@@ -552,11 +535,6 @@ const setLargeDocumentOptimizationEnabled = (
   if (post && changed) {
     vscode.postMessage({ type: 'setLargeDocumentOptimization', enabled: nextEnabled });
   }
-};
-
-const updateTableStickyHeaderUI = () => {
-  tableStickyHeaderBtn.classList.toggle('is-active', tableStickyHeaderEnabled);
-  tableStickyHeaderBtn.setAttribute('aria-checked', tableStickyHeaderEnabled ? 'true' : 'false');
 };
 
 const updateRestoreReadingPositionUI = () => {
@@ -619,7 +597,6 @@ const setTableStickyHeaderEnabled = (
   const nextEnabled = enabled === true;
   const changed = nextEnabled !== tableStickyHeaderEnabled;
   tableStickyHeaderEnabled = nextEnabled;
-  updateTableStickyHeaderUI();
   if (changed) editor?.setTableStickyHeaderEnabled(tableStickyHeaderEnabled);
   if (post && changed) {
     vscode.postMessage({ type: 'setTableStickyHeader', enabled: tableStickyHeaderEnabled });
@@ -1288,11 +1265,9 @@ const applyUiLanguage = (language: UiLanguage): void => {
   contentMaxWidthBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.constrainWidth;
   sourceLineNumbersBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.showLineNumbers;
   liveStrongColoringBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.strongColoring;
-  boldHeadingsBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.boldHeadings;
   longCodeBlockFoldingBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.foldLongCodeBlocks;
   largeDocumentOptimizationBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.largeDocumentStartup;
   largeDocumentTooltip?.setContent({ text: strings.largeDocumentStartupHint, kind: 'description' });
-  tableStickyHeaderBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.stickyTableHeader;
   restoreReadingPositionBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.resumeReadingPositionLabel;
   changesReviewControl.setUiLanguage(language);
   updateGitChangesGutterUI();
@@ -1331,6 +1306,8 @@ const applyUiLanguage = (language: UiLanguage): void => {
   supportHeading.textContent = strings.supportHeading;
   feedbackPrompt.textContent = strings.feedbackPrompt;
   reportIssueLabel.textContent = strings.reportIssue;
+  sponsorProjectLabel.textContent = strings.sponsorProject;
+  sponsorActionLabel.textContent = strings.sponsorAction;
   toolbarOverflowIndicator.dataset.tooltip = strings.toolbarOverflow;
   toolbarOverflowIndicator.setAttribute('aria-label', strings.toolbarOverflow);
   toolbarOverflowSection.setAttribute('aria-label', strings.toolbarOverflow);
@@ -1393,14 +1370,26 @@ const reportIssueLabel = document.createElement('span');
 reportIssueLabel.textContent = activeUiStrings.reportIssue;
 reportIssueAction.append(reportIssueLabel, createElement(ExternalLink, { width: 13, height: 13, 'aria-hidden': 'true' }));
 reportIssueButton.append(createMoreToolsControlHeading(CircleQuestionMark, feedbackPrompt), reportIssueAction);
+const sponsorProjectLabel = document.createElement('span');
+sponsorProjectLabel.className = 'more-tools-option-label';
+sponsorProjectLabel.textContent = activeUiStrings.sponsorProject;
+const sponsorProjectButton = document.createElement('button');
+sponsorProjectButton.type = 'button';
+sponsorProjectButton.className = 'more-tools-option more-tools-navigation-option more-tools-sponsor-button';
+sponsorProjectButton.setAttribute('role', 'menuitem');
+sponsorProjectButton.setAttribute('aria-haspopup', 'dialog');
+const sponsorProjectAction = document.createElement('span');
+sponsorProjectAction.className = 'more-tools-navigation-action more-tools-sponsor-action';
+const sponsorActionLabel = document.createElement('span');
+sponsorActionLabel.textContent = activeUiStrings.sponsorAction;
+sponsorProjectAction.append(sponsorActionLabel, createElement(ArrowRight, { width: 13, height: 13, 'aria-hidden': 'true' }));
+sponsorProjectButton.append(createMoreToolsControlHeading(Heart, sponsorProjectLabel), sponsorProjectAction);
 moreToolsPanel.append(
   displaySettingsHeading,
   sourceLineNumbersBtn,
   longCodeBlockFoldingBtn,
   contentMaxWidthBtn,
   liveStrongColoringBtn,
-  boldHeadingsBtn,
-  tableStickyHeaderBtn,
   interfaceSettingsHeading,
   editorAppearanceRow,
   uiLanguageRow,
@@ -1408,7 +1397,8 @@ moreToolsPanel.append(
   preferencesHeading,
   moreSettingsButton,
   supportHeading,
-  reportIssueButton
+  reportIssueButton,
+  sponsorProjectButton
 );
 
 const moreToolsWrapper = document.createElement('div');
@@ -1448,6 +1438,7 @@ reportIssueButton.addEventListener('click', () => {
   });
   setMoreToolsVisible(false);
 });
+sponsorProjectButton.addEventListener('click', () => { setMoreToolsVisible(false); settingsWindow?.open('about'); });
 
 document.addEventListener('pointerdown', (event) => {
   if (!moreToolsWrapper.contains(event.target as Node)) {
@@ -3706,6 +3697,11 @@ const previewPresetSettings = createPreviewPresetSettings({
 const extensionFeatureSettings = createExtensionFeatureSettings(request => vscode.postMessage(request), () => settingsWindow?.present());
 settingsWindow = createSettingsWindow({
   extensionFeatures: extensionFeatureSettings,
+  productVersion,
+  openLink: href => vscode.postMessage({ type: 'openLink', href }),
+  logoUrl: document.querySelector<HTMLMetaElement>('meta[name="meo-logo"]')?.content ?? '',
+  readEnvironment: async () => { const result = await editorServicesTransport.request({ action: 'environment' }); return result && 'environment' in result ? result.environment : null; },
+  copyText: async text => { const result = await editorServicesTransport.request({ action: 'writeClipboard', text }); return !!result && 'text' in result; },
   appearance: {
     getColors: () => uiColors, getMode: () => themeAdapter.getPreference(), getScheme: () => themeAdapter.getAppearance(),
     getFontSize: () => editorFontSizePreference,
@@ -4458,9 +4454,6 @@ contentMaxWidthBtn.addEventListener('click', () => {
 liveStrongColoringBtn.addEventListener('click', () => {
   setLiveStrongColoring(!liveStrongColoring);
 });
-boldHeadingsBtn.addEventListener('click', () => {
-  setBoldHeadingsEnabled(!boldHeadingsEnabled);
-});
 sourceLineNumbersBtn.addEventListener('click', () => {
   const nextMode = pendingSourceLineNumbers === 'off' ? previousVisibleSourceLineNumbers : 'off';
   if (nextMode !== 'off') previousVisibleSourceLineNumbers = nextMode;
@@ -4478,9 +4471,6 @@ longCodeBlockFoldingBtn.addEventListener('click', () => {
 });
 largeDocumentOptimizationBtn.addEventListener('click', () => {
   setLargeDocumentOptimizationEnabled(!largeDocumentOptimizationEnabled);
-});
-tableStickyHeaderBtn.addEventListener('click', () => {
-  setTableStickyHeaderEnabled(!tableStickyHeaderEnabled);
 });
 restoreReadingPositionBtn.addEventListener('click', () => {
   setRestoreReadingPositionOnOpen(!restoreReadingPositionOnOpen);

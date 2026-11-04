@@ -51,7 +51,7 @@ try {
       host.ed = host.MermaidEditingHarness.createEditor({ parent: document.querySelector('#app'), initialMode: 'live',
         text, sourceLineNumbers: 'on', onApplyChanges() {} });
       host.headingSamples = [];
-      let observing = true;
+      let observing = false;
       let frame = 0;
       host.stopHeadingSamples = () => { observing = false; cancelAnimationFrame(frame); };
       host.readHeadingNumbers = () => {
@@ -71,15 +71,38 @@ try {
         host.headingSamples.push(...host.readHeadingNumbers());
         frame = requestAnimationFrame(() => setTimeout(sample, 0));
       };
-      frame = requestAnimationFrame(() => setTimeout(sample, 0));
+      host.startHeadingSamples = () => {
+        observing = true;
+        frame = requestAnimationFrame(() => setTimeout(sample, 0));
+      };
     }, text);
+    assert.equal(await page.evaluate(() => (window as any).ed.prepareLiveSyntax(() => true)), true,
+      name + ': production Live preparation completes before accepting the visible surface');
+    await page.evaluate(async () => {
+      const host = window as any;
+      // The production bootstrap keeps its cover until this same readiness
+      // boundary. Sample its first accepted frame, not covered preparation DOM.
+      await host.ed.whenVisiblePresentationReady(500);
+      host.startHeadingSamples();
+    });
     await settle();
     if (name === 'deep') await page.evaluate(line => (window as any).ed.scrollToLine(line - 2, 'top'), targetLine);
     await page.waitForFunction(line => (window as any).readHeadingNumbers().some((row: any) => row.line === line), {}, targetLine)
-      .catch(async error => { throw new Error(name + ': ' + String(error) + ' ' + JSON.stringify(await page.evaluate(() => ({
-        replies: (window as any).syntaxReplies, rows: (window as any).readHeadingNumbers(),
-        pending: (window as any).MermaidEditingHarness.isLiveInputDerivedWorkPending((window as any).ed.view.state)
-      }))) + ' ' + JSON.stringify(errors)); });
+      .catch(async error => {
+        const diagnostic = await page.evaluate(line => {
+          const host = window as any, view = host.ed.view;
+          const mounted = Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.cm-line')).map(row => ({
+            line: view.state.doc.lineAt(view.posAtDOM(row)).number, text: row.textContent?.slice(0, 100), className: row.className
+          }));
+          return { replies: host.syntaxReplies, rows: host.readHeadingNumbers(),
+            pending: typeof host.MermaidEditingHarness.isLiveInputDerivedWorkPending === 'function'
+              ? host.MermaidEditingHarness.isLiveInputDerivedWorkPending(view.state) : null,
+            viewport: view.viewport, target: { line, text: view.state.doc.line(line).text },
+            scroll: { top: view.scrollDOM.scrollTop, height: view.scrollDOM.clientHeight, maximum: view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight },
+            mounted: [...mounted.slice(0, 3), ...mounted.filter(row => Math.abs(row.line - line) < 5), ...mounted.slice(-3)] };
+        }, targetLine).catch(diagnosticError => ({ diagnosticError: String(diagnosticError) }));
+        throw new Error(name + ': ' + String(error) + ' ' + JSON.stringify(diagnostic) + ' ' + JSON.stringify(errors), { cause: error });
+      });
     await settle();
     const cold = await page.evaluate(() => {
       const host = window as any;

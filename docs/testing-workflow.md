@@ -169,6 +169,16 @@ deltas, Ctrl/Cmd modifiers, font bounds, and bilingual light/dark settings at
 normal and narrow widths. It runs in regression, targeted appearance and browser gates;
 visual evidence is saved under `.local/font-wheel-acceptance/`. The existing
 font-size viewport contract covers reading-anchor continuity during layout changes.
+It also drives a late measured scroll rewrite on the fourteenth rendering
+opportunity, after the twelve-stable-frame task can finish. Text and table anchors
+retain the existing 12px bound through the same post-measure owner; a newer native
+wheel or navigation still takes precedence. Keep the original observation budgets.
+
+Full-document endurance checks formula source/result pairing immediately when the
+public undo/redo promise completes, as well as after the existing twelve-frame
+history observation. Native text focus alone does not establish completed formula
+presentation while its accepted input generation is still pending. The existing
+history restore owner retains its original retry budget and cancellation rules.
 
 Retained Preview settings are covered by `test-preview-webview-adapter.ts`
 (cache invalidation, delayed preload/render retirement, coalescing and unchanged
@@ -367,6 +377,15 @@ presets, continuing numbers across image formats, concurrent exclusive creation,
 Chinese folders/document names, escaped Markdown targets and final-file-name alt
 text. Settings coverage includes persisted selection, bilingual search and narrow
 light/dark layouts; `MEO_SETTINGS_SCREENSHOTS` captures the naming controls.
+The storage contract also checks exact-content reuse within the configured directory,
+all naming presets, cold concurrent pastes, shared-directory documents, JPEG/TIFF
+extension aliases, bounded multi-chunk comparison, same-size differing contents,
+and external rename/edit/delete without stale matches. Only regular files of the
+same image type are candidates. Directory/symlink guards and exclusive creation
+remain in force. The production link-destination contract bridges real clipboard
+image requests to the Host file saver in ordinary and actually budgeted Source/Live
+documents, checking one file for two pastes, escaped reused paths, text, selection,
+focus, undo/redo and saved bytes.
 The clipboard-image root contract also runs the production directory resolver with
 isolated POSIX and Windows path adapters on every OS. Relative-only settings reject
 either platform's roots and drive-relative paths; advanced rules retain explicit
@@ -450,6 +469,8 @@ Pending source discovery must not copy empty text. Use `--controls-only` for thi
 `bun scripts/test-preview-table-layout-production.ts --live-update-only` isolates
 Live HTML table input stability. Caption/cell typing and undo/redo check every
 sampled layout and actual compositor PNG column widths, including rowspan/colspan.
+  Undo/redo also checks fitted columns at the next microtask, before a later
+  resize delivery can conceal an unfitted accepted HTML result.
 Ordinary and optimized fixtures verify the real Worker and derived-work budget,
 unrelated node reuse, source preservation, mode remount, hidden-table reveal and
 pending-update disposal. The full table-layout owner includes these checks;
@@ -905,6 +926,13 @@ the original 16 sampled epochs. Side-layout keyboard exits similarly require all
 18 epochs. A rAF geometry read can precede CodeMirror's write in that same frame;
 keep those readings as diagnostics and use the corresponding painted target for
 the unchanged 2px bound. Missing epochs or an invisible target fail the check.
+  Preflight capture with an editor-free page at the same resolution and marker
+  cadence. If the browser drops required epochs, use a supported capture-capable
+  executable through `MEO_TEST_BROWSER` (for example Chrome for Testing's
+  `chrome-headless-shell`) and verify the full epoch control first. Keep the
+  original frame counts, immediate input, lossless PNGs and pixel bounds; a later
+  screenshot cannot fill missing intermediate epochs. Record the executable's
+  version and hash separately from the ordinary browser and installed checks.
 Start capture before the deliberate native input, so the pending-work handoff
 remains immediate; retain held-pointer DOM, source, focus and final-position checks.
 

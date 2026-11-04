@@ -597,10 +597,10 @@ async function runPassiveControls(browser: Browser, mode: 'live' | 'source'): Pr
     assert.match(afterBlank.line ?? '', /line 3 ordinary content/);
 
     await page.click('[data-action="settings"]');
-    await page.click('[data-action="tableStickyHeader"]');
+    await page.click('[data-action="longCodeBlockFolding"]');
     const afterSwitch = await page.evaluate(() => ({
       focused: document.activeElement === document.querySelector('.cm-content'),
-      switched: document.querySelector('[data-action="tableStickyHeader"]')?.getAttribute('aria-checked'),
+      switched: document.querySelector('[data-action="longCodeBlockFolding"]')?.getAttribute('aria-checked'),
       menuOpen: !document.querySelector<HTMLElement>('.more-tools-panel')?.hidden
     }));
     assert.deepEqual(afterSwitch, { focused: true, switched: 'false', menuOpen: true },
@@ -679,13 +679,13 @@ async function runTableControlFocus(browser: Browser): Promise<void> {
     const focusedAfterOpen = await page.evaluate(() => document.activeElement
       === document.querySelector('tbody textarea[data-table-row="1"][data-table-col="0"]'));
     assert.equal(focusedAfterOpen, true, 'Opening settings lost the Live table cell caret');
-    await page.click('[data-action="tableStickyHeader"]');
+    await page.click('[data-action="longCodeBlockFolding"]');
     const result = await page.evaluate(() => {
       const input = document.querySelector<HTMLTextAreaElement>('tbody textarea[data-table-row="1"][data-table-col="0"]');
       return {
         focused: document.activeElement === input,
         selection: input?.selectionStart,
-        switched: document.querySelector('[data-action="tableStickyHeader"]')?.getAttribute('aria-checked')
+        switched: document.querySelector('[data-action="longCodeBlockFolding"]')?.getAttribute('aria-checked')
       };
     });
     assert.deepEqual(result, { focused: true, selection: 2, switched: 'false' },

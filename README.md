@@ -57,8 +57,6 @@ Choose **Custom presets…** at the bottom of the preset menu to import and mana
 
 Exporting from preset settings shares the preset files.
 
-With matching MEO Extras enabled, embedded Markmap and PlantUML blocks export as static diagrams in HTML/PDF and images in Word. The GitHub README renderer keeps source; unsupported or failed diagrams retain their source with a warning.
-
 ## Document change review
 
 Change review updates in real time as you edit, displaying additions, modifications, and deletions beside the editor and summarizing their counts in the toolbar. The overview ruler on the right shows how changes are distributed throughout the document, making them easy to locate in long files.

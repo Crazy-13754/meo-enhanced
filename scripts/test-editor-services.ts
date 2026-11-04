@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { mock } from 'bun:test';
 import { URI, Utils } from 'vscode-uri';
+import * as os from 'node:os';
 import { decodeEditorServiceRequest, decodeEditorServiceResponse } from '../src/protocol/editorServices';
 import { createEditorServicesTransport } from '../webview/src/adapters/editorServicesTransport';
-let clipboard = '', disposed = 0, created = 0, uris: URI[] = [], file = '';
+let clipboard = '', disposed = 0, created = 0, uris: URI[] = [], file = '', failWrite = false;
 const stats: string[] = [], root = URI.file('D:/workspace');
 class CancellationTokenSource {
   constructor() { created++; }
@@ -12,9 +13,9 @@ class CancellationTokenSource {
   cancel() { this.cancelled = true; }
   dispose() { disposed++; }
 }
-mock.module('vscode', () => ({ CancellationTokenSource, FileType: { File: 1, Directory: 2 },
+mock.module('vscode', () => ({ version: '1.140.0', CancellationTokenSource, FileType: { File: 1, Directory: 2 },
   Uri: { file: URI.file, parse: URI.parse, joinPath: Utils.joinPath }, RelativePattern: class {},
-  env: { clipboard: { readText: async () => clipboard, writeText: async (text: string) => { clipboard = text; } } },
+  env: { appName: 'Visual Studio Code', remoteName: 'ssh-remote', clipboard: { readText: async () => clipboard, writeText: async (text: string) => { if (failWrite) throw new Error('Clipboard unavailable'); clipboard = text; } } },
   workspace: { findFiles: async () => uris, getWorkspaceFolder: () => ({ uri: root }),
     createFileSystemWatcher: () => ({ onDidCreate() {}, onDidDelete() {}, onDidChange() {}, dispose() {} }),
     fs: { readFile: async () => new TextEncoder().encode(file), stat: async (uri: URI) => {
@@ -24,6 +25,21 @@ mock.module('vscode', () => ({ CancellationTokenSource, FileType: { File: 1, Dir
 const { runEditorService } = await import('../src/host/editorServices');
 const doc = URI.file('D:/workspace/main.md') as any;
 const request = (change: object) => ({ type: 'editorService', requestId: 'request', ...change } as any);
+assert.equal(decodeEditorServiceRequest(request({ action: 'environment' }))?.action, 'environment');
+const environmentResponse = await runEditorService(request({ action: 'environment' }), doc);
+assert.ok(decodeEditorServiceResponse(environmentResponse));
+assert.ok(environmentResponse.result.ok && 'environment' in environmentResponse.result.value);
+if (!environmentResponse.result.ok || !('environment' in environmentResponse.result.value)) throw new Error('Expected environment');
+const environment = environmentResponse.result.value.environment;
+assert.equal(environment.appName, 'Visual Studio Code'); assert.equal(environment.appVersion, '1.140.0');
+assert.equal(environment.architecture, os.arch()); assert.ok(environment.system.includes(os.release()));
+assert.equal(environment.remoteName, 'ssh-remote');
+for (const malformed of [{ ...environment, system: 42 }, { ...environment, appVersion: '' }, { ...environment, remoteName: 'x'.repeat(201) }, { ...environment, architecture: undefined }]) {
+  assert.equal(decodeEditorServiceResponse({ type: 'editorServiceResult', requestId: 'x', result: { ok: true, value: { environment: malformed, text: 'must not bypass validation' } } }), null);
+}
+failWrite = true;
+assert.equal((await runEditorService(request({ action: 'writeClipboard', text: 'version info' }), doc)).result.ok, false);
+failWrite = false;
 assert.equal(decodeEditorServiceRequest(request({ action: 'writeClipboard', text: 'x'.repeat(5_000_001) })), null);
 assert.equal(decodeEditorServiceRequest(request({ action: 'links', kind: 'bad', query: '', target: '' })), null);
 assert.equal(decodeEditorServiceResponse({ type: 'editorServiceResult', requestId: 'x', result: { ok: true, value: { candidates: Array(51).fill({ label: '', insert: '', detail: '' }) } } }), null);
@@ -58,6 +74,9 @@ const pending = transport.request({ action: 'readClipboard' });
 assert.equal(transport.accept({ type: 'editorServiceResult', requestId: 'old', result: { ok: true, value: { text: 'old' } } }), false);
 assert.equal(transport.accept({ type: 'editorServiceResult', requestId: posted[0].requestId, result: { ok: true, value: { text: 'fresh' } } }), true);
 assert.deepEqual(await pending, { text: 'fresh' });
+const environmentPending = transport.request({ action: 'environment' });
+assert.equal(transport.accept({ ...environmentResponse, requestId: posted.at(-1).requestId }), true);
+assert.deepEqual(await environmentPending, { environment });
 const cancelled = transport.request({ action: 'links', kind: 'documents', query: '', target: '' }); transport.dispose(); assert.equal(await cancelled, null);
 assert.equal(await transport.request({ action: 'readClipboard' }), null);
 const failing = createEditorServicesTransport(() => { throw new Error('offline'); }); assert.equal(await failing.request({ action: 'readClipboard' }), null); failing.dispose();

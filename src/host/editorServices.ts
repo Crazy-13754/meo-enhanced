@@ -2,7 +2,8 @@ import MarkdownIt from 'markdown-it';
 import { markdownHeadingCandidates } from '../application/markdownHeadingCandidates';
 import { candidateTextMatch } from '../foundation/candidateText';
 import * as vscode from 'vscode';
-import type { EditorServiceRequest, EditorServiceResponse, LinkCandidate } from '../protocol/editorServices';
+import * as os from 'node:os';
+import type { EditorServiceRequest, EditorServiceResponse, EditorServiceValue, LinkCandidate } from '../protocol/editorServices';
 import { markdownPathTarget, resolveMarkdownReference } from './markdownPathTargets';
 import { resolveWikiResource, wikiLinkCandidates, wikiPathDirectory } from './wikiResources';
 
@@ -44,13 +45,17 @@ async function headingCandidates(target: string, query: string, document: vscode
 
 export async function runEditorService(request: EditorServiceRequest, documentUri: vscode.Uri): Promise<EditorServiceResponse> {
   try {
-    let value: { text: string } | { candidates: readonly LinkCandidate[] };
+    let value: EditorServiceValue;
     if (request.action === 'readClipboard') {
       const text = await vscode.env.clipboard.readText();
       if (text.length > 5_000_000) throw new Error('Clipboard text is too large');
       value = { text };
     } else if (request.action === 'writeClipboard') {
       await vscode.env.clipboard.writeText(request.text); value = { text: '' };
+    } else if (request.action === 'environment') {
+      value = { environment: { appName: vscode.env.appName, appVersion: vscode.version,
+        system: process.platform === 'win32' ? `${os.version()} (${os.release()})` : `${os.type()} ${os.release()}`,
+        architecture: os.arch(), remoteName: vscode.env.remoteName ?? '' } };
     } else {
       const lookup = request.kind === 'documents' ? wikiLinkCandidates(request.query, documentUri)
         : request.kind === 'paths' ? pathCandidates(request.query, documentUri, request.wiki === true)

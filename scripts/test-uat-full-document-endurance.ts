@@ -917,6 +917,12 @@ async function replayHistory(
   const applied = await page.evaluate(async (command) => (window as any).__fullUatEditor[command](), direction);
   if (!applied) throw new Error(`${direction} was not applied at step ${ordinal}: ${operation.id}`);
   await waitForText(page, expectedText);
+  if (operation.kind === 'math') {
+    const accepted = await targetState(page, operation);
+    if (!accepted.visible || !accepted.focused) {
+      throw new Error(`Formula history completed before its source presentation: ${JSON.stringify({ direction, ordinal, operation: operationEvidence, accepted })}`);
+    }
+  }
   await waitForFrames(page, 12);
   const metrics = await stopMonitor(page);
   const after = await targetState(page, operation);

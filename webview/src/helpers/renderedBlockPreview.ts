@@ -30,13 +30,17 @@ export class RenderedBlockPreviewHeight {
     if (typeof ResizeObserver === 'undefined') return;
     this.destroy(shell);
     const measurement = this.measurement;
+    const prepare = () => {
+      const layout = prepareLayout;
+      prepareLayout = undefined;
+      layout?.();
+    };
     const observer = new ResizeObserver(() => {
       if (!shell.isConnected) return;
       // A newly attached result must finish its own layout before either the
       // browser paints it or CodeMirror accepts its height. Frame callbacks may
       // already be running when a deferred presentation mounts this widget.
-      prepareLayout?.();
-      prepareLayout = undefined;
+      prepare();
       const height = shell.getBoundingClientRect().height;
       if (height <= 0 || measurement.height === height) return;
       measurement.height = height;
@@ -47,6 +51,12 @@ export class RenderedBlockPreviewHeight {
     });
     observer.observe(shell);
     previewHeightObservers.set(shell, observer);
+    // Reused HTML DOM can lose its fitted columns during reconciliation.
+    // Finish after CodeMirror's write, before another task can observe that
+    // accepted content. The observer still owns height measurement before paint.
+    if (prepareLayout) queueMicrotask(() => {
+      if (shell.isConnected && previewHeightObservers.get(shell) === observer) prepare();
+    });
   }
 
   destroy(shell: HTMLElement): void {

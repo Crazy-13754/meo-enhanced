@@ -506,7 +506,7 @@ export function bindTooltips(root: HTMLElement, options: {
   const conflicts = new WeakSet<HTMLElement>();
   let pointer: { x: number; y: number } | undefined;
   let linkModifier = false;
-  const ignored = '.find-clear-button, .find-close-button, .outline-close-button, .editor-notice-close, .meo-hex-color-adjustment-close';
+  const ignored = '.find-clear-button, .find-close-button, .outline-close-button, .editor-notice-close, .meo-hex-color-adjustment-close, .settings-about-platform';
 
   function prepare(element: HTMLElement) {
     // Normalize authored titles before hover: a title on an outer wrapper can
