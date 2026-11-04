@@ -5,6 +5,7 @@ export interface DocumentViewDescriptor {
   readonly iconPaths?: readonly string[];
   readonly iconOffset?: { readonly x: number; readonly y: number };
   readonly entryUri: string;
+  readonly blockOnly?: boolean;
   readonly codeBlockLanguages?: readonly string[];
 }
 export interface DocumentViewsChanged {
@@ -38,12 +39,14 @@ export function decodeDocumentViewsChanged(value: unknown): DocumentViewsChanged
     const v = raw as Record<string, unknown>;
     if (typeof v.id !== 'string' || !v.id || ids.has(v.id)
       || typeof v.label !== 'string' || !v.label || typeof v.entryUri !== 'string' || !v.entryUri
+      || (v.blockOnly !== undefined && typeof v.blockOnly !== 'boolean')
+      || (v.blockOnly === true && !isDocumentBlockLanguages(v.codeBlockLanguages))
       || (v.labelZh !== undefined && typeof v.labelZh !== 'string')
       || (v.codeBlockLanguages !== undefined && !isDocumentBlockLanguages(v.codeBlockLanguages))
       || (v.iconPaths !== undefined && !isDocumentViewIconPaths(v.iconPaths))
       || (v.iconOffset !== undefined && !isDocumentViewIconOffset(v.iconOffset))) return null;
     ids.add(v.id);
-    views.push({ id: v.id, label: v.label, labelZh: v.labelZh as string | undefined, iconPaths: v.iconPaths as readonly string[] | undefined,
+    views.push({ blockOnly: v.blockOnly as boolean | undefined, id: v.id, label: v.label, labelZh: v.labelZh as string | undefined, iconPaths: v.iconPaths as readonly string[] | undefined,
       iconOffset: v.iconOffset as DocumentViewDescriptor['iconOffset'], entryUri: v.entryUri,
       codeBlockLanguages: v.codeBlockLanguages as readonly string[] | undefined });
   }

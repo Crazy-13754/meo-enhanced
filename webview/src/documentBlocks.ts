@@ -1,5 +1,6 @@
+import { mountSvgDocumentBlock } from './helpers/svgDocumentBlock';
 import { mountGraphCanvasPointer } from './helpers/graphCanvasPointer';
-import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
+import type { DocumentBlockContext, DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
 import type { DocumentBlockInput, DocumentBlocksPort } from './editor/documentBlocks';
 import { createLoadingPresentation, loadingPresentationStyles } from './adapters/loadingPresentation';
@@ -98,6 +99,8 @@ export function createDocumentBlocks(host: Host) {
     const pointer = mountGraphCanvasPointer(canvas, { interactive });
     appearance(element, paletteOwner);
     let disposed = false, instance: DocumentViewInstance | undefined, ready = false, failure: HTMLElement | undefined;
+    let svgBlock: ReturnType<typeof mountSvgDocumentBlock> | undefined;
+    let failureDetail = '';
     let intrinsic: { width: number; height: number } | undefined;
     const canvasInsets = () => {
       if (mode === 'fullscreen') return { top: 16, bottom: 64 };
@@ -133,8 +136,9 @@ export function createDocumentBlocks(host: Host) {
       if (disposed) return;
       console.error('Contributed block failed', error); ready = false; loading.finish(); element.removeAttribute('aria-busy');
       failure = doc.createElement('pre'); failure.className = 'failure';
-      pointer.reset(); instance?.dispose(); instance = undefined;
-      failure.textContent = (host.getLanguage() === 'zh-CN' ? '渲染失败，源码保留如下：\n\n' : 'Rendering failed. Original source:\n\n') + input.text;
+      pointer.reset(); instance?.dispose(); instance = undefined; svgBlock = undefined;
+      failureDetail = error instanceof Error ? error.message.slice(0, 1500) + '\n\n' : '';
+      failure.textContent = (host.getLanguage() === 'zh-CN' ? '渲染失败，源码保留如下：\n\n' : 'Rendering failed. Original source:\n\n') + failureDetail + input.text;
       content.replaceChildren(failure); availability();
     };
     const present = async () => {
@@ -144,6 +148,7 @@ export function createDocumentBlocks(host: Host) {
       try {
         await instance.update({ text: input.text, revision: current });
         if (disposed || current !== revision) return;
+        if (svgBlock?.appearanceChanged()) { void present(); return; }
         ready = true; loading.finish(); element.removeAttribute('aria-busy'); availability();
       } catch (error) { if (current === revision) failed(error); }
     };
@@ -155,12 +160,12 @@ export function createDocumentBlocks(host: Host) {
       if (!promise) { promise = import(view.entryUri); modules.set(view.entryUri, promise); }
       const module = await promise;
       if (disposed) return;
-      if (module.apiVersion !== 1 || !module.mountBlock) throw new Error('The extension does not support code blocks');
+      if (module.apiVersion !== 1 || (!module.mountBlock && !module.createSvgRenderer)) throw new Error('The extension does not support code blocks');
       // Widgets are built before CodeMirror attaches them. Inherited code-surface
       // colors are authoritative only after mounting, before the first graph paint.
       appearance(element, paletteOwner);
       content.replaceChildren(); failure = undefined;
-      instance = module.mountBlock(content, {
+      const context: DocumentBlockContext = {
         language: host.getLanguage(), contentClass: 'meo-document-content', interactive,
         presentation: mode === 'fullscreen' ? 'fullscreen' : 'inline',
         reportContentSize(size) {
@@ -174,14 +179,19 @@ export function createDocumentBlocks(host: Host) {
           const insets = canvasInsets();
           return { x: 16, y: insets.top, width: Math.max(0, content.clientWidth - 32), height: Math.max(0, content.clientHeight - insets.top - insets.bottom) };
         }
-      });
+      };
+      if (module.createSvgRenderer) {
+        pointer.dispose();
+        svgBlock = mountSvgDocumentBlock(content, context, module.createSvgRenderer()); instance = svgBlock.instance;
+      } else instance = module.mountBlock!(content, context);
       await present();
     })().catch(error => { modules.delete(view.entryUri); failed(error); }).finally(() => { initializing = undefined; });
     void initialize();
     const refresh = () => {
       appearance(element, paletteOwner); instance?.setLanguage?.(host.getLanguage()); controls?.refresh(host.getLanguage());
       loading.setLabel(host.getLanguage() === 'zh-CN' ? '正在加载…' : 'Loading…');
-      if (failure) failure.textContent = (host.getLanguage() === 'zh-CN' ? '渲染失败，源码保留如下：\n\n' : 'Rendering failed. Original source:\n\n') + input.text;
+      if (svgBlock?.appearanceChanged() && ready) void present();
+      if (failure) failure.textContent = (host.getLanguage() === 'zh-CN' ? '渲染失败，源码保留如下：\n\n' : 'Rendering failed. Original source:\n\n') + failureDetail + input.text;
       if (mode === 'preview') addPreviewCodeCopyControls(paletteOwner, host.getLanguage());
     };
     refresh(); mounted.add(refresh);

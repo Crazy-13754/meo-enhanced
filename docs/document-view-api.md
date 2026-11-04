@@ -26,19 +26,19 @@ context.subscriptions.push(api.registerDocumentView(context.extension.id, {
 
 ## MEO Extras 功能管理
 
-MEO Extras 是独立安装的可选功能集合；当前只有思维导图。主编辑器的「设置 > 扩展功能」显示安装状态和实际登记的功能，开关保存为应用级 `meoEnhanced.disabledExtraFeatures`。关闭功能移除入口和渲染实例，保留 Markdown 原文；重新开启恢复注册。
+MEO Extras 是独立安装的可选功能集合，目前包括思维导图和 PlantUML。主编辑器的「设置 > 扩展功能」显示安装状态和实际登记的功能，开关保存为应用级 `meoEnhanced.disabledExtraFeatures`。关闭功能移除其入口和渲染实例，保留 Markdown 原文；重新开启恢复注册。
 
 MEO Extras 使用 API v1 的可选 `registerFeature`，先检查该方法存在。功能说明独立于启用状态登记，激活回调返回负责释放该功能全部资源的 disposable：
 
 ```ts
 context.subscriptions.push(api.registerFeature(context.extension.id, {
-  id: 'mindmap', label: 'Mind map', labelZh: '思维导图',
+  id: 'mindmap', orderId: 10, label: 'Mind map', labelZh: '思维导图',
   description: 'Whole-document mind maps and embedded markmap blocks.',
   descriptionZh: '全文思维导图与文档内的 markmap 图块。',
 }, () => api.registerDocumentView(context.extension.id, contribution)));
 ```
 
-功能 ID 保持稳定。此生命周期入口目前只接受 MEO Extras，不是任意第三方插件市场。主编辑器拥有设置、持久化、启停和共用容器；Extras 按 `src/features/<feature>/` 组织实现，负责解析、渲染和资源释放。语言、主题、文档配色仍遵循公共扩展边界规则。
+字符串 `id` 是稳定的功能身份，用于保存开关；数字 `orderId` 是可调整的显示顺序，按非负整数升序排列。缺省值排在最后，同值按字符串 ID 排序。Extras 在 `src/features.ts` 集中登记（导图 10、PlantUML 20），调整顺序不改变启用偏好。此生命周期入口目前只接受 MEO Extras，不是任意第三方插件市场。主编辑器拥有设置、持久化、启停和共用容器；Extras 按 `src/features/<feature>/` 组织实现，负责解析、渲染和资源释放。语言、主题、文档配色仍遵循公共扩展边界规则。
 
 当前仅完成本地体验前置：安装按钮显示「尚未发布」，没有外部链接或下载行为。待 Extras 单独发布并核验安装页后再接入真实链接。旧开发版 `meo-mindmap` 与新包并存时优先新包，旧图块本地折叠记录迁移至新身份；这两处开发版兼容在本地迁移结束后可以删除。
 
@@ -102,11 +102,17 @@ context.subscriptions.push(api.registerFeature(context.extension.id, {
 
 注册时可提供 `codeBlockLanguages: ['markmap']`，同一语言只能由一个扩展注册，不能覆盖 Mermaid、数学和 HTML 等内置渲染。模块另外导出 `mountBlock(container, context)`，返回同样的实例契约；整个文档的 `mount` 保持原有行为。未注册、扩展移除或旧主体不支持此能力时保留普通代码块。
 
+只有代码块能力的功能使用可选的 `registerCodeBlockRenderer(extensionId, registration)`，必须提供非空 `codeBlockLanguages`。主体发布 `blockOnly: true`，不生成全文视图入口，也不要求模块导出 `mount` 或提供图标。功能目录、图形块和全文视图是独立能力；不要为了登记功能而增加无用途的按钮。
+
+静态 SVG 提供者可导出 `createSvgRenderer(): DocumentSvgRenderer`，替代自行实现 `mountBlock`。每个实例提供 `render(snapshot, appearance): Promise<string>` 和 `dispose()`；返回具有有效尺寸的、已净化的 SVG，不得包含导航、事件、脚本或外部资源。`appearance` 包含语言、普通文档字体/字号、当前内容前景/背景及明暗状态。主体拥有 SVG 相机、尺寸上报、手势、图片复制与工具栏，复用 Mermaid 全屏相机；专属渲染引擎、语法适配、错误解释及 SVG 净化留在扩展。异步结果必须服从当前版本与实例生命周期。
+
+主体仅在源码或渲染环境变化时请求新的 SVG。语言切换只更新公共控件；颜色或字体必须重新生成 SVG 时，保留已有镜头，不修改 Markdown。扩展按原文中的显式样式处理作者颜色。PlantUML 当前在本地 Worker 中渲染 `plantuml` / `puml`，不提供独立文件编辑器；外部 include、未打包标准库和图片资源不受支持，失败显示源码而不下载资源。
+
 主体拥有代码块容器、原生源码编辑、加载/失败反馈、全屏、图片复制和环境刷新。Mermaid 与扩展图块共用编辑流程：Live 使用相同的编辑/完成图标、源码全选和复制、上下/左右对照布局、窄窗口回退、吸顶块头、Escape 和阅读焦点。源码始终属于主文档，使用同一撤销历史。这里的左右布局仅在当前代码块内，不打开全文导图侧栏，也不增加正文定位功能。Source 保留代码；Preview 正文为静态最终结果，块外使用与 Mermaid 相同的全屏、复制图片、复制源码操作。
 
 扩展只负责内容投影、画布及节点操作，不创建另一套代码块工具栏或编辑器。主体通过 `mountBlock` 和 `update` 交付原文、通过 `dispose` 回收实例；输入更新合并进入现有派生工作路径，渲染失败仍保留原文并允许修改后重试。新增 PUML 等渲染器可复用这些接口，不需要修改源码编辑、工具栏、预览预设或全屏焦点管理。
 
-`interactive` 区分允许查看手势的 Live/全屏与静态 Preview，`presentation` 区分 `inline` / `fullscreen`。块内滚轮继续滚动文档，全屏可以消费滚轮缩放。图形实例的 `actions` 使用 `zoom-in`、`zoom-out`、`fit` 表达现有画布能力；主体负责按钮图标、顺序、文案和位置，扩展负责实际缩放，不能叠加两套手势处理。内置 Mermaid 的静态 SVG 相机留在主体，Markmap 的节点和相机留在扩展；二者使用同一全屏生命周期和控件组件。
+`interactive` 区分允许查看手势的 Live/全屏与静态 Preview，`presentation` 区分 `inline` / `fullscreen`。块内滚轮继续滚动文档，全屏可以消费滚轮缩放。图形实例的 `actions` 使用 `zoom-in`、`zoom-out`、`fit` 表达现有画布能力；主体负责按钮图标、顺序、文案和位置，不能叠加两套手势处理。Mermaid 与静态 SVG 提供者的相机留在主体，Markmap 的节点和相机留在扩展；两条路径使用同一全屏生命周期和控件组件。
 
 `context.interactive` 为 false 时不得启用内容点击、折叠、拖动和缩放；主体也会将静态内容置为 inert。正文块不显示内容悬停、选中或点击效果，Live 保留画布拖动与工具栏缩放，节点折叠仅在全屏启用。全屏也不显示内容悬停与选中效果，保留画布操作和节点折叠展开；`revealLine` 在块上下文中不执行导航。全屏共用底部单行工具栏，Escape/关闭直接退出；重新打开只恢复折叠并重新适应画布，不恢复平移、缩放。可用视口扣除工具栏和间距。
 
@@ -156,6 +162,7 @@ bun scripts/test-document-views-browser.ts --dark --english
 bun scripts/test-document-views-browser.ts --content-only
 bun scripts/test-document-views-browser.ts --loading-only
 bun scripts/test-document-views-browser.ts --blocks-only
+bun scripts/test-document-views-browser.ts --plantuml-only
 ```
 
 覆盖未安装时无入口、按需加载、侧边预览互斥、分栏和全屏、文字及空白处拖动、双向定位、底部工具栏、适应画布避让、正文更新和关闭释放。该测试不替代 VS Code 内安装 VSIX 后的实际激活验证。
@@ -165,3 +172,5 @@ bun scripts/test-document-views-browser.ts --blocks-only
 `--blocks-only` 检查共用上下/左右原生编辑、静态 Preview、全屏折叠、重新适应画布、运行中语言和字体切换、完整 PNG、常用预设及 GitHub 回退、作者配置优先和扩展移除。普通与实际启用 Markdown Worker 的大文档同时检查输入、撤销、Escape 和有界挂载。`--content-only` 还检查深浅主题、三种字体及多层引用的实际几何间距。
 
 两个项目分别打包 VSIX，主编辑器不包含 Markmap 依赖。体验安装时先安装支持此 API 的主编辑器包，再安装导图包；仅安装导图包到尚无此 API 的旧版主编辑器上会激活失败。
+
+`--plantuml-only` 使用 Extras 正式构建的 Worker，检查无多余入口、按需加载、常见 UML 类型、中文、原生源码编辑和撤销、语法错误恢复、普通与大文档、静态 Preview、预设回退、响应式尺寸、全屏与 PNG 复制。静态 SVG 相机改动还需运行 Mermaid 控件专项，避免共享能力回归。

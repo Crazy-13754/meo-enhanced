@@ -15,8 +15,10 @@ export interface DocumentViewRegistration {
 export interface DocumentViewsApi {
   readonly version: 1;
   registerDocumentView(extensionId: string, view: DocumentViewRegistration): { dispose(): void };
+  /** Register fenced blocks without a whole-document view or toolbar entry. */
+  registerCodeBlockRenderer?(extensionId: string, view: DocumentViewRegistration & { readonly codeBlockLanguages: readonly string[] }): { dispose(): void };
   /** Register metadata even when disabled. Activation must return all owned registrations. */
-  registerFeature?(extensionId: string, feature: { readonly id: string; readonly label: string; readonly labelZh?: string; readonly description?: string; readonly descriptionZh?: string },
+  registerFeature?(extensionId: string, feature: { readonly id: string; readonly orderId?: number; readonly label: string; readonly labelZh?: string; readonly description?: string; readonly descriptionZh?: string },
     activate: () => { dispose(): void }): { dispose(): void };
 }
 export interface DocumentViewSnapshot { readonly text: string; readonly revision: number }
@@ -52,7 +54,9 @@ export interface DocumentViewAction {
 }
 export interface DocumentViewModule {
   readonly apiVersion: 1;
-  mount(container: HTMLElement, context: DocumentViewContext): DocumentViewInstance;
+  mount?(container: HTMLElement, context: DocumentViewContext): DocumentViewInstance;
+  /** Static SVG renderers delegate their entire canvas to the host. */
+  createSvgRenderer?(): DocumentSvgRenderer;
   mountBlock?(container: HTMLElement, context: DocumentBlockContext): DocumentViewInstance;
 }
 
@@ -68,4 +72,17 @@ export interface DocumentBlockContext extends DocumentViewContext {
   readonly viewState?: unknown;
   /** Small JSON viewing state, scoped to this block; do not store source, camera or HTML. */
   saveViewState(state: unknown): void;
+}
+
+export interface DocumentSvgAppearance {
+  readonly language: string;
+  readonly fontFamily: string;
+  readonly fontSize: number;
+  readonly foreground: string;
+  readonly background: string;
+  readonly dark: boolean;
+}
+export interface DocumentSvgRenderer {
+  render(snapshot: DocumentViewSnapshot, appearance: DocumentSvgAppearance): Promise<string>;
+  dispose(): void;
 }

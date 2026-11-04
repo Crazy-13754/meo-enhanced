@@ -37,7 +37,7 @@ export function createExtensionFeatures() {
   };
   const state = (): ExtensionFeaturesState => {
     const extension = vscode.extensions.getExtension(extrasId), off = disabled();
-    return { installed: !!extension, version: extension?.packageJSON.version ?? '', features: [...records.values()].map(record => ({ ...record.feature,
+    return { installed: !!extension, version: extension?.packageJSON.version ?? '', features: [...records.values()].sort((a, b) => (a.feature.orderId ?? Number.MAX_SAFE_INTEGER) - (b.feature.orderId ?? Number.MAX_SAFE_INTEGER) || a.feature.id.localeCompare(b.feature.id, 'en')).map(record => ({ ...record.feature,
       enabled: !off.has(record.feature.id), active: !!record.owned, failed: record.failed })) };
   };
   // Serialize writes from editor panels sharing this extension host.

@@ -66,7 +66,7 @@ function fontStyles(ownerDocument: Document): string {
 async function renderBlockPng(block: HTMLElement): Promise<Blob> {
   const ownerDocument = block.ownerDocument;
   await ownerDocument.fonts.ready;
-  const svgSource = block.querySelector<SVGSVGElement>(':scope > .meo-export-mermaid-svg > svg, :scope > .meo-mermaid-svg-wrapper > svg, :scope > .meo-contributed-content > svg');
+  const svgSource = block.querySelector<SVGSVGElement>(':scope > .meo-export-mermaid-svg > svg, :scope > .meo-mermaid-svg-wrapper > svg, :scope > .meo-contributed-content > svg, :scope > .meo-contributed-content > .meo-mermaid-svg-wrapper > svg');
   const mathSource = block.querySelector<HTMLElement>(':scope > .meo-latex-math-canvas > .katex-display, :scope > .katex-display');
   const source = svgSource ?? mathSource;
   if (!block.isConnected || !source || block.querySelector('.katex-error')

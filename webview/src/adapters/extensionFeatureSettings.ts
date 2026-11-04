@@ -52,6 +52,7 @@ export function createExtensionFeatureSettings(post: (request: ExtensionFeatures
         const title = language === 'zh-CN' ? feature.labelZh ?? feature.label : feature.label;
         const description = language === 'zh-CN' ? feature.descriptionZh ?? feature.description : feature.description;
         const item = node('div', 'settings-item'); item.dataset.extraFeature = feature.id;
+        item.dataset.featureOrder = String(feature.orderId ?? '');
         const words = node('div', 'settings-item-text'); words.append(node('div', 'settings-item-title', title));
         if (description) words.append(node('p', 'settings-description', description));
         if (feature.failed) words.append(node('p', 'settings-description', feature.enabled

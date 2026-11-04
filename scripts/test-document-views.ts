@@ -66,6 +66,14 @@ assert.equal(decodeHostToWebviewMessage({ type: 'documentViewsChanged', views: [
 assert.equal(decodeHostToWebviewMessage({ type: 'documentViewsChanged', views: [{ ...messages.at(-1).views[0], iconOffset: { x: 4, y: 0 } }] }), null);
 assert.equal(decodeHostToWebviewMessage({ type: 'documentViewsChanged', views: [{ ...messages.at(-1).views[0], iconPaths: ['url(https://example.com)'] }] }), null);
 assert.equal(decodeHostToWebviewMessage({ type: 'documentViewsChanged', views: [messages.at(-1).views[0], messages.at(-1).views[0]] }), null);
+const blockRegistration = { id: 'plantuml', label: 'PlantUML', entry: 'dist/plantuml/renderer.js', codeBlockLanguages: ['plantuml', 'puml'] };
+assert.throws(() => registry.api.registerCodeBlockRenderer!('test.markmap', { ...blockRegistration, codeBlockLanguages: [] }));
+const block = registry.api.registerCodeBlockRenderer!('test.markmap', blockRegistration);
+await Promise.resolve(); await Promise.resolve();
+assert.equal(messages.at(-1).views[1].blockOnly, true);
+assert.deepEqual(decodeHostToWebviewMessage(messages.at(-1)), messages.at(-1));
+assert.equal(decodeHostToWebviewMessage({ type: 'documentViewsChanged', views: [{ ...messages.at(-1).views[1], codeBlockLanguages: undefined }] }), null);
+block.dispose();
 contribution.dispose(); await Promise.resolve(); await Promise.resolve();
 assert.deepEqual(messages.at(-1).views, []); assert.equal(panel.webview.options.localResourceRoots.length, 2);
 assert.equal(optionWrites, writes, 'Disabling a view preserves resource roots and does not reload the editor');
@@ -127,7 +135,7 @@ try {
   const independent = features.registerFeature(extrasId, { id: 'independent', label: 'Independent' }, () => {
     independentStarts++; return { dispose() { independentStops++; } };
   });
-  assert.equal(features.state().features[1].failed, true);
+  assert.equal(features.state().features.find(f => f.id === 'broken')!.failed, true);
   await request('mindmap', false); await request('mindmap', true);
   configurationChanged.fire({ affectsConfiguration: () => true });
   assert.equal(attempts, 1, 'Registration, unrelated toggles and repeated config delivery never retry another failed feature');
@@ -135,7 +143,7 @@ try {
   await request('broken', false); await request('broken', true);
   assert.equal(attempts, 2, 'Only an explicit off/on retries the failed feature');
   await request('independent', false);
-  assert.equal(independentStops, 1); assert.equal(features.state().features[0].active, true);
+  assert.equal(independentStops, 1); assert.equal(features.state().features.find(f => f.id === 'mindmap')!.active, true);
   broken.dispose(); independent.dispose();
   let cleaned = false;
   const cleanup = createExtensionFeatures();
@@ -153,7 +161,11 @@ assert.deepEqual(decodeHostToWebviewMessage({ type: 'extensionFeaturesChanged', 
 installed.set('huangko555.meo-mindmap', { id: 'huangko555.meo-mindmap', extensionUri: new Uri('file:///legacy') });
 views.api.registerDocumentView('huangko555.meo-mindmap', descriptor).dispose();
 await request('mindmap', false); feature.dispose();
-const restored = features.registerFeature(extrasId, { id: 'mindmap', label: 'Mind map' }, () => { throw new Error('Disabled feature must stay disabled after registration'); });
+const restored = features.registerFeature(extrasId, { id: 'mindmap', orderId: 10, label: 'Mind map' }, () => { throw new Error('Disabled feature must stay disabled after changing order'); });
 assert.equal(features.state().features[0].enabled, false); assert.equal(features.state().features[0].failed, false);
+const reordered = features.registerFeature(extrasId, { id: 'plantuml', orderId: 2, label: 'PlantUML' }, () => ({ dispose() {} }));
+assert.deepEqual(features.state().features.map(f => f.id), ['plantuml', 'mindmap'], 'Numeric IDs sort numerically regardless of registration order');
+for (const orderId of [-1, 1.5, NaN, Infinity, '1']) assert.throws(() => features.registerFeature(extrasId, { id: 'invalid', label: 'Invalid', orderId } as any, () => ({ dispose() {} })));
+reordered.dispose();
 restored.dispose(); panels.forEach(p => p.closed.fire()); features.dispose(); views.dispose();
 console.log('Extras feature persistence, activation/disposal, multi-panel sync, failure handling, protocol and legacy coexistence passed');

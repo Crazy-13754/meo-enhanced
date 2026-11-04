@@ -1,5 +1,6 @@
 export interface ExtraFeature {
   readonly id: string;
+  readonly orderId?: number;
   readonly label: string;
   readonly labelZh?: string;
   readonly description?: string;
@@ -33,7 +34,7 @@ export function decodeExtensionFeaturesEvent(value: unknown): ExtensionFeaturesE
     || typeof s.installed !== 'boolean' || typeof s.version !== 'string' || s.version.length > 100 || !Array.isArray(s.features) || s.features.length > 100) return null;
   const ids = new Set<string>();
   for (const feature of s.features) {
-    if (!feature || !identifier(feature.id) || ids.has(feature.id) || typeof feature.label !== 'string' || !feature.label || feature.label.length > 200
+    if (!feature || (feature.orderId !== undefined && (!Number.isSafeInteger(feature.orderId) || feature.orderId < 0)) || !identifier(feature.id) || ids.has(feature.id) || typeof feature.label !== 'string' || !feature.label || feature.label.length > 200
       || ['labelZh', 'description', 'descriptionZh'].some(key => { const text = feature[key as keyof ExtraFeature]; return text !== undefined && (typeof text !== 'string' || text.length > 2000); })
       || [feature.enabled, feature.active, feature.failed].some(v => typeof v !== 'boolean')) return null;
     ids.add(feature.id);

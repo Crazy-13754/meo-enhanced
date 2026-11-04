@@ -7,6 +7,7 @@ import { launchTestBrowser } from './browser-test-helpers';
 import { checkDocumentViewContent } from './document-view-content-checks';
 import { checkDocumentViewLoading } from './document-view-loading-checks';
 import { checkDocumentBlocks } from './document-block-checks';
+import { checkPlantUmlBlocks } from './plantuml-block-checks';
 
 const root = process.cwd(), out = path.join(root, '.local/document-view-tests');
 const markmapDirectory = process.env.MEO_EXTRAS_DIR;
@@ -32,13 +33,13 @@ try {
     if (request.url().startsWith('https://example.invalid/')) { void request.respond({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>' }); return; }
     if (!request.url().startsWith('https://document-view.test/')) { void request.continue(); return; }
     requests.push(request.url());
-    const asset = request.url().endsWith('/worker.js') ? 'worker.js' : 'view.js';
+    const asset = request.url().includes('/plantuml/') ? 'plantuml/' + request.url().split('/').at(-1) : request.url().endsWith('/worker.js') ? 'worker.js' : 'view.js';
     void Promise.resolve(assetGate).then(() => request.respond({ status: 200, contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: readFileSync(path.join(markmapDirectory, 'dist', asset)) }));
   });
   await page.setContent('<!doctype html><html lang="zh-CN"><body class="vscode-light"><div id="app" class="editor-root"></div></body></html>');
   await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
   await page.addStyleTag({ content: ':root{--vscode-editor-background:#fff;--vscode-editor-foreground:#24292f;--vscode-sideBar-background:#f6f8fa;--vscode-panel-border:#d0d7de;--vscode-toolbar-hoverBackground:#eaeef2;--vscode-font-family:system-ui;--vscode-editor-font-family:system-ui;--vscode-editor-font-size:15px}html,body,#app{height:100%;margin:0}' });
-  if (process.argv.includes('--blocks-only')) {
+  if (process.argv.includes('--blocks-only') || process.argv.includes('--plantuml-only')) {
     const worker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
     assert(worker.success, worker.logs.map(String).join('\n'));
     await page.evaluate(source => {
@@ -72,7 +73,14 @@ try {
   assert.equal(await page.$('.mm-view-entry'), null); assert.deepEqual(requests, []);
   const catalog = { type: 'documentViewsChanged', views: [{ ...contribution, id: 'test/mindmap', entryUri: 'https://document-view.test/view.js' }] };
   await send(catalog); await page.waitForSelector('.mm-view-entry'); assert.deepEqual(requests, []);
-  if (process.argv.includes('--blocks-only')) {
+  if (process.argv.includes('--plantuml-only')) {
+    await send({ type: 'documentViewsChanged', views: [...catalog.views, { id: 'test/plantuml', label: 'PlantUML', blockOnly: true,
+      codeBlockLanguages: ['plantuml', 'puml'], entryUri: 'https://document-view.test/plantuml/renderer.js' }] });
+    assert.equal(await page.$$('.mm-view-entry').then(entries => entries.length), 1, 'A block-only feature adds no toolbar entry');
+    assert.deepEqual(requests, [], 'PUML is lazy until a matching block is visible');
+    await checkPlantUmlBlocks(page, out);
+    assert.deepEqual(errors, []); console.log('PASS: PlantUML local Worker, shared graph editing, Preview and fullscreen.');
+  } else if (process.argv.includes('--blocks-only')) {
     await checkDocumentBlocks(page, out); assert.deepEqual(errors, []); console.log('PASS: embedded map source, static Preview, shared fullscreen folding and unchanged Markdown.');
   } else if (process.argv.includes('--loading-only')) {
     await checkDocumentViewLoading(page, out, holdAssets);

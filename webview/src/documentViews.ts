@@ -257,8 +257,8 @@ export function mountDocumentViews(host: Host) {
     updateAlignment();
   }
   function setViews(next: readonly DocumentViewDescriptor[]) {
-    if (active && !next.some(v => v.id === active!.id && v.entryUri === active!.entryUri)) close();
-    views = next; entries.replaceChildren();
+    if (active && !next.some(v => !v.blockOnly && v.id === active!.id && v.entryUri === active!.entryUri)) close();
+    views = next.filter(view => !view.blockOnly); entries.replaceChildren();
     for (const view of views) {
       const icon: Parameters<typeof createElement>[0] = view.iconPaths?.map(d => ['path', { d }]) ?? FileText;
       const entry = button(label(view), icon, () => { if (active?.id === view.id) close(); else void open(view); });
