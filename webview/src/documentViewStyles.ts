@@ -15,7 +15,8 @@ export const documentViewStyles = `
 .document-view-toolbar .document-view-tool{flex:0 0 28px;width:28px;height:28px}
 .document-view-tool-separator{flex:0 0 1px;height:14px;margin:0 4px;background:var(--meo-ui-separator)}
 .document-view-toolbar .document-view-tool svg{width:18px;height:18px;stroke-width:1.75}
-.document-view-toolbar.is-header .document-view-tool svg{width:20px;height:20px;stroke-width:1.5}
+.document-view-toolbar.is-header .document-view-tool{flex-basis:24px;width:24px;height:24px}
+.document-view-toolbar.is-header .document-view-tool svg{width:16px;height:16px;stroke-width:1.5}
 .document-view-tool svg{width:16px;height:16px;pointer-events:none}
 .document-view-tool:focus-visible{outline:2px solid var(--meo-ui-focus);outline-offset:-2px}
 .document-view-tool:disabled{opacity:.4;cursor:default}

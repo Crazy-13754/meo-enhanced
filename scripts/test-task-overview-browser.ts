@@ -77,8 +77,27 @@ try {
   await page.waitForSelector('.meo-tasks'); console.log('Task UI mounted');
   await page.waitForFunction(() => document.querySelectorAll('.task-row').length === 2);
   console.log('Current document task rows loaded');
+  async function measureTaskUpdate(label: 'ordinary' | 'large') {
+    const timing = await page.evaluate(async large => {
+      const started = performance.now(), view = (window as any).__viewportTestView();
+      const at = large ? view.state.doc.length - 1 : view.state.doc.line(3).to;
+      view.dispatch({ changes: { from: at, insert: ' task-update-probe' } });
+      while (![...document.querySelectorAll('.task-label')].some(e => e.textContent?.includes('task-update-probe'))) {
+        if (performance.now() - started > 3000) throw new Error('Task update exceeded 3 seconds');
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      const elapsed = performance.now() - started;
+      view.dispatch({ changes: { from: at, to: at + ' task-update-probe'.length, insert: '' } });
+      return elapsed;
+    }, label === 'large');
+    await page.waitForFunction(() => ![...document.querySelectorAll('.task-label')].some(e => e.textContent?.includes('task-update-probe')));
+    console.log(`Task update latency (${label}): ${timing.toFixed(1)}ms`);
+    assert(timing < 350, `${label} task updates must not stack idle waits`);
+  }
+  await measureTaskUpdate('ordinary');
   assert.equal(await page.$('[data-view-action="locate"]'), null, 'Task rows navigate directly; no duplicate locate action');
   assert.equal(await page.$$('.task-actions [data-view-action]').then(nodes => nodes.length), 3, 'Refresh, layout and close live in the task header');
+  assert(await page.$$eval('.task-actions button', buttons => buttons.every(button => button.getBoundingClientRect().width === 24 && button.querySelector('svg')!.getBoundingClientRect().width === 16)), 'Header actions use conventional compact control and icon sizes');
   assert.equal(await page.$('.task-open[title], .task-open[data-tooltip]'), null, 'Task text must not show a tooltip');
   assert(await page.$eval('.task-details', element => element.textContent === '项目会议 · 第 3 行'), 'Row details contain only heading and line number');
   await page.hover('.task-details');
@@ -87,6 +106,7 @@ try {
   assert.equal(await page.$('.task-details[aria-describedby]'), null, 'Hovering ordinary task text must not retain a details tooltip');
   await page.click('[data-task-scope-trigger]');
   await page.waitForSelector('.document-view-filter-dropdown-panel:not([hidden])');
+  assert(await page.$eval('[data-task-scope-trigger]', element => { const style = getComputedStyle(element); return style.boxShadow === 'none' && style.borderWidth === '0px' && getComputedStyle(element.querySelector('.preview-toolbar-dropdown-value')!).textDecorationThickness === '1px'; }), 'Opening the scope menu keeps plain text and the same underline thickness');
   await page.evaluate(() => { (window as any).__taskPopup = document.querySelector('.document-view-filter-dropdown-panel:not([hidden])'); });
   // A repeated source invalidation must not close or rebuild an open menu.
   fixture.change(a, initial); await first.send({ type: 'docChanged', text: initial, version: fixture.documents.get(a)!.version });
@@ -121,6 +141,7 @@ try {
   await page.waitForFunction(() => (window as any).__viewportTestText().includes('- [x] 整理需求') && (window as any).__viewportTestText().includes('- [x] 已确认范围'));
   assert(await page.$eval('.task-error', element => (element as HTMLElement).hidden), 'Rapid changes in one file must queue without stale-edit errors');
   await page.select('[data-task-scope]', 'workspace'); await page.waitForFunction(() => document.querySelectorAll('.task-row').length === 4);
+  assert(await page.$eval('.task-file', element => { const style = getComputedStyle(element), list = element.parentElement!; return style.borderLeftWidth === '0px' && element.getBoundingClientRect().width >= list.clientWidth - 1 && style.backgroundColor !== getComputedStyle(list.closest('.meo-tasks')!).backgroundColor; }), 'File headings use a full-width neutral background without an accent edge');
   console.log('Current document history and workspace indexing passed');
   const target = `input[data-task-key^="${b}:"]`;
   await page.click(target);
@@ -135,7 +156,8 @@ try {
   console.log('Cross-file history and closed-file edits passed');
   await page.type('[data-task-search]', '修复'); assert.equal(await page.$$('.task-row').then(rows => rows.length), 1);
   await page.click('.task-open');
-  await page.evaluate(() => { const search = document.querySelector<HTMLInputElement>('[data-task-search]')!; search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.click('.task-clear');
+  assert(await page.$eval('[data-task-search]', element => (element as HTMLInputElement).value === '' && document.activeElement === element), 'Clear search resets the filter and returns focus to its input');
   await page.screenshot({ path: path.join(out, 'tasks-light.png') });
   await page.click('[data-action="settings"]'); await page.click('.ui-language-button[data-ui-language="en"]');
   await page.waitForFunction(() => document.querySelector('.meo-tasks h2')?.textContent === 'Tasks in');
@@ -177,6 +199,7 @@ try {
   await page.click('.task-row input'); await page.waitForFunction(() => (window as any).__viewportTestText().endsWith('- [x] far task\n'));
   await page.evaluate(() => (window as any).__viewportTestView().focus()); await history(page);
   await page.waitForFunction(() => (window as any).__viewportTestText().endsWith('- [ ] far task\n'));
+  await measureTaskUpdate('large');
   enabled = false; first.connection.refresh(); second.connection.refresh(); await first.send({ type: 'documentViewsChanged', views: [] });
   assert.equal(fixture.counts().watchers, 0); assert.equal(await page.$('.meo-tasks'), null); assert.deepEqual(errors, []);
   console.log('Task overview: real editor current/cross-file edits, undo/redo, closed-file CRLF, filtering, language, narrow layout, large offscreen tasks and disposal passed');

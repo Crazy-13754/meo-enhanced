@@ -18,7 +18,9 @@ Visible rows retain their DOM nodes across task updates. Only the pending task i
 
 ## Work and lifecycle
 
-Enabling the feature only registers its description and entry. Opening the view loads its module and starts indexing; changing files refreshes those files. The current document uses its live editor content. A short debounce coalesces updates, and file reads are serialized with yields between files. Rendering paginates task rows; filters operate on the complete collected index, including offscreen tasks.
+Enabling the feature only registers its description and entry. Opening the view loads its module and starts indexing; changing files refreshes those files. The current document uses its live editor content. Changes coalesce within an 80 ms window from the first invalidation; continued typing does not restart that window. Reads remain serialized, with the current document prioritized over queued workspace files and yields between files. Unchanged source revisions retain their task projection. UI updates coalesce over 16 ms, and unchanged dropdowns are not synchronized again. Rendering paginates task rows; filters operate on the complete collected index, including offscreen tasks.
+
+Header actions use 24 px buttons with 16 px icons. The inline scope keeps the same underline thickness on hover and no selection box when opened; keyboard focus remains visible. Search uses a muted clear control matching editor inputs. Workspace file headings use a full-width neutral background with a paired readable foreground, without an accent edge.
 
 Workspace enumeration respects enabled `files.exclude` and `search.exclude` patterns and excludes `.git`, `node_modules`, `dist`, `.cache` and `.obsidian`. Multi-root workspaces retain file identity. With no open workspace, the view uses the current document. The current document remains available even when excluded from workspace discovery.
 

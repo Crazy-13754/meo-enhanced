@@ -333,8 +333,10 @@ function applyDocumentSurfacePalette(sidebar: HTMLElement, input: DocumentSurfac
     const visible = highContrast ? background : mix(background, ink, 0.05);
     const surfaces = [background, hover, visible];
     const text = fit(ink, surfaces, 4.55);
+    const group = mix(background, ink, 0.14);
     const roles = {
       background, foreground: text,
+      'group-background': group, 'group-foreground': fit(ink, [group], 4.55),
       'muted-foreground': fit(mix(text, background, 0.30), surfaces, 4.55),
       'hover-background': hover, 'visible-background': visible,
       emphasis: fit(sample(inputs['text-emphasis-content'] || rgb(text), background), surfaces, 4.55),
