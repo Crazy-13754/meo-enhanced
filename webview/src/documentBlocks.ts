@@ -16,8 +16,8 @@ import { previewCodeSource } from './helpers/previewCodeSource';
 import { getUiStrings, type UiLanguage } from './application/uiLanguage';
 
 const styles = `
-:host{display:block;position:relative;color:var(--meo-view-foreground);background:var(--meo-view-background)}
-*{box-sizing:border-box} .meo-contributed-canvas{position:relative;height:360px;overflow:hidden;background:var(--meo-view-background);color:var(--meo-view-foreground)}
+:host{display:block;position:relative;color:var(--meo-view-foreground)}
+*{box-sizing:border-box} .meo-contributed-canvas{position:relative;height:360px;overflow:hidden;color:var(--meo-view-foreground)}
 .meo-contributed-content{position:absolute;inset:0} .meo-contributed-content[data-static]{pointer-events:none}
 ${loadingPresentationStyles}
 .surface-loading{color:var(--meo-view-foreground);background:var(--meo-view-background);font-family:system-ui;--meo-ui-focus:var(--meo-view-focus)}
@@ -68,8 +68,9 @@ export function createDocumentBlocks(host: Host) {
     const doc = owner.ownerDocument, win = doc.defaultView!;
     const reading = doc.querySelector<HTMLElement>('.meo-export-doc') ?? document.body;
     const style = win.getComputedStyle(reading);
-    const background = owner.matches('.meo-graph-block,.meo-export-graph')
+    let background = owner.matches('.meo-graph-block,.meo-export-graph')
       ? win.getComputedStyle(owner).backgroundColor : win.getComputedStyle(doc.body).backgroundColor;
+    if (background === 'transparent' || background === 'rgba(0, 0, 0, 0)') background = win.getComputedStyle(doc.body).backgroundColor;
     applyDocumentViewPalette(surface, { background, foreground: style.color });
     // Typography is always the ordinary document's, including in preset iframes.
     const root = getComputedStyle(document.documentElement);
@@ -172,6 +173,7 @@ export function createDocumentBlocks(host: Host) {
           if (!Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) return;
           intrinsic = size; sizeCanvas();
         },
+        camera: mode === 'live' ? initial.camera : undefined,
         viewState: mode === 'fullscreen' ? memories.get(key) : undefined,
         saveViewState: state => { if (mode === 'fullscreen' && !disposed) save(key, state); },
         renderContent: snapshot => host.renderContent(snapshot.text), revealLine() {},

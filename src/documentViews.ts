@@ -60,6 +60,11 @@ export interface DocumentViewModule {
   mountBlock?(container: HTMLElement, context: DocumentBlockContext): DocumentViewInstance;
 }
 
+/** Ephemeral camera for one live block; never serialized or shared with fullscreen. */
+export interface DocumentBlockCamera {
+  value?: { scale: number; x: number; y: number };
+}
+
 /** Preview inline results are static. Viewing gestures never edit source. */
 export interface DocumentBlockContext extends DocumentViewContext {
   /** SVG renderers may mark their complete untransformed result group with
@@ -67,6 +72,8 @@ export interface DocumentBlockContext extends DocumentViewContext {
   readonly interactive: boolean;
   /** Inline scrolling belongs to the document; fullscreen may consume wheel zoom. */
   readonly presentation: 'inline' | 'fullscreen';
+  /** Keep the user's scale and content point at canvas center across editor layouts. */
+  readonly camera?: DocumentBlockCamera;
   /** Unscaled rendered bounds in CSS pixels. Host owns inline height and its limits. */
   reportContentSize?(size: { readonly width: number; readonly height: number }): void;
   readonly viewState?: unknown;

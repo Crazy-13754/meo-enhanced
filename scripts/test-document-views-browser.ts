@@ -8,6 +8,7 @@ import { checkDocumentViewContent } from './document-view-content-checks';
 import { checkDocumentViewLoading } from './document-view-loading-checks';
 import { checkDocumentBlocks } from './document-block-checks';
 import { checkPlantUmlBlocks } from './plantuml-block-checks';
+import { checkGraphContinuity } from './graph-continuity-checks';
 
 const root = process.cwd(), out = path.join(root, '.local/document-view-tests');
 const markmapDirectory = process.env.MEO_EXTRAS_DIR;
@@ -39,7 +40,7 @@ try {
   await page.setContent('<!doctype html><html lang="zh-CN"><body class="vscode-light"><div id="app" class="editor-root"></div></body></html>');
   await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
   await page.addStyleTag({ content: ':root{--vscode-editor-background:#fff;--vscode-editor-foreground:#24292f;--vscode-sideBar-background:#f6f8fa;--vscode-panel-border:#d0d7de;--vscode-toolbar-hoverBackground:#eaeef2;--vscode-font-family:system-ui;--vscode-editor-font-family:system-ui;--vscode-editor-font-size:15px}html,body,#app{height:100%;margin:0}' });
-  if (process.argv.includes('--blocks-only') || process.argv.includes('--plantuml-only')) {
+  if (process.argv.includes('--blocks-only') || process.argv.includes('--plantuml-only') || process.argv.includes('--graph-continuity-only')) {
     const worker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' });
     assert(worker.success, worker.logs.map(String).join('\n'));
     await page.evaluate(source => {
@@ -73,13 +74,16 @@ try {
   assert.equal(await page.$('.mm-view-entry'), null); assert.deepEqual(requests, []);
   const catalog = { type: 'documentViewsChanged', views: [{ ...contribution, id: 'test/mindmap', entryUri: 'https://document-view.test/view.js' }] };
   await send(catalog); await page.waitForSelector('.mm-view-entry'); assert.deepEqual(requests, []);
-  if (process.argv.includes('--plantuml-only')) {
+  if (process.argv.includes('--plantuml-only') || process.argv.includes('--graph-continuity-only')) {
     await send({ type: 'documentViewsChanged', views: [...catalog.views, { id: 'test/plantuml', label: 'PlantUML', blockOnly: true,
       codeBlockLanguages: ['plantuml', 'puml'], entryUri: 'https://document-view.test/plantuml/renderer.js' }] });
     assert.equal(await page.$$('.mm-view-entry').then(entries => entries.length), 1, 'A block-only feature adds no toolbar entry');
     assert.deepEqual(requests, [], 'PUML is lazy until a matching block is visible');
-    await checkPlantUmlBlocks(page, out);
-    assert.deepEqual(errors, []); console.log('PASS: PlantUML local Worker, shared graph editing, Preview and fullscreen.');
+    if (process.argv.includes('--graph-continuity-only')) await checkGraphContinuity(page, out);
+    else await checkPlantUmlBlocks(page, out);
+    assert.deepEqual(errors, []); console.log(process.argv.includes('--graph-continuity-only')
+      ? 'PASS: ordinary/large graph camera continuity and shared Preview preset surfaces.'
+      : 'PASS: PlantUML local Worker, shared graph editing, Preview and fullscreen.');
   } else if (process.argv.includes('--blocks-only')) {
     await checkDocumentBlocks(page, out); assert.deepEqual(errors, []); console.log('PASS: embedded map source, static Preview, shared fullscreen folding and unchanged Markdown.');
   } else if (process.argv.includes('--loading-only')) {

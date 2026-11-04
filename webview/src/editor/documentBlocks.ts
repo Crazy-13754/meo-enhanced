@@ -5,6 +5,8 @@ export interface DocumentBlockInput {
   readonly language: string;
   readonly text: string;
   readonly line: number;
+  /** Editor-owned ephemeral state; the presentation adapter exposes it to renderers. */
+  readonly camera?: { value?: { scale: number; x: number; y: number } };
 }
 export interface DocumentBlocksPort {
   supports(language: string): boolean;

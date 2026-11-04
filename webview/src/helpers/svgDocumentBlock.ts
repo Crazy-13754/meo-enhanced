@@ -5,6 +5,7 @@ import { mountStaticSvgCanvas } from './staticSvgCanvas';
 export function mountSvgDocumentBlock(container: HTMLElement, context: DocumentBlockContext, renderer: DocumentSvgRenderer) {
   container.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none';
   const camera = mountStaticSvgCanvas(container, '', { interactive: context.interactive,
+    camera: context.camera,
     wheel: context.interactive && context.presentation === 'fullscreen',
     maxScale: context.presentation === 'inline' ? 1 : undefined, viewport: context.getAvailableViewport });
   let disposed = false, revision = 0, language = context.language, appearanceKey = '', renderedText: string | undefined;

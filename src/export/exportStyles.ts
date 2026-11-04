@@ -33,7 +33,7 @@ export function buildPreviewStyles(
 
 /* Preview shares Live's borderless block surfaces. */
 pre.meo-export-code-block,
-.meo-export-mermaid {
+.meo-export-mermaid, .meo-export-graph {
   border: 0;
   background: var(--meo-code-bg);
 }`;

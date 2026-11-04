@@ -118,7 +118,11 @@ context.subscriptions.push(api.registerFeature(context.extension.id, {
 
 扩展通过可选的 `reportContentSize({ width, height })` 上报未缩放的图形尺寸。主体按当前宽度决定正文画布高度（上限 480 CSS 像素）；小图按实际内容收缩，不设固定最小高度。内部留白扣除共用容器已经提供的工具栏空间，尺寸计算与可用视口使用同一规则。全屏忽略上报尺寸；扩展不直接改变编辑器布局。正文导图适应画布时不放大超过原始尺寸。Preview 的图形容器复用 Mermaid 的背景、边框和圆角规则。
 
-正文图块宽度变化时，主体重新计算容器高度，扩展按最新可用区域重新适应内容：放得下时保留正常阅读尺寸，放不下时才缩小。不能直接按新旧窗口宽度比例缩放已有相机，否则会与主体的内容尺寸规则脱节。此规则同时适用于 Live 和 Preview，不替换全文导图的侧边/全屏相机规则。
+正文图块宽度变化时，主体重新计算容器高度；未被用户调整的画布按最新可用区域重新适应内容：放得下时保留正常阅读尺寸，放不下时才缩小。不能直接按新旧窗口宽度比例缩放已有相机，否则会与主体的内容尺寸规则脱节。此规则同时适用于 Live 和 Preview，不替换全文导图的侧边/全屏相机规则。
+
+Live 的可选 `context.camera` 是由主体按既有块身份持有的临时对象。扩展在用户平移或缩放后，将 `{ scale, x, y }` 写入其 `value`：分别表示实际比例和画布中心对应的内容坐标；源码更新、重新挂载和编辑布局变化时恢复该视角。“重置”清除 `value` 并重新自动适应。它不序列化，不按源码文本跨块复用，也不传入 Preview 或全屏；静态 SVG 提供者由主体自动处理，无需实现相机。
+
+Preview 外壳统一由主体铺底：默认预设使用代码块底色，其他预设默认透明，允许预设自己的 CSS 覆盖。扩展画布不重复铺底；内容配色仍按其实际所在表面的颜色计算，作者显式指定的图形背景保持有效。
 
 `viewState` / `saveViewState` 仅保存小型 JSON 查看状态，由主体保存在当前文档 Webview 的本地 UI 状态中，不写入 Markdown。只有全屏保留查看折叠；正文块始终按作者配置呈现。当前以语言、起始行和源码指纹识别块，最多保留 100 条，每条最多 32 KiB；重新挂载已修改源码或移动起始行的块时按源码初始化，避免旧记忆覆盖作者配置。扩展只记节点键摘要和折叠值，不保存 HTML、源码或镜头位置。销毁时必须取消库内部动画、观察器、手势监听和 Worker；仅移除 DOM 不能结束进行中的画布动画。
 
@@ -163,6 +167,7 @@ bun scripts/test-document-views-browser.ts --content-only
 bun scripts/test-document-views-browser.ts --loading-only
 bun scripts/test-document-views-browser.ts --blocks-only
 bun scripts/test-document-views-browser.ts --plantuml-only
+bun scripts/test-document-views-browser.ts --graph-continuity-only
 ```
 
 覆盖未安装时无入口、按需加载、侧边预览互斥、分栏和全屏、文字及空白处拖动、双向定位、底部工具栏、适应画布避让、正文更新和关闭释放。该测试不替代 VS Code 内安装 VSIX 后的实际激活验证。
@@ -174,3 +179,5 @@ bun scripts/test-document-views-browser.ts --plantuml-only
 两个项目分别打包 VSIX，主编辑器不包含 Markmap 依赖。体验安装时先安装支持此 API 的主编辑器包，再安装导图包；仅安装导图包到尚无此 API 的旧版主编辑器上会激活失败。
 
 `--plantuml-only` 使用 Extras 正式构建的 Worker，检查无多余入口、按需加载、常见 UML 类型、中文、原生源码编辑和撤销、语法错误恢复、普通与大文档、静态 Preview、预设回退、响应式尺寸、全屏与 PNG 复制。静态 SVG 相机改动还需运行 Mermaid 控件专项，避免共享能力回归。
+
+`--graph-continuity-only` 对真实 PUML 和导图检查普通／大文档的源码刷新、双向编辑布局切换后缩放与中心坐标保持，以及默认与阅读预设下和 Mermaid 一致的外壳底色。

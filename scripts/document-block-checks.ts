@@ -64,7 +64,9 @@ export async function checkDocumentBlocks(page: Page, out: string) {
   const assertCanvasPalette = async () => assert.equal(await page.evaluate(() => {
     const owner = document.querySelector('.editor-host .meo-graph-block')!;
     const canvas = owner.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector('.meo-contributed-canvas')!;
-    return getComputedStyle(canvas).backgroundColor === getComputedStyle(owner).backgroundColor;
+    const probe = document.createElement('span'); probe.style.color = 'var(--meo-view-background)'; canvas.append(probe);
+    const palette = getComputedStyle(probe).color; probe.remove();
+    return getComputedStyle(canvas).backgroundColor === 'rgba(0, 0, 0, 0)' && palette === getComputedStyle(owner).backgroundColor;
   }), true, 'Mounted graph inherits the actual code surface, not detached default colors');
   await assertCanvasPalette();
   const checkNodeInteraction = async (fullscreen: boolean) => {
@@ -167,7 +169,8 @@ export async function checkDocumentBlocks(page: Page, out: string) {
     const owner = doc.querySelector('.meo-export-graph')!;
     const probe = doc.createElement('div'); probe.className = 'meo-export-mermaid'; owner.parentElement!.append(probe);
     const canvas = owner.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector('.meo-contributed-canvas')!;
-    const same = doc.defaultView!.getComputedStyle(canvas).backgroundColor === doc.defaultView!.getComputedStyle(probe).backgroundColor;
+    const same = doc.defaultView!.getComputedStyle(owner).backgroundColor === doc.defaultView!.getComputedStyle(probe).backgroundColor
+      && doc.defaultView!.getComputedStyle(canvas).backgroundColor === 'rgba(0, 0, 0, 0)';
     probe.remove(); return same;
   }), true, 'Default Preview graphs use the same background as Mermaid');
   await checkWheel();
@@ -182,13 +185,20 @@ export async function checkDocumentBlocks(page: Page, out: string) {
       const bitmap = await createImageBitmap(blob);
       const canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
       const ctx = canvas.getContext('2d')!; ctx.drawImage(bitmap, 0, 0);
-      (window as any).__blockCopy = { width: bitmap.width, height: bitmap.height, png: canvas.toDataURL('image/png') };
+      (window as any).__blockCopy = { width: bitmap.width, height: bitmap.height, png: canvas.toDataURL('image/png'), corner: [...ctx.getImageData(0, 0, 1, 1).data] };
     } } });
     document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector<HTMLElement>('.meo-copy-image-btn')!.click();
   });
   await page.waitForFunction(() => (window as any).__blockCopy);
   const copied = await page.evaluate(() => (window as any).__blockCopy);
   assert(copied.width > 200 && copied.height > 100, 'Copy encodes a complete PNG');
+  const expectedBackground = await page.evaluate(() => {
+    const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+    const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = doc.defaultView!.getComputedStyle(doc.querySelector('.meo-export-graph')!).backgroundColor;
+    ctx.fillRect(0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data];
+  });
+  assert.deepEqual(copied.corner, expectedBackground, 'Copy crosses Shadow DOM to retain the actual opaque graph surface');
   writeFileSync(out + '/embedded-map-copy.png', Buffer.from(copied.png.split(',')[1], 'base64'));
   for (const preset of ['newsprint', 'whitey', 'obsidian-minimal', 'github-readme', 'default']) {
     await page.select('.preview-preset-control select', preset);

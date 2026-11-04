@@ -129,7 +129,11 @@ async function renderBlockPng(block: HTMLElement): Promise<Blob> {
   context.fillStyle = ownerDocument.defaultView!.getComputedStyle(block).getPropertyValue('--meo-bg').trim() || '#ffffff';
   context.fillRect(0, 0, outputWidth, outputHeight);
   const ancestors: Element[] = [];
-  for (let element: Element | null = block; element; element = element.parentElement) ancestors.unshift(element);
+  for (let element: Element | null = block; element;) {
+    ancestors.unshift(element);
+    const root = element.getRootNode();
+    element = element.parentElement ?? ('host' in root ? (root as ShadowRoot).host : null);
+  }
   for (const element of ancestors) {
     context.fillStyle = ownerDocument.defaultView!.getComputedStyle(element).backgroundColor;
     context.fillRect(0, 0, outputWidth, outputHeight);
