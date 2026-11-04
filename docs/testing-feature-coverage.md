@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | Live / Source / Preview 切换 | 文档一致；每个可见帧有内容；阅读位置和可编辑组件选区连续 | [模式矩阵](../scripts/test-mode-transition-matrix.ts)、[选区连续性](../scripts/test-mode-selection-continuity.ts) |
 | Source 当前行高亮 | 普通行、引用及代码行使用 VS Code 原生背景色，保留半透明度，不绘制矩形描边 | [当前行样式](../scripts/test-source-active-line.ts)；覆盖 Light / Dark 2026、自定义半透明和透明背景 |
+| 状态栏文档统计 | 活动 MEO 文档显示行数与字数；Live / Source 的正文、原生单元格和多格选区正确计数，Preview 不显示编辑光标；切换、关闭和大文档更新不串用结果 | [计数、协议和生命周期](../scripts/test-document-statistics.ts)、[真实拖选与单元格](../scripts/test-document-statistics-selection.ts)；最终安装包另验工作台状态栏与中英文提示 |
 | MEO / 原生 MD 标签页切换 | Live、Source、Preview、联动与独立分栏逐帧保持可见内容及位置；打开后首次出现原生选区、已有原生选区、其他文档及重复返回均覆盖 | [生产 Webview 标签页返回](../scripts/test-tab-switch-reading-position.ts)、[Panel Session 事件链](../scripts/test-panel-session-tab-navigation.ts)；安装包 Workbench 行为另验 |
 | 初次打开、关闭重开、进程重启 | 保存模式直接显示正确内容且可交互，不靠切换模式补救 | [启动合同](../scripts/test-editor-startup-load.ts)；最终 VSIX 另做原生重开和重启检查 |
 | 正文输入、换行、选区、多光标、IME | 内容与光标一致，组合输入不重复提交，不丢字 | [输入路径](../scripts/test-live-input-path-production.ts)、[IME](../scripts/test-ime-composition.ts)、[快捷键](../scripts/test-editor-shortcuts.ts)；原生输入法另验 |

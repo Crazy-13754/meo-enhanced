@@ -3,6 +3,15 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## 0.3.41
+- Added bilingual status-bar line and word counts for the active MEO document, including text and table-cell selections in Live and Source.
+- Added optional document-view and code-block integration interfaces with feature controls, lazy loading and explicit cleanup; the main editor remains usable without companion extensions.
+- Shared graph editing and viewing containers while preserving Mermaid interactions, document typography, colors, navigation and fullscreen controls.
+- Added scoped workspace-document reading, change notifications and guarded edits for contributed views, retaining existing document save and undo/redo ownership.
+- Fixed task toggles in list prefixes containing multiple spaces and kept optional-view configuration and file-change notifications within their lifecycle and document scope.
+- Preserved document and author-defined colors in HTML inline code across Live, Preview and exports.
+- Preserved image proportions across preview presets, including GitHub README, authored dimensions and delayed image loading.
+
 ## 0.3.40
 - Aligned HTML rendering across Live, Preview and exports, including omitted child end tags, native author-defined sizing and supported SVG fill rules, while preserving source-completion boundaries.
 - Reused identical pasted images within the selected destination folder, retaining collision-safe naming, concurrent-save ordering and symbolic-link protections.
