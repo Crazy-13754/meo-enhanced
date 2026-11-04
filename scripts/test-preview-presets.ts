@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import postcss from 'postcss';
+import { parseDocument, DomUtils } from 'htmlparser2';
 import exportRuntime from '../src/export/runtime';
 import { decodePreviewRenderRequest, decodePreviewRenderResponse } from '../src/protocol/previewRender';
 import { decodePreviewPresetState, getPresetInitialAppearance, getPreviewPreset, isPreviewPresetId, previewPresets, resolvePresetAppearance, resolvePreviewPresetSettings } from '../src/foundation/previewPresets';
@@ -43,8 +44,13 @@ checkCompatibility('Default punctuation anchor', render('# P16 · Anchor / punct
 checkCompatibility('GitHub heading with inline link and underscore', render('# Title  [link](https://example.com) and `raw_value` _italic_').html.includes('id="title--link-and-raw_value-italic"'), true);
 checkCompatibility('GitHub heading with math', render('# P06 Heading with spaces $a+b$').html.includes('id="p06-heading-with-spaces-ab"'), true);
 checkCompatibility('GitHub heading with literal TeX', render('# Formula:$\\alpha + \\beta$').html.includes('id="formulaalpha--beta"'), true);
-checkCompatibility('GitHub raw del', render('<del>deleted text</del>').html.includes('<del>deleted text</del>'), true);
-checkCompatibility('Default raw del supported', render('<del>deleted text</del>', 'default').html.includes('<del>'), true);
+for (const preset of ['default', 'github-readme'] as const) {
+  const document = parseDocument(render('<del>deleted text</del>', preset).html);
+  const deleted = DomUtils.getElementsByTagName('del', document.children, true);
+  // Host-owned content attributes are legitimate; assert the rendered semantics.
+  assert.equal(deleted.length, 1, `${preset}: raw HTML retains one deletion element`);
+  assert.equal(DomUtils.textContent(deleted[0]!), 'deleted text', `${preset}: deletion content is preserved`);
+}
 const mathCount = (markdown: string, preset: 'default' | 'github-readme' = 'github-readme') =>
   (render(markdown, preset).html.match(/class="meo-export-math /g) ?? []).length;
 for (const preset of ['default', 'github-readme'] as const) {
