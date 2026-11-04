@@ -12,6 +12,8 @@ export function createDocumentViewsRegistry() {
     // The development companion was renamed; never run both implementations.
     if (extensionId === 'huangko555.meo-mindmap' && vscode.extensions.getExtension('huangko555.meo-extras')) return new vscode.Disposable(() => {});
     if (!extension || (blockOnly && !isDocumentBlockLanguages(view.codeBlockLanguages)) || !/^[a-zA-Z0-9-]+$/.test(view.id) || !view.label?.trim()
+      || (view.workspace !== undefined && typeof view.workspace !== 'boolean')
+      || (view.presentation !== undefined && view.presentation !== 'list')
       || !/^dist\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.js$/.test(view.entry)
       || (view.iconPaths !== undefined && !isDocumentViewIconPaths(view.iconPaths))
       || (view.codeBlockLanguages !== undefined && !isDocumentBlockLanguages(view.codeBlockLanguages))
@@ -33,7 +35,7 @@ export function createDocumentViewsRegistry() {
       changed.fire();
     });
   }
-  const api: DocumentViewsApi = { version: 1, registerDocumentView: (id, view) => register(id, view),
+  const api: DocumentViewsApi = { version: 1, supportsWorkspaceDocuments: true, registerDocumentView: (id, view) => register(id, view),
     registerCodeBlockRenderer: (id, view) => register(id, view, true) };
   function attach(panel: vscode.WebviewPanel, ensureInit: () => Promise<void>) {
     const baseRoots = panel.webview.options.localResourceRoots ?? [];
@@ -58,7 +60,7 @@ export function createDocumentViewsRegistry() {
       await ensureInit();
       if (disposed) return;
       updateRoots();
-      const event: DocumentViewsChanged = { type: 'documentViewsChanged', views: [...views.values()].map(v => ({ blockOnly: v.blockOnly, id: v.id, label: v.label, labelZh: v.labelZh, iconPaths: v.iconPaths, iconOffset: v.iconOffset, codeBlockLanguages: v.codeBlockLanguages, entryUri: panel.webview.asWebviewUri(v.uri).toString() })) };
+      const event: DocumentViewsChanged = { type: 'documentViewsChanged', views: [...views.values()].map(v => ({ workspace: v.workspace, presentation: v.presentation, blockOnly: v.blockOnly, id: v.id, label: v.label, labelZh: v.labelZh, iconPaths: v.iconPaths, iconOffset: v.iconOffset, codeBlockLanguages: v.codeBlockLanguages, entryUri: panel.webview.asWebviewUri(v.uri).toString() })) };
       await panel.webview.postMessage(event);
     };
     const refresh = () => { void publish().catch(error => console.error('Document views could not be delivered', error)); };
@@ -67,5 +69,5 @@ export function createDocumentViewsRegistry() {
     })];
     const disposal = panel.onDidDispose(() => { disposed = true; subscriptions.forEach(s => s.dispose()); disposal.dispose(); });
   }
-  return { api, attach, dispose() { changed.dispose(); views.clear(); } };
+  return { api, attach, onDidChange: changed.event, hasWorkspaceView: (id: string) => !!views.get(id)?.workspace && !views.get(id)?.blockOnly, dispose() { changed.dispose(); views.clear(); } };
 }

@@ -1,3 +1,4 @@
+import { decodeWorkspaceDocumentsRequest, decodeWorkspaceDocumentsResponse, decodeDocumentOperationRequest, decodeDocumentOperationResponse, type WorkspaceDocumentsRequest, type WorkspaceDocumentsClose, type WorkspaceDocumentsResponse, type WorkspaceDocumentsChanged, type DocumentOperationRequest, type DocumentOperationResponse } from './workspaceDocuments';
 import { decodeBlockExportRequest, decodeBlockExportResponse, type BlockExportRequest, type BlockExportResponse } from './blockExport';
 import { decodeDocumentViewsChanged, type DocumentViewsChanged } from './documentViews';
 import { decodeExtensionFeaturesRequest, decodeExtensionFeaturesEvent, type ExtensionFeaturesRequest, type ExtensionFeaturesEvent } from './extensionFeatures';
@@ -32,6 +33,7 @@ import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageSto
 import { decodeUpdateUiColorsRequest, decodeUiColorsResult, type UpdateUiColorsRequest, type UiColorsResult } from './uiColors';
 
 export type WebviewToHostMessage =
+  | WorkspaceDocumentsRequest | WorkspaceDocumentsClose | DocumentOperationResponse
   | ExtensionFeaturesRequest
   | DocumentContentRequest
   | PreviewFontsRequest
@@ -60,6 +62,7 @@ export type WebviewToHostMessage =
   | BlockExportResponse;
 
 export type HostToWebviewMessage =
+  | WorkspaceDocumentsResponse | WorkspaceDocumentsChanged | DocumentOperationRequest
   | ExtensionFeaturesEvent
   | DocumentContentResponse
   | DocumentViewsChanged
@@ -96,7 +99,9 @@ export type HostToWebviewMessage =
   | GitBaselineChangedEvent;
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
-  return decodeDocumentContentRequest(value)
+  return decodeWorkspaceDocumentsRequest(value)
+    ?? decodeDocumentOperationResponse(value)
+    ?? decodeDocumentContentRequest(value)
     ?? decodeExtensionFeaturesRequest(value)
     ?? decodePreviewFontsRequest(value)
     ?? decodeWebviewVisibilityRequest(value)
@@ -128,7 +133,9 @@ export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage
   const imageDimensions = decodeImageIntrinsicSizesEvent(value);
   if (imageDimensions) return imageDimensions;
   if (value && typeof value === 'object' && 'type' in value && value.type === 'openPreviewPresetSettings') return { type: 'openPreviewPresetSettings' };
-  return decodeDocumentContentResponse(value)
+  return decodeWorkspaceDocumentsResponse(value)
+    ?? decodeDocumentOperationRequest(value)
+    ?? decodeDocumentContentResponse(value)
     ?? decodeExtensionFeaturesEvent(value)
     ?? decodeDocumentViewsChanged(value)
     ?? decodePreviewFontsResponse(value)

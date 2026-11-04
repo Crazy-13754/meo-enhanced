@@ -185,6 +185,14 @@ bun scripts/test-document-views-browser.ts --graph-continuity-only
 `--graph-continuity-only` 对真实 PUML 和导图检查普通／大文档的源码刷新、双向编辑布局切换后缩放与中心坐标保持，以及默认与阅读预设下和 Mermaid 一致的外壳底色。
 
 
+## 工作区文档与列表视图
+
+主体支持 `supportsWorkspaceDocuments` 时，视图可以声明 `workspace: true`，通过 `DocumentViewContext.workspace` 发现当前文档／工作区文件、读取共享 Markdown 列表结构、请求来源定位和受校验文本编辑。`presentation: 'list'` 关闭图形拖动反馈，保留共同分栏、全屏及关闭控件。
+
+快照的 `version` 是主体生成的内容身份；旧的 `DocumentViewSnapshot.revision` 仍只是视图更新序号，不能用于编辑校验。`edit` 必须提供来源 URI、快照 version、LF 规范化偏移、预期原文和替换内容；主体与目标编辑器分别核验，失配时拒绝并刷新。`onDidChange` 的 URI 表示单文件失效，缺省表示文件目录或范围变化；关闭视图使接口失效并释放监听。列表提取复用既有后台解析，不生成完整 HTML、不读取外部资源。
+
+能力、保存与历史归属、工作预算和验证说明见 [任务总览接入](task-overview.md)。
+
 ## 正文图块静态导出
 
 导出复用 `codeBlockLanguages` 注册，主体不按扩展 ID 或专属语言增加分支。静态 SVG 模块的 `createSvgRenderer()` 自动用于导出；需要 DOM 布局的模块可提供 `createBlockExportRenderer(context)`，返回 `render(snapshot)` 与 `dispose()`。两种方式最终产生 `DocumentBlockExportArtifact`：`kind` 为 `svg` 或 `png`，`data` 分别为完整 SVG 字符串或不含 data URL 前缀的 PNG base64，`width` / `height` 为未缩放的 CSS 像素尺寸。优先返回 SVG，主体统一处理 HTML/PDF 和 Word 图片转换。

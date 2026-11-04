@@ -1,4 +1,5 @@
 import { createExtensionFeatureSettings } from './adapters/extensionFeatureSettings';
+import { createWorkspaceDocumentsTransport, createDocumentOperationResponder } from './adapters/workspaceDocuments';
 import { mountDocumentViews } from './documentViews';
 import { createBlockExportAdapter } from './adapters/blockExportAdapter';
 import { renderExportBlocks } from './helpers/blockExport';
@@ -2957,6 +2958,18 @@ const presentDocumentText = async (
   return true;
 };
 
+const workspaceDocumentsTransport = createWorkspaceDocumentsTransport(message => vscode.postMessage(message));
+const documentOperationResponder = createDocumentOperationResponder({
+  post: message => vscode.postMessage(message), idle: () => documentSessionAdapter.whenIdle(),
+  read: () => editor?.getText() ?? pendingInitialText,
+  edit: operation => { if (!editor) throw new Error('Editor is not ready'); editor.applyContributedEdit(operation); },
+  reveal: async line => {
+    if (getActiveEditorMode() === 'preview') await previewController.revealSourcePosition(line, () => true, 'upper');
+    else editor?.scrollToLine(line, 'upper');
+  }
+});
+window.addEventListener('pagehide', () => { workspaceDocumentsTransport.dispose(); documentOperationResponder.dispose(); }, { once: true });
+
 const documentCopyTransport = createDocumentCopyTransport({
   getUiLanguage: () => activeUiLanguage,
   postMessage: (message) => vscode.postMessage(message),
@@ -3751,6 +3764,8 @@ window.addEventListener('message', (event) => {
   }
 
   const message = decodeHostToWebviewMessage(rawMessage);
+  if (message?.type === 'workspaceDocumentsResult' || message?.type === 'workspaceDocumentsChanged') { workspaceDocumentsTransport.accept(message); return; }
+  if (message?.type === 'documentOperationRequest') { documentOperationResponder.accept(message); return; }
   if (message?.type === 'documentViewsChanged') {
     documentViews?.setViews(message.views); documentBlocks.setViews(message.views);
     editor?.view.dispatch({ effects: StateEffect.appendConfig.of(documentBlocksFacet.of(documentBlocks.port)) }); return;
@@ -4492,6 +4507,7 @@ function getDocumentSurfacePalette(usePreview: boolean) {
     foreground: previewStyles.getPropertyValue('--meo-preview-foreground').trim() || foreground };
 }
 documentViews = mountDocumentViews({
+      openWorkspace: viewId => workspaceDocumentsTransport.open(viewId),
       renderContent: text => documentContentTransport.render(text),
       cancelContent: () => documentContentTransport.cancel(),
       root, editorSurface: editorWrapper, contentSurface: editorSurface,

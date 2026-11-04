@@ -1,0 +1,127 @@
+import assert from 'node:assert/strict';
+import { readFileSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { FixtureEvent, installWorkspaceFixture } from './workspace-documents-fixture';
+import { createBackgroundPreviewRenderer } from '../src/host/previewRenderWorker';
+import { launchTestBrowser } from './browser-test-helpers';
+
+const root = process.cwd(), extras = process.env.MEO_EXTRAS_DIR;
+if (!extras) throw new Error('Set MEO_EXTRAS_DIR to the built Extras directory');
+const out = path.join(root, '.local/task-overview-tests'); mkdirSync(out, { recursive: true });
+console.log('Preparing task browser fixture');
+const a = 'file:///workspace/meeting.md', b = 'file:///workspace/plan.md', c = 'file:///workspace/closed.md';
+const initial = '# 项目会议\n\n- [ ] 整理需求\n- [x] 已确认范围\n\n```md\n- [ ] 示例不是任务\n```\n';
+const fixture = installWorkspaceFixture({ [a]: initial, [b]: '# 开发计划\n\n- [ ] 修复导出\n', [c]: '# Closed\r\n- [ ] native task\r\n' });
+const { createWorkspaceDocumentsHost } = await import('../src/host/workspaceDocuments');
+console.log('Workspace host loaded');
+const worker = createBackgroundPreviewRenderer(path.join(root, 'dist/preview-render-worker.js'));
+const owner = createWorkspaceDocumentsHost({ parseLists: worker.readLists, open: async (uri, line) => { assert(await owner.reveal(uri, line)); } });
+const build = await Bun.build({ entrypoints: [path.join(root, 'scripts/test-webview-viewport-entry.ts')], outdir: out, target: 'browser', format: 'iife', minify: true, naming: 'editor.js' });
+console.log('Editor fixture built');
+assert(build.success, build.logs.map(String).join('\n'));
+const parseWorker = await Bun.build({ entrypoints: ['webview/src/markdownParseWorker.ts'], target: 'browser', format: 'iife' }); assert(parseWorker.success);
+const browser = await launchTestBrowser();
+console.log('Task browser launched');
+const closes: (() => void)[] = [], errors: string[] = [], loads: string[] = [];
+let enabled = true;
+const catalog = { type: 'documentViewsChanged', views: [{ id: 'extras/tasks', label: 'Task overview', labelZh: '任务总览', workspace: true, presentation: 'list', entryUri: 'https://task-view.test/view.js', iconPaths: ['M4 6h16M4 12h16M4 18h16'] }] };
+try {
+  async function history(page: any, redo = false) {
+    await page.keyboard.down('Control'); if (redo) await page.keyboard.down('Shift');
+    await page.keyboard.press('z'); if (redo) await page.keyboard.up('Shift'); await page.keyboard.up('Control');
+  }
+  async function editor(uri: string) {
+    const page = await browser.newPage(); await page.setViewport({ width: 1200, height: 800 });
+    page.on('pageerror', error => errors.push(String(error)));
+    page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+      if (request.url() === 'https://task-view.test/view.js') { loads.push(request.url()); void request.respond({ status: 200, contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: readFileSync(path.join(extras!, 'dist/tasks/view.js')) }); }
+      else void request.continue();
+    });
+    const incoming = new FixtureEvent<unknown>(), closed = new FixtureEvent<void>();
+    const send = (data: unknown) => page.evaluate(data => window.dispatchEvent(new MessageEvent('message', { data })), data);
+    const panel: any = { reveal() {}, onDidDispose: closed.event, webview: { onDidReceiveMessage: incoming.event, postMessage: async (message: any) => { await send(message); return true; } } };
+    fixture.open.add(uri);
+    const connection = owner.attach(panel, fixture.documents.get(uri)! as any, async () => {}, () => enabled);
+    closes.push(() => closed.fire());
+    await page.setContent('<!doctype html><html lang="zh-CN"><body class="vscode-light"><div id="app" class="editor-root"></div></body></html>');
+    await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
+    await page.addStyleTag({ content: ':root{--vscode-editor-background:#fff;--vscode-editor-foreground:#24292f;--vscode-sideBar-background:#f6f8fa;--vscode-font-family:system-ui;--vscode-editor-font-family:system-ui;--vscode-editor-font-size:15px}html,body,#app{height:100%;margin:0}' });
+    await page.evaluate(source => { document.body.dataset.meoMarkdownWorkerSrc = URL.createObjectURL(new Blob([source], { type: 'text/javascript' })); }, await parseWorker.outputs[0]!.text());
+    await page.exposeFunction('__fixtureHost', async (message: any) => {
+      if (message.type === 'applyChanges') {
+        const doc = fixture.documents.get(uri)!;
+        if (doc.version !== message.baseVersion) return { type: 'docChanged', text: doc.text, version: doc.version };
+        let text = doc.text; for (const change of [...message.changes].sort((x: any, y: any) => y.from - x.from)) text = text.slice(0, change.from) + change.insert + text.slice(change.to);
+        fixture.change(uri, text); return { type: 'applied', version: doc.version };
+      }
+      if (message.type === 'requestPreviewRender') return { type: 'previewRenderResult', requestId: message.requestId, result: { ok: true, value: await worker.render('task-preview', { markdownText: message.text, sourceDocumentPath: 'C:/fixture/task.md', uiLanguage: message.uiLanguage, styleEnvironment: message.environment, preset: message.preset, contentWidth: message.contentWidth, layout: message.layout }) } };
+      if (message.type === 'requestDocumentRevision') { const doc = fixture.documents.get(uri)!; return { type: 'documentRevisionResult', requestId: message.requestId, result: { ok: true, value: { text: doc.text, version: doc.version } } }; }
+      incoming.fire(message); return null;
+    });
+    await page.addScriptTag({ content: 'let fixtureState=null;window.acquireVsCodeApi=()=>({postMessage(message){window.__fixtureHost(message).then(reply=>{if(reply)window.dispatchEvent(new MessageEvent("message",{data:reply}))})},getState(){return fixtureState},setState(state){fixtureState=state}});' });
+    await page.addScriptTag({ path: path.join(out, 'editor.js') });
+    const text = fixture.documents.get(uri)!.text;
+    await send({ type: 'init', documentId: uri, text, version: 1, savedRevision: { version: 1, text }, diagnostics: [], mode: 'live', uiLanguage: 'zh-CN', sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, editorAppearance: 'light', gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: true, outlineWidth: 260, vscodeTheme: null });
+    await page.waitForSelector('.editor-host > .cm-editor');
+    await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
+    return { page, send, connection };
+  }
+  const first = await editor(a), second = await editor(b), page = first.page;
+  await page.bringToFront();
+  console.log('Two production editors initialized');
+  await first.send(catalog); assert.equal(loads.length, 0, 'Enabling tasks does not load its module');
+  await page.click('[data-view-id="extras/tasks"]');
+  await page.waitForSelector('.meo-tasks'); console.log('Task UI mounted');
+  await page.waitForFunction(() => document.querySelectorAll('.task-row').length === 2);
+  console.log('Current document task rows loaded');
+  await page.click('.task-open');
+  await page.waitForFunction(() => !!document.querySelector('[data-document-view-side]') && !(document.querySelector('.editor-wrapper') as HTMLElement)?.inert);
+  assert(await page.evaluate(() => (window as any).__viewportTestView().dom.getBoundingClientRect().width > 0), 'Navigation exposes the source alongside tasks');
+  await page.click('.task-row input[type=checkbox]');
+  await page.waitForFunction(() => (window as any).__viewportTestText().includes('- [x] 整理需求'));
+  await page.waitForFunction(() => (document.querySelector('.task-row input') as HTMLInputElement)?.checked);
+  await page.evaluate(() => (window as any).__viewportTestView().focus()); await history(page);
+  await page.waitForFunction(() => (window as any).__viewportTestText().includes('- [ ] 整理需求'));
+  await history(page, true); await page.waitForFunction(() => (window as any).__viewportTestText().includes('- [x] 整理需求'));
+  await page.select('[data-task-scope]', 'workspace'); await page.waitForFunction(() => document.querySelectorAll('.task-row').length === 4);
+  console.log('Current document history and workspace indexing passed');
+  const target = `input[data-task-key^="${b}:"]`;
+  await page.click(target); await second.page.waitForFunction(() => (window as any).__viewportTestText().includes('- [x] 修复导出'));
+  await second.page.bringToFront(); await second.page.evaluate(() => (window as any).__viewportTestView().focus()); await history(second.page);
+  await second.page.waitForFunction(() => (window as any).__viewportTestText().includes('- [ ] 修复导出'));
+  await page.bringToFront();
+  await page.waitForFunction(selector => !(document.querySelector(selector) as HTMLInputElement)?.checked, {}, target);
+  await page.click(`input[data-task-key^="${c}:"]`); await page.waitForFunction(selector => { const input = document.querySelector<HTMLInputElement>(selector); return input?.checked && !input.disabled; }, {}, `input[data-task-key^="${c}:"]`);
+  assert(fixture.documents.get(c)!.text.includes('- [x] native task\r\n')); assert.equal(fixture.counts().nativeEdits, 1);
+  console.log('Cross-file history and closed-file edits passed');
+  await page.type('[data-task-search]', '修复'); assert.equal(await page.$$('.task-row').then(rows => rows.length), 1);
+  await page.click('.task-open');
+  await page.evaluate(() => { const search = document.querySelector<HTMLInputElement>('[data-task-search]')!; search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.screenshot({ path: path.join(out, 'tasks-light.png') });
+  await page.click('[data-action="settings"]'); await page.click('.ui-language-button[data-ui-language="en"]');
+  await page.waitForFunction(() => document.querySelector('.meo-tasks h2')?.textContent === 'Tasks');
+  await page.click('.editor-appearance-button[data-editor-appearance="dark"]'); await page.click('[data-action="settings"]');
+  await page.setViewport({ width: 700, height: 720 }); await page.screenshot({ path: path.join(out, 'tasks-narrow.png') });
+  assert(await page.evaluate(() => { const root = document.querySelector('.meo-tasks')!; return root.scrollWidth <= root.clientWidth + 1; }));
+  await page.setViewport({ width: 1200, height: 800 });
+  await page.click('[data-mode="source"]'); await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'source');
+  await page.select('[data-task-scope]', 'current'); await page.waitForFunction(() => document.querySelectorAll('.task-row').length === 2);
+  await page.click('.task-row input'); await page.waitForFunction(() => (window as any).__viewportTestText().includes('- [ ] 整理需求'));
+  await page.click('[data-mode="preview"]'); await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'preview');
+  await page.waitForFunction(() => !(document.querySelector('.task-row input') as HTMLInputElement)?.disabled);
+  await page.click('.task-row input'); await page.waitForFunction(() => (window as any).__viewportTestText().includes('- [x] 整理需求'));
+  await page.click('[data-mode="live"]'); await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'live');
+  console.log('Source and Preview task edits passed');
+  const large = '# Large\n\n' + 'ordinary paragraph\n\n'.repeat(40000) + '- [ ] far task\n';
+  await page.evaluate(text => { const view = (window as any).__viewportTestView(); view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }); }, large);
+  await page.select('[data-task-scope]', 'current');
+  await page.waitForFunction(() => document.querySelector('.task-label')?.textContent === 'far task', { timeout: 30000 });
+  await page.click('.task-row input'); await page.waitForFunction(() => (window as any).__viewportTestText().endsWith('- [x] far task\n'));
+  await page.evaluate(() => (window as any).__viewportTestView().focus()); await history(page);
+  await page.waitForFunction(() => (window as any).__viewportTestText().endsWith('- [ ] far task\n'));
+  enabled = false; first.connection.refresh(); second.connection.refresh(); await first.send({ type: 'documentViewsChanged', views: [] });
+  assert.equal(fixture.counts().watchers, 0); assert.equal(await page.$('.meo-tasks'), null); assert.deepEqual(errors, []);
+  console.log('Task overview: real editor current/cross-file edits, undo/redo, closed-file CRLF, filtering, language, narrow layout, large offscreen tasks and disposal passed');
+} finally { closes.forEach(close => close()); owner.dispose(); worker.dispose(); await browser.close(); }

@@ -1,4 +1,6 @@
 export interface DocumentViewDescriptor {
+  readonly workspace?: boolean;
+  readonly presentation?: 'list';
   readonly id: string;
   readonly label: string;
   readonly labelZh?: string;
@@ -39,6 +41,8 @@ export function decodeDocumentViewsChanged(value: unknown): DocumentViewsChanged
     const v = raw as Record<string, unknown>;
     if (typeof v.id !== 'string' || !v.id || ids.has(v.id)
       || typeof v.label !== 'string' || !v.label || typeof v.entryUri !== 'string' || !v.entryUri
+      || (v.workspace !== undefined && typeof v.workspace !== 'boolean')
+      || (v.presentation !== undefined && v.presentation !== 'list')
       || (v.blockOnly !== undefined && typeof v.blockOnly !== 'boolean')
       || (v.blockOnly === true && !isDocumentBlockLanguages(v.codeBlockLanguages))
       || (v.labelZh !== undefined && typeof v.labelZh !== 'string')
@@ -46,7 +50,7 @@ export function decodeDocumentViewsChanged(value: unknown): DocumentViewsChanged
       || (v.iconPaths !== undefined && !isDocumentViewIconPaths(v.iconPaths))
       || (v.iconOffset !== undefined && !isDocumentViewIconOffset(v.iconOffset))) return null;
     ids.add(v.id);
-    views.push({ blockOnly: v.blockOnly as boolean | undefined, id: v.id, label: v.label, labelZh: v.labelZh as string | undefined, iconPaths: v.iconPaths as readonly string[] | undefined,
+    views.push({ workspace: v.workspace as boolean | undefined, presentation: v.presentation as 'list' | undefined, blockOnly: v.blockOnly as boolean | undefined, id: v.id, label: v.label, labelZh: v.labelZh as string | undefined, iconPaths: v.iconPaths as readonly string[] | undefined,
       iconOffset: v.iconOffset as DocumentViewDescriptor['iconOffset'], entryUri: v.entryUri,
       codeBlockLanguages: v.codeBlockLanguages as readonly string[] | undefined });
   }

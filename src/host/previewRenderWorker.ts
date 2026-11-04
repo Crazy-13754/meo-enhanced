@@ -1,3 +1,4 @@
+import type { MarkdownListItem } from '../foundation/workspaceDocument';
 import { Worker } from 'node:worker_threads';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -22,6 +23,7 @@ export type BackgroundPreviewOptions = Readonly<{
 }>;
 
 type PreviewWorkerOperation =
+  | { readonly kind: 'lists'; readonly text: string }
   | { readonly kind: 'content'; readonly text: string }
   | { readonly kind: 'render'; readonly options: BackgroundPreviewOptions }
   | { readonly kind: 'open'; readonly owner: string; readonly documentId: string;
@@ -29,7 +31,7 @@ type PreviewWorkerOperation =
   | { readonly kind: 'document'; readonly owner: string; readonly documentId: string; readonly operation: PreviewDocumentOperation }
   | { readonly kind: 'release'; readonly owner: string };
 export type PreviewWorkerRequest = Readonly<{ id: number }> & PreviewWorkerOperation;
-type PreviewWorkerValue = PreviewRenderValue | PreviewDocumentResult | DocumentContentValue | null;
+type PreviewWorkerValue = PreviewRenderValue | PreviewDocumentResult | DocumentContentValue | readonly MarkdownListItem[] | null;
 export type PreviewWorkerResponse = Readonly<{ id: number }> & (
   | { value: PreviewWorkerValue; error?: never }
   | { error: string; value?: never }
@@ -103,6 +105,7 @@ export function createBackgroundPreviewRenderer(workerPath: string) {
   };
   return {
     // Stateless content shares the bounded worker; no retained document or new lease.
+    readLists: (text: string) => request<readonly MarkdownListItem[]>({ kind: 'lists', text }),
     renderContent: (text: string) => request<DocumentContentValue>({ kind: 'content', text }),
     render: async (owner: string, options: BackgroundPreviewOptions) => {
       const value = await request<PreviewRenderValue>({ kind: 'render', options });

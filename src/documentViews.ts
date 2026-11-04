@@ -1,5 +1,10 @@
-/** Version 1: trusted, installed VS Code extensions may contribute read-only document views. */
+import type { DocumentViewWorkspace } from './foundation/workspaceDocument';
+export type { DocumentViewWorkspace, WorkspaceDocumentInfo, WorkspaceDocumentSnapshot, WorkspaceDocumentEdit, MarkdownListItem } from './foundation/workspaceDocument';
+
+/** Version 1: trusted, installed extensions contribute document views with explicit host capabilities. */
 export interface DocumentViewRegistration {
+  readonly workspace?: boolean;
+  readonly presentation?: 'list';
   readonly id: string;
   readonly label: string;
   readonly labelZh?: string;
@@ -14,6 +19,7 @@ export interface DocumentViewRegistration {
 }
 export interface DocumentViewsApi {
   readonly version: 1;
+  readonly supportsWorkspaceDocuments?: boolean;
   registerDocumentView(extensionId: string, view: DocumentViewRegistration): { dispose(): void };
   /** Register fenced blocks without a whole-document view or toolbar entry. */
   registerCodeBlockRenderer?(extensionId: string, view: DocumentViewRegistration & { readonly codeBlockLanguages: readonly string[] }): { dispose(): void };
@@ -23,6 +29,7 @@ export interface DocumentViewsApi {
 }
 export interface DocumentViewSnapshot { readonly text: string; readonly revision: number }
 export interface DocumentViewContext {
+  readonly workspace?: DocumentViewWorkspace;
   readonly language: string;
   /** Host-owned ordinary Markdown; safe, inert HTML with one-based inclusive source ranges.
    * Apply contentClass to label roots to share document styles. No Preview preset, assets or scripts. */

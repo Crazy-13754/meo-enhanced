@@ -1,3 +1,4 @@
+import { createWorkspaceDocumentsHost } from './host/workspaceDocuments';
 import { createDocumentViewsRegistry } from './extension/documentViews';
 import { createExtensionFeatures } from './extension/extensionFeatures';
 import type { DocumentViewsApi } from './documentViews';
@@ -401,6 +402,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     ? Promise.reject(new Error('Local font list unavailable in remote Host')) : readSystemPreviewFonts());
   private readonly previewPresetPreferences: ReturnType<typeof createPreviewPresetPreferences>;
   private readonly activePanels = new Set<vscode.WebviewPanel>();
+  private readonly workspaceDocuments: ReturnType<typeof createWorkspaceDocumentsHost>;
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
   private readonly saveAsViewStateHandoff = createDocumentSaveAsViewStateHandoff();
   private lastActivePanel: vscode.WebviewPanel | null = null;
@@ -417,7 +419,19 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   ) {
     this.previewRenderer = createBackgroundPreviewRenderer(
       vscode.Uri.joinPath(context.extensionUri, 'dist', 'preview-render-worker.js').fsPath);
-    context.subscriptions.push(this.previewRenderer, this.previewFonts);
+    this.workspaceDocuments = createWorkspaceDocumentsHost({
+      parseLists: text => this.previewRenderer.readLists(text),
+      open: async (uri, line) => {
+        if (await this.workspaceDocuments.reveal(uri, line)) return;
+        await vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE);
+        if (!await this.workspaceDocuments.reveal(uri, line)) {
+          const document = await vscode.workspace.openTextDocument(uri);
+          const position = new vscode.Position(Math.min(line - 1, document.lineCount - 1), 0);
+          await vscode.window.showTextDocument(document, { selection: new vscode.Range(position, position) });
+        }
+      }
+    });
+    context.subscriptions.push(this.previewRenderer, this.previewFonts, this.workspaceDocuments);
     this.previewPresetPreferences = createPreviewPresetPreferences({
       readStored: () => context.globalState.get(PREVIEW_PRESET_PREFERENCES_STATE_KEY),
       writeStored: preferences => context.globalState.update(PREVIEW_PRESET_PREFERENCES_STATE_KEY, preferences),
@@ -771,6 +785,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       }
     });
 
+    const workspaceConnection = this.workspaceDocuments.attach(panel, document, () => controller.session.ensureInitDelivered(), this.documentViews.hasWorkspaceView);
+    const workspaceCatalogSubscription = this.documentViews.onDidChange(() => workspaceConnection.refresh());
+    panel.onDidDispose(() => workspaceCatalogSubscription.dispose());
     this.documentViews.attach(panel, () => controller.session.ensureInitDelivered());
     this.extensionFeatures.attach(panel, () => controller.session.ensureInitDelivered());
 

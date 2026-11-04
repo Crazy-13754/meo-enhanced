@@ -9,6 +9,7 @@ import { applyDocumentViewPalette, type DocumentSurfacePaletteInput } from './he
 import { FitCanvas, graphCameraIcon } from './helpers/graphBlockControls';
 
 type Host = {
+  openWorkspace?(viewId: string): import('../../src/documentViews').DocumentViewWorkspace & { dispose(): void };
   root: HTMLElement; editorSurface: HTMLElement; contentSurface: HTMLElement; entryContainer: HTMLElement;
   disableSidePreview(): void;
   renderContent?(text: string): Promise<{ html: string }>;
@@ -44,7 +45,8 @@ export function mountDocumentViews(host: Host) {
   // Contributed canvases own their gestures; suppressing pointerdown here would
   // also suppress the compatibility mouse events used by renderers such as D3.
   canvas.setAttribute('data-editor-focus-transfer', ''); canvas.tabIndex = -1;
-  const pointer = mountGraphCanvasPointer(canvas);
+  let pointer = mountGraphCanvasPointer(canvas);
+  let workspace: (import('../../src/documentViews').DocumentViewWorkspace & { dispose(): void }) | undefined;
   const original = { visibility: host.editorSurface.style.visibility, inert: host.editorSurface.inert };
   let views: readonly DocumentViewDescriptor[] = [];
   let active: DocumentViewDescriptor | undefined, side = false, disposed = false;
@@ -140,7 +142,7 @@ export function mountDocumentViews(host: Host) {
     const id = active.id;
     if (side) restoreReading = host.preserveReading();
     ++generation; ++transition; clearTimeout(timer); dirty = false; running = false;
-    host.cancelContent?.();
+    host.cancelContent?.(); workspace?.dispose(); workspace = undefined;
     pointer.reset(); finishLoading();
     try { instance?.dispose(); } catch (error) { console.error('Document view disposal failed', error); }
     instance = undefined; active = undefined; selectedLine = null; status = null; canvas.replaceChildren(); layout();
@@ -181,6 +183,9 @@ export function mountDocumentViews(host: Host) {
     const previousReading = active && !side ? restoreReading : host.preserveReading();
     if (active) close(false);
     restoreReading = previousReading; host.disableSidePreview();
+    pointer.dispose(); pointer = mountGraphCanvasPointer(canvas, { interactive: view.presentation !== 'list' });
+    canvas.classList.toggle('is-list-view', view.presentation === 'list');
+    workspace = view.workspace ? host.openWorkspace?.(view.id) : undefined;
     active = view; side = inSide; const current = ++generation;
     panel.setAttribute('aria-label', label(view)); layout();
     status = 'loading'; presentStatus();
@@ -195,7 +200,7 @@ export function mountDocumentViews(host: Host) {
       if (current !== generation || disposed) return;
       if (renderer.apiVersion !== 1 || typeof renderer.mount !== 'function') throw new Error('Unsupported document view API');
       canvas.replaceChildren();
-      instance = renderer.mount(canvas, { language: host.getLanguage(), contentClass: 'meo-document-content',
+      instance = renderer.mount(canvas, { ...(workspace ? { workspace } : {}), language: host.getLanguage(), contentClass: 'meo-document-content',
         ...(host.renderContent ? { renderContent: async (snapshot: { text: string; revision: number }) => {
           if (disposed || current !== generation) throw new Error('Document view closed');
           const content = await host.renderContent!(snapshot.text);

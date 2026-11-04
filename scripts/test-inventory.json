@@ -249,6 +249,21 @@
       "kind": "targeted",
       "command": "MEO_EXTRAS_DIR=<companion-directory> bun scripts/test-block-export-browser.ts",
       "reason": "Requires separately built Extras; real Markmap and PlantUML plus a third renderer through the export adapter and actual HTML/PDF/Word files."
+    },
+    "scripts/test-workspace-documents.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-workspace-documents.ts",
+      "reason": "Contributed workspace documents: shared Markdown list source ranges, protocol validation, scoped request cancellation and idempotent document operations."
+    },
+    "scripts/test-workspace-documents-host.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-workspace-documents-host.ts",
+      "reason": "Native workspace adapter: scope validation, stale edit rejection, unsaved documents, CRLF, edit routing and lifecycle cleanup."
+    },
+    "scripts/test-task-overview-browser.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-task-overview-browser.ts",
+      "reason": "Optional Extras task view against real CodeMirror, workspace adapter and background Markdown worker: current/cross-file history, native edits, filters, language, narrow layout and large files; requires MEO_EXTRAS_DIR."
     }
   },
   "repeats": [
@@ -470,7 +485,9 @@
       "scripts/test-webview-strict-config.ts",
       "scripts/test-wiki-paths.ts",
       "scripts/test-wiki-resources.ts",
-      "scripts/test-block-export.ts"
+      "scripts/test-block-export.ts",
+      "scripts/test-workspace-documents.ts",
+      "scripts/test-workspace-documents-host.ts"
     ],
     "exclusive": [
       "scripts/test-architecture-shared-module-contracts.ts",
@@ -767,7 +784,8 @@
       "scripts/test-webview-search-controls.ts",
       "scripts/test-webview-viewport.ts",
       "scripts/test-wiki-production.ts",
-      "scripts/test-block-export-browser.ts"
+      "scripts/test-block-export-browser.ts",
+      "scripts/test-task-overview-browser.ts"
     ]
   }
 }

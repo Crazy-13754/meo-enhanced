@@ -22,7 +22,7 @@ import { documentEdit } from './adapters/documentSnapshot';
 import type { DocumentTextEdit } from '../../src/foundation/documentSnapshot';
 import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
-import { defaultKeymap, history, historyKeymap, indentMore, indentLess, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentMore, indentLess, isolateHistory, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
 import { markdownKeymap } from '@codemirror/lang-markdown';
 import { boundedMarkdownInputPrefix, editorMarkdownLanguage } from './liveMode';
 import { indentUnit, syntaxTree, forceParsing } from '@codemirror/language';
@@ -3656,6 +3656,14 @@ export function createEditor({
       const target = view.dom.ownerDocument.elementFromPoint(point.x, point.y);
       if (!target || !view.contentDOM.contains(target)) return '';
       return editableLinkHrefAtPointer({ target, clientX: point.x, clientY: point.y }, view);
+    },
+    applyContributedEdit(edit: { text: string; from: number; expected: string; insert: string }) {
+      if (editorDestroyed || view.composing || imeCompositionActive || historyCompositionActive) throw new Error('Finish composing before editing / 请先完成当前输入');
+      commitActiveTableInput();
+      if (readDocumentTextProjection(view.state.doc) !== edit.text || edit.from < 0 || edit.from + edit.expected.length > view.state.doc.length || view.state.sliceDoc(edit.from, edit.from + edit.expected.length) !== edit.expected)
+        throw new Error('The document changed; refresh and retry. / 文档已变化，请刷新后重试。');
+      view.dispatch({ changes: { from: edit.from, to: edit.from + edit.expected.length, insert: edit.insert },
+        annotations: [Transaction.userEvent.of('input.contribution'), isolateHistory.of('full')] });
     },
     getText() {
       commitActiveTableInput();
