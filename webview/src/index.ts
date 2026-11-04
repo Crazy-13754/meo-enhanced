@@ -2914,6 +2914,8 @@ const presentDocumentText = async (
 ): Promise<boolean> => {
   if (!editor) {
     pendingInitialText = text;
+    scheduleDocumentDerivedUiRefresh(text);
+    if (isPreviewSurfaceVisible()) previewAdapter.refreshVisible(text, { preserveViewport: true });
     return true;
   }
 
@@ -3117,7 +3119,7 @@ const shortcutHandlerContext: ShortcutHandlerContext = {
 const handleLocalEditorChange = (edit: DocumentTextEdit) => {
   documentSessionAdapter.localDraftChanged(edit);
   scheduleDocumentDerivedUiRefresh(edit.after);
-  if (isSidePreviewVisible()) previewAdapter.scheduleVisibleRefresh(edit.after);
+  if (isPreviewSurfaceVisible()) previewAdapter.scheduleVisibleRefresh(edit.after);
 };
 
 const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal): Promise<void> => {

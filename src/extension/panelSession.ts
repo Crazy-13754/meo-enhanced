@@ -351,14 +351,15 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         notifySavedRevisionChanged();
         return;
       }
-      const changed = savedRevisionTracker.getCurrentEditBaseline()
+      const hadDiskRevision = savedRevisionTracker.getCurrentEditBaseline() !== null;
+      const changed = hadDiskRevision
         ? savedRevisionTracker.noteDiskRevision(result.text)
         : savedRevisionTracker.initialize(result.text);
       const diskText = normalizeDocumentText(result.text);
       const documentText = normalizeDocumentText(document.getText());
       if (!document.isDirty || diskText === documentText) {
         publishExternalFileStatus('current');
-      } else if (changed || recoveredFromUnavailable) {
+      } else if ((hadDiskRevision && changed) || recoveredFromUnavailable) {
         publishExternalFileStatus('modified-while-dirty', true);
       }
       if (changed || recoveredFromUnavailable) {

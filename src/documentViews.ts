@@ -30,6 +30,8 @@ export interface DocumentViewsApi {
 export interface DocumentViewSnapshot { readonly text: string; readonly revision: number }
 export interface DocumentViewContext {
   readonly workspace?: DocumentViewWorkspace;
+  /** Shared, accessible UI select. The host releases its popup with the mounted view. */
+  createSelect?(label: string): DocumentViewSelect;
   readonly language: string;
   /** Host-owned ordinary Markdown; safe, inert HTML with one-based inclusive source ranges.
    * Apply contentClass to label roots to share document styles. No Preview preset, assets or scripts. */
@@ -43,6 +45,8 @@ export interface DocumentViewContext {
   selectionChanged?(line: number | null): void;
 }
 export interface DocumentViewInstance {
+  /** List views may place the host-owned action buttons in their header. */
+  readonly headerActions?: HTMLElement;
   /** Refresh owned labels/status without reparsing or resetting view state. */
   setLanguage?(language: string): void;
   /** Optional view operations rendered by the host beside layout and close controls. */
@@ -51,6 +55,14 @@ export interface DocumentViewInstance {
   /** Reveal the view content associated with a one-based source line. */
   revealLine?(line: number): void | Promise<void>;
   dispose(): void;
+}
+export interface DocumentViewSelect {
+  readonly element: HTMLElement;
+  readonly select: HTMLSelectElement;
+  readonly trigger: HTMLButtonElement;
+  setLabel(label: string): void;
+  refreshOptions(): void;
+  syncFromSelect(): void;
 }
 export interface DocumentViewAction {
   readonly id: string;

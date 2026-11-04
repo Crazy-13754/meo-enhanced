@@ -7,6 +7,7 @@ import { documentContentStyles } from './documentContentStyles';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { applyDocumentViewPalette, type DocumentSurfacePaletteInput } from './helpers/uiTheme';
 import { FitCanvas, graphCameraIcon } from './helpers/graphBlockControls';
+import { createToolbarDropdown, type ToolbarDropdown } from './helpers/toolbarDropdown';
 
 type Host = {
   openWorkspace?(viewId: string): import('../../src/documentViews').DocumentViewWorkspace & { dispose(): void };
@@ -55,6 +56,7 @@ export function mountDocumentViews(host: Host) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running = false, dirty = false;
   const modules = new Map<string, Promise<DocumentViewModule>>();
+  const controls = new Set<ToolbarDropdown>();
   let selectedLine: number | null = null;
   let locate: HTMLButtonElement | undefined;
   let actionButtons: HTMLButtonElement[] = [];
@@ -145,6 +147,8 @@ export function mountDocumentViews(host: Host) {
     host.cancelContent?.(); workspace?.dispose(); workspace = undefined;
     pointer.reset(); finishLoading();
     try { instance?.dispose(); } catch (error) { console.error('Document view disposal failed', error); }
+    for (const control of controls) control.dispose(); controls.clear();
+    panel.append(toolbar);
     instance = undefined; active = undefined; selectedLine = null; status = null; canvas.replaceChildren(); layout();
     if (restore) afterLayout(restoreReading);
     entries.querySelector<HTMLButtonElement>(`[data-view-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
@@ -209,8 +213,11 @@ export function mountDocumentViews(host: Host) {
         } } : {}), getAvailableViewport() {
         if (disposed || current !== generation) return { x: 0, y: 0, width: 0, height: 0 };
         const bounds = canvas.getBoundingClientRect();
-        const bottom = toolbar.hidden ? bounds.height : toolbar.getBoundingClientRect().top - bounds.top - 8;
+        const bottom = toolbar.hidden || active?.presentation === 'list' ? bounds.height : toolbar.getBoundingClientRect().top - bounds.top - 8;
         return { x: 0, y: 0, width: bounds.width, height: Math.max(0, Math.min(bounds.height, bottom)) };
+      }, createSelect(label) {
+        const control = createToolbarDropdown('document-view-filter-control', label);
+        control.label.hidden = true; controls.add(control); return control;
       }, revealLine(line) {
         if (current !== generation || running || dirty || !Number.isInteger(line) || line < 1) return;
         revealDocumentLine(line);
@@ -229,15 +236,20 @@ export function mountDocumentViews(host: Host) {
   function renderToolbar() {
     toolbar.replaceChildren(); toolbar.hidden = !active; locate = undefined; actionButtons = [];
     if (!active) return;
+    const header = active.presentation === 'list' ? instance?.headerActions : undefined;
+    toolbar.classList.toggle('is-header', !!header);
+    if (toolbar.parentElement !== (header ?? panel)) (header ?? panel).append(toolbar);
     toolbar.setAttribute('aria-label', label(active));
     const separator = () => {
       const element = document.createElement('span'); element.className = 'document-view-tool-separator'; element.setAttribute('aria-hidden', 'true'); toolbar.append(element);
     };
-    locate = button(t('在正文中查看', 'Show in document'), FileSearch, () => {
-      if (selectedLine !== null) revealDocumentLine(selectedLine);
-    });
-    locate.dataset.viewAction = 'locate';
-    toolbar.append(locate); separator();
+    if (active.presentation !== 'list') {
+      locate = button(t('在正文中查看', 'Show in document'), FileSearch, () => {
+        if (selectedLine !== null) revealDocumentLine(selectedLine);
+      });
+      locate.dataset.viewAction = 'locate';
+      toolbar.append(locate); separator();
+    }
     const target = instance, current = generation;
     const order = (id: string) => ({ 'zoom-in': 0, 'zoom-out': 1, fit: 2 }[id] ?? 3);
     for (const action of [...target?.actions ?? []].sort((a, b) => order(a.id) - order(b.id))) {
@@ -272,7 +284,7 @@ export function mountDocumentViews(host: Host) {
     }
     layout();
   }
-  const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && active) { event.preventDefault(); close(); } };
+  const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !event.defaultPrevented && active) { event.preventDefault(); close(); } };
   const onMode = (event: Event) => { if (!side && (event.target as Element).closest('button[data-mode]')) close(false); };
   document.addEventListener('keydown', onKey); host.root.addEventListener('click', onMode, true);
   const languageObserver = new MutationObserver(() => {

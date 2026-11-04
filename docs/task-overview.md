@@ -4,6 +4,8 @@ MEO Extras contributes an optional task overview. Enable it under Settings → E
 
 The view supports the current document or the open VS Code workspace, file grouping, heading context, text/status/file filters, source navigation and completion toggles. Only ordinary Markdown task list markers (`[ ]`, `[x]`, `[X]`) participate. Fenced examples, indented code, HTML blocks and frontmatter are not tasks. Nested and quoted list items retain their source locations.
 
+The title row contains the scope and shared refresh/layout/close controls. Search and status/file filters share one row and use the editor's dropdown component. Task text follows the document font size. File labels appear once per group in workspace scope; heading and line details are available on hover. Clicking the task text navigates, while checking it edits without changing the active document. Preview reflects both task edits and incoming document changes without switching modes.
+
 The main editor supplies complete Markdown list structure through its existing background reading worker. Extras owns the task index and view; it does not parse Markdown independently or access the editor's private DOM. Workspace access is available only to registered views declaring `workspace: true`, and each mounted view has a request scope. Reads and edits are limited to its current document and discovered workspace Markdown files.
 
 ## Editing and history

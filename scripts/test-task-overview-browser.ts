@@ -30,7 +30,7 @@ try {
     await page.keyboard.down('Control'); if (redo) await page.keyboard.down('Shift');
     await page.keyboard.press('z'); if (redo) await page.keyboard.up('Shift'); await page.keyboard.up('Control');
   }
-  async function editor(uri: string) {
+  async function editor(uri: string, mode: 'live' | 'preview' = 'live') {
     const page = await browser.newPage(); await page.setViewport({ width: 1200, height: 800 });
     page.on('pageerror', error => errors.push(String(error)));
     page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
@@ -63,8 +63,9 @@ try {
     await page.addScriptTag({ content: 'let fixtureState=null;window.acquireVsCodeApi=()=>({postMessage(message){window.__fixtureHost(message).then(reply=>{if(reply)window.dispatchEvent(new MessageEvent("message",{data:reply}))})},getState(){return fixtureState},setState(state){fixtureState=state}});' });
     await page.addScriptTag({ path: path.join(out, 'editor.js') });
     const text = fixture.documents.get(uri)!.text;
-    await send({ type: 'init', documentId: uri, text, version: 1, savedRevision: { version: 1, text }, diagnostics: [], mode: 'live', uiLanguage: 'zh-CN', sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, editorAppearance: 'light', gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: true, outlineWidth: 260, vscodeTheme: null });
-    await page.waitForSelector('.editor-host > .cm-editor');
+    await send({ type: 'init', documentId: uri, text, version: fixture.documents.get(uri)!.version, savedRevision: { version: fixture.documents.get(uri)!.version, text }, diagnostics: [], mode, uiLanguage: 'zh-CN', sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, editorAppearance: 'light', gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: true, outlineWidth: 260, vscodeTheme: null });
+    if (mode === 'live') await page.waitForSelector('.editor-host > .cm-editor');
+    else await page.waitForFunction(() => !!document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-task-checkbox'));
     await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
     return { page, send, connection };
   }
@@ -76,6 +77,20 @@ try {
   await page.waitForSelector('.meo-tasks'); console.log('Task UI mounted');
   await page.waitForFunction(() => document.querySelectorAll('.task-row').length === 2);
   console.log('Current document task rows loaded');
+  assert.equal(await page.$('[data-view-action="locate"]'), null, 'Task rows navigate directly; no duplicate locate action');
+  assert.equal(await page.$$('.task-actions [data-view-action]').then(nodes => nodes.length), 3, 'Refresh, layout and close live in the task header');
+  assert.equal(await page.$('.task-meta'), null, 'Source details are secondary tooltips, not a second line per task');
+  await page.click('[data-task-scope-trigger]');
+  await page.waitForSelector('.document-view-filter-dropdown-panel:not([hidden])');
+  await page.evaluate(() => { (window as any).__taskPopup = document.querySelector('.document-view-filter-dropdown-panel:not([hidden])'); });
+  // A repeated source invalidation must not close or rebuild an open menu.
+  fixture.change(a, initial); await first.send({ type: 'docChanged', text: initial, version: fixture.documents.get(a)!.version });
+  await page.waitForFunction(() => !document.querySelector('.task-status')?.textContent?.includes('正在索引'));
+  assert(await page.evaluate(() => { const popup = (window as any).__taskPopup; return popup?.isConnected && !popup.hidden; }));
+  await page.keyboard.press('Escape'); assert(await page.$('.meo-tasks'), 'Escape closes only the open dropdown');
+  await page.click('[data-task-status-trigger]'); await page.click('.document-view-filter-dropdown-panel:not([hidden]) [data-value="open"]');
+  assert.equal(await page.$$('.task-row').then(nodes => nodes.length), 1);
+  await page.click('[data-task-status-trigger]'); await page.click('.document-view-filter-dropdown-panel:not([hidden]) [data-value="all"]');
   await page.click('.task-open');
   await page.waitForFunction(() => !!document.querySelector('[data-document-view-side]') && !(document.querySelector('.editor-wrapper') as HTMLElement)?.inert);
   assert(await page.evaluate(() => (window as any).__viewportTestView().dom.getBoundingClientRect().width > 0), 'Navigation exposes the source alongside tasks');
@@ -103,6 +118,9 @@ try {
   await page.click('[data-action="settings"]'); await page.click('.ui-language-button[data-ui-language="en"]');
   await page.waitForFunction(() => document.querySelector('.meo-tasks h2')?.textContent === 'Tasks');
   await page.click('.editor-appearance-button[data-editor-appearance="dark"]'); await page.click('[data-action="settings"]');
+  await page.evaluate(() => document.documentElement.style.setProperty('--meo-user-editor-font-size', '20px'));
+  assert(await page.evaluate(() => getComputedStyle(document.querySelector('.task-open')!).fontSize === getComputedStyle(document.querySelector('.editor-host .cm-content')!).fontSize), 'Task text follows the current body font size');
+  await page.evaluate(() => document.documentElement.style.removeProperty('--meo-user-editor-font-size'));
   await page.setViewport({ width: 700, height: 720 }); await page.screenshot({ path: path.join(out, 'tasks-narrow.png') });
   assert(await page.evaluate(() => { const root = document.querySelector('.meo-tasks')!; return root.scrollWidth <= root.clientWidth + 1; }));
   await page.setViewport({ width: 1200, height: 800 });
@@ -110,10 +128,21 @@ try {
   await page.select('[data-task-scope]', 'current'); await page.waitForFunction(() => document.querySelectorAll('.task-row').length === 2);
   await page.click('.task-row input'); await page.waitForFunction(() => (window as any).__viewportTestText().includes('- [ ] 整理需求'));
   await page.click('[data-mode="preview"]'); await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'preview');
+  await page.waitForFunction(() => !!document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-task-checkbox'), { timeout: 5000 });
   await page.waitForFunction(() => !(document.querySelector('.task-row input') as HTMLInputElement)?.disabled);
   await page.click('.task-row input'); await page.waitForFunction(() => (window as any).__viewportTestText().includes('- [x] 整理需求'));
+  await page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-task-checkbox')?.classList.contains('is-done'), { timeout: 4000 }).catch(() => { throw new Error('Preview must reflect a task edit without switching modes'); });
   await page.click('[data-mode="live"]'); await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'live');
   console.log('Source and Preview task edits passed');
+  const cold = await editor(c, 'preview'); await cold.page.bringToFront();
+  await cold.page.waitForFunction(() => document.querySelector('#app')?.getAttribute('data-mode') === 'preview');
+  fixture.change(c, '# Changed in another editor\n\n- [ ] Updated native task\n');
+  await cold.send({ type: 'docChanged', text: fixture.documents.get(c)!.text, version: fixture.documents.get(c)!.version });
+  await cold.page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.body.textContent?.includes('Updated native task'), { timeout: 5000 });
+  await cold.send(catalog); await cold.page.click('[data-view-id="extras/tasks"]');
+  await cold.page.waitForSelector('.task-row'); await cold.page.click('.task-open'); await cold.page.click('.task-row input');
+  await cold.page.waitForFunction(() => document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-export-task-checkbox')?.classList.contains('is-done'), { timeout: 5000 });
+  await cold.page.close(); await page.bringToFront();
   const large = '# Large\n\n' + 'ordinary paragraph\n\n'.repeat(40000) + '- [ ] far task\n';
   await page.evaluate(text => { const view = (window as any).__viewportTestView(); view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }); }, large);
   await page.select('[data-task-scope]', 'current');
