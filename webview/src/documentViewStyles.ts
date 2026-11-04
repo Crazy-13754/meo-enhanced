@@ -11,10 +11,11 @@ export const documentViewStyles = `
 .document-view-filter-control .preview-select-shell{width:100%}
 .document-view-filter-control .preview-toolbar-dropdown{width:100%;height:30px;border-radius:4px;min-width:0;font:inherit;line-height:1.2;padding:4px 7px;gap:5px}
 .document-view-filter-dropdown-panel{max-width:min(420px,calc(100vw - 8px));background:var(--meo-ui-surface-raised);border-color:var(--meo-ui-border-float)}
-.document-view-filter-dropdown-panel .preview-dropdown-option{overflow:hidden;text-overflow:ellipsis;font-size:var(--meo-user-editor-font-size,var(--meo-font-live-size,16px))}
+.document-view-filter-dropdown-panel .preview-dropdown-option{white-space:normal;overflow-wrap:anywhere;font-size:var(--meo-user-editor-font-size,var(--meo-font-live-size,16px))}
 .document-view-toolbar .document-view-tool{flex:0 0 28px;width:28px;height:28px}
 .document-view-tool-separator{flex:0 0 1px;height:14px;margin:0 4px;background:var(--meo-ui-separator)}
 .document-view-toolbar .document-view-tool svg{width:18px;height:18px;stroke-width:1.75}
+.document-view-toolbar.is-header .document-view-tool svg{width:20px;height:20px;stroke-width:1.5}
 .document-view-tool svg{width:16px;height:16px;pointer-events:none}
 .document-view-tool:focus-visible{outline:2px solid var(--meo-ui-focus);outline-offset:-2px}
 .document-view-tool:disabled{opacity:.4;cursor:default}

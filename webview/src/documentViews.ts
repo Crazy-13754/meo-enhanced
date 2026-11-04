@@ -1,5 +1,5 @@
 import { mountGraphCanvasPointer } from './helpers/graphCanvasPointer';
-import { createElement, FileText, X, Maximize2, Minimize2, ArrowLeft, FileSearch } from 'lucide';
+import { createElement, FileText, X, Maximize2, Minimize2, ArrowLeft, FileSearch, RefreshCw } from 'lucide';
 import type { DocumentViewInstance, DocumentViewModule } from '../../src/documentViews';
 import type { DocumentViewDescriptor } from '../../src/protocol/documentViews';
 import { documentViewStyles } from './documentViewStyles';
@@ -253,7 +253,7 @@ export function mountDocumentViews(host: Host) {
     const target = instance, current = generation;
     const order = (id: string) => ({ 'zoom-in': 0, 'zoom-out': 1, fit: 2 }[id] ?? 3);
     for (const action of [...target?.actions ?? []].sort((a, b) => order(a.id) - order(b.id))) {
-      const control = button(label(action), action.id === 'fit' ? FitCanvas : graphCameraIcon(action.id) ?? action.iconPaths.map(d => ['path', { d }]), () => {
+      const control = button(label(action), action.id === 'refresh' ? RefreshCw : action.id === 'fit' ? FitCanvas : graphCameraIcon(action.id) ?? action.iconPaths.map(d => ['path', { d }]), () => {
         void Promise.resolve().then(() => {
           if (current === generation && instance === target) return action.run();
         }).catch(error => console.error('Document view action failed', error));
@@ -270,6 +270,7 @@ export function mountDocumentViews(host: Host) {
     for (const control of toolbar.querySelectorAll<HTMLButtonElement>('button')) {
       control.dataset.tooltip = control.title; control.dataset.tooltipPlacement = 'top'; control.dataset.tooltipLiveUpdate = 'true'; control.removeAttribute('title');
       control.querySelector('svg')?.setAttribute('aria-hidden', 'true');
+      if (header) { const svg = control.querySelector<SVGSVGElement>('svg'); if (svg) fitEntryIcon(svg); }
     }
     updateAlignment();
   }

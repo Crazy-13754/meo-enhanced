@@ -94,6 +94,8 @@ context.subscriptions.push(api.registerFeature(context.extension.id, {
 - 点击入口默认在正文右侧、目录左侧打开；同一入口再次点击关闭。
 - Source 模式下，扩展视图与侧边预览共用侧边区域，同一时刻只显示一个。
 - 图形视图的全屏与分栏共用底部居中的单行浮动工具栏。列表视图可通过 `DocumentViewInstance.headerActions` 提供标题行中的容器，主体将刷新、布局和关闭操作放入其中，不再添加重复的定位按钮。
+- `refresh` 操作由主体统一使用正文图片的刷新图标；标题行图标按实际图形边界统一尺寸和描边。
+- 扩展自身节点可以使用主体气泡元数据 `data-tooltip`；配合 `data-tooltip-kind="fulltext"` 时，仅在该节点文字被截断且悬停它时展示完整内容，不需要额外测量或气泡实例。
 - 列表筛选通过 `DocumentViewContext.createSelect` 使用主体下拉组件，主体负责浮层与生命周期。选项变化时调用 `refreshOptions`，仅值变化时调用 `syncFromSelect`，避免索引更新反复重建菜单。Escape 优先关闭展开的菜单，再次按下才关闭视图。
 - 分隔线上的两个按钮执行一次性定位，复用正文已有定位能力；不建立持续滚动绑定。
 - 从扩展主动定位 Preview 时，复用已有源码映射，将目标放在视口上部约 30% 的位置，并短暂显示位置标记，不切换编辑模式。原有侧边预览同步继续使用最小移动策略。
