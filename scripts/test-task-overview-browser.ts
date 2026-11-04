@@ -9,7 +9,7 @@ const root = process.cwd(), extras = process.env.MEO_EXTRAS_DIR;
 if (!extras) throw new Error('Set MEO_EXTRAS_DIR to the built Extras directory');
 const out = path.join(root, '.local/task-overview-tests'); mkdirSync(out, { recursive: true });
 console.log('Preparing task browser fixture');
-const a = 'file:///workspace/meeting.md', b = 'file:///workspace/plan.md', c = 'file:///workspace/closed.md';
+const a = 'file:///workspace/meeting.md', b = 'file:///workspace/projects/release-planning-notes.md', c = 'file:///workspace/closed.md';
 const initial = '# 项目会议\n\n- [ ] 整理需求\n- [x] 已确认范围\n\n```md\n- [ ] 示例不是任务\n```\n';
 const fixture = installWorkspaceFixture({ [a]: initial, [b]: '# 开发计划\n\n- [ ] 修复导出\n', [c]: '# Closed\r\n- [ ] native task\r\n' });
 const { createWorkspaceDocumentsHost } = await import('../src/host/workspaceDocuments');
@@ -150,6 +150,36 @@ try {
   await page.select('[data-task-scope]', 'workspace'); await page.waitForFunction(() => document.querySelectorAll('.task-row').length === 4);
   assert(await page.$eval('.task-file', element => { const style = getComputedStyle(element), list = element.parentElement!; return style.borderLeftWidth === '0px' && element.getBoundingClientRect().width >= list.clientWidth - 1 && style.backgroundColor !== getComputedStyle(list.closest('.meo-tasks')!).backgroundColor; }), 'File headings use a full-width neutral background without an accent edge');
   console.log('Current document history and workspace indexing passed');
+  async function checkFileMenu(name: string) {
+    await page.click('[data-task-file-trigger]');
+    const menu = '.document-view-filter-dropdown-panel:not([hidden])';
+    const geometry = await page.$eval(menu, element => {
+      const rect = element.getBoundingClientRect(), trigger = document.querySelector('[data-task-file-trigger]')!.getBoundingClientRect();
+      return { width: rect.width, trigger: trigger.width, left: rect.left, right: rect.right, viewport: innerWidth, overflow: element.scrollWidth - element.clientWidth };
+    });
+    assert(geometry.width > geometry.trigger + 60, 'File menu expands for long paths independently of its trigger');
+    assert(geometry.left >= 3 && geometry.right <= geometry.viewport - 3 && geometry.overflow <= 1, 'Expanded menu remains within the viewport');
+    await page.screenshot({ path: path.join(out, `file-menu-${name}.png`) });
+    await page.keyboard.press('Escape');
+    assert.equal(await page.$(menu), null);
+  }
+  async function checkListScroll(name: string, width: number) {
+    await page.setViewport({ width, height: 400 });
+    await page.waitForFunction(() => { const list = document.querySelector('.task-list')!; return list.scrollHeight > list.clientHeight; });
+    assert(await page.$eval('.task-list', element => {
+      element.scrollTop = 80;
+      return element.scrollTop > 0;
+    }), 'Task list remains independently scrollable');
+    await page.screenshot({ path: path.join(out, `task-scroll-${name}.png`) });
+    await page.$eval('.task-list', element => { element.scrollTop = 0; });
+  }
+  await checkFileMenu('light');
+  await checkListScroll('light', 1200); await page.setViewport({ width: 1200, height: 800 });
+  assert(await page.evaluate(() => {
+    const editor = getComputedStyle(document.querySelector('.cm-scroller')!);
+    const list = getComputedStyle(document.querySelector('.task-list')!);
+    return list.scrollbarWidth === editor.scrollbarWidth && list.scrollbarColor !== 'auto';
+  }), 'Task lists use the shared editor scrollbar skin');
   const target = `input[data-task-key^="${b}:"]`;
   await page.click(target);
   // The target stays in the background: requestAnimationFrame may be suspended there.
@@ -174,6 +204,8 @@ try {
   assert(await page.evaluate(() => getComputedStyle(document.querySelector('.task-open')!).fontSize === getComputedStyle(document.querySelector('.editor-host .cm-content')!).fontSize), 'Task text follows the current body font size');
   await page.evaluate(() => document.documentElement.style.removeProperty('--meo-user-editor-font-size'));
   await page.setViewport({ width: 700, height: 720 }); await page.screenshot({ path: path.join(out, 'tasks-narrow.png') });
+  await checkFileMenu('dark-narrow');
+  await checkListScroll('dark-narrow', 700); await page.setViewport({ width: 700, height: 720 });
   assert(await page.evaluate(() => { const root = document.querySelector('.meo-tasks')!; return root.scrollWidth <= root.clientWidth + 1; }));
   const detail = `input[data-task-key^="${a}:"] + .task-open .task-details`;
   await page.hover(detail);

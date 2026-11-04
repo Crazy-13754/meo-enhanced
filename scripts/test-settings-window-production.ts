@@ -182,6 +182,10 @@ try {
         await page.click('[data-tab="extensions"]');
         assert.equal(await page.$eval(toggle, e => e.getAttribute('aria-label')), language === 'en' ? 'Mind map' : '思维导图');
         assert.equal(await page.$eval('#meo-settings-extras .settings-button', e => e.textContent), language === 'en' ? 'User guide' : '使用说明');
+        if (process.env.MEO_SETTINGS_SCREENSHOTS) {
+          const directory = path.resolve(process.env.MEO_SETTINGS_SCREENSHOTS); await fs.mkdir(directory, { recursive: true });
+          await page.screenshot({ path: path.join(directory, `extras-${language}-${appearance}.png`) });
+        }
         await page.evaluate(() => {
           const state = { ...(window as any).__extrasState, features: [] };
           window.dispatchEvent(new MessageEvent('message', { data: { type: 'extensionFeaturesChanged', state } }));

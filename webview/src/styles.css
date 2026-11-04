@@ -2524,10 +2524,14 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
 
 .cm-editor .cm-scroller {
   scrollbar-gutter: stable;
-  scrollbar-color: var(--meo-scrollbar-thumb) transparent;
-  scrollbar-width: thin;
   padding-right: 10px;
   box-sizing: border-box;
+}
+
+/* Optional document views share the editor's native scrollbar skin. */
+:is(.cm-editor .cm-scroller, .mm-view-canvas, .mm-view-canvas *) {
+  scrollbar-color: var(--meo-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
 }
 
 .meo-content-max-width-enabled .editor-host > .cm-editor > .cm-scroller {
@@ -2541,20 +2545,20 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
   padding-top: var(--meo-native-input-scroll-offset, 0px);
 }
 
-.cm-editor .cm-scroller::-webkit-scrollbar {
+:is(.cm-editor .cm-scroller, .mm-view-canvas, .mm-view-canvas *)::-webkit-scrollbar {
   -webkit-appearance: none;
   width: 10px !important;
   height: 10px !important;
 }
 
-.cm-editor .cm-scroller::-webkit-scrollbar-track {
+:is(.cm-editor .cm-scroller, .mm-view-canvas, .mm-view-canvas *)::-webkit-scrollbar-track {
   -webkit-appearance: none;
   background: transparent !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
 
-.cm-editor .cm-scroller::-webkit-scrollbar-thumb {
+:is(.cm-editor .cm-scroller, .mm-view-canvas, .mm-view-canvas *)::-webkit-scrollbar-thumb {
   -webkit-appearance: none;
   background: var(--meo-scrollbar-thumb) !important;
   background-clip: border-box !important;
@@ -2563,21 +2567,21 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
   box-shadow: none !important;
 }
 
-.cm-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+:is(.cm-editor .cm-scroller, .mm-view-canvas, .mm-view-canvas *)::-webkit-scrollbar-thumb:hover {
   -webkit-appearance: none;
   background: var(--meo-scrollbar-thumb-hover) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
 
-.cm-editor .cm-scroller::-webkit-scrollbar-thumb:active {
+:is(.cm-editor .cm-scroller, .mm-view-canvas, .mm-view-canvas *)::-webkit-scrollbar-thumb:active {
   -webkit-appearance: none;
   background: var(--meo-scrollbar-thumb-active) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
 
-.cm-editor .cm-scroller::-webkit-scrollbar-corner {
+:is(.cm-editor .cm-scroller, .mm-view-canvas, .mm-view-canvas *)::-webkit-scrollbar-corner {
   background: transparent !important;
 }
 
@@ -8232,6 +8236,9 @@ html[data-meo-ui-contrast='high'] .cm-editor :is(.meo-md-html-table-context-trig
 .settings-section { padding-bottom: 6px; border-bottom: 1px solid var(--meo-ui-separator); }
 .settings-section + .settings-section { margin-top: 30px; }
 .settings-section-title { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+.settings-extension-heading { display: flex; align-items: baseline; flex-wrap: wrap; }
+.settings-extension-heading .settings-section-title { margin: 0; }
+.settings-extension-version { margin-left: 8px; color: var(--meo-ui-text-muted); font-size: 12px; font-weight: 400; white-space: nowrap; }
 .settings-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--meo-ui-separator); }
 .settings-item:last-child { border-bottom: 0; }
 .settings-item-text { flex: 1 1 180px; min-width: 0; }

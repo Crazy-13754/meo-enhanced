@@ -35,13 +35,14 @@ export function createExtensionFeatureSettings(post: (request: ExtensionFeatures
     render(language: UiLanguage, query: string) {
       const t = (zh: string, en: string) => language === 'zh-CN' ? zh : en;
       const section = node('section', 'settings-section'); section.id = 'meo-settings-extras';
-      section.append(node('h3', 'settings-section-title', 'MEO Extras'));
-      section.append(node('p', 'settings-description', t('MEO Extras 为编辑器提供可选功能。各功能独立开启或关闭，不会修改 Markdown 原文。', 'MEO Extras adds optional features to the editor. Enable or disable each independently without changing your Markdown.')));
       const row = node('div', 'settings-item'); const text = node('div', 'settings-item-text');
-      text.append(node('div', 'settings-item-title', state?.installed ? t('已安装', 'Installed') + (state.version ? ` · ${state.version}` : '') : state ? t('未检测到 MEO Extras', 'MEO Extras not detected') : t('正在读取…', 'Loading…')));
+      const heading = node('h3', 'settings-section-title', 'MEO Extras');
+      const titleRow = node('div', 'settings-extension-heading');
+      titleRow.append(heading, node('span', 'settings-extension-version', state?.installed ? state.version : state ? t('未安装', 'Not installed') : t('正在读取…', 'Loading…')));
+      text.append(titleRow);
       text.append(node('p', 'settings-description', state?.installed
-        ? t('使用说明可在扩展详情页查看。功能开关对所有文档生效。', 'Read the guide on the extension details page. Feature switches apply to all documents.')
-        : t('包含全文思维导图和文档内导图。尚未发布到扩展市场，发布后将提供安装链接。', 'Includes whole-document mind maps and embedded map blocks. An installation link will be available after publication.')));
+        ? t('为编辑器提供可选功能，独立开关对所有文档生效。', 'Optional editor features, with individual switches that apply to all documents.')
+        : t('为编辑器提供可选功能。尚未发布到扩展市场。', 'Optional editor features. Not yet published to the Marketplace.')));
       const install = document.createElement('button'); install.type = 'button'; install.className = 'settings-button';
       install.textContent = state?.installed ? t('使用说明', 'User guide') : t('尚未发布', 'Not published');
       install.disabled = !state?.installed;
