@@ -18,6 +18,8 @@ export async function checkPlantUmlBlocks(page: Page, out: string) {
     return owner?.shadowRoot?.querySelector('svg text') && !owner.closest('[data-meo-mermaid-rendering="true"]');
   });
   const settle = () => page.evaluate(async () => { for (let i = 0; i < 10; i++) await new Promise(requestAnimationFrame); });
+  const controlsLabel = (language: string) => page.evaluate(language => document.documentElement.lang === 'en'
+    ? `${language} block controls at line 3` : `第 3 行 ${language} 块控件`, language);
   const measure = () => page.evaluate(() => {
     const doc = document.querySelector('#app')?.getAttribute('data-mode') === 'preview'
       ? document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument! : document;
@@ -28,6 +30,7 @@ export async function checkPlantUmlBlocks(page: Page, out: string) {
       centerX: svg.left + svg.width / 2 - canvas.left - canvas.width / 2 };
   });
   await replace(markdown()); await wait(); await settle();
+  assert.equal(await page.$eval('.meo-mermaid-toolbar', element => element.getAttribute('aria-label')), await controlsLabel('plantuml'));
   assert(await page.evaluate(() => document.querySelector('.meo-contributed-block')!.shadowRoot!.textContent?.includes('你好')));
   await page.screenshot({ path: out + '/plantuml-live.png' });
   const before = await page.evaluate(() => {
@@ -74,6 +77,7 @@ export async function checkPlantUmlBlocks(page: Page, out: string) {
   // Common diagrams run sequentially through one engine without leaking state.
   for (const body of ['class Alpha\nclass Beta\nAlpha --> Beta', 'start\n:中文活动;\nstop', '[*] --> Ready\nReady --> [*]', '[Client] --> [Server]', '!theme plain\nAlice -> Bob: Theme']) {
     await replace(markdown('@startuml\n' + body + '\n@enduml', 'puml')); await wait();
+    assert.equal(await page.$eval('.meo-mermaid-toolbar', element => element.getAttribute('aria-label')), await controlsLabel('puml'));
     assert.equal(await page.evaluate(() => !!document.querySelector('.meo-contributed-block')!.shadowRoot!.querySelector('.failure')), false);
   }
   await replace(markdown()); await wait();

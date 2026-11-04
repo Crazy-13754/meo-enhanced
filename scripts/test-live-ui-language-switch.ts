@@ -273,6 +273,21 @@ async function main(): Promise<void> {
       0,
       `language switch mutated gutter structure: ${JSON.stringify(result.after.gutterMutations)}`
     );
+    for (const language of ['en', 'zh-CN'] as const) for (const fence of ['mermaid', 'Mermaid', 'MERMAID']) {
+      const source = `# Mermaid label\n\n\`\`\`${fence}\ngraph TD\nA --> B\n\`\`\`\n`;
+      const label = expectedLabels(language, 3, 0).mermaidControls;
+      await page.evaluate(({ source, language }) => {
+        (window as any).__liveUiLanguageEditor.destroy();
+        const parent = document.getElementById('editor-host')!;
+        parent.replaceChildren();
+        (window as any).__liveUiLanguageEditor = (window as any).ListEditingHarness.createEditor({
+          parent, text: source, initialMode: 'live', uiLanguage: language, onApplyChanges() {}
+        });
+      }, { source, language });
+      await page.waitForSelector('.meo-mermaid-toolbar');
+      assert.equal(await page.$eval('.meo-mermaid-toolbar', element => element.getAttribute('aria-label')), label,
+        `${fence}/${language}: built-in controls retain the Mermaid proper name`);
+    }
     console.log('Live UI language switch checks passed');
   } finally {
     await browser.close();

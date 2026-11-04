@@ -444,7 +444,10 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
     toolbar.dataset.meoBlockTo = String(this.blockTo);
     toolbar.dataset.meoMermaidMode = this.mode;
     toolbar.dataset.meoUiLanguage = view.state.facet(uiLanguageFacet);
-    toolbar.setAttribute('aria-label', strings.mermaidBlockControls(this.lineNumber).replace('Mermaid', mermaidSourceForAnchor(view.state, this.anchor)?.language ?? 'Mermaid'));
+    const language = mermaidSourceForAnchor(view.state, this.anchor)?.language;
+    const controlsLabel = strings.mermaidBlockControls(this.lineNumber);
+    toolbar.setAttribute('aria-label', language && language.toLowerCase() !== 'mermaid'
+      ? controlsLabel.replace('Mermaid', language) : controlsLabel);
     const editing = this.mode === 'edit',
       mode = toolbar.querySelector<HTMLButtonElement>('.meo-mermaid-mode-btn')!;
     const label = editing ? strings.hideMermaidSource : strings.editMermaidSource;
