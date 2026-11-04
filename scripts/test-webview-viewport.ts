@@ -485,7 +485,8 @@ async function main() {
       };
       return {
         left: Array.from(document.querySelector<HTMLElement>('.format-group')!.children).map(label),
-        right: Array.from(document.querySelector<HTMLElement>('.right-group')!.children).map(label),
+        right: Array.from(document.querySelector<HTMLElement>('.right-group')!.children)
+          .flatMap(element => (element as HTMLElement).style.display === 'contents' ? Array.from(element.children) : [element]).map(label),
         changes: Array.from(document.querySelector<HTMLElement>('.changes-controls')!.children).map(label)
       };
     });

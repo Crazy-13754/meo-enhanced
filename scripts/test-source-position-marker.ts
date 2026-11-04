@@ -415,9 +415,9 @@ try {
     document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop
   )) - independentTop) <= 1, 'Independent panes must not auto-locate');
 
-  const alignment = '.meo-preview-viewport-alignment';
-  const toPreview = '[data-meo-align-viewport="preview"]';
-  const toSource = '[data-meo-align-viewport="source"]';
+  const alignment = '.preview-host > .meo-preview-viewport-alignment';
+  const toPreview = alignment + ' [data-meo-align-viewport="preview"]';
+  const toSource = alignment + ' [data-meo-align-viewport="source"]';
   const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const snapshot = () => page.evaluate(() => {
     const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
