@@ -3558,6 +3558,12 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   -webkit-text-fill-color: var(--meo-foreground) !important;
 }
 
+/* Override the Webview's code foreground at type-selector specificity so
+   author stylesheets can still supply their own code colors. */
+:where(.cm-editor.meo-mode-live .meo-md-html-inline, .cm-editor.meo-mode-live .meo-md-html-content) code:where(:not(pre code)) {
+  color: inherit;
+}
+
 .cm-editor.meo-mode-live .meo-md-math-inline-source {
   background: var(--meo-document-inline);
   border-radius: 0.35em;
