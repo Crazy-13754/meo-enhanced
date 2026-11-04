@@ -48,7 +48,10 @@ const formatting = [
   '<p><b id="html-strong">HTML strong</b> <i id="html-em">HTML emphasis</i> <s id="html-strike">HTML strike</s> <sub id="html-sub">sub</sub> <sup id="html-sup">sup</sup> <mark id="html-mark">mark</mark></p>', '',
   '<p><b id="author-style" style="font-size:21px;font-weight:300;color:rgb(123,45,67)">Author style</b></p>', '',
   '<p><span style="color:rgb(123,45,67)"><strong id="author-inherited">Inherited author color</strong></span></p>', '',
-  '<p><code>**literal** $x$</code></p>'
+  '<p><code id="html-block-code">**literal** $x$</code></p>', '',
+  '<p><span style="color:rgb(123,45,67)"><code id="html-code-inherited">Inherited code color</code></span> <code id="html-code-author" style="color:rgb(67,89,123)">Author code color</code></p>', '',
+  '<style>code:where(.author-code-color) { color:rgb(45,67,89) }</style>', '',
+  '<p><code id="html-code-stylesheet" class="author-code-color">Stylesheet code color</code></p>'
 ].join('\n');
 
 // HTML fragments and reading prose consume the same grammar, including literal code.
@@ -67,6 +70,8 @@ try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1200, height: 850 });
   await page.setContent('<style>body{margin:0}main{display:grid;grid-template-columns:1fr 1fr;height:100vh}#live{min-width:0}#live .cm-editor{height:100%}iframe{box-sizing:border-box;width:100%;height:100%;border:0}</style><main><div id="live"></div><iframe id="preview"></iframe></main>');
+  // VS Code injects this foreground rule into Webviews; a standalone page omits it.
+  await page.addStyleTag({ content: ':root{--vscode-textPreformat-foreground:#e5c07b}code{color:var(--vscode-textPreformat-foreground)}' });
   await page.addStyleTag({ path: path.resolve('webview/src/styles.css') });
   await page.addScriptTag({ content: await build.outputs[0]!.text() });
   for (const large of [false, true]) {
@@ -177,7 +182,8 @@ try {
           ['.meo-md-superscript', '#html-sup', 'font-size'], ['.meo-md-highlight', '#html-mark', 'background-color'],
           ['.meo-md-h1', '#html-heading', 'font-size'], ['.meo-md-h1', '#html-heading', 'font-weight'],
           ['.meo-md-h1', '#html-heading', 'color'], ['.meo-md-inline-code', '#html-code', 'font-size'],
-          ['.meo-md-inline-code', '#html-code', 'padding-left'], ['.meo-md-inline-code', '#html-code', 'border-radius']
+          ['.meo-md-inline-code', '#html-code', 'padding-left'], ['.meo-md-inline-code', '#html-code', 'border-radius'],
+          ['.meo-md-inline-code', '#html-code', 'color'], ['.meo-md-inline-code', '#html-code', '-webkit-text-fill-color']
         ].map(([markdown, raw, property]) => ({ markdown, property,
           ordinary: style(host.querySelector(markdown)!, property), html: style(host.querySelector(raw)!, property) }));
         const author = host.querySelector('#author-style')!;
@@ -199,6 +205,9 @@ try {
           previewAuthor: [style(previewAuthor, 'font-size'), style(previewAuthor, 'font-weight'), style(previewAuthor, 'color')],
           inherited: style(host.querySelector('#author-inherited')!, 'color'),
           previewInherited: style(doc.querySelector('#author-inherited')!, 'color'),
+          codeColors: ['#html-block-code', '#html-code-inherited', '#html-code-author', '#html-code-stylesheet'].map(selector => ({
+            color: style(host.querySelector(selector)!, 'color'), fill: style(host.querySelector(selector)!, '-webkit-text-fill-color')
+          })),
           plainColor: style(editor.view.contentDOM, 'color'), strongColor: style(host.querySelector('.meo-md-strong')!, 'color'),
           previewStrong: style(doc.querySelector('#html-strong')!, 'font-weight'),
           previewSub: style(doc.querySelector('#html-sub')!, 'font-size'), unchanged: editor.getText() === source };
@@ -219,6 +228,9 @@ try {
       assert.deepEqual(result.previewAuthor, result.author);
       assert.equal(result.inherited, 'rgb(123, 45, 67)');
       assert.equal(result.previewInherited, result.inherited);
+      const expectedCodeColors = [result.plainColor, 'rgb(123, 45, 67)', 'rgb(67, 89, 123)', 'rgb(45, 67, 89)'];
+      assert.deepEqual(result.codeColors, expectedCodeColors.map(color => ({ color, fill: color })),
+        `${appearance}/${large}: HTML block code inherits document/author colors instead of the Webview foreground`);
       if (appearance === 'dark') assert.notEqual(result.strongColor, result.plainColor, 'theme defaults retain the existing dark strong emphasis');
       assert.equal(result.previewStrong, '700'); assert.equal(result.unchanged, true);
       if (process.env.MEO_TEST_SCREENSHOTS && !large) {
