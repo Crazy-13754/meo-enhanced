@@ -57,6 +57,8 @@ export interface DocumentViewModule {
   mount?(container: HTMLElement, context: DocumentViewContext): DocumentViewInstance;
   /** Static SVG renderers delegate their entire canvas to the host. */
   createSvgRenderer?(): DocumentSvgRenderer;
+  /** Optional static export adapter. SVG-only modules reuse createSvgRenderer automatically. */
+  createBlockExportRenderer?(context: DocumentBlockExportContext): DocumentBlockExportRenderer;
   mountBlock?(container: HTMLElement, context: DocumentBlockContext): DocumentViewInstance;
 }
 
@@ -91,5 +93,27 @@ export interface DocumentSvgAppearance {
 }
 export interface DocumentSvgRenderer {
   render(snapshot: DocumentViewSnapshot, appearance: DocumentSvgAppearance): Promise<string>;
+  dispose(): void;
+}
+
+export type DocumentBlockExportArtifact = {
+  readonly kind: 'svg' | 'png';
+  /** Self-contained SVG markup, or base64 PNG bytes (without a data URL prefix). */
+  readonly data: string;
+  readonly width: number;
+  readonly height: number;
+};
+export interface DocumentBlockExportContext {
+  /** Host-owned, attached measurement container, isolated from the interactive document. */
+  readonly container: HTMLElement;
+  readonly appearance: DocumentSvgAppearance;
+  readonly contentClass: string;
+  readonly signal: AbortSignal;
+  renderContent(snapshot: DocumentViewSnapshot): Promise<{ readonly html: string }>;
+  /** Freeze computed styles and full artwork bounds, removing the viewing camera. */
+  captureSvg(svg: SVGSVGElement): DocumentBlockExportArtifact;
+}
+export interface DocumentBlockExportRenderer {
+  render(snapshot: DocumentViewSnapshot & { readonly language: string }): Promise<DocumentBlockExportArtifact>;
   dispose(): void;
 }

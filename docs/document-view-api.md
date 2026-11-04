@@ -128,7 +128,7 @@ Preview 外壳统一由主体铺底：默认预设使用代码块底色，其他
 
 复制图片使用正文静态结果的完整内容边界，保留源码定义的折叠，不使用全屏临时状态或视口裁剪。SVG 渲染器将完整结果组标为 `data-meo-image-content`，主体复用现有 SVG/公式图片生成和剪贴板流程。共享内容样式在隔离的 Shadow DOM 中应用；字体沿用普通文档，内容色取当前正文，操作按钮取界面色。
 
-普通 Preview 预设（默认、Newsprint、Whitey、Obsidian Minimal）支持此能力；自定义预设按实际 renderer 处理。GitHub README renderer 保持代码块，与 GitHub 阅读语义一致。导出的 HTML/PDF/Word 当前保留源码，不加载独立扩展脚本，不生成导图快照。
+普通 Preview 预设（默认、Newsprint、Whitey、Obsidian Minimal）支持此能力；自定义预设按实际 renderer 处理。GitHub README renderer 保持代码块，与 GitHub 阅读语义一致。HTML/PDF/Word 导出通过下述静态图块接口生成图形；缺少导出能力或渲染失败时保留源码并提示。导出文件只保存静态产物，不加载独立扩展脚本。
 
 示例：
 
@@ -181,3 +181,18 @@ bun scripts/test-document-views-browser.ts --graph-continuity-only
 `--plantuml-only` 使用 Extras 正式构建的 Worker，检查无多余入口、按需加载、常见 UML 类型、中文、原生源码编辑和撤销、语法错误恢复、普通与大文档、静态 Preview、预设回退、响应式尺寸、全屏与 PNG 复制。静态 SVG 相机改动还需运行 Mermaid 控件专项，避免共享能力回归。
 
 `--graph-continuity-only` 对真实 PUML 和导图检查普通／大文档的源码刷新、双向编辑布局切换后缩放与中心坐标保持，以及默认与阅读预设下和 Mermaid 一致的外壳底色。
+
+
+## 正文图块静态导出
+
+导出复用 `codeBlockLanguages` 注册，主体不按扩展 ID 或专属语言增加分支。静态 SVG 模块的 `createSvgRenderer()` 自动用于导出；需要 DOM 布局的模块可提供 `createBlockExportRenderer(context)`，返回 `render(snapshot)` 与 `dispose()`。两种方式最终产生 `DocumentBlockExportArtifact`：`kind` 为 `svg` 或 `png`，`data` 分别为完整 SVG 字符串或不含 data URL 前缀的 PNG base64，`width` / `height` 为未缩放的 CSS 像素尺寸。优先返回 SVG，主体统一处理 HTML/PDF 和 Word 图片转换。
+
+`DocumentBlockExportContext` 提供附着且隔离的测量容器、目标外观、普通 Markdown `renderContent` / `contentClass`、取消信号和 `captureSvg`。`captureSvg` 固化计算样式，按 `data-meo-image-content` 内容组计算边界并移除相机变换。模块只管理自己的容器，复用已有语义与布局；不读取交互视图 DOM、查看记忆或当前文档。`render` 完成时布局必须就绪，`dispose` 必须可重复调用并停止 Worker、动画与观察器；取消后不得重新挂载内容。
+
+产物由扩展净化，禁止脚本、事件、导航和外部资源。主体额外检查类型、尺寸、有效 SVG 和危险资源；SVG 以独立 image data URL 嵌入，防止图块间 CSS 与 ID 冲突。第一版 SVG 不接受 image 元素，含位图的渲染器可返回 PNG。单个产物最多 16 MB 字符，单次产物总量最多 32 MB 字符，边长最多 100,000 CSS px；单次最多 1,000 个图块。图块串行渲染，单个异步阶段最多 20 秒，总任务最多 5 分钟；关闭编辑器或任务超时取消并释放实例。超过整体限制使本次导出失败，不生成不完整文件。
+
+正文和注册目录在导出开始时冻结。主体从同一 Markdown 渲染链路的 fence 标记收集所有图块，包含未进入视口的图块、嵌套引用和列表以及重复源码；导出期间继续编辑不影响本次结果。HTML/PDF 采用目标预设的颜色，普通图块字体仍跟随普通文档；Word 使用固定浅色文档环境。GitHub README renderer 保留源码。Markmap 按作者初始折叠呈现，不采用临时全屏折叠或相机状态。
+
+缺失导出能力、单图语法或渲染错误保留该处源码并报告语言和位置；缺少扩展或功能关闭时仍按普通代码块导出。新增图块只需在扩展中登记语言并提供上述一种渲染能力，无需修改主体 HTML/PDF/Word 导出流程。主体与 Extras 的类型副本需同步；旧模块仍可阅读，缺少可选导出方法时保留源码。
+
+验证：`bun scripts/test-block-export.ts` 检查嵌套/重复图块、原文保留、协议和生命周期。设置 `MEO_EXTRAS_DIR` 后运行 `bun scripts/test-block-export-browser.ts`，使用真实 Extras 和第三种测试渲染器生成 HTML、PDF、Word，并检查浅深配色、复杂节点、图片嵌入和容器释放。契约测试纳入常规 `test:unit`；浏览器联调登记为独立专项，因为它依赖另行构建的 Extras。

@@ -262,6 +262,7 @@ export function createDocumentBlocks(host: Host) {
   const port: DocumentBlocksPort = { supports: language => !!descriptor(language), mount };
   return {
     port, refreshPreview,
+    getDescriptors: () => views.filter(view => view.codeBlockLanguages?.length),
     setViews(next: readonly DocumentViewDescriptor[]) {
       closeFullscreen?.(); views = next;
       for (const block of previewBlocks.values()) block.dispose(); previewBlocks.clear();

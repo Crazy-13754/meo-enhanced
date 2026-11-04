@@ -113,6 +113,7 @@ type FindOptionsState = {
 };
 
 type ExportRuntimeModule = {
+  materializeContributedBlocks: typeof import('./export/contributedBlocks').materializeContributedBlocks;
   renderExportHtmlDocument: (options: {
     wikiResources?: ResolvedWikiResources;
     readingSnapshot: ReadingSnapshot;
@@ -885,6 +886,14 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         includeTableOfContents
       });
 
+      const diagrams = await exportRuntime.materializeContributedBlocks(exportRender.htmlDocument, snapshot, format, session.renderExportBlocks);
+      exportRender.htmlDocument = diagrams.html;
+      if (diagrams.warnings.length) {
+        void showTimedWarningMessage(snapshot.uiLanguage === 'zh-CN'
+          ? `有 ${diagrams.warnings.length} 个图块未能导出为图形，已保留源码：${diagrams.warnings.slice(0, 3).join('；')}`
+          : `${diagrams.warnings.length} diagram(s) retained source: ${diagrams.warnings.slice(0, 3).join('; ')}`);
+      }
+
       if (format === 'html') {
         report('writingHtml');
         await exportRuntime.writeHtmlExport({
@@ -1184,6 +1193,7 @@ function unwrapExportRuntimeModule(mod: unknown): ExportRuntimeModule {
     if (
       candidate &&
       typeof candidate.renderExportHtmlDocument === 'function' &&
+      typeof candidate.materializeContributedBlocks === 'function' &&
       typeof candidate.renderPreviewDocument === 'function' &&
       typeof candidate.writeHtmlExport === 'function' &&
       typeof candidate.renderPdfFromHtmlExport === 'function'

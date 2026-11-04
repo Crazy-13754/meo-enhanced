@@ -90,6 +90,8 @@ import type { PreviewRenderResponse } from '../protocol/previewRender';
 import type { PreviewDocumentResponse } from '../protocol/previewDocument';
 import type { PreviewDocumentOperation, PreviewDocumentResult } from '../foundation/previewDocument';
 import type { ReadingSnapshot } from '../protocol/exportSnapshot';
+import { createBlockExportTransport } from '../host/blockExportTransport';
+import type { BlockExportPayload, BlockExportResult } from '../protocol/blockExport';
 import { createExportSnapshotTransport } from '../host/exportSnapshotTransport';
 import { respondToDocumentSessionRequest } from '../host/documentSessionRequestHandler';
 import { createVscodeDocumentReloadAdapter } from '../host/vscodeDocumentReloadAdapter';
@@ -212,6 +214,7 @@ export type PanelSession = {
   gitDocumentState: GitDocumentState;
   ensureInitDelivered: () => Promise<void>;
   requestExportSnapshot: () => Promise<ReadingSnapshot>;
+  renderExportBlocks: (payload: BlockExportPayload) => Promise<readonly BlockExportResult[]>;
   refreshGitBaseline: (options?: GitBaselineRefreshOptions) => void;
   getGitRepoRoot: () => string | null;
 };
@@ -677,6 +680,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const exportSnapshotTransport = createExportSnapshotTransport(postToWebview);
+  const blockExportTransport = createBlockExportTransport(postToWebview);
 
   const postFocusEditor = async (): Promise<void> => {
     if (!webviewReady) {
@@ -697,6 +701,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     gitDocumentState,
     ensureInitDelivered,
     requestExportSnapshot,
+    renderExportBlocks: blockExportTransport.request,
     refreshGitBaseline,
     getGitRepoRoot: () => gitDocumentState.getRepoRoot()
   };
@@ -1014,6 +1019,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await postToWebview(response);
         return;
       }
+      case 'blockExportResult':
+        blockExportTransport.accept(raw);
+        return;
       case 'exportSnapshotResult':
         exportSnapshotTransport.accept(raw);
         return;
@@ -1324,6 +1332,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     }), 'disposeDraftRecovery');
 
     exportSnapshotTransport.close('The editor was closed before export completed.');
+    blockExportTransport.close();
     messageSubscription.dispose();
     documentChangeSubscription.dispose();
     documentSaveSubscription.dispose();

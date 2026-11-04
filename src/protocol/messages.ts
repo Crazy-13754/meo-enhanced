@@ -1,3 +1,4 @@
+import { decodeBlockExportRequest, decodeBlockExportResponse, type BlockExportRequest, type BlockExportResponse } from './blockExport';
 import { decodeDocumentViewsChanged, type DocumentViewsChanged } from './documentViews';
 import { decodeExtensionFeaturesRequest, decodeExtensionFeaturesEvent, type ExtensionFeaturesRequest, type ExtensionFeaturesEvent } from './extensionFeatures';
 import { decodeDocumentContentRequest, decodeDocumentContentResponse, type DocumentContentRequest, type DocumentContentResponse } from './documentContent';
@@ -55,7 +56,8 @@ export type WebviewToHostMessage =
   | SaveDocumentAsRequest
   | PreviewRenderRequest
   | PreviewDocumentRequest
-  | ExportSnapshotResponse;
+  | ExportSnapshotResponse
+  | BlockExportResponse;
 
 export type HostToWebviewMessage =
   | ExtensionFeaturesEvent
@@ -90,6 +92,7 @@ export type HostToWebviewMessage =
   | PreviewRenderResponse
   | PreviewDocumentResponse
   | ExportSnapshotRequest
+  | BlockExportRequest
   | GitBaselineChangedEvent;
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
@@ -117,7 +120,8 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
     ?? decodeSaveDocumentAsRequest(value)
     ?? decodePreviewRenderRequest(value)
     ?? decodePreviewDocumentRequest(value)
-    ?? decodeExportSnapshotResponse(value);
+    ?? decodeExportSnapshotResponse(value)
+    ?? decodeBlockExportResponse(value);
 }
 
 export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage | null {
@@ -154,5 +158,6 @@ export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage
     ?? decodePreviewRenderResponse(value)
     ?? decodePreviewDocumentResponse(value)
     ?? decodeExportSnapshotRequest(value)
+    ?? decodeBlockExportRequest(value)
     ?? decodeGitBaselineChangedEvent(value);
 }

@@ -1,5 +1,7 @@
 import { createExtensionFeatureSettings } from './adapters/extensionFeatureSettings';
 import { mountDocumentViews } from './documentViews';
+import { createBlockExportAdapter } from './adapters/blockExportAdapter';
+import { renderExportBlocks } from './helpers/blockExport';
 import { createDocumentBlocks } from './documentBlocks';
 import { StateEffect } from '@codemirror/state';
 import { documentBlocksFacet } from './editor/documentBlocks';
@@ -3588,7 +3590,10 @@ const handleInit = (message: InitMessage) => {
   findPanelController.updateFindStatusSummary();
 };
 
+const blockExportAdapter = createBlockExportAdapter(message => vscode.postMessage(message),
+  (payload, signal) => renderExportBlocks(payload, text => blockContentTransport.render(text), signal));
 const exportAdapter = createExportWebviewAdapter({
+  getBlockRenderers: documentBlocks.getDescriptors,
   postMessage: (message) => vscode.postMessage(message),
   getCurrentText: getCurrentEditorText,
   whenDocumentIdle: () => documentSessionAdapter.whenIdle(),
@@ -4088,6 +4093,7 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (blockExportAdapter.accept(message)) return;
   if (exportAdapter.accept(message)) {
     return;
   }
@@ -4183,6 +4189,7 @@ window.addEventListener('beforeunload', () => {
   documentSaveAsTransport.dispose();
   previewAdapter.dispose();
   exportAdapter.dispose();
+  blockExportAdapter.dispose();
   editorFocusController.dispose();
   changesReviewControl.destroy();
   if (pendingEditorSurfaceRecoveryRaf !== null) {

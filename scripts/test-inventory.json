@@ -244,6 +244,11 @@
       "kind": "targeted",
       "command": "MEO_EXTRAS_DIR=<companion-directory> bun scripts/test-document-views-browser.ts [--dark] [--blocks-only]",
       "reason": "Requires the separately built Markmap companion; verifies real rendering, updates, layout, navigation and removal. --blocks-only covers embedded Live/Preview blocks, fullscreen folds, PNG copying and preset fallback."
+    },
+    "scripts/test-block-export-browser.ts": {
+      "kind": "targeted",
+      "command": "MEO_EXTRAS_DIR=<companion-directory> bun scripts/test-block-export-browser.ts",
+      "reason": "Requires separately built Extras; real Markmap and PlantUML plus a third renderer through the export adapter and actual HTML/PDF/Word files."
     }
   },
   "repeats": [
@@ -464,7 +469,8 @@
       "scripts/test-webview-image-src.ts",
       "scripts/test-webview-strict-config.ts",
       "scripts/test-wiki-paths.ts",
-      "scripts/test-wiki-resources.ts"
+      "scripts/test-wiki-resources.ts",
+      "scripts/test-block-export.ts"
     ],
     "exclusive": [
       "scripts/test-architecture-shared-module-contracts.ts",
@@ -760,7 +766,8 @@
       "scripts/test-vsix-privacy.ts",
       "scripts/test-webview-search-controls.ts",
       "scripts/test-webview-viewport.ts",
-      "scripts/test-wiki-production.ts"
+      "scripts/test-wiki-production.ts",
+      "scripts/test-block-export-browser.ts"
     ]
   }
 }

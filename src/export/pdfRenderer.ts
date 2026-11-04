@@ -107,6 +107,11 @@ export async function materializeDocxBodyFromHtmlExport(options: HeadlessExportO
   return withPreparedExportPage(options, async (page) => {
     await page.evaluate(() => {
       const root = document.querySelector('.meo-export-doc')!;
+      // Bound rasterization itself, not only the eventual Word image dimensions.
+      for (const image of Array.from(root.querySelectorAll<HTMLElement>('.meo-export-contributed > img'))) {
+        image.style.maxHeight = `${((297 - 40) / 25.4) * 96 - 32}px`;
+        image.style.width = 'auto';
+      }
       const transparent = (color: string) => color === 'transparent'
         || /^rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/.test(color) || /\/\s*0(?:\.0+)?\s*\)$/.test(color);
       const entries = Array.from(root.querySelectorAll<HTMLElement>('*')).map(element => {
@@ -132,7 +137,7 @@ export async function materializeDocxBodyFromHtmlExport(options: HeadlessExportO
         }
       }
     });
-    const handles = await page.$$('.meo-export-mermaid.is-rendered, .meo-export-math-display, img');
+    const handles = await page.$$('.meo-export-mermaid.is-rendered, .meo-export-contributed, .meo-export-math-display, img:not(.meo-export-contributed img)');
     for (const [index, handle] of handles.entries()) {
       const bounds = await handle.boundingBox();
       if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue;
@@ -153,7 +158,7 @@ export async function materializeDocxBodyFromHtmlExport(options: HeadlessExportO
           ? element.alt
           : element.getAttribute('data-source') ?? '';
         image.setAttribute('data-meo-docx-materialized', '');
-        if (element.classList.contains('meo-export-mermaid') && !element.classList.contains('is-math')) {
+        if ((element.classList.contains('meo-export-mermaid') || element.classList.contains('meo-export-contributed')) && !element.classList.contains('is-math')) {
           // Word cannot split a drawing across pages. Match docxRuntime's A4 / 20mm
           // margins, retaining space for the image paragraph and its spacing.
           const maximumHeight = ((297 - 40) / 25.4) * 96 - 32;
@@ -207,13 +212,13 @@ export async function preparePdfPagination(page: any, pageHeight = PDF_VIEWPORT.
     }
 
     for (const diagram of Array.from(
-      documentRoot.querySelectorAll<HTMLElement>('.meo-export-mermaid.is-rendered:not(.is-math)')
+      documentRoot.querySelectorAll<HTMLElement>('.meo-export-mermaid.is-rendered:not(.is-math), .meo-export-contributed')
     )) {
       const preceding = diagram.previousElementSibling as HTMLElement | null;
       const description = preceding?.matches('p') && outerHeight(preceding) <= contentHeight * 0.15
         ? preceding : null;
       const heading = (description?.previousElementSibling ?? preceding) as HTMLElement | null;
-      const graphic = diagram.querySelector('.meo-export-mermaid-svg > svg') as SVGSVGElement | null;
+      const graphic = diagram.querySelector('.meo-export-mermaid-svg > svg, :scope.meo-export-contributed > img') as SVGSVGElement | HTMLImageElement | null;
       if (!graphic) continue;
 
       const graphicHeight = graphic.getBoundingClientRect().height;

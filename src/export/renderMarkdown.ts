@@ -96,6 +96,7 @@ export type RenderMarkdownOptions = {
   showComments?: boolean;
   /** Standalone exports inject the same Shiki token presentation used by Live and Preview. */
   highlightCode?: (source: string, language: string) => string;
+  exportBlockLanguages?: readonly string[];
   /** Selects rendering semantics for Preview and HTML/PDF export. */
   preset?: PreviewPresetId;
   presetDefinition?: PreviewPresetDefinition;
@@ -266,13 +267,15 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     const languageLabel = language && (!band || band.first)
       ? `<div class="meo-export-code-language-label">${escapeHtml(language)}</div>`
       : '';
+    const exportAttributes = !github && codeBlock.type === 'fence' && options.exportBlockLanguages?.includes(language)
+      ? ` data-meo-export-language="${escapeHtmlAttr(language)}" data-meo-export-source="${Buffer.from(source, 'utf8').toString('base64')}"` : '';
     const fenceStart = codeBlock.type === 'fence' && (!band || band.first);
     const contentLines = source ? source.split('\n').length - (source.endsWith('\n') ? 1 : 0) : 0;
     const fenceEnd = codeBlock.type === 'fence' && (band
       ? band.last && Number(sourceEndLine) > band.lines.at(-1)!
       : Boolean(codeBlock.map && codeBlock.map[1] - codeBlock.map[0] > contentLines + 1));
     return [
-      `<div class="meo-export-code-block-wrap"${sourceAttrs}${fenceStart ? ' data-meo-code-fence-start="true"' : ''}${fenceEnd ? ' data-meo-code-fence-end="true"' : ''}${band ? ` data-meo-code-id="${band.id}" data-meo-code-offset="${band.offset}" data-meo-code-digits="${band.digits}" data-meo-code-part="${band.first ? 'start' : band.last ? 'end' : 'middle'}"` : ''}>`,
+      `<div class="meo-export-code-block-wrap"${sourceAttrs}${exportAttributes}${fenceStart ? ' data-meo-code-fence-start="true"' : ''}${fenceEnd ? ' data-meo-code-fence-end="true"' : ''}${band ? ` data-meo-code-id="${band.id}" data-meo-code-offset="${band.offset}" data-meo-code-digits="${band.digits}" data-meo-code-part="${band.first ? 'start' : band.last ? 'end' : 'middle'}"` : ''}>`,
       languageLabel,
       `<pre class="meo-export-code-block"><code${className}>${renderHighlightedCodeLines(highlighted, source, options.target, band, codeBlock.meta?.meoSourceLines)}</code></pre>`,
       '</div>'
