@@ -1,5 +1,25 @@
 {
   "separate": {
+    "scripts/test-document-content.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-document-content.ts",
+      "reason": "Shared ordinary Markdown for optional views: nested cell semantics, original source positions, inert resources, typed protocol and cancellation."
+    },
+    "scripts/test-document-statistics-selection.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-document-statistics-selection.ts",
+      "reason": "Real pointer rectangular and native cell selections through the production statistics worker, covering mixed-language cell combinations."
+    },
+    "scripts/test-vscode-document-statistics.cjs": {
+      "kind": "native",
+      "command": "VS Code --extensionTestsPath=scripts/test-vscode-document-statistics.cjs (MEO_STATISTICS_OUTPUT and MEO_STATISTICS_BROWSER_URL)",
+      "reason": "Real workbench status bar, worker delivery, Live/Source/Preview, native cell selection, split activity, disposal and bilingual screenshots."
+    },
+    "scripts/test-document-statistics.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-document-statistics.ts",
+      "reason": "Document word-count semantics, partial source selections, protocol validation, active panel visibility and large-document index."
+    },
     "scripts/test-editor-loading-presentation.ts": {
       "kind": "targeted",
       "command": "bun scripts/test-editor-loading-presentation.ts",
@@ -229,6 +249,36 @@
       "kind": "targeted",
       "command": "bun scripts/test-native-input-delivery.ts",
       "reason": "Native acceptance driver preflight: real browser pointer receipts and negative controls; optional --browser-url attaches to an already scoped disposable Workbench. External application/OS acceptance remains separate, so this driver contract is not part of quick."
+    },
+    "scripts/test-document-views.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-document-views.ts",
+      "reason": "Optional document view registration, disposal, allowed resource paths and protocol validation."
+    },
+    "scripts/test-document-views-browser.ts": {
+      "kind": "targeted",
+      "command": "MEO_EXTRAS_DIR=<companion-directory> bun scripts/test-document-views-browser.ts [--dark] [--blocks-only | --catalog-only]",
+      "reason": "Requires the separately built Markmap companion; verifies real rendering, updates, layout, navigation and removal. --blocks-only covers embedded Live/Preview blocks, fullscreen folds, PNG copying and preset fallback. --catalog-only covers repeated enable/disable updates with bounded configuration, preserved source/selection and lazy resources in ordinary/optimized documents."
+    },
+    "scripts/test-block-export-browser.ts": {
+      "kind": "targeted",
+      "command": "MEO_EXTRAS_DIR=<companion-directory> bun scripts/test-block-export-browser.ts",
+      "reason": "Requires separately built Extras; real Markmap and PlantUML plus a third renderer through the export adapter and actual HTML/PDF/Word files."
+    },
+    "scripts/test-workspace-documents.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-workspace-documents.ts",
+      "reason": "Contributed workspace documents: shared Markdown list source ranges, protocol validation, scoped request cancellation and idempotent document operations."
+    },
+    "scripts/test-workspace-documents-host.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-workspace-documents-host.ts",
+      "reason": "Native workspace adapter: scope validation, undiscovered-path notification privacy, stale edit rejection, unsaved documents, CRLF, edit routing and lifecycle cleanup."
+    },
+    "scripts/test-task-overview-browser.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-task-overview-browser.ts",
+      "reason": "Optional Extras task view against real CodeMirror, workspace adapter and background Markdown worker: current/cross-file history, native edits, filters, language, narrow layout and large files; requires MEO_EXTRAS_DIR."
     }
   },
   "repeats": [
@@ -277,6 +327,8 @@
   ],
   "resources": {
     "process": [
+      "scripts/test-document-content.ts",
+      "scripts/test-document-statistics.ts",
       "scripts/test-appearance-settings.ts",
       "scripts/test-appearance-webview-adapter.ts",
       "scripts/test-browser-discovery.ts",
@@ -306,6 +358,7 @@
       "scripts/test-document-session-replacement.ts",
       "scripts/test-document-session-webview-adapter.ts",
       "scripts/test-document-session.ts",
+      "scripts/test-document-views.ts",
       "scripts/test-docx-export-runtime.ts",
       "scripts/test-draft-recovery-transfer-budget.ts",
       "scripts/test-draft-recovery-transport.ts",
@@ -447,9 +500,14 @@
       "scripts/test-webview-image-src.ts",
       "scripts/test-webview-strict-config.ts",
       "scripts/test-wiki-paths.ts",
-      "scripts/test-wiki-resources.ts"
+      "scripts/test-wiki-resources.ts",
+      "scripts/test-block-export.ts",
+      "scripts/test-workspace-documents.ts",
+      "scripts/test-workspace-documents-host.ts"
     ],
     "exclusive": [
+      "scripts/test-document-statistics-selection.ts",
+      "scripts/test-vscode-document-statistics.cjs",
       "scripts/test-architecture-shared-module-contracts.ts",
       "scripts/test-background-markdown-structure.ts",
       "scripts/test-background-shiki-production.ts",
@@ -485,6 +543,7 @@
       "scripts/test-document-session-cutover.ts",
       "scripts/test-document-sync-recovery.ts",
       "scripts/test-document-toolbar.ts",
+      "scripts/test-document-views-browser.ts",
       "scripts/test-docx-export-browser.ts",
       "scripts/test-editing-features-production.ts",
       "scripts/test-editor-background-theme.ts",
@@ -552,9 +611,9 @@
       "scripts/test-line-number-typing-stability.ts",
       "scripts/test-link-candidates-production.ts",
       "scripts/test-link-cursor-production.ts",
-      "scripts/test-linked-image-tooltips-production.ts",
       "scripts/test-link-destinations-production.ts",
       "scripts/test-link-status-work-budget.ts",
+      "scripts/test-linked-image-tooltips-production.ts",
       "scripts/test-linked-preview-cold-scroll.ts",
       "scripts/test-list-editing-transaction.ts",
       "scripts/test-list-layout-interaction.ts",
@@ -622,8 +681,8 @@
       "scripts/test-preview-deferred-math.ts",
       "scripts/test-preview-font-refresh-browser.ts",
       "scripts/test-preview-giant-code-highlight.ts",
-      "scripts/test-preview-image-layout.ts",
       "scripts/test-preview-image-actions.ts",
+      "scripts/test-preview-image-layout.ts",
       "scripts/test-preview-layout.ts",
       "scripts/test-preview-links.ts",
       "scripts/test-preview-loading-presentation.ts",
@@ -742,7 +801,9 @@
       "scripts/test-vsix-privacy.ts",
       "scripts/test-webview-search-controls.ts",
       "scripts/test-webview-viewport.ts",
-      "scripts/test-wiki-production.ts"
+      "scripts/test-wiki-production.ts",
+      "scripts/test-block-export-browser.ts",
+      "scripts/test-task-overview-browser.ts"
     ]
   }
 }

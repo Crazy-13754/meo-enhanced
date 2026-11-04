@@ -63,6 +63,7 @@ const requiredFiles = [
   'webview/dist/git-diff-worker.js',
   'webview/dist/shiki-highlight-worker.js',
   'webview/dist/markdown-parse-worker.js',
+  'webview/dist/document-statistics-worker.js',
   'webview/dist/index.css',
   'webview/dist/logo.png',
   'webview/dist/mermaid.min.js',

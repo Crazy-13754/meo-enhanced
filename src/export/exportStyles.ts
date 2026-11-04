@@ -33,7 +33,7 @@ export function buildPreviewStyles(
 
 /* Preview shares Live's borderless block surfaces. */
 pre.meo-export-code-block,
-.meo-export-mermaid {
+.meo-export-mermaid, .meo-export-graph {
   border: 0;
   background: var(--meo-code-bg);
 }`;
@@ -1150,11 +1150,16 @@ th:empty::before {
   margin-bottom: 0;
 }
 
-.meo-export-mermaid {
+.meo-export-mermaid, .meo-export-graph {
+  cursor: default;
   margin: 0 0 1em;
   border-radius: 6px;
   border: 1px solid var(--meo-code-border);
   background: var(--meo-code-bg);
+}
+.meo-export-mermaid .meo-export-mermaid-svg,
+.meo-export-mermaid .meo-export-mermaid-svg * {
+  cursor: default !important;
 }
 .meo-export-mermaid .meo-export-mermaid-svg {
   display: flex;

@@ -1,3 +1,4 @@
+import type { DocumentViewDescriptor } from '../../../src/protocol/documentViews';
 import type { EditorStyleEnvironment } from '../../../src/protocol/editorStyleEnvironment';
 import type { HostToWebviewMessage, WebviewToHostMessage } from '../../../src/protocol/messages';
 import type { PreviewAppearance } from '../../../src/protocol/previewRender';
@@ -9,6 +10,7 @@ import type { PreviewPresetId } from '../../../src/foundation/previewPresets';
 
 export type ExportWebviewAdapterDependencies = {
   readonly postMessage: (message: WebviewToHostMessage) => void;
+  readonly getBlockRenderers?: () => readonly DocumentViewDescriptor[];
   readonly getCurrentText: () => string;
   readonly whenDocumentIdle: () => Promise<void>;
   readonly getPreviewAppearance: () => PreviewAppearance;
@@ -82,6 +84,7 @@ export function createExportWebviewAdapter(
             ok: true,
             value: Object.freeze({
               snapshotId: requestId,
+              ...(dependencies.getBlockRenderers ? { blockRenderers: structuredClone(dependencies.getBlockRenderers()) } : {}),
               text: dependencies.getCurrentText(),
               appearance: dependencies.getPreviewAppearance(),
               uiLanguage: dependencies.getUiLanguage(),

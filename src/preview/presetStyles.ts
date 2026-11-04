@@ -42,6 +42,7 @@ export function buildPresetPreviewStyles(
     const custom = definition.custom;
     const effective = resolvePresetAppearance(definition, appearance, appearance);
     return `${buildPresetPreviewStyles(custom.base, baseEnvironment, effective, _contentWidth)}
+.meo-export-mermaid:not(.is-math), .meo-export-graph { background: transparent; border: 0; }
 body, .meo-export-page, .meo-export-doc { background: var(--meo-bg); }
 .meo-export-doc { color: var(--meo-fg); }
 html { scrollbar-color: color-mix(in srgb, var(--meo-fg) 38%, transparent) var(--meo-bg); }

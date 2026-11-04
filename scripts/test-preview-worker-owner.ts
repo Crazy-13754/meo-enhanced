@@ -40,6 +40,9 @@ try {
         })]);
         assert.match(first.html, /<strong>prose<\\/strong>/); assert.match(second.html, /<table/);
         assert.match(second.html, /katex/); assert.match(second.html, /hljs-keyword/);
+        const content = await reader.renderContent('# Shared\\n\\n| Cell |\\n| --- |\\n| > Outer<br>> > Inner |');
+        assert.match(content.html, /<blockquote>/); assert.match(content.html, /Inner/);
+        assert.equal((content.html.match(/<blockquote>/g) || []).length, 2);
         assert.equal(creates, 1, 'full Preview panels share the existing renderer');
         await pause(120); assert.equal(live.size, 1, 'full Preview ownership survives the idle deadline');
         await reader.release('panel-a'); await pause(120); assert.equal(live.size, 1, 'releasing one panel preserves its peer');

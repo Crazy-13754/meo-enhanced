@@ -1,3 +1,5 @@
+import { documentBlocksFacet } from '../editor/documentBlocks';
+import { createGraphDiagramWidget, type GraphDiagramWidget, type GraphRenderer } from './graphDiagramWidget';
 import { StateField, EditorState, type Annotation, type ChangeDesc } from '@codemirror/state';
 import { mapLiveWidgetPositions } from '../editor/liveWidgetPositions';
 import { Decoration, EditorView, WidgetType, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
@@ -14,7 +16,7 @@ import { go } from '@codemirror/lang-go';
 import { java } from '@codemirror/lang-java';
 import { sql } from '@codemirror/lang-sql';
 import { markdownLanguage } from '@codemirror/lang-markdown';
-import { MermaidDiagramWidget, getFencedCodeContent } from './mermaidDiagram';
+import { getFencedCodeContent } from './mermaidDiagram';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
 import { getUiStrings } from '../application/uiLanguage';
 import { UiLanguageSensitiveWidget, uiLanguageFacet } from '../editor/uiLanguage';
@@ -823,12 +825,12 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
     const startLine = state.doc.lineAt(anchor).number, endLine = state.doc.lineAt(Math.max(anchor, to - 1)).number;
     if (anchor === this.anchor && to === this.blockTo && startLine === this.startLine && endLine === this.endLine) return this;
     const next = new MermaidPreviewWidget(this.diagramText, this.fullBlockText, anchor, to, startLine, endLine,
-      this.indentColumns, this.presentationFactory, this.uiLanguage, this.viewportState, this.diagramWidget);
+      this.indentColumns, this.presentationFactory, this.uiLanguage, this.viewportState, this.diagramWidget, this.renderer);
     next[renderedBlockPreviewHeight].seed(this[renderedBlockPreviewHeight]);
     return next;
   }
   readonly [renderedBlockPreviewHeight]: RenderedBlockPreviewHeight;
-  private diagramWidget: MermaidDiagramWidget;
+  private diagramWidget: GraphDiagramWidget;
   private readonly toolbarWidget: WidgetType;
 
   constructor(
@@ -842,19 +844,20 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
     private readonly presentationFactory: ReturnType<typeof getMermaidDiagramPresentationFactory>,
     private readonly uiLanguage: UiLanguage,
     private readonly viewportState: ReturnType<typeof getMermaidBlockViewport>,
-    mappedPresentation?: Pick<MermaidDiagramWidget, 'themeSignature' | 'measuredContentWidth'>
+    mappedPresentation?: Pick<GraphDiagramWidget, 'themeSignature' | 'measuredContentWidth'>,
+    private readonly renderer?: GraphRenderer
   ) {
     super();
     this[renderedBlockPreviewHeight] = new RenderedBlockPreviewHeight(JSON.stringify([
       'mermaid', diagramText, fullBlockText, liveBlockIndentKey(indentColumns), uiLanguage
     ]));
-    this.diagramWidget = new MermaidDiagramWidget(diagramText, startLine, endLine, {
+    this.diagramWidget = createGraphDiagramWidget(diagramText, startLine, endLine, {
       presentationFactory,
       viewportState,
       indentColumns: 0,
       uiLanguage,
       mappedPresentation
-    });
+    }, this.renderer);
     this.toolbarWidget = createMermaidToolbarWidget(
       anchor,
       startLine,
@@ -889,13 +892,13 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
   toDOM(view: EditorView): HTMLElement {
     // CodeMirror can mount replacement DOM before destroying the old shell.
     // Each shell must retain its own renderer and visibility subscriptions.
-    const diagramWidget = new MermaidDiagramWidget(this.diagramText, this.startLine, this.endLine, {
+    const diagramWidget = createGraphDiagramWidget(this.diagramText, this.startLine, this.endLine, {
       presentationFactory: this.presentationFactory,
       viewportState: this.viewportState,
       indentColumns: 0,
       uiLanguage: this.uiLanguage,
       mappedPresentation: this.diagramWidget
-    });
+    }, this.renderer);
     const height = this[renderedBlockPreviewHeight].height;
     if (height > 0) {
       diagramWidget.measuredHeight = height;
@@ -906,7 +909,7 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
     delete content.dataset.meoRenderedBlockEndLine;
     const shell = createRenderedBlockPreviewShell({
       kind: 'mermaid',
-      language: 'mermaid',
+      language: this.renderer?.language ?? 'mermaid',
       startLine: this.startLine,
       endLine: this.endLine,
       indentColumns: this.indentColumns,
@@ -926,6 +929,7 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
     // The mapped camera proves this is the same block, including equal-source
     // neighbours; actual content/context changes keep the authoritative rebuild.
     if (!previous || !mounted || !this.hasSameUiLanguageEpoch(previous)
+      || this.renderer?.language !== previous.renderer?.language || this.renderer?.port !== previous.renderer?.port
       || this.uiLanguage !== previous.uiLanguage || this.presentationFactory !== previous.presentationFactory
       || this.viewportState !== previous.viewportState || this.diagramText !== previous.diagramText
       || this.fullBlockText !== previous.fullBlockText
@@ -939,6 +943,7 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
     // not request presentation, re-read theme styles or disturb its observer.
     mounted.startLine = this.startLine;
     mounted.endLine = this.endLine;
+    if (this.renderer) mounted.updateSource(this.diagramText, this.startLine, this.endLine);
     this[renderedBlockPreviewHeight].seed(previous[renderedBlockPreviewHeight]);
     shell.__meoMermaidPreviewWidget = this;
     return true;
@@ -959,7 +964,7 @@ class MermaidPreviewWidget extends UiLanguageSensitiveWidget {
 }
 
 type MermaidPreviewShellElement = HTMLElement & {
-  __meoMermaidPreviewDiagramWidget?: MermaidDiagramWidget;
+  __meoMermaidPreviewDiagramWidget?: GraphDiagramWidget;
   __meoMermaidPreviewWidget?: MermaidPreviewWidget;
 };
 
@@ -1005,7 +1010,7 @@ export function addMermaidDiagram(
     if (mode.layout === 'stacked') {
       builder.push(Decoration.line({ class: 'meo-mermaid-source-join' }).range(endLine.from));
       builder.push(Decoration.widget({
-        widget: new MermaidSourcePreviewWidget(anchor, diagramText, startLine.number, endLine.number, indentColumns, state.facet(uiLanguageFacet), getMermaidBlockViewport(state, anchor)),
+        widget: new MermaidSourcePreviewWidget(anchor, diagramText, startLine.number, endLine.number, indentColumns, state.facet(uiLanguageFacet), getMermaidBlockViewport(state, anchor), getFencedCodeInfo(state, node) ?? 'mermaid'),
         block: true, side: 1
       }).range(endLine.to));
     } else {
@@ -1021,7 +1026,9 @@ export function addMermaidDiagram(
   }
   const widget = new MermaidPreviewWidget(diagramText, fullBlockText, anchor, endLine.to,
     startLine.number, endLine.number, indentColumns, getMermaidDiagramPresentationFactory(state),
-    state.facet(uiLanguageFacet), getMermaidBlockViewport(state, anchor));
+    state.facet(uiLanguageFacet), getMermaidBlockViewport(state, anchor), undefined,
+    state.facet(documentBlocksFacet)?.supports(getFencedCodeInfo(state, node) ?? '')
+      ? { language: getFencedCodeInfo(state, node)!, port: state.facet(documentBlocksFacet)! } : undefined);
   builder.push(
     Decoration.replace({
       widget,

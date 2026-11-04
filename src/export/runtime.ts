@@ -1,4 +1,6 @@
 import { prepareMarkdownPresentation, renderMarkdownToHtml } from './renderMarkdown';
+import { materializeContributedBlocks } from './contributedBlocks';
+import { renderDocumentContent } from './documentContent';
 import { buildExportHtmlDocument as buildStandaloneExportHtmlDocument } from './exportHtmlTemplate';
 import { buildExportStyles, type ExportStyleEnvironment } from './exportStyles';
 import { writeHtmlExport } from './htmlExport';
@@ -60,6 +62,7 @@ async function renderExportHtmlDocument(
     rendered = renderMarkdownToHtml({
       wikiResources: options.wikiResources,
       markdownText: snapshot.text,
+      exportBlockLanguages: snapshot.blockRenderers?.flatMap(view => view.codeBlockLanguages ?? []),
       markdownFilePath: options.sourceDocumentPath,
       imageSearchRoots: options.imageSearchRoots,
       workspaceRootPath: options.workspaceRootPath,
@@ -203,6 +206,8 @@ async function importPresetCodeTheme(name: string): Promise<CodeThemeDto> {
 }
 
 const exportRuntime = {
+  materializeContributedBlocks,
+  renderDocumentContent,
   renderExportHtmlDocument,
   renderPreviewDocument,
   writeHtmlExport,

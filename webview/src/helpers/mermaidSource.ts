@@ -5,6 +5,7 @@ import { getCodeBlockSourceLines, parseBlockLinePrefix } from './blockIndent';
 import { getFencedCodeInfo, currentSyntaxTree } from './markdownSyntax';
 import { insertLiteralSourceNewline } from '../editor/indentedCodeEditing';
 import { completedBackgroundMarkdownStructure } from '../editor/backgroundMarkdownStructure';
+import { isGraphBlockLanguage } from '../editor/documentBlocks';
 
 export function mermaidSourceAt(state: EditorState, position = state.selection.main.head) {
   const line = state.doc.lineAt(Math.max(0, Math.min(position, state.doc.length)));
@@ -13,7 +14,8 @@ export function mermaidSourceAt(state: EditorState, position = state.selection.m
   let node: SyntaxNode | null = tree.resolveInner(line.to, -1);
   for (; node; node = node.parent) {
     if (node.name !== 'FencedCode') continue;
-    if (getFencedCodeInfo(state, { node }) !== 'mermaid') return null;
+    const language = getFencedCodeInfo(state, { node })?.split(/\s+/)[0].toLowerCase();
+    if (!isGraphBlockLanguage(state, language)) return null;
     const opening = state.doc.lineAt(node.from),
       closing = state.doc.lineAt(Math.max(node.from, node.to - 1));
     const lines = getCodeBlockSourceLines(state, node).filter((line) => !line.isFence && line.from > opening.from);
@@ -21,6 +23,7 @@ export function mermaidSourceAt(state: EditorState, position = state.selection.m
     const first = lines[0]!,
       last = lines[lines.length - 1]!;
     return {
+      language: language!,
       anchor: opening.from,
       from: node.from,
       to: node.to,

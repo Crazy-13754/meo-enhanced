@@ -1,6 +1,15 @@
+import { createExtensionFeatureSettings } from './adapters/extensionFeatureSettings';
+import { createWorkspaceDocumentsTransport, createDocumentOperationResponder } from './adapters/workspaceDocuments';
+import { mountDocumentViews } from './documentViews';
+import { createBlockExportAdapter } from './adapters/blockExportAdapter';
+import { renderExportBlocks } from './helpers/blockExport';
+import { createDocumentBlocks } from './documentBlocks';
+import { createDocumentContentTransport } from './adapters/documentContentTransport';
+import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
 import { version as productVersion } from '../../package.json';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
+import { createDocumentStatisticsReporter } from './adapters/documentStatistics';
 import { createEditorFontWheel } from './adapters/editorFontWheel';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
 import { createImageStorageTransport } from './adapters/imageStorageTransport';
@@ -1211,6 +1220,7 @@ const applyUiLanguage = (language: UiLanguage): void => {
   preferencesLabel.textContent = language === 'zh-CN' ? '外观 · 输入 · 快捷键' : 'Appearance · Input · Shortcuts';
   settingsWindow?.setLanguage(language);
   activeUiLanguage = language;
+  documentBlocks.refreshAppearance();
   activeUiStrings = strings;
   updateTableGridHighlight(selectedTableCols, selectedTableRows);
   editor?.setUiLanguage?.(language);
@@ -1395,8 +1405,9 @@ moreToolsWrapper.className = 'more-tools-wrapper';
 moreToolsWrapper.append(moreToolsButton, moreToolsPanel);
 
 const rightToolsSeparator = document.createElement('div');
-rightToolsSeparator.className = 'format-separator preview-hidden-toolbar-control';
+rightToolsSeparator.className = 'format-separator right-tools-separator';
 rightToolsSeparator.setAttribute('role', 'separator');
+rightToolsSeparator.hidden = true;
 
 const setMoreToolsVisible = (visible: boolean) => {
   moreToolsPanel.hidden = !visible;
@@ -1480,9 +1491,8 @@ const presentModePreparation = (mode: 'live' | 'source' | null): void => {
 const sourcePreviewButton = document.createElement('button');
 sourcePreviewButton.type = 'button';
 sourcePreviewButton.className = 'format-button source-preview-button';
-sourcePreviewButton.dataset.tooltip = activeUiStrings.showSidePreview;
-sourcePreviewButton.dataset.tooltipLiveUpdate = 'true';
-sourcePreviewButton.setAttribute('aria-label', activeUiStrings.showSidePreview);
+sourcePreviewButton.dataset.tooltip = activeUiStrings.sidePreview;
+sourcePreviewButton.setAttribute('aria-label', activeUiStrings.sidePreview);
 sourcePreviewButton.setAttribute('aria-pressed', 'false');
 sourcePreviewButton.appendChild(createCodicon('open-preview'));
 rightGroup.insertBefore(sourcePreviewButton, changesControls);
@@ -1615,6 +1625,14 @@ const moveToolbarItemToOverflow = (item: HTMLElement): void => {
 };
 
 const syncToolbarOverflow = () => {
+  // Separate search from preceding actions only when one is actually visible,
+  // including contributed entries in Preview mode.
+  let hasLeadingAction = false;
+  for (let item = rightToolsSeparator.previousElementSibling; item; item = item.previousElementSibling) {
+    const buttons = item.matches('button') ? [item] : Array.from(item.querySelectorAll('button'));
+    if (buttons.some(button => button.getClientRects().length > 0)) { hasLeadingAction = true; break; }
+  }
+  rightToolsSeparator.hidden = !hasLeadingAction;
   const nextLayoutKey = `${toolbar.clientWidth}:${rightGroup.offsetWidth}:${root.dataset.mode ?? ''}:${activeUiLanguage}:${previewController.getPresetState().preset}`;
   if (nextLayoutKey === toolbarOverflowLayoutKey) return;
   toolbarOverflowLayoutKey = nextLayoutKey;
@@ -1756,7 +1774,7 @@ const waitForInitialPreviewPaint = (): Promise<void> => {
       if (!settled && getActiveEditorMode() === 'preview') {
         // A throttled paint callback must not leave the inert Live surface covering Preview.
         editorHost.removeAttribute('data-preview-cover');
-        outlineController?.refreshAppearance();
+        outlineController?.refreshAppearance(); documentViews?.refreshAppearance();
       }
       finish();
     }, 600);
@@ -1764,6 +1782,13 @@ const waitForInitialPreviewPaint = (): Promise<void> => {
 };
 let previewViewportInteractionGeneration = 0;
 const previewFontsTransport = createPreviewFontsTransport(request => vscode.postMessage(request));
+const documentContentTransport = createDocumentContentTransport(request => vscode.postMessage(request));
+const blockContentTransport = createDocumentContentTransport(request => vscode.postMessage(request), 'block');
+const documentBlocks = createDocumentBlocks({
+  renderContent: text => blockContentTransport.render(text), getLanguage: () => activeUiLanguage,
+  getState: () => (vscode.getState() as { documentBlockViews?: unknown } | undefined)?.documentBlockViews,
+  saveState: documentBlockViews => vscode.setState({ ...(vscode.getState() as object ?? {}), documentBlockViews })
+});
 let imageDimensionDocumentId: string | null = null;
 const imageIntrinsicSizes = new Map<string, ImageIntrinsicSize>();
 const acceptImageIntrinsicSizes = (entries: readonly ImageIntrinsicSize[]) => {
@@ -1775,7 +1800,9 @@ const acceptImageIntrinsicSizes = (entries: readonly ImageIntrinsicSize[]) => {
   }
   editor?.setImageIntrinsicSizes(entries);
 };
+let documentViews: ReturnType<typeof mountDocumentViews> | null = null;
 const previewController = createPreviewController({
+  refreshDocumentBlocks: documentBlocks.refreshPreview,
   getImageIntrinsicSize: src => imageIntrinsicSizes.get(imageDimensionSourceKey(src)) ?? null,
   onFontSizeWheel: event => editorFontWheel.handleWheel(event),
   requestFonts: previewFontsTransport.request,
@@ -1791,7 +1818,7 @@ const previewController = createPreviewController({
     persistUiState();
     syncToolbarOverflow();
   },
-  onPaletteChanged: () => outlineController?.refreshAppearance(),
+  onPaletteChanged: () => { outlineController?.refreshAppearance(); documentViews?.refreshAppearance(); documentBlocks.refreshAppearance(); },
   mermaidRenderResources: mermaidDiagramRenderPool,
   // The side Preview is also read-only, even while Source is the active mode.
   onShortcut: event => handleEditorShortcut(event, { ...shortcutHandlerContext, editorSurfaceActive: false }),
@@ -1814,8 +1841,10 @@ const previewController = createPreviewController({
     editorSurface.removeAttribute('data-source-preview-exit-cover');
     const splitWillReveal = pendingSourcePreviewReveal !== null;
     markSourcePreviewSurfaceReady();
-    if (!splitWillReveal) previewController.finishLoadingPresentation();
-    outlineController?.refreshAppearance();
+    // A ready frame must not start a new spinner while split linkage settles.
+    // Preserve an already visible cover until the atomic reveal completes.
+    previewController.finishLoadingPresentation({ keepVisible: splitWillReveal });
+    outlineController?.refreshAppearance(); documentViews?.refreshAppearance();
     if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
     if (getActiveEditorMode() === 'preview') findPanelController.refreshForModeChange();
   },
@@ -1907,15 +1936,7 @@ outlineController = createOutlineController({
         ? editorSurface.hasAttribute('data-source-preview-exit-cover') && position === 'right'
         : !split || position === 'right')
     );
-    const editorStyles = getComputedStyle(editorHost);
-    const content = editorHost.querySelector('.cm-content');
-    const foreground = content ? getComputedStyle(content).color : getComputedStyle(document.body).color;
-    if (!usePreview) return { background: editorStyles.backgroundColor, foreground };
-    const previewStyles = getComputedStyle(previewController.host);
-    return {
-      background: previewStyles.getPropertyValue('--meo-preview-background').trim() || editorStyles.backgroundColor,
-      foreground: previewStyles.getPropertyValue('--meo-preview-foreground').trim() || foreground
-    };
+    return getDocumentSurfacePalette(usePreview);
   },
   onVisibilityRequest: (visible) => {
     vscode.postMessage({ type: 'setOutlineVisible', visible });
@@ -1942,30 +1963,20 @@ outlineController = createOutlineController({
 
 const editorSurface = document.createElement('div');
 editorSurface.className = 'editor-surface';
-const editorLoading = document.createElement('div');
-editorLoading.className = 'editor-loading';
-editorLoading.hidden = true;
-editorLoading.setAttribute('role', 'status');
-editorLoading.setAttribute('aria-live', 'polite');
-const editorLoadingSpinner = document.createElement('span');
-editorLoadingSpinner.className = 'editor-loading-spinner';
-editorLoadingSpinner.setAttribute('aria-hidden', 'true');
-const editorLoadingLabel = document.createElement('span');
-editorLoading.append(editorLoadingSpinner, editorLoadingLabel);
+const editorLoadingPresentation = createLoadingPresentation('editor-loading');
+const editorLoading = editorLoadingPresentation.element;
 editorSurface.append(editorHost, previewController.host, editorLoading);
 let editorInteractive = true;
 let initialEditorPresentationPending = true;
-let pendingEditorLoading: { mode: 'live' | 'source'; intent: number; timer: number | null } | null = null;
+let pendingEditorLoading: { mode: 'live' | 'source'; intent: number } | null = null;
 const refreshEditorLoadingLabel = (): void => {
-  editorLoadingLabel.textContent = pendingEditorLoading?.mode === 'source'
-    ? activeUiStrings.sourceLoading : activeUiStrings.liveLoading;
+  editorLoadingPresentation.setLabel(pendingEditorLoading?.mode === 'source'
+    ? activeUiStrings.sourceLoading : activeUiStrings.liveLoading);
 };
 const finishEditorLoading = (): void => {
   const wasVisible = !editorLoading.hidden;
-  const timer = pendingEditorLoading?.timer;
-  if (timer !== null && timer !== undefined) window.clearTimeout(timer);
+  editorLoadingPresentation.finish();
   pendingEditorLoading = null;
-  editorLoading.hidden = true;
   editorHost.removeAttribute('aria-busy');
   editorHost.inert = !editorInteractive;
   // Inert can move focus to the body. Restore only that lost editor focus;
@@ -1988,25 +1999,24 @@ const beginEditorLoading = (mode: 'live' | 'source'): void => {
   // clearing it here would briefly expose the old, unprepared editor.
   const retainStartupCover = initialEditorPresentationPending && !editorLoading.hidden;
   if (retainStartupCover) {
-    const timer = pendingEditorLoading?.timer;
-    if (timer !== null && timer !== undefined) window.clearTimeout(timer);
+    editorLoadingPresentation.finish(true);
     pendingEditorLoading = null;
   } else finishEditorLoading();
   if (!editorPresentationPending(mode, intent)) return;
-  const loading = { mode, intent, timer: null as number | null };
+  const loading = { mode, intent };
   pendingEditorLoading = loading;
   refreshEditorLoadingLabel();
   // The existing mode intent owns this deadline. Edits and parser publications
   // do not start another loading presentation or restart its quiet window.
-  loading.timer = window.setTimeout(() => {
-    loading.timer = null;
-    if (pendingEditorLoading !== loading) return;
-    if (!editorPresentationPending(mode, intent)) { finishEditorLoading(); return; }
-    editorLoading.hidden = false;
+  editorLoadingPresentation.begin(() => {
+    if (pendingEditorLoading !== loading) return false;
+    if (!editorPresentationPending(mode, intent)) { finishEditorLoading(); return false; }
+    return true;
+  }, () => {
     editorHost.setAttribute('aria-busy', 'true');
     editorHost.inert = true;
     revealInitialShell();
-  }, 200);
+  });
 };
 editorWrapper.replaceChildren(editorSurface, outlineController.sidebar, selectionMenuElements.menu);
 // Keep the shared popup outside toolbar stacking and inside editor focus ownership.
@@ -2015,10 +2025,13 @@ root.replaceChildren(toolbar, editorNoticeBanner, editorWrapper, previewOptionsP
 const editorModeApplication = createEditorModeApplication();
 let editorModeRuntime: EditorModeRuntime;
 let sourcePreviewEnabled = false;
+
 // This preference belongs to one open document session. Keep it out of
 // WebviewUiState so reopening the document starts from synchronized scrolling.
 let sourcePreviewScrollSyncEnabled = true;
 let sourcePreviewPosition = { line: 1, active: false };
+let documentViewPreviewPosition: { line: number; text: string } | null = null;
+let documentViewPreviewPositionTimer: ReturnType<typeof setTimeout> | undefined;
 let splitModeTransition: {
   readonly viewport: EditorModeViewportToken;
   readonly editorScrollTop: number;
@@ -2068,19 +2081,23 @@ const isSidePreviewVisible = (): boolean => (
 const isPreviewSurfaceVisible = (): boolean => (
   getActiveEditorMode() === 'preview' || isSidePreviewVisible()
 );
-const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = false): boolean => (
-  previewController.setSourcePositionMarker({
-    visible: isSidePreviewVisible(),
-    line: sourcePreviewPosition.line,
-    active: sourcePreviewPosition.active
-  }, { revealIfOutside, deferLayout }) === true
-);
+const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = false): boolean => {
+  if (documentViewPreviewPosition && (getActiveEditorMode() !== 'preview'
+    || documentViewPreviewPosition.text !== getCurrentEditorText())) {
+    documentViewPreviewPosition = null;
+    clearTimeout(documentViewPreviewPositionTimer);
+  }
+  const documentPosition = getActiveEditorMode() === 'preview' ? documentViewPreviewPosition : null;
+  return previewController.setSourcePositionMarker({
+    visible: isSidePreviewVisible() || documentPosition !== null,
+    line: documentPosition?.line ?? sourcePreviewPosition.line,
+    active: documentPosition !== null || sourcePreviewPosition.active
+  }, { revealIfOutside, deferLayout }) === true;
+};
 function presentSourcePreviewControls(): void {
   const split = isSidePreviewVisible();
   previewController.setSourcePreviewControls(split, sourcePreviewScrollSyncEnabled);
-  const sourcePreviewLabel = split
-    ? activeUiStrings.hideSidePreview
-    : activeUiStrings.showSidePreview;
+  const sourcePreviewLabel = activeUiStrings.sidePreview;
   sourcePreviewButton.dataset.tooltip = sourcePreviewLabel;
   sourcePreviewButton.setAttribute('aria-label', sourcePreviewLabel);
 
@@ -2134,7 +2151,7 @@ const finishSourcePreviewReveal = (): void => {
     previewController.finishLoadingPresentation();
     previewController.host.inert = false;
     previewController.host.style.removeProperty('visibility');
-    outlineController.refreshAppearance();
+    outlineController.refreshAppearance(); documentViews?.refreshAppearance();
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
       if (reveal.generation === sourcePreviewRevealGeneration && isSidePreviewVisible()) {
         presentSourcePreviewPosition();
@@ -2152,6 +2169,7 @@ const markSourcePreviewEditorReady = (): void => {
   pendingSourcePreviewReveal.editorReady = true;
   finishSourcePreviewReveal();
 };
+let lastBlockPresentation = '';
 const presentPreviewSurface = (
   fullPreview: boolean,
   {
@@ -2163,6 +2181,9 @@ const presentPreviewSurface = (
   } = {}
 ): { readonly split: boolean; readonly visible: boolean } => {
   const split = !fullPreview && isSidePreviewVisible();
+  const blockPresentation = `${getActiveEditorMode()}:${fullPreview}:${split}`;
+  if (lastBlockPresentation !== blockPresentation) documentBlocks.closeFullscreen();
+  lastBlockPresentation = blockPresentation;
   const visible = fullPreview || split;
   const hadSplit = editorSurface.hasAttribute('data-source-preview');
   const splitGeometryChanged = split !== hadSplit;
@@ -2205,7 +2226,7 @@ const presentPreviewSurface = (
     previewAdapter.setActive({ active: true, text: getCurrentEditorText() });
     presentSourcePreviewPosition(false, true);
     previewController.host.inert = true;
-    outlineController.refreshAppearance();
+    outlineController.refreshAppearance(); documentViews?.refreshAppearance();
     return { split, visible };
   }
   cancelSourcePreviewReveal();
@@ -2217,7 +2238,7 @@ const presentPreviewSurface = (
   }
   else editor?.setLinkedPreviewEnabled?.(false);
   presentSourcePreviewPosition(false, true);
-  outlineController.refreshAppearance();
+  outlineController.refreshAppearance(); documentViews?.refreshAppearance();
   return { split, visible };
 };
 const getActiveEditableMode = (): 'live' | 'source' => {
@@ -2475,6 +2496,7 @@ const acknowledgeReadyHandshake = () => {
 };
 
 type WebviewUiState = {
+  documentBlockViews?: unknown;
   previewPresetState?: import('../../src/foundation/previewPresets').PreviewPresetState;
   mode?: 'live' | 'source' | 'preview';
   lastEditableMode?: 'live' | 'source';
@@ -2491,6 +2513,7 @@ const persistUiState = (
   // Do not turn that temporary default into a preference for the next reload.
   if (editorModeApplication.getState().lifecycle !== 'ready') return;
   const state: WebviewUiState = {
+    documentBlockViews: (vscode.getState() as WebviewUiState | undefined)?.documentBlockViews,
     previewPresetState: previewController.getPresetState(),
     mode,
     lastEditableMode,
@@ -2869,6 +2892,9 @@ const runDocumentDerivedUiRefresh = (): void => {
   }
 };
 const scheduleDocumentDerivedUiRefresh = (text: DocumentText): void => {
+  documentViews?.documentChanged();
+  documentBlocks.closeFullscreen();
+  documentStatistics.schedule();
   pendingDocumentDerivedText = text;
   editor?.requestDerivedWork(runDocumentDerivedUiRefresh);
 };
@@ -2879,6 +2905,8 @@ const presentDocumentText = async (
 ): Promise<boolean> => {
   if (!editor) {
     pendingInitialText = text;
+    scheduleDocumentDerivedUiRefresh(text);
+    if (isPreviewSurfaceVisible()) previewAdapter.refreshVisible(text, { preserveViewport: true });
     return true;
   }
 
@@ -2922,6 +2950,25 @@ const presentDocumentText = async (
   scheduleDocumentDerivedUiRefresh(text);
   return true;
 };
+
+const workspaceDocumentsTransport = createWorkspaceDocumentsTransport(message => vscode.postMessage(message));
+const documentOperationResponder = createDocumentOperationResponder({
+  post: message => vscode.postMessage(message), idle: () => documentSessionAdapter.whenIdle(),
+  read: () => editor?.getText() ?? pendingInitialText,
+  edit: operation => { if (!editor) throw new Error('Editor is not ready'); editor.applyContributedEdit(operation); },
+  reveal: async line => {
+    if (getActiveEditorMode() === 'preview') await previewController.revealSourcePosition(line, () => true, 'upper');
+    else editor?.scrollToLine(line, 'upper');
+  }
+});
+window.addEventListener('pagehide', () => { workspaceDocumentsTransport.dispose(); documentOperationResponder.dispose(); }, { once: true });
+const documentStatistics = createDocumentStatisticsReporter(() => {
+  const text = documentSessionAdapter.readCurrentText() ?? pendingInitialText;
+  if (text === null) return null;
+  const selection = getActiveEditorMode() === 'preview' || !editor
+    ? { selections: [], line: null } : editor.readStatisticsSelection();
+  return { text, ...selection };
+}, message => vscode.postMessage(message));
 
 const documentCopyTransport = createDocumentCopyTransport({
   getUiLanguage: () => activeUiLanguage,
@@ -3070,7 +3117,7 @@ const shortcutHandlerContext: ShortcutHandlerContext = {
 const handleLocalEditorChange = (edit: DocumentTextEdit) => {
   documentSessionAdapter.localDraftChanged(edit);
   scheduleDocumentDerivedUiRefresh(edit.after);
-  if (isSidePreviewVisible()) previewAdapter.scheduleVisibleRefresh(edit.after);
+  if (isPreviewSurfaceVisible()) previewAdapter.scheduleVisibleRefresh(edit.after);
 };
 
 const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal): Promise<void> => {
@@ -3086,6 +3133,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
   if (initialDocument === null) throw new Error('Document Session is not initialized');
 
   editor = createEditor({
+    documentBlocks: documentBlocks.port,
     parent: editorHost,
     text: codeMirrorDocumentText(initialDocument),
     initialMode: mode,
@@ -3097,6 +3145,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     initialDiagnostics: pendingDiagnostics,
     initialImageIntrinsicSizes: [...imageIntrinsicSizes.values()],
     onApplyTransaction: handleLocalEditorChange,
+    onStatisticsChange: () => documentStatistics.schedule(),
     onOpenLink: (href: string) => vscode.postMessage({ type: 'openLink', href }),
     onCommentBlocked: () => editorNotice.setEditorNotice(activeUiStrings.commentSelectionBlocked),
     onSelectionChange: (state: any) => selectionMenuController.update(state),
@@ -3174,6 +3223,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     }
   });
   editorScrollToTopController.setScrollElement(editor.view.scrollDOM);
+  documentStatistics.schedule();
   if (gitChangesGutterVisible) gitClient?.applyBaselineToEditor(editor);
   syncGitDiffDetails();
   syncGitDiffLineHighlights();
@@ -3340,7 +3390,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
     if (preparingSourceSplit && editor) {
       (editor.view as typeof editor.view & { measure(flush?: boolean): void }).measure(false);
     }
-    outlineController.refreshAppearance();
+    outlineController.refreshAppearance(); documentViews?.refreshAppearance();
   },
   presentModeControl(mode) {
     if (mode !== 'preview' && !isSidePreviewVisible()) previewController.finishLoadingPresentation();
@@ -3349,7 +3399,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
     if (mode === 'preview') finishEditorLoading();
     else beginEditorLoading(mode);
     refreshDocumentActionButtons();
-    outlineController.refreshAppearance();
+    outlineController.refreshAppearance(); documentViews?.refreshAppearance();
     modeControl.setActive(mode);
     changesReviewMode = mode;
     presentChangesReview();
@@ -3418,7 +3468,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
   },
   focusEditor: () => editor?.focus(),
   persistMode: (mode, lastEditableMode) => persistUiState(mode, lastEditableMode),
-  postMode: (mode) => vscode.postMessage({ type: 'setMode', mode }),
+  postMode: (mode) => { vscode.postMessage({ type: 'setMode', mode }); documentStatistics.schedule(); },
   showNotice(notice) {
     finishEditorLoading();
     if (notice === 'transient-live') {
@@ -3555,7 +3605,10 @@ const handleInit = (message: InitMessage) => {
   findPanelController.updateFindStatusSummary();
 };
 
+const blockExportAdapter = createBlockExportAdapter(message => vscode.postMessage(message),
+  (payload, signal) => renderExportBlocks(payload, text => blockContentTransport.render(text), signal));
 const exportAdapter = createExportWebviewAdapter({
+  getBlockRenderers: documentBlocks.getDescriptors,
   postMessage: (message) => vscode.postMessage(message),
   getCurrentText: getCurrentEditorText,
   whenDocumentIdle: () => documentSessionAdapter.whenIdle(),
@@ -3578,7 +3631,7 @@ const themeAdapter = createAppearanceWebviewAdapter({
   applyCodePalette: palette => {
     codePaletteAdapter.apply(palette);
     applyUiVisualBaseline(themeAdapter.getAppearance(), uiColorsPreview ?? uiColors);
-    outlineController.refreshAppearance();
+    outlineController.refreshAppearance(); documentViews?.refreshAppearance();
   },
   refreshMermaidTheme: () => mermaidDiagramRenderPool.refreshTheme(),
   applyWithEditorViewportPreserved: (action) => {
@@ -3641,7 +3694,7 @@ const refreshUiColors = () => {
     mermaidDiagramRenderPool.refreshTheme();
   }
   previewController.refreshDocumentBackground(refreshMermaid);
-  outlineController.refreshAppearance();
+  outlineController.refreshAppearance(); documentViews?.refreshAppearance();
 };
 const imageLocationSettings = createImageLocationSettings({ language: activeUiLanguage, request: request => imageStorageTransport.request(request) });
 const previewPresetTransport = createPreviewPresetTransport(request => vscode.postMessage(request));
@@ -3650,7 +3703,9 @@ const previewPresetSettings = createPreviewPresetSettings({
   getDiagnostics: () => previewController.getPresetDiagnostics(),
   changed: () => settingsWindow?.present()
 });
+const extensionFeatureSettings = createExtensionFeatureSettings(request => vscode.postMessage(request), () => settingsWindow?.present());
 settingsWindow = createSettingsWindow({
+  extensionFeatures: extensionFeatureSettings,
   productVersion,
   openLink: href => vscode.postMessage({ type: 'openLink', href }),
   logoUrl: document.querySelector<HTMLMetaElement>('meta[name="meo-logo"]')?.content ?? '',
@@ -3716,6 +3771,12 @@ window.addEventListener('message', (event) => {
   }
 
   const message = decodeHostToWebviewMessage(rawMessage);
+  if (message?.type === 'workspaceDocumentsResult' || message?.type === 'workspaceDocumentsChanged') { workspaceDocumentsTransport.accept(message); return; }
+  if (message?.type === 'documentOperationRequest') { documentOperationResponder.accept(message); return; }
+  if (message?.type === 'documentViewsChanged') {
+    documentViews?.setViews(message.views); documentBlocks.setViews(message.views);
+    editor?.refreshDocumentBlocks(); return;
+  }
   if (!message) {
     return;
   }
@@ -3728,7 +3789,9 @@ window.addEventListener('message', (event) => {
   if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
   if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
   if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }
+  if (message.type === 'documentContentResult') { documentContentTransport.accept(message); blockContentTransport.accept(message); return; }
   if (message.type === 'previewFontsResult') { previewFontsTransport.accept(message); return; }
+  if (message.type === 'extensionFeaturesChanged' || message.type === 'extensionFeaturesResult') { extensionFeatureSettings.accept(message); return; }
   if (message.type === 'previewPresetResult') { previewPresetTransport.accept(message); return; }
   if (message.type === 'imageLocationResult') { imageStorageTransport.accept(message); return; }
   if (message.type === 'imageStorageChanged') { if (settingsWindow?.isOpen()) void imageLocationSettings.refresh(); return; }
@@ -4052,6 +4115,7 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (blockExportAdapter.accept(message)) return;
   if (exportAdapter.accept(message)) {
     return;
   }
@@ -4134,9 +4198,11 @@ window.addEventListener('beforeunload', () => {
   imageStorageTransport.dispose();
   previewPresetSettings.dispose();
   previewPresetTransport.dispose();
+  extensionFeatureSettings.dispose();
   editingPreferencesTransport.dispose();
   uiColorsTransport.dispose();
   editorServicesTransport.dispose();
+  documentStatistics.dispose();
   clearReadyRetryTimers();
   cancelPendingWikiStatusRefresh();
   cancelPendingLocalLinkStatusRefresh();
@@ -4146,6 +4212,7 @@ window.addEventListener('beforeunload', () => {
   documentSaveAsTransport.dispose();
   previewAdapter.dispose();
   exportAdapter.dispose();
+  blockExportAdapter.dispose();
   editorFocusController.dispose();
   changesReviewControl.destroy();
   if (pendingEditorSurfaceRecoveryRaf !== null) {
@@ -4208,6 +4275,7 @@ sourceButton.addEventListener('click', () => {
 
 sourcePreviewButton.addEventListener('click', () => {
   if (getActiveEditorMode() !== 'source' || !editor) return;
+  documentViews?.close(false);
   const viewport = editor.captureViewportAnchorToken?.('editor') ?? null;
   sourcePreviewEnabled = !sourcePreviewEnabled;
   const { split } = presentPreviewSurface(false, { atomicSplit: sourcePreviewEnabled });
@@ -4430,6 +4498,66 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => readingPositionLifecycle?.flush());
 scheduleReadyHandshake();
 scheduleEditorBundleWarmupAfterReady();
+
+function getDocumentSurfacePalette(usePreview: boolean) {
+  const editorStyles = getComputedStyle(editorHost);
+  const content = editorHost.querySelector('.cm-content');
+  const foreground = content ? getComputedStyle(content).color : getComputedStyle(document.body).color;
+  if (!usePreview) return { background: editorStyles.backgroundColor, foreground };
+  const previewStyles = getComputedStyle(previewController.host);
+  return { background: previewStyles.getPropertyValue('--meo-preview-background').trim() || editorStyles.backgroundColor,
+    foreground: previewStyles.getPropertyValue('--meo-preview-foreground').trim() || foreground };
+}
+documentViews = mountDocumentViews({
+      openWorkspace: viewId => workspaceDocumentsTransport.open(viewId),
+      renderContent: text => documentContentTransport.render(text),
+      cancelContent: () => documentContentTransport.cancel(),
+      root, editorSurface: editorWrapper, contentSurface: editorSurface,
+      entryContainer: rightGroup,
+      getPalette: () => getDocumentSurfacePalette(getActiveEditorMode() === 'preview'),
+      disableSidePreview() {
+        if (!sourcePreviewEnabled) return;
+        const anchor = editor?.captureViewportAnchorToken?.('editor');
+        sourcePreviewEnabled = false;
+        presentPreviewSurface(getActiveEditorMode() === 'preview');
+        editor?.refreshLayout?.();
+        if (anchor) editor?.restoreViewportAnchorToken?.(anchor, 'editor');
+      },
+      getText: getCurrentEditorText,
+      getReadingLine: () => getActiveEditorMode() === 'preview'
+        ? previewController.getTopVisiblePosition()?.topLine ?? 1
+        : editor?.getTopVisibleLine() ?? 1,
+      getLanguage: () => activeUiLanguage,
+      async revealLine(line) {
+        if (getActiveEditorMode() !== 'preview') { editor?.scrollToLine(line, 'upper'); return; }
+        clearTimeout(documentViewPreviewPositionTimer);
+        const position = { line, text: getCurrentEditorText() };
+        documentViewPreviewPosition = position;
+        const isCurrent = () => documentViewPreviewPosition === position
+          && getActiveEditorMode() === 'preview' && getCurrentEditorText() === position.text;
+        // Share the side preview's source mapping, reveal and background marker.
+        presentSourcePreviewPosition(false, true);
+        try { await previewController.revealSourcePosition(line, isCurrent, 'upper'); }
+        catch (error) { console.error('Document view navigation failed', error); }
+        finally {
+          if (documentViewPreviewPosition === position) {
+            documentViewPreviewPositionTimer = setTimeout(() => {
+              if (documentViewPreviewPosition !== position) return;
+              documentViewPreviewPosition = null;
+              presentSourcePreviewPosition();
+            }, 1000);
+          }
+        }
+      },
+      preserveReading() {
+        const owner = root.dataset.mode === 'preview' ? 'preview' : 'editor';
+        const anchor = editor?.captureModeTransitionAnchorToken?.(owner);
+        return () => {
+          if (anchor) editor?.restoreViewportAnchorToken?.(anchor, owner);
+        };
+      }
+});
+window.addEventListener('pagehide', () => { documentViews?.dispose(); documentBlocks.dispose(); blockContentTransport.cancel(); }, { once: true });
 
 function refreshShortcutHints(): void {
   shortcutHints = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');

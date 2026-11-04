@@ -2635,6 +2635,10 @@ Source/Live roundtrips in light/dark ordinary and optimized documents. It assert
 both the production size assessment and the active derived-work budget. Set
 `MEO_TEST_SCREENSHOTS` to capture the reading surfaces. The full list/browser
 suites retain this slice through the script's default invocation.
+Task editing also covers multiple-space/tab separators, nested tasks, body-input
+frames, selections and marker-edit recovery. Only an explicitly edited prefix
+reveals its source; moving back to the body restores the control. Toggles must
+replace only the status character, preserving every prefix byte and undo history.
 The same slice compares actual literal-marker colors in prose, quotes, bold and
 headings while preserving valid link colors and Source's native palette across
 mode changes. `test-document-fragment-link.ts` also checks a reference target

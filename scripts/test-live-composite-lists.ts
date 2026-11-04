@@ -269,6 +269,47 @@ async function assertTwoStateTasks(page: import('puppeteer-core').Page): Promise
   console.log('two-state tasks: ordinary/optimized, light/dark, literal markers, table cells, click, history and mode roundtrip passed');
 }
 
+async function assertTaskMarkerEditing(page: import('puppeteer-core').Page): Promise<void> {
+  await page.setContent('<div id="task-editing"></div>');
+  await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
+  await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+  for (const large of [false, true]) for (const prefix of ['- ', '-  ', '-\t', '  - ', '1. ', '> - ']) {
+    const result = await page.evaluate(async ({ prefix, large }) => {
+      const source = prefix + '[ ] parent\n  - [ ] child\n\nafter' + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
+      const host = document.getElementById('task-editing')!;
+      const editor = (window as any).ListEditingHarness.createEditor({ parent: host, text: source, initialMode: 'live', onApplyChanges() {} });
+      const settle = async () => { for (let i = 0; i < 8; i++) await new Promise(requestAnimationFrame); };
+      editor.view.dispatch({ selection: { anchor: source.indexOf('after') } }); await settle();
+      const boxes = () => host.querySelectorAll<HTMLInputElement>('.meo-task-checkbox');
+      const before = boxes().length; boxes()[0]?.click(); await settle();
+      const checked = editor.getText(); await editor.undo(); await settle();
+      const undone = editor.getText();
+      const body = source.indexOf('parent') + 6;
+      // Establish the body caret before typing, as a real pointer/arrow move does.
+      editor.view.dispatch({ selection: { anchor: body } }); await settle();
+      editor.view.dispatch({ changes: { from: body, insert: ' edited' }, selection: { anchor: body + 7 }, userEvent: 'input.type' });
+      const typingFrames: number[] = [];
+      for (let i = 0; i < 8; i++) { await new Promise(requestAnimationFrame); typingFrames.push(boxes().length); }
+      await editor.undo(); await settle();
+      editor.view.dispatch({ selection: { anchor: source.indexOf('parent'), head: source.indexOf('child') + 5 } }); await settle();
+      const selected = boxes().length;
+      editor.view.dispatch({ selection: { anchor: source.indexOf('[ ]') + 1 } }); await settle();
+      const editing = boxes().length;
+      editor.view.dispatch({ selection: { anchor: source.indexOf('after') } }); await settle();
+      const restored = boxes().length;
+      editor.setMode('source'); await settle(); editor.setMode('live'); await settle();
+      const roundtrip = boxes().length; editor.destroy();
+      return { source, before, checked, undone, editing, typingFrames, selected, restored, roundtrip };
+    }, { prefix, large });
+    assert.equal(result.before, 2, `${JSON.stringify(prefix)} initial task controls`);
+    assert.equal(result.checked, result.source.replace('[ ]', '[x]'), `${JSON.stringify(prefix)} checkbox must change only the task marker`);
+    assert.equal(result.undone, result.source);
+    assert.equal(result.editing, 1, 'Only the task whose source marker is being edited is revealed');
+    assert(result.typingFrames.every(count => count === 2), `Typing must retain parent and nested controls: ${JSON.stringify({ prefix, large, frames: result.typingFrames })}`);
+    assert.deepEqual([result.selected, result.restored, result.roundtrip], [2, 2, 2], 'Selection and mode changes must restore parent and nested task controls');
+  }
+}
+
 async function main(): Promise<void> {
   const build = await Bun.build({
     entrypoints: [path.join(root, 'scripts', 'test-list-editing-entry.ts')],
@@ -286,9 +327,11 @@ async function main(): Promise<void> {
       return;
     }
     if (process.argv.includes('--tasks-only')) {
+      await assertTaskMarkerEditing(await browser.newPage());
       await assertTwoStateTasks(await browser.newPage());
       return;
     }
+    await assertTaskMarkerEditing(await browser.newPage());
     await assertContainerBodyHits(await browser.newPage());
     const page = await browser.newPage();
     await page.setContent('<!doctype html><div id="host"></div><div id="order-host"></div><div id="table-host"></div><div id="nested-table-host"></div><div id="edit-host"></div>');

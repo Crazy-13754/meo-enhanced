@@ -44,6 +44,7 @@ export async function writeDocxExport(options: WriteDocxExportOptions): Promise<
   const needsMaterialization = DomUtils.findOne((element) => (
     (element.name === 'img' && !/^data:image\/(?:png|jpe?g|gif|bmp);base64,/i.test(element.attribs.src ?? ''))
     || classNames(element).includes('meo-export-mermaid')
+    || classNames(element).includes('meo-export-contributed')
     || classNames(element).includes('meo-export-math-display')
     || Object.hasOwn(element.attribs, 'hidden')
     || element.name === 'details' && !Object.hasOwn(element.attribs, 'open')

@@ -1,3 +1,4 @@
+import { decodeDocumentViewsChanged, type DocumentViewDescriptor } from './documentViews';
 import { decodeEditorStyleEnvironment, normalizePreviewFontFamily, type EditorStyleEnvironment } from './editorStyleEnvironment';
 import type { PreviewAppearance } from './previewRender';
 import { decodeRequestResult, type RequestResult } from './requestResult';
@@ -14,6 +15,7 @@ export type ExportSnapshotRequest = {
 
 export type ReadingSnapshot = {
   readonly snapshotId: string;
+  readonly blockRenderers?: readonly DocumentViewDescriptor[];
   readonly text: string;
   readonly appearance: PreviewAppearance;
   readonly uiLanguage: UiLanguage;
@@ -57,6 +59,8 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
           || typeof candidate.text !== 'string'
           || !isUiLanguage(candidate.uiLanguage)
           || (candidate.appearance !== 'dark' && candidate.appearance !== 'light')) return null;
+        const catalog = candidate.blockRenderers === undefined ? undefined : decodeDocumentViewsChanged({ type: 'documentViewsChanged', views: candidate.blockRenderers });
+        if (catalog === null) return null;
         const environment = decodeEditorStyleEnvironment(candidate.environment);
         if (environment === null) return null;
         if (candidate.preset !== undefined && !isPreviewPresetId(candidate.preset)) return null;
@@ -68,6 +72,7 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
         if (codeTheme === false || codeTheme === null) return null;
         return {
           snapshotId: candidate.snapshotId,
+          ...(catalog ? { blockRenderers: catalog.views } : {}),
           text: candidate.text,
           appearance: candidate.appearance,
           uiLanguage: candidate.uiLanguage,

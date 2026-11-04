@@ -1,3 +1,9 @@
+import { decodeWorkspaceDocumentsRequest, decodeWorkspaceDocumentsResponse, decodeDocumentOperationRequest, decodeDocumentOperationResponse, type WorkspaceDocumentsRequest, type WorkspaceDocumentsClose, type WorkspaceDocumentsResponse, type WorkspaceDocumentsChanged, type DocumentOperationRequest, type DocumentOperationResponse } from './workspaceDocuments';
+import { decodeBlockExportRequest, decodeBlockExportResponse, type BlockExportRequest, type BlockExportResponse } from './blockExport';
+import { decodeDocumentViewsChanged, type DocumentViewsChanged } from './documentViews';
+import { decodeExtensionFeaturesRequest, decodeExtensionFeaturesEvent, type ExtensionFeaturesRequest, type ExtensionFeaturesEvent } from './extensionFeatures';
+import { decodeDocumentContentRequest, decodeDocumentContentResponse, type DocumentContentRequest, type DocumentContentResponse } from './documentContent';
+import { decodeDocumentStatistics, type DocumentStatisticsMessage } from './documentStatistics';
 import { decodePreviewFontsRequest, decodePreviewFontsResponse, type PreviewFontsRequest, type PreviewFontsResponse } from './previewFonts';
 import { decodeImageIntrinsicSizesEvent, type ImageIntrinsicSizesEvent } from './imageDimensions';
 import { decodeEditorServiceRequest, decodeEditorServiceResponse, type EditorServiceRequest, type EditorServiceResponse } from './editorServices';
@@ -28,6 +34,10 @@ import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageSto
 import { decodeUpdateUiColorsRequest, decodeUiColorsResult, type UpdateUiColorsRequest, type UiColorsResult } from './uiColors';
 
 export type WebviewToHostMessage =
+  | WorkspaceDocumentsRequest | WorkspaceDocumentsClose | DocumentOperationResponse
+  | ExtensionFeaturesRequest
+  | DocumentContentRequest
+  | DocumentStatisticsMessage
   | PreviewFontsRequest
   | WebviewVisibilityRequest
   | UpdateUiColorsRequest
@@ -50,9 +60,14 @@ export type WebviewToHostMessage =
   | SaveDocumentAsRequest
   | PreviewRenderRequest
   | PreviewDocumentRequest
-  | ExportSnapshotResponse;
+  | ExportSnapshotResponse
+  | BlockExportResponse;
 
 export type HostToWebviewMessage =
+  | WorkspaceDocumentsResponse | WorkspaceDocumentsChanged | DocumentOperationRequest
+  | ExtensionFeaturesEvent
+  | DocumentContentResponse
+  | DocumentViewsChanged
   | ImageIntrinsicSizesEvent
   | PreviewFontsResponse
   | WebviewVisibilityResponse
@@ -82,10 +97,16 @@ export type HostToWebviewMessage =
   | PreviewRenderResponse
   | PreviewDocumentResponse
   | ExportSnapshotRequest
+  | BlockExportRequest
   | GitBaselineChangedEvent;
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
-  return decodePreviewFontsRequest(value)
+  return decodeWorkspaceDocumentsRequest(value)
+    ?? decodeDocumentOperationResponse(value)
+    ?? decodeDocumentContentRequest(value)
+    ?? decodeExtensionFeaturesRequest(value)
+    ?? decodeDocumentStatistics(value)
+    ?? decodePreviewFontsRequest(value)
     ?? decodeWebviewVisibilityRequest(value)
     ?? decodePreviewPresetRequest(value)
     ?? decodeImageLocationRequest(value)
@@ -107,14 +128,20 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
     ?? decodeSaveDocumentAsRequest(value)
     ?? decodePreviewRenderRequest(value)
     ?? decodePreviewDocumentRequest(value)
-    ?? decodeExportSnapshotResponse(value);
+    ?? decodeExportSnapshotResponse(value)
+    ?? decodeBlockExportResponse(value);
 }
 
 export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage | null {
   const imageDimensions = decodeImageIntrinsicSizesEvent(value);
   if (imageDimensions) return imageDimensions;
   if (value && typeof value === 'object' && 'type' in value && value.type === 'openPreviewPresetSettings') return { type: 'openPreviewPresetSettings' };
-  return decodePreviewFontsResponse(value)
+  return decodeWorkspaceDocumentsResponse(value)
+    ?? decodeDocumentOperationRequest(value)
+    ?? decodeDocumentContentResponse(value)
+    ?? decodeExtensionFeaturesEvent(value)
+    ?? decodeDocumentViewsChanged(value)
+    ?? decodePreviewFontsResponse(value)
     ?? decodeWebviewVisibilityResponse(value)
     ?? decodePreviewPresetsChanged(value)
     ?? decodeUiColorsResult(value)
@@ -141,5 +168,6 @@ export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage
     ?? decodePreviewRenderResponse(value)
     ?? decodePreviewDocumentResponse(value)
     ?? decodeExportSnapshotRequest(value)
+    ?? decodeBlockExportRequest(value)
     ?? decodeGitBaselineChangedEvent(value);
 }

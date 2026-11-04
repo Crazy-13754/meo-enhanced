@@ -447,7 +447,9 @@ export function listMarkerData(
 
   if (taskMarker !== undefined) {
     const hiddenTaskPrefixLength = Math.max(0, (match[0].length - indent) - 1);
-    result.taskBracketStart = markerOffset + markerEndOffset + 1;
+    // List separators may contain multiple spaces or a tab. Locate the bracket
+    // in the matched prefix so a toggle never overwrites the opening bracket.
+    result.taskBracketStart = markerOffset + match[0].indexOf('[', markerEndOffset);
     result.taskStatus = taskStatusFromMarker(taskMarker);
     result.isTask = true;
     result.taskHiddenPrefixColumns = hiddenTaskPrefixLength + displayExtraColumns;

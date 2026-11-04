@@ -14,6 +14,28 @@
         "${workspaceFolder}/dist/**/*.js"
       ],
       "preLaunchTask": "build"
+    },
+    {
+      "name": "Run with MEO Extras",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--disable-extension=vadimmelnicuk.meo",
+        "--extensionDevelopmentPath=${input:extrasExtensionPath}"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/dist/**/*.js"
+      ],
+      "preLaunchTask": "build"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "extrasExtensionPath",
+      "type": "promptString",
+      "description": "Path to the separately built meoextras extension"
     }
   ]
 }

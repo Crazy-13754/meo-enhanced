@@ -1,4 +1,5 @@
 import morphdom from 'morphdom';
+import { createLoadingPresentation } from '../adapters/loadingPresentation';
 import { createPreviewSearchController, previewSearchStyles } from './previewSearch';
 import { createPreviewViewport, preparePreviewWindow, previewWindowProjection } from './previewViewport';
 import { previewSourceMorphKeys, previewSourceLineMapper, type PreviewSourceLineMapper } from './previewSourceIdentity';
@@ -64,6 +65,7 @@ import {
 } from './previewTableLayout';
 
 type PreviewControllerOptions = {
+  refreshDocumentBlocks?: (document: Document) => void;
   vscode: { postMessage: (message: WebviewMessage) => void };
   uiLanguage: UiLanguage;
   getEditorAppearance: () => 'light' | 'dark';
@@ -808,6 +810,7 @@ function collectPreviewKatexStyles(katexHref: string): string {
 }
 
 export function createPreviewController({
+  refreshDocumentBlocks,
   vscode,
   uiLanguage: initialUiLanguage,
   getEditorAppearance,
@@ -1071,43 +1074,27 @@ export function createPreviewController({
   status.setAttribute('aria-live', 'polite');
   status.hidden = true;
 
-  const loading = document.createElement('div');
-  loading.className = 'preview-loading';
-  loading.setAttribute('role', 'status');
-  loading.setAttribute('aria-live', 'polite');
-  loading.hidden = true;
-  const loadingSpinner = document.createElement('span');
-  loadingSpinner.className = 'preview-loading-spinner';
-  loadingSpinner.setAttribute('aria-hidden', 'true');
-  const loadingLabel = document.createElement('span');
-  loadingLabel.textContent = uiStrings.previewGenerating;
-  loading.append(loadingSpinner, loadingLabel);
-  let loadingPending = false;
-  let loadingTimer: ReturnType<typeof setTimeout> | null = null;
-  const finishLoadingPresentation = (): void => {
-    if (!loadingPending) return;
-    if (loadingTimer !== null) clearTimeout(loadingTimer);
-    loadingTimer = null;
-    loadingPending = false;
-    loading.hidden = true;
+  const loadingPresentation = createLoadingPresentation('preview-loading');
+  const loading = loadingPresentation.element;
+  loadingPresentation.setLabel(uiStrings.previewGenerating);
+  const finishLoadingPresentation = (options?: { readonly keepVisible?: boolean }): void => {
+    if (!loadingPresentation.pending) return;
+    if (options?.keepVisible && !loading.hidden) return;
+    loadingPresentation.finish();
     host.removeAttribute('aria-busy');
     if (frame.contentDocument?.documentElement) frame.contentDocument.documentElement.inert = false;
   };
   const beginLoadingPresentation = (): void => {
-    if (disposed || loadingPending) return;
-    loadingPending = true;
+    if (disposed) return;
     // Only explicit opening/width transitions start this deadline. Render
     // requests and coalesced edits must not create or restart loading feedback.
-    loadingTimer = setTimeout(() => {
-      loadingTimer = null;
-      if (disposed || !loadingPending || host.hidden) return;
-      loading.hidden = false;
+    loadingPresentation.begin(() => !disposed && !host.hidden, () => {
       host.setAttribute('aria-busy', 'true');
       // Keep inactivity inside the frame. Toggling inert on the iframe itself
       // can leave Chromium's native wheel scroller disabled after slow loading.
       if (frame.contentDocument?.documentElement) frame.contentDocument.documentElement.inert = true;
       onLoadingVisible?.();
-    }, 200);
+    });
   };
 
   const applyUiLanguage = (language: UiLanguage): void => {
@@ -1115,7 +1102,7 @@ export function createPreviewController({
     if (language !== uiLanguage) previewImageActions?.closeFullscreen();
     uiLanguage = language;
     uiStrings = getUiStrings(language);
-    loadingLabel.textContent = uiStrings.previewGenerating;
+    loadingPresentation.setLabel(uiStrings.previewGenerating);
     frame.title = uiStrings.previewTitle;
     presetSelectControl.setLabel(uiStrings.previewPreset);
     presetSelectControl.setFooterAction(uiStrings.previewPresetManage, () => onManagePresets?.());
@@ -1482,6 +1469,7 @@ export function createPreviewController({
           return;
         }
         addPreviewCodeCopyControls(frameDocument, uiLanguage);
+        refreshDocumentBlocks?.(frameDocument);
         if (currentCodeHighlight(frameDocument)()) {
           applyPreviewCodeHighlight(frameDocument, true, currentCodeHighlight(frameDocument));
         }
@@ -2227,6 +2215,7 @@ export function createPreviewController({
       scrollToTopController.setScrollElement(frameDocument.scrollingElement, frameDocument);
       frameDocument.body.tabIndex = -1;
       addPreviewCodeCopyControls(frameDocument, uiLanguage);
+      refreshDocumentBlocks?.(frameDocument);
       attachPreviewMathViewports(frameDocument);
       syncPreviewCodeHighlight(frameDocument);
       ensureReadableCode(frameDocument);
@@ -3847,7 +3836,7 @@ export function createPreviewController({
       restoreTopVisiblePosition(position, isCurrent, true),
     isCurrentDocument: () => frameRenderedText !== null && isCurrentText?.(frameRenderedText) !== false
       && getFrameDocument()?.documentElement.dataset.meoPreviewLayout === previewLayout,
-    revealSourcePosition: (line: number, isCurrent: () => boolean) => {
+    revealSourcePosition: (line: number, isCurrent: () => boolean, align: 'nearest' | 'upper' = 'nearest') => {
       if (isCurrent()) previewScrollRange?.interrupt();
       const current = previewViewport, generation = frameGeneration;
       const valid = () => !disposed && !host.hidden && isCurrent() && generation === frameGeneration
@@ -3855,6 +3844,15 @@ export function createPreviewController({
         && frameRenderedText !== null && isCurrentText?.(frameRenderedText) !== false;
       const reveal = () => {
         if (!valid()) return;
+        if (align === 'upper') {
+          const scroll = getFrameDocument()?.scrollingElement;
+          const offset = Math.round((scroll?.clientHeight ?? 0) * 0.3);
+          const projection = projectSourcePositionMarker(line);
+          if (scroll && projection) scroll.scrollTop = projection.top - offset;
+          else restoreTopLine(line, 0, offset, undefined, valid);
+          refreshSourcePositionMarker();
+          return;
+        }
         refreshSourcePositionMarker(true);
         if (projectSourcePositionMarker(line)) return;
         // A source-only gap has no highlight, but navigation still owns its

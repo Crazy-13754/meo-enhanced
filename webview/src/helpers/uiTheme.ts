@@ -298,20 +298,31 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
   ] as const) style.setProperty('--meo-source-' + name, color(id, legacy));
 }
 
-export interface OutlinePaletteInput {
+export interface DocumentSurfacePaletteInput {
   background: string;
   foreground: string;
 }
+export type OutlinePaletteInput = DocumentSurfacePaletteInput;
 
 const outlinePaletteKeys = new WeakMap<HTMLElement, string>();
 
 /** Derive navigation colors against its adjacent document, preserving shared emphasis and contrast rules. */
 export function applyOutlinePalette(sidebar: HTMLElement, input: OutlinePaletteInput): void {
+  applyDocumentSurfacePalette(sidebar, input, '--meo-outline-');
+  sidebar.dataset.outlineContrast = document.documentElement.dataset.meoUiContrast === 'high' ? 'high' : 'normal';
+}
+
+/** Shared readable document roles for optional views; toolbar roles remain independent. */
+export function applyDocumentViewPalette(surface: HTMLElement, input: DocumentSurfacePaletteInput): void {
+  applyDocumentSurfacePalette(surface, input, '--meo-view-');
+}
+
+function applyDocumentSurfacePalette(sidebar: HTMLElement, input: DocumentSurfacePaletteInput, prefix: string): void {
   const rootStyles = getComputedStyle(document.documentElement);
   const highContrast = document.documentElement.dataset.meoUiContrast === 'high';
   const inputs = Object.fromEntries(['text-emphasis-content', 'focus', 'danger', 'border-control'].map(role =>
     [role, rootStyles.getPropertyValue('--meo-ui-' + role).trim()]));
-  const key = JSON.stringify([input, highContrast, inputs]);
+  const key = JSON.stringify([prefix, input, highContrast, inputs]);
   if (outlinePaletteKeys.get(sidebar) === key) return;
   const { sample, mix, fit, dispose } = createColorTools('dark');
   try {
@@ -322,8 +333,10 @@ export function applyOutlinePalette(sidebar: HTMLElement, input: OutlinePaletteI
     const visible = highContrast ? background : mix(background, ink, 0.05);
     const surfaces = [background, hover, visible];
     const text = fit(ink, surfaces, 4.55);
+    const group = mix(background, ink, 0.14);
     const roles = {
       background, foreground: text,
+      'group-background': group, 'group-foreground': fit(ink, [group], 4.55),
       'muted-foreground': fit(mix(text, background, 0.30), surfaces, 4.55),
       'hover-background': hover, 'visible-background': visible,
       emphasis: fit(sample(inputs['text-emphasis-content'] || rgb(text), background), surfaces, 4.55),
@@ -332,13 +345,12 @@ export function applyOutlinePalette(sidebar: HTMLElement, input: OutlinePaletteI
       focus: fit(sample(inputs.focus || rgb(text), background), surfaces, 3.05),
       danger: fit(sample(inputs.danger || rgb(text), background), surfaces, 4.55)
     };
-    for (const [role, value] of Object.entries(roles)) sidebar.style.setProperty('--meo-outline-' + role, rgb(value));
+    for (const [role, value] of Object.entries(roles)) sidebar.style.setProperty(prefix + role, rgb(value));
     for (const [role, amount] of [['scrollbar-thumb', 38], ['scrollbar-thumb-hover', 50], ['scrollbar-thumb-active', 62]] as const) {
-      sidebar.style.setProperty('--meo-outline-' + role, `color-mix(in srgb, ${rgb(text)} ${amount}%, transparent)`);
+      sidebar.style.setProperty(prefix + role, `color-mix(in srgb, ${rgb(text)} ${amount}%, transparent)`);
     }
-    sidebar.style.setProperty('--meo-outline-shadow', `0 8px 28px rgb(0 0 0 / ${dark ? 45 : 16}%)`);
+    sidebar.style.setProperty(prefix + 'shadow', `0 8px 28px rgb(0 0 0 / ${dark ? 45 : 16}%)`);
     sidebar.style.colorScheme = dark ? 'dark' : 'light';
-    sidebar.dataset.outlineContrast = highContrast ? 'high' : 'normal';
     outlinePaletteKeys.set(sidebar, key);
   } finally {
     dispose();

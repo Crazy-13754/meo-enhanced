@@ -13,6 +13,7 @@ export function installMathTransform(
     onRenderedMath?: () => void;
     githubStyle?: boolean;
     deferDisplay?: boolean;
+    output?: 'html' | 'mathml';
   } = {}
 ): void {
   const lookingAhead = new WeakSet<object>();
@@ -72,7 +73,7 @@ export function installMathTransform(
     if (options.githubStyle && math.mode === 'display' && listInlineTokens.has(state.tokens)) return false;
     if (options.githubStyle && /\n[ \t]*\n/.test(math.raw)) return false;
     if (!silent) {
-      const presentation = renderLatexMathPresentation(math.content, math.mode, options.deferDisplay);
+      const presentation = renderLatexMathPresentation(math.content, math.mode, options.deferDisplay, options.output);
       if (!presentation) return false;
       const node = state.push('html_inline', '', 0);
       node.meta = { meoTrustedHtml: true, meoMathSource: math.raw };
@@ -129,7 +130,7 @@ export function installMathTransform(
 
   md.renderer.rules.meo_math_block = (tokens, idx, _options, _env, self) => {
     const mathBlock = tokens[idx];
-    const presentation = renderLatexMathPresentation(String(mathBlock.content ?? ''), 'display', options.deferDisplay);
+    const presentation = renderLatexMathPresentation(String(mathBlock.content ?? ''), 'display', options.deferDisplay, options.output);
     if (!presentation) {
       return `<pre>${md.utils.escapeHtml(`$$\n${mathBlock.content}\n$$`)}</pre>\n`;
     }

@@ -116,6 +116,16 @@ green run; investigate and fix the underlying regression instead.
 
 ## Architecture boundaries
 
+When developing or reviewing companion extensions, extension interfaces, or host
+changes prompted by an extension feature, follow
+[the host and extension ownership rules](docs/extension-boundaries.md). Identify
+host-owned behavior, extension-owned behavior, and the contract between them
+before implementation; report changes and validation by ownership.
+These rules also apply to runtime language changes, UI themes and document
+palettes: verify an already-open view updates without resetting its state.
+For the currently supported read-only document view integration, see
+[the document view API guide](docs/document-view-api.md).
+
 When a change affects input, rendering, layout, scrolling, focus, history, mode
 transitions, or background work, apply the
 [editor performance contracts](docs/editor-performance-contracts.md). Assess

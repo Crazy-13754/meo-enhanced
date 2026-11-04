@@ -11,6 +11,8 @@ import { getTableSourceBounds } from './tables';
 import { collectRenderableHtmlBlocks, getHtmlEditingRange } from './htmlContent';
 import { markdownStructureIdentity } from '../editor/markdownStructure';
 import type { MarkdownBlockKind, MarkdownBlock, DiscoveredMarkdownBlock } from '../../../src/foundation/markdownDocumentContext';
+import { documentBlocksFacet } from '../editor/documentBlocks';
+import { readCodeFenceSource } from './codeFenceSource';
 
 type LineFlagLike = {
   added?: boolean;
@@ -249,6 +251,18 @@ export function getLiveRenderedBlocks(
       || block.lineNumberHiddenTo < block.lineNumberHiddenFrom
       || !selectionTouchesLineRange(state, block.startLine, block.endLine);
   }).map(({ block }) => ({ ...block }));
+  const renderers = state.facet(documentBlocksFacet);
+  if (renderers) {
+    // Worker facts describe source only. Renderer availability is a local projection,
+    // so installing/removing a companion never invalidates the shared parse cache.
+    for (const fence of readCodeFenceSource(state, tree)) {
+      if (!renderers.supports(fence.language)) continue;
+      const block = createRenderedBlock('mermaid', state.doc.lineAt(fence.start).number,
+        state.doc.lineAt(Math.max(fence.start, fence.end - 1)).number, null);
+      if (block) blocks.push(block);
+    }
+    blocks.sort((a, b) => a.startLine - b.startLine || a.endLine - b.endLine);
+  }
   if (!options.includeSelectedMath) renderedBlockCache.set(state, { tree, blocks });
   return blocks;
 }

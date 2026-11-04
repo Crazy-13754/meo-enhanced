@@ -1,6 +1,11 @@
+import { createWorkspaceDocumentsHost } from './host/workspaceDocuments';
+import { createDocumentViewsRegistry } from './extension/documentViews';
+import { createExtensionFeatures } from './extension/extensionFeatures';
+import type { DocumentViewsApi } from './documentViews';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as vscode from 'vscode';
+import { createVscodeDocumentStatistics } from './host/vscodeDocumentStatistics';
 import { createBackgroundPreviewRenderer } from './host/previewRenderWorker';
 import { createImageDimensionCatalog } from './host/imageDimensions';
 import { disposeWikiResources, resolveDocumentWikiResources } from './host/wikiResources';
@@ -110,6 +115,7 @@ type FindOptionsState = {
 };
 
 type ExportRuntimeModule = {
+  materializeContributedBlocks: typeof import('./export/contributedBlocks').materializeContributedBlocks;
   renderExportHtmlDocument: (options: {
     wikiResources?: ResolvedWikiResources;
     readingSnapshot: ReadingSnapshot;
@@ -194,7 +200,7 @@ const createVscodeAppearanceSettingsStore = (context: vscode.ExtensionContext): 
   updateLegacy: (key, value) => Promise.resolve(context.globalState.update(key, value))
 });
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export async function activate(context: vscode.ExtensionContext): Promise<DocumentViewsApi> {
   context.subscriptions.push({ dispose: disposeWikiResources });
   const appearanceSettings = await createAppearanceSettingsOwner(createVscodeAppearanceSettingsStore(context));
   void vscode.commands.executeCommand('setContext', ACTIVE_EDITOR_CONTEXT_KEY, false);
@@ -217,7 +223,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get('language', 'auto'), vscode.env.language
   ), context);
   const customPreviewPresets = await createVscodePreviewPresets(context);
-  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage(), customPreviewPresets);
+  const documentViews = createDocumentViewsRegistry();
+  const extensionFeatures = createExtensionFeatures();
+  documentViews.api.registerFeature = extensionFeatures.registerFeature;
+  context.subscriptions.push(documentViews, extensionFeatures);
+  const provider = new MarkdownWebviewProvider(context, agentReviewHandoff, appearanceSettings, editingPreferences, createVscodeImageStorage(), customPreviewPresets, documentViews, extensionFeatures);
   context.subscriptions.push(vscode.commands.registerCommand('meoEnhanced.managePreviewPresets', () => provider.managePreviewPresets()));
   void provider.initializeGitWatcher();
   provider.initializeDevelopmentStyleWatcher();
@@ -383,6 +393,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await provider.exportActiveDocument('docx');
     })
   );
+  return documentViews.api;
 }
 
 class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
@@ -392,6 +403,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     ? Promise.reject(new Error('Local font list unavailable in remote Host')) : readSystemPreviewFonts());
   private readonly previewPresetPreferences: ReturnType<typeof createPreviewPresetPreferences>;
   private readonly activePanels = new Set<vscode.WebviewPanel>();
+  private readonly workspaceDocuments: ReturnType<typeof createWorkspaceDocumentsHost>;
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
   private readonly saveAsViewStateHandoff = createDocumentSaveAsViewStateHandoff();
   private lastActivePanel: vscode.WebviewPanel | null = null;
@@ -402,11 +414,25 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     private readonly appearanceSettings: AppearanceSettingsOwner,
     private readonly editingPreferences: Awaited<ReturnType<typeof createVscodeEditingPreferences>>,
     private readonly imageStorage: ReturnType<typeof createVscodeImageStorage>,
-    private readonly customPreviewPresets: Awaited<ReturnType<typeof createVscodePreviewPresets>>
+    private readonly customPreviewPresets: Awaited<ReturnType<typeof createVscodePreviewPresets>>,
+    private readonly documentViews: ReturnType<typeof createDocumentViewsRegistry>,
+    private readonly extensionFeatures: ReturnType<typeof createExtensionFeatures>
   ) {
     this.previewRenderer = createBackgroundPreviewRenderer(
       vscode.Uri.joinPath(context.extensionUri, 'dist', 'preview-render-worker.js').fsPath);
-    context.subscriptions.push(this.previewRenderer, this.previewFonts);
+    this.workspaceDocuments = createWorkspaceDocumentsHost({
+      parseLists: text => this.previewRenderer.readLists(text),
+      open: async (uri, line) => {
+        if (await this.workspaceDocuments.reveal(uri, line)) return;
+        await vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE);
+        if (!await this.workspaceDocuments.reveal(uri, line)) {
+          const document = await vscode.workspace.openTextDocument(uri);
+          const position = new vscode.Position(Math.min(line - 1, document.lineCount - 1), 0);
+          await vscode.window.showTextDocument(document, { selection: new vscode.Range(position, position) });
+        }
+      }
+    });
+    context.subscriptions.push(this.previewRenderer, this.previewFonts, this.workspaceDocuments);
     this.previewPresetPreferences = createPreviewPresetPreferences({
       readStored: () => context.globalState.get(PREVIEW_PRESET_PREFERENCES_STATE_KEY),
       writeStored: preferences => context.globalState.update(PREVIEW_PRESET_PREFERENCES_STATE_KEY, preferences),
@@ -637,6 +663,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     };
 
     const controller = createPanelSessionController({
+      documentStatistics: createVscodeDocumentStatistics(panel, () => this.getUiLanguage()),
       panel,
       document,
       documentUri,
@@ -691,6 +718,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       saveAsViewStateHandoff: this.saveAsViewStateHandoff,
       saveDocument: async () => document.save(),
       onExportDocument: (session, options) => this.exportSessionDocument(session, options),
+      renderDocumentContent: text => this.previewRenderer.renderContent(text),
       renderPreview: async (options) => {
         const definition = options.preset?.startsWith('user:') ? this.customPreviewPresets.get(options.preset) : getPreviewPreset(options.preset);
         if (!definition || definition.custom && definition.custom.revision !== options.presetRevision) throw new Error('Preview preset was removed or updated; select it again.');
@@ -758,6 +786,12 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         this.updateActiveEditorContext();
       }
     });
+
+    const workspaceConnection = this.workspaceDocuments.attach(panel, document, () => controller.session.ensureInitDelivered(), this.documentViews.hasWorkspaceView);
+    const workspaceCatalogSubscription = this.documentViews.onDidChange(() => workspaceConnection.refresh());
+    panel.onDidDispose(() => workspaceCatalogSubscription.dispose());
+    this.documentViews.attach(panel, () => controller.session.ensureInitDelivered());
+    this.extensionFeatures.attach(panel, () => controller.session.ensureInitDelivered());
 
     // A conservative hint preserves immediate diagram transitions without a
     // second Markdown parser. New diagrams can still load the runtime later.
@@ -870,6 +904,14 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         target: format,
         includeTableOfContents
       });
+
+      const diagrams = await exportRuntime.materializeContributedBlocks(exportRender.htmlDocument, snapshot, format, session.renderExportBlocks);
+      exportRender.htmlDocument = diagrams.html;
+      if (diagrams.warnings.length) {
+        void showTimedWarningMessage(snapshot.uiLanguage === 'zh-CN'
+          ? `有 ${diagrams.warnings.length} 个图块未能导出为图形，已保留源码：${diagrams.warnings.slice(0, 3).join('；')}`
+          : `${diagrams.warnings.length} diagram(s) retained source: ${diagrams.warnings.slice(0, 3).join('; ')}`);
+      }
 
       if (format === 'html') {
         report('writingHtml');
@@ -1076,7 +1118,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         <link href="${styleUri}" rel="stylesheet" />
         ${preloadMermaid ? `<link rel="modulepreload" href="${mermaidModuleUri}" />` : ''}
       </head>
-      <body data-meo-katex-src="${katexStyleUri}" data-meo-mermaid-src="${mermaidRuntimeUri}" data-meo-mermaid-module-src="${mermaidModuleUri}" data-meo-git-diff-worker-src="${gitDiffWorkerUri}" data-meo-shiki-worker-src="${shikiWorkerUri}" data-meo-markdown-worker-src="${markdownWorkerUri}" data-meo-script-nonce="${nonce}">
+      <body data-meo-statistics-worker-src="${webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'document-statistics-worker.js'))}" data-meo-katex-src="${katexStyleUri}" data-meo-mermaid-src="${mermaidRuntimeUri}" data-meo-mermaid-module-src="${mermaidModuleUri}" data-meo-git-diff-worker-src="${gitDiffWorkerUri}" data-meo-shiki-worker-src="${shikiWorkerUri}" data-meo-markdown-worker-src="${markdownWorkerUri}" data-meo-script-nonce="${nonce}">
         <div id="app" class="editor-root">
           ${getWebviewPreloadShellMarkup()}
         </div>
@@ -1172,6 +1214,7 @@ function unwrapExportRuntimeModule(mod: unknown): ExportRuntimeModule {
     if (
       candidate &&
       typeof candidate.renderExportHtmlDocument === 'function' &&
+      typeof candidate.materializeContributedBlocks === 'function' &&
       typeof candidate.renderPreviewDocument === 'function' &&
       typeof candidate.writeHtmlExport === 'function' &&
       typeof candidate.renderPdfFromHtmlExport === 'function'

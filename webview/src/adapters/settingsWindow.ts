@@ -1,3 +1,4 @@
+import type { createExtensionFeatureSettings } from './extensionFeatureSettings';
 import { createElement, X } from 'lucide';
 import { createAboutSettings } from './aboutSettings';
 import type { EditorEnvironment } from '../../../src/protocol/editorServices';
@@ -44,6 +45,7 @@ export function createSettingsWindow(options: {
   readonly copyText: (text: string) => Promise<boolean>;
   readonly imageLocation?: { element: HTMLDivElement; present(language: UiLanguage): void; refresh(): Promise<void>; flush(): void };
   readonly previewPresets?: ReturnType<typeof createPreviewPresetSettings>;
+  readonly extensionFeatures?: ReturnType<typeof createExtensionFeatureSettings>;
 }) {
   let language = options.initialLanguage;
   let tab: SettingsTab = 'general';
@@ -53,7 +55,7 @@ export function createSettingsWindow(options: {
   let renderedSignature = '';
   let valuePresenters: (() => void)[] = [];
   const pending = new Set<string>();
-  const scrollPositions: Record<SettingsTab, number> = { general: 0, appearance: 0, typing: 0, presets: 0, shortcuts: 0, about: 0 };
+  const scrollPositions: Record<SettingsTab, number> = { general: 0, appearance: 0, typing: 0, presets: 0, shortcuts: 0, extensions: 0, about: 0 };
   const appearance = createAppearanceSettings({ ...options.appearance, registerInput: options.registerInput });
   const about = createAboutSettings(options);
   const abort = new AbortController();
@@ -64,7 +66,7 @@ export function createSettingsWindow(options: {
   const top = element('div', 'settings-top');
   const tabs = element('div', 'settings-tabs'); tabs.setAttribute('role', 'tablist');
   const tabButtons = new Map<SettingsTab, { button: HTMLButtonElement; label: HTMLSpanElement; badge: HTMLSpanElement }>();
-  for (const id of ['general', 'appearance', 'typing', 'presets', 'shortcuts', 'about'] as const) {
+  for (const id of ['general', 'appearance', 'typing', 'presets', 'shortcuts', ...(options.extensionFeatures ? ['extensions'] as const : []), 'about'] as const) {
     const control = button('', 'settings-tab'); control.dataset.tab = id; control.setAttribute('role', 'tab');
     const label = element('span', 'settings-tab-label'); const badge = element('span', 'settings-tab-badge');
     control.append(label, badge); tabs.append(control); tabButtons.set(id, { button: control, label, badge });
@@ -232,7 +234,7 @@ export function createSettingsWindow(options: {
     const visible = filtered();
     for (const [id, control] of tabButtons) {
       control.button.setAttribute('aria-selected', String(id === tab)); control.button.tabIndex = id === tab ? 0 : -1;
-      control.badge.textContent = String(id === 'appearance' ? appearance.count(query()) : visible[id].length + (id === 'typing' && visible.imageLocation ? 1 : 0)); control.badge.hidden = !query();
+      control.badge.textContent = String(id === 'extensions' ? options.extensionFeatures?.count(query()) ?? 0 : id === 'appearance' ? appearance.count(query()) : visible[id].length + (id === 'typing' && visible.imageLocation ? 1 : 0)); control.badge.hidden = !query();
       control.button.id = `meo-settings-tab-${id}`;
     }
     content.setAttribute('aria-labelledby', `meo-settings-tab-${tab}`);
@@ -241,7 +243,7 @@ export function createSettingsWindow(options: {
     appearanceFooter.hidden = tab !== 'appearance'; appearance.present();
     if (tab === 'presets') { status.textContent = options.previewPresets?.error() ?? ''; status.hidden = !status.textContent; }
     // Preset data updates rows in place; only a changed section layout rebuilds the page.
-    const signature = JSON.stringify([language, tab, query(), recording?.command, tab === 'shortcuts' ? [options.getPreferences().shortcuts, [...pending]] : null, tab === 'presets' ? [...new Set(visible.presets.map(item => item.section))] : null]);
+    const signature = JSON.stringify([language, tab, query(), tab === 'extensions' ? options.extensionFeatures?.revision() : null, recording?.command, tab === 'shortcuts' ? [options.getPreferences().shortcuts, [...pending]] : null, tab === 'presets' ? [...new Set(visible.presets.map(item => item.section))] : null]);
     if (renderedSignature === signature) {
       const oldScroll = content.scrollTop;
       if (tab === 'presets') {
@@ -257,9 +259,10 @@ export function createSettingsWindow(options: {
     const activeRecorder = document.activeElement?.classList.contains('settings-recorder');
     options.previewPresets?.clear();
     valuePresenters = []; content.replaceChildren(); navigation.replaceChildren();
+    if (tab === 'extensions' && options.extensionFeatures?.count(query())) content.append(options.extensionFeatures.render(language, query()));
     if (tab === 'appearance') content.append(appearance.render(language, query()));
     if (tab === 'about' && visible.about.length) content.append(about.render(language, visible.about));
-    const groups = tab === 'appearance' || tab === 'about' ? [] : tab === 'general' ? ['display', 'opening', 'interface'] : tab === 'typing' ? typingSections : tab === 'presets' ? ['presetList', 'presetFiles'] : Object.keys(shortcutSections);
+    const groups = tab === 'appearance' || tab === 'extensions' || tab === 'about' ? [] : tab === 'general' ? ['display', 'opening', 'interface'] : tab === 'typing' ? typingSections : tab === 'presets' ? ['presetList', 'presetFiles'] : Object.keys(shortcutSections);
     for (const name of groups) {
       const section = name as Section;
       const items = tab === 'general' ? visible.general.filter(item => item.section === section).map(renderGeneral)
@@ -310,7 +313,7 @@ export function createSettingsWindow(options: {
     options.imageLocation?.present(language);
     title.textContent = t('设置', 'Settings'); close.setAttribute('aria-label', t('关闭设置', 'Close settings'));
     tabs.setAttribute('aria-label', t('设置分类', 'Settings categories')); navigation.setAttribute('aria-label', t('跳转到章节', 'Jump to section'));
-    for (const [id, control] of tabButtons) control.label.textContent = id === 'general' ? t('常规', 'General') : id === 'appearance' ? t('外观', 'Appearance') : id === 'typing' ? t('输入', 'Input') : id === 'presets' ? t('预览预设', 'Preview presets') : id === 'about' ? t('关于', 'About') : t('快捷键', 'Shortcuts');
+    for (const [id, control] of tabButtons) control.label.textContent = id === 'extensions' ? t('扩展功能', 'Extensions') : id === 'general' ? t('常规', 'General') : id === 'appearance' ? t('外观', 'Appearance') : id === 'typing' ? t('输入', 'Input') : id === 'presets' ? t('预览预设', 'Preview presets') : id === 'about' ? t('关于', 'About') : t('快捷键', 'Shortcuts');
     search.placeholder = t('搜索设置', 'Search settings'); search.setAttribute('aria-label', search.placeholder); clear.setAttribute('aria-label', t('清除搜索', 'Clear search'));
     reset.textContent = t('恢复默认快捷键', 'Reset shortcuts'); reset.setAttribute('aria-expanded', String(resetOpen));
     resetTitle.textContent = t('恢复全部快捷键？', 'Reset all shortcuts?'); resetDescription.textContent = t('自定义绑定将被替换，其他设置保持不变。', 'Custom bindings will be replaced. Other settings stay unchanged.');
@@ -330,7 +333,7 @@ export function createSettingsWindow(options: {
   document.addEventListener('focusin', event => { if (resetOpen && event.target instanceof Node && !resetPopover.contains(event.target) && !reset.contains(event.target)) dismissReset(); }, { signal: abort.signal });
   window.addEventListener('blur', dismissReset, { signal: abort.signal });
   present();
-  return { open(next?: SettingsTab) { if (disposed) return; if (next) { search.value = ''; selectTab(next); } if (dialog.open) return; appearance.open(); present(); void options.imageLocation?.refresh(); dialog.showModal(); if (tab === 'about') about.open(); updateNavigation(); search.focus(); }, close: closeWindow,
+  return { open(next?: SettingsTab) { if (disposed) return; if (next) { search.value = ''; selectTab(next); } if (dialog.open) return; appearance.open(); present(); void options.imageLocation?.refresh(); options.extensionFeatures?.refresh(); dialog.showModal(); if (tab === 'about') about.open(); updateNavigation(); search.focus(); }, close: closeWindow,
     isOpen: () => dialog.open, present, setLanguage(next: UiLanguage) { language = next; present(); },
     dispose() { disposed = true; appearance.dispose(); about.dispose(); abort.abort(); disposeSearchFocus?.(); options.previewPresets?.clear(); if (dialog.open) dialog.close(); dialog.remove(); } };
 }

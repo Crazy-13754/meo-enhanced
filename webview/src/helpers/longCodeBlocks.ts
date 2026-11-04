@@ -1,3 +1,4 @@
+import { isGraphBlockLanguage } from '../editor/documentBlocks';
 import { editorScrollIntoView } from '../editor/scrollEffects';
 import { EditorState, Facet, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { sourceLinePositionAtTarget } from '../editor/domSourceLine';
@@ -68,14 +69,10 @@ export const longCodeBlockEnabledFacet = Facet.define<boolean, boolean>({
   combine: (values) => values.at(-1) ?? true
 });
 
-function isMermaidLanguage(info: string | null): boolean {
-  return info === 'mermaid';
-}
-
 function collectLongCodeBlockDescriptors(state: EditorState): LongCodeBlockDescriptor[] {
   const descriptors: LongCodeBlockDescriptor[] = [];
   for (const fence of readCodeFenceSource(state)) {
-    if (isMermaidLanguage(fence.language)) continue;
+    if (isGraphBlockLanguage(state, fence.language)) continue;
     const { contentStartLine, ...source } = fence;
     const isLong = source.lineCount > LONG_CODE_LINE_THRESHOLD;
     descriptors.push({ ...source, language: source.language || 'Plain text',

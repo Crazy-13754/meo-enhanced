@@ -1,6 +1,6 @@
 import type { EditorCommandId, InputAssistance } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts' | 'about';
+export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts' | 'extensions' | 'about';
 
 export const aboutCatalog = [
   { id: 'project', section: 'aboutProject', title: ['项目主页', 'Project home'],

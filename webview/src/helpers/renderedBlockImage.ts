@@ -3,6 +3,14 @@ import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 
 const imageButtonLabels = new WeakMap<HTMLElement, (language: UiLanguage) => void>();
 const imageButtonAvailability = new WeakMap<HTMLElement, () => void>();
+const graphImageRoots = new WeakMap<HTMLElement, () => HTMLElement | null>();
+export function registerGraphImageRoot(owner: HTMLElement, resolve: () => HTMLElement | null): () => void {
+  graphImageRoots.set(owner, resolve);
+  return () => { graphImageRoots.delete(owner); };
+}
+export function renderedGraphImageRoot(owner: HTMLElement): HTMLElement | null {
+  return graphImageRoots.get(owner)?.() ?? (graphImageRoots.has(owner) ? null : owner);
+}
 
 export function refreshRenderedBlockImageLabel(button: HTMLElement, language: UiLanguage): void {
   imageButtonLabels.get(button)?.(language);
@@ -58,7 +66,7 @@ function fontStyles(ownerDocument: Document): string {
 async function renderBlockPng(block: HTMLElement): Promise<Blob> {
   const ownerDocument = block.ownerDocument;
   await ownerDocument.fonts.ready;
-  const svgSource = block.querySelector<SVGSVGElement>(':scope > .meo-export-mermaid-svg > svg, :scope > .meo-mermaid-svg-wrapper > svg');
+  const svgSource = block.querySelector<SVGSVGElement>(':scope > .meo-export-mermaid-svg > svg, :scope > .meo-mermaid-svg-wrapper > svg, :scope > .meo-contributed-content > svg, :scope > .meo-contributed-content > .meo-mermaid-svg-wrapper > svg');
   const mathSource = block.querySelector<HTMLElement>(':scope > .meo-latex-math-canvas > .katex-display, :scope > .katex-display');
   const source = svgSource ?? mathSource;
   if (!block.isConnected || !source || block.querySelector('.katex-error')
@@ -77,6 +85,16 @@ async function renderBlockPng(block: HTMLElement): Promise<Blob> {
   if (svgSource) {
     width = svgSource.viewBox.baseVal.width || svgSource.getBoundingClientRect().width;
     height = svgSource.viewBox.baseVal.height || svgSource.getBoundingClientRect().height;
+    // Optional renderers expose a complete result group; copy its content bounds,
+    // independently of the fitted viewport or temporary fullscreen camera.
+    const result = svgSource.querySelector<SVGGElement>('[data-meo-image-content]');
+    if (result) {
+      const box = result.getBBox(); width = box.width; height = box.height;
+      const group = clone.querySelector<SVGGElement>('[data-meo-image-content]');
+      group?.removeAttribute('transform'); if (group) group.style.transform = 'none';
+      clone.setAttribute('viewBox', `${box.x} ${box.y} ${width} ${height}`);
+      clone.setAttribute('width', String(width)); clone.setAttribute('height', String(height));
+    }
     style.width = `${width}px`; style.height = `${height}px`;
   } else {
     contentWidth = Math.max(mathSource!.offsetWidth, mathSource!.scrollWidth);
@@ -111,7 +129,11 @@ async function renderBlockPng(block: HTMLElement): Promise<Blob> {
   context.fillStyle = ownerDocument.defaultView!.getComputedStyle(block).getPropertyValue('--meo-bg').trim() || '#ffffff';
   context.fillRect(0, 0, outputWidth, outputHeight);
   const ancestors: Element[] = [];
-  for (let element: Element | null = block; element; element = element.parentElement) ancestors.unshift(element);
+  for (let element: Element | null = block; element;) {
+    ancestors.unshift(element);
+    const root = element.getRootNode();
+    element = element.parentElement ?? ('host' in root ? (root as ShadowRoot).host : null);
+  }
   for (const element of ancestors) {
     context.fillStyle = ownerDocument.defaultView!.getComputedStyle(element).backgroundColor;
     context.fillRect(0, 0, outputWidth, outputHeight);

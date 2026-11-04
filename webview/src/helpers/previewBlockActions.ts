@@ -8,6 +8,16 @@ import { openMermaidFullscreen, type MermaidFullscreenViewer } from './mermaidFu
 import { focusRenderedBlockAction, suppressRenderedBlockPointerFocus } from './renderedBlockActionFocus';
 
 const previewViewers = new WeakMap<Document, MermaidFullscreenViewer>();
+type PreviewGraphActions = { image(): HTMLElement | null; open(trigger: HTMLElement, pointer: boolean): void };
+const contributedGraphs = new WeakMap<HTMLElement, PreviewGraphActions>();
+/** Optional graphs reuse the same Preview actions, styles and availability projection. */
+export function registerPreviewGraphActions(block: HTMLElement, actions: PreviewGraphActions): () => void {
+  contributedGraphs.set(block, actions);
+  return () => {
+    contributedGraphs.delete(block);
+    block.querySelectorAll('.meo-copy-image-btn,.meo-preview-fullscreen-btn').forEach(button => button.remove());
+  };
+}
 
 export function closePreviewBlockFullscreen(ownerDocument: Document | null): void {
   if (ownerDocument) previewViewers.get(ownerDocument)?.close('mode');
@@ -15,9 +25,10 @@ export function closePreviewBlockFullscreen(ownerDocument: Document | null): voi
 
 export function syncPreviewRenderedActions(root: ParentNode): void {
   const nearby = root.nodeType === 9 ? getPreviewViewportResources(root as Document, 'copy') : undefined;
-  for (const block of nearby ?? root.querySelectorAll<HTMLElement>('.meo-export-mermaid, .meo-export-math-display')) {
-    if (block.classList.contains('meo-export-code-block-wrap')) continue;
-    const ready = block.classList.contains('meo-export-mermaid')
+  for (const block of nearby ?? previewBlocksIn(root)) {
+    const graph = contributedGraphs.get(block);
+    if (block.classList.contains('meo-export-code-block-wrap') && !graph) continue;
+    const ready = graph ? !!graph.image() : block.classList.contains('meo-export-mermaid')
       ? block.classList.contains('is-rendered') && !block.classList.contains('is-error') && block.dataset.meoPreviewMermaidPending !== 'true'
       : Boolean(block.querySelector('.katex-display')) && !block.querySelector('.katex-error');
     for (const button of block.querySelectorAll<HTMLElement>(':scope > .meo-preview-code-actions > .meo-copy-image-btn, :scope > .meo-preview-code-actions > .meo-preview-fullscreen-btn')) {
@@ -75,11 +86,15 @@ function openPreviewFullscreen(block: HTMLElement, trigger: HTMLElement, pointer
 
 // These reading controls are added only to the iframe DOM, never to shared export HTML.
 export const previewCopyBlockSelector = '.meo-export-code-block-wrap, .meo-export-mermaid, .meo-export-math-display';
+function previewBlocksIn(root: ParentNode): HTMLElement[] {
+  return root.nodeType === 1 && (root as HTMLElement).matches(previewCopyBlockSelector)
+    ? [root as HTMLElement] : [...root.querySelectorAll<HTMLElement>(previewCopyBlockSelector)];
+}
 
 export function addPreviewCodeCopyControls(root: ParentNode, language: UiLanguage): void {
   const strings = getUiStrings(language);
   const nearby = root.nodeType === 9 ? getPreviewViewportResources(root as Document, 'copy') : undefined;
-  for (const block of nearby ?? root.querySelectorAll<HTMLElement>(previewCopyBlockSelector)) {
+  for (const block of nearby ?? previewBlocksIn(root)) {
     if (block.dataset.meoCodePart && block.dataset.meoCodePart !== 'start') continue;
     if (block.classList.contains('meo-export-mermaid')
       && !block.querySelector(':scope > .meo-export-code-language-label')) {
@@ -122,19 +137,22 @@ export function addPreviewCodeCopyControls(root: ParentNode, language: UiLanguag
       button = copyButton;
     }
     const actions = button.parentElement!;
-    if (!block.classList.contains('meo-export-code-block-wrap') && !actions.querySelector('.meo-copy-image-btn')) {
-      actions.prepend(createRenderedBlockImageButton(block, language));
+    if ((!block.classList.contains('meo-export-code-block-wrap') || contributedGraphs.has(block)) && !actions.querySelector('.meo-copy-image-btn')) {
+      actions.prepend(createRenderedBlockImageButton(() => contributedGraphs.get(block)?.image() ?? (contributedGraphs.has(block) ? null : block), language, block.ownerDocument));
     }
-    if (block.classList.contains('meo-export-mermaid') && !actions.querySelector('.meo-preview-fullscreen-btn')) {
+    if ((block.classList.contains('meo-export-mermaid') || contributedGraphs.has(block)) && !actions.querySelector('.meo-preview-fullscreen-btn')) {
       const fullscreen = block.ownerDocument.createElement('span');
       fullscreen.className = 'meo-preview-fullscreen-btn';
       fullscreen.setAttribute('role', 'button'); fullscreen.tabIndex = 0;
       fullscreen.append(block.ownerDocument.importNode(createElement(Maximize2, { width: 15, height: 15, 'aria-hidden': 'true' }), true));
       const open = (event: Event) => {
         event.preventDefault(); event.stopPropagation();
-        const current = fullscreen.closest<HTMLElement>('.meo-export-mermaid');
+        const current = fullscreen.closest<HTMLElement>(previewCopyBlockSelector);
         if (current && fullscreen.getAttribute('aria-disabled') !== 'true') {
-          openPreviewFullscreen(current, fullscreen, event.type === 'click' && (event as MouseEvent).detail > 0);
+          const pointer = event.type === 'click' && (event as MouseEvent).detail > 0;
+          const graph = contributedGraphs.get(current);
+          if (graph) graph.open(fullscreen, pointer);
+          else openPreviewFullscreen(current, fullscreen, pointer);
         }
       };
       fullscreen.addEventListener('click', open);

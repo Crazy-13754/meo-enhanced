@@ -740,6 +740,20 @@ async function assertMarkerPrecision(page: import('puppeteer-core').Page, bundle
     });
     assert.ok(lateLayout.restored && Math.abs(lateLayout.before - lateLayout.after) <= 1,
       `Late layout above a located row must preserve its actual visible text: ${JSON.stringify(lateLayout)}`);
+    const navigationLine = text.split('\n').findIndex(line => line === (windowed ? 'Paragraph 4000.' : 'Visible HTML tail')) + 1;
+    if (windowed) assert.equal(await page.evaluate(line => (window as any).__previewController.isSourceLineRendered(line), navigationLine), false,
+      'Upper navigation must exercise loading an unmounted window');
+    await page.evaluate(async line => {
+      const c = (window as any).__previewController;
+      c.setSourcePositionMarker({ visible: true, active: true, line });
+      await c.revealSourcePosition(line, () => true, 'upper');
+    }, navigationLine);
+    await page.waitForFunction(line => {
+      const doc = document.querySelector<HTMLIFrameElement>('iframe')!.contentDocument!;
+      const marker = doc.querySelector<HTMLElement>('.meo-preview-source-position-marker');
+      return marker && !marker.hidden && marker.dataset.meoSourcePositionLine === String(line)
+        && Math.abs(marker.getBoundingClientRect().top - doc.documentElement.clientHeight * 0.3) < 6;
+    }, {}, navigationLine);
     console.log(`Source marker precision passed (${windowed ? 'windowed' : 'ordinary'})`);
   } finally { for (const d of documents.values()) d.dispose(); await page.close(); }
 }

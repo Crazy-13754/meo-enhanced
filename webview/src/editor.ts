@@ -22,7 +22,7 @@ import { documentEdit } from './adapters/documentSnapshot';
 import type { DocumentTextEdit } from '../../src/foundation/documentSnapshot';
 import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
-import { defaultKeymap, history, historyKeymap, indentMore, indentLess, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentMore, indentLess, isolateHistory, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
 import { markdownKeymap } from '@codemirror/lang-markdown';
 import { boundedMarkdownInputPrefix, editorMarkdownLanguage } from './liveMode';
 import { indentUnit, syntaxTree, forceParsing } from '@codemirror/language';
@@ -53,6 +53,8 @@ import { getCodeBlockSourceLines } from './helpers/blockIndent';
 import { markdownContentStyleTheme } from './helpers/markdownContentStyleTheme';
 import { markdownTagField } from './helpers/tags';
 import { findDocumentFragmentPosition, getLinkHrefAtPointer, getLinkHrefAtSourcePosition, isPrimaryModifierPointerClick } from './helpers/linkNavigation';
+import { documentBlocksFacet } from './editor/documentBlocks';
+import type { DocumentBlocksPort } from './editor/documentBlocks';
 import {
   gitDiffGutterBaselineExtensions,
   gitDiffGutterLiveRenderExtensions,
@@ -114,6 +116,7 @@ import {
   tableCellEditorValueToSource,
   tableCellSourceOffsetToEditorOffset,
   tableCellSourceRangeForInput,
+  mountedTableStatisticsSelection,
   tableHeaderAlignmentOverrideField,
   commitPendingTableEdits,
   endTableCellEditing,
@@ -257,6 +260,7 @@ type CreateEditorOptions = {
   parent: HTMLElement;
   text: string | Text;
   onApplyTransaction: (edit: DocumentTextEdit) => void;
+  onStatisticsChange?: () => void;
   onOpenLink?: (href: string) => void;
   onCommentBlocked?: () => void;
   onSelectionChange?: (state: SelectionMenuState & { from?: number; to?: number }) => void;
@@ -276,6 +280,7 @@ type CreateEditorOptions = {
   initialDiagnostics?: readonly EditorDiagnostic[];
   initialImageIntrinsicSizes?: readonly import('../../src/foundation/imageDimensions').ImageIntrinsicSize[];
   mermaidDiagramPresentationFactory: MermaidDiagramPresentationFactory;
+  documentBlocks?: DocumentBlocksPort;
   previewViewportSurface?: PreviewViewportSurface;
   uiLanguage?: UiLanguage;
   sourceLineNumbers?: SourceLineNumberMode;
@@ -413,6 +418,7 @@ export function createEditor({
   parent,
   text: initialDocument,
   onApplyTransaction,
+  onStatisticsChange,
   onOpenLink,
   onCommentBlocked,
   onSelectionChange,
@@ -430,6 +436,7 @@ export function createEditor({
   initialDiagnostics = [],
   initialImageIntrinsicSizes = [],
   mermaidDiagramPresentationFactory,
+  documentBlocks,
   previewViewportSurface,
   uiLanguage = 'en',
   sourceLineNumbers = 'on'
@@ -450,6 +457,7 @@ export function createEditor({
   const lineNumberCompartment = new Compartment();
   const longCodeBlockPreferenceCompartment = new Compartment();
   const uiLanguageCompartment = new Compartment();
+  const documentBlocksCompartment = new Compartment();
   let currentSourceLineNumbers = sourceLineNumbers;
   const startMode = initialMode === 'live' ? 'live' : 'source';
   let documentAssessment = assessLargeDocument(text);
@@ -2675,6 +2683,7 @@ export function createEditor({
         mermaidDiagramPresentationConsumer
       ),
       markdownContentStyleTheme,
+      documentBlocksCompartment.of(documentBlocks ? documentBlocksFacet.of(documentBlocks) : []),
       sourcePreparationCompartment.of(lightweightSourceSyntax ? [] : sourceSyntaxPreparation),
       createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork })] : sourceMode(boundedEditorWork, lightweightSourceSyntax)),
@@ -2688,6 +2697,7 @@ export function createEditor({
         return suppressHistoryAutoScrollAt(range.head);
       }),
       EditorView.updateListener.of((update) => {
+        if (update.docChanged || update.selectionSet) onStatisticsChange?.();
         if (update.docChanged && outlineCache) {
           outlineChanges = outlineChanges?.composeDesc(update.changes) ?? update.changes.desc;
         }
@@ -3355,6 +3365,7 @@ export function createEditor({
   };
   view.dom.addEventListener('meo-activate-image', onWidgetActivateImage);
   onTableSelectionChange = () => {
+    onStatisticsChange?.();
     emitSelectionChange();
     emitHistoryAvailability();
   };
@@ -3415,6 +3426,7 @@ export function createEditor({
   };
   view.dom.addEventListener('pointerdown', onGitDiffSelectionPointerDown, true);
   onDocumentSelectionChange = () => {
+    if (getActiveTableInput()) onStatisticsChange?.();
     const selection = document.getSelection();
     if (
       (!selection || selection.isCollapsed) &&
@@ -3654,6 +3666,31 @@ export function createEditor({
       const target = view.dom.ownerDocument.elementFromPoint(point.x, point.y);
       if (!target || !view.contentDOM.contains(target)) return '';
       return editableLinkHrefAtPointer({ target, clientX: point.x, clientY: point.y }, view);
+    },
+    refreshDocumentBlocks() {
+      if (!editorDestroyed) view.dispatch({ effects: documentBlocksCompartment.reconfigure(documentBlocks ? documentBlocksFacet.of(documentBlocks) : []) });
+    },
+    applyContributedEdit(edit: { text: string; from: number; expected: string; insert: string }) {
+      if (editorDestroyed || view.composing || imeCompositionActive || historyCompositionActive) throw new Error('Finish composing before editing / 请先完成当前输入');
+      commitActiveTableInput();
+      if (readDocumentTextProjection(view.state.doc) !== edit.text || edit.from < 0 || edit.from + edit.expected.length > view.state.doc.length || view.state.sliceDoc(edit.from, edit.from + edit.expected.length) !== edit.expected)
+        throw new Error('The document changed; refresh and retry. / 文档已变化，请刷新后重试。');
+      view.dispatch({ changes: { from: edit.from, to: edit.from + edit.expected.length, insert: edit.insert },
+        annotations: [Transaction.userEvent.of('input.contribution'), isolateHistory.of('full')] });
+    },
+    readStatisticsSelection() {
+      const input = getActiveTableInput();
+      const range = input ? getTableInputSourceRange(input) : null;
+      if (input && range) {
+        const from = Math.min(range.to, range.from + tableCellEditorOffsetToSourceOffset(input.value, input.selectionStart));
+        const to = Math.min(range.to, range.from + tableCellEditorOffsetToSourceOffset(input.value, input.selectionEnd));
+        const head = input.selectionDirection === 'backward' ? from : to;
+        return { selections: [{ from, to }], line: view.state.doc.lineAt(head).number };
+      }
+      const cells = mountedTableStatisticsSelection(view);
+      if (cells) return { selections: cells.ranges, line: view.state.doc.lineAt(cells.head).number, hasSelection: true };
+      return { selections: view.state.selection.ranges.map(({ from, to }) => ({ from, to })),
+        line: view.state.doc.lineAt(view.state.selection.main.head).number };
     },
     getText() {
       commitActiveTableInput();

@@ -69,7 +69,7 @@ const immediateTimer = {
     return { cancel: () => { canceled = true; } };
   }
 };
-const controller = createPanelSessionController(createPanelSessionControllerParams({
+const makeController = () => createPanelSessionController(createPanelSessionControllerParams({
   panel,
   document,
   pendingDraftRecovery,
@@ -82,6 +82,7 @@ const controller = createPanelSessionController(createPanelSessionControllerPara
     gitBaselineRefreshTimer: { schedule: () => panelSessionCancelable() }
   }
 }) as never);
+const controller = makeController();
 
 const flushMicrotasks = async (): Promise<void> => {
   for (let index = 0; index < 20; index += 1) await Promise.resolve();
@@ -158,4 +159,19 @@ fileChanged();
 await flushMicrotasks();
 assert.equal(statuses().at(-1), 'current', 'a successful disk read must clear the unavailable state');
 controller.dispose();
+// A workspace edit can dirty a TextDocument before its first MEO panel opens.
+// Reading its existing disk revision is initialization, not an external change.
+posted.length = 0;
+document.text = 'task checked by WorkspaceEdit';
+document.isDirty = true;
+document.version += 1;
+diskText = 'original unchecked task';
+const reopened = makeController();
+await reopened.handleMessage({ type: 'ready' });
+await flushMicrotasks();
+assert(!statuses().includes('modified-while-dirty'), 'Opening an already dirty document must not report an unchanged disk as modified');
+diskText = 'a genuinely newer disk revision';
+fileChanged(); await flushMicrotasks();
+assert.equal(statuses().at(-1), 'modified-while-dirty', 'A subsequent real disk change still warns');
+reopened.dispose();
 console.log('Panel Session external file notice checks passed');

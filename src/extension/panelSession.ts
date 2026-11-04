@@ -1,3 +1,4 @@
+import type { createVscodeDocumentStatistics } from '../host/vscodeDocumentStatistics';
 import { DEFAULT_EDITOR_LINE_HEIGHT } from '../foundation/editorLineHeight';
 import { runEditorService } from '../host/editorServices';
 import type { createImageDimensionCatalog } from '../host/imageDimensions';
@@ -90,6 +91,8 @@ import type { PreviewRenderResponse } from '../protocol/previewRender';
 import type { PreviewDocumentResponse } from '../protocol/previewDocument';
 import type { PreviewDocumentOperation, PreviewDocumentResult } from '../foundation/previewDocument';
 import type { ReadingSnapshot } from '../protocol/exportSnapshot';
+import { createBlockExportTransport } from '../host/blockExportTransport';
+import type { BlockExportPayload, BlockExportResult } from '../protocol/blockExport';
 import { createExportSnapshotTransport } from '../host/exportSnapshotTransport';
 import { respondToDocumentSessionRequest } from '../host/documentSessionRequestHandler';
 import { createVscodeDocumentReloadAdapter } from '../host/vscodeDocumentReloadAdapter';
@@ -133,6 +136,7 @@ type PanelDiagnostics = {
 };
 
 type PanelSessionControllerParams = {
+  documentStatistics?: ReturnType<typeof createVscodeDocumentStatistics>;
   panel: vscode.WebviewPanel;
   document: vscode.TextDocument;
   documentUri: vscode.Uri;
@@ -170,6 +174,7 @@ type PanelSessionControllerParams = {
     layout?: 'side' | 'full';
     window?: { documentId: string; anchorLine: number };
   }) => Promise<PreviewRenderResult>;
+  renderDocumentContent?: (text: string) => Promise<{ html: string }>;
   operatePreviewDocument?: (documentId: string, operation: PreviewDocumentOperation) => Promise<PreviewDocumentResult>;
   getFindOptions: () => FindOptions;
   getUiLanguage: () => InitMessage['uiLanguage'];
@@ -211,6 +216,7 @@ export type PanelSession = {
   gitDocumentState: GitDocumentState;
   ensureInitDelivered: () => Promise<void>;
   requestExportSnapshot: () => Promise<ReadingSnapshot>;
+  renderExportBlocks: (payload: BlockExportPayload) => Promise<readonly BlockExportResult[]>;
   refreshGitBaseline: (options?: GitBaselineRefreshOptions) => void;
   getGitRepoRoot: () => string | null;
 };
@@ -264,6 +270,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   } = params;
 
   const documentKey = document.uri.toString();
+  const documentStatistics = params.documentStatistics;
   const saveAsViewState = params.saveAsViewStateHandoff?.take(documentKey, document.getText()) ?? null;
   const persistedMode = context.globalState.get(EDITOR_MODE_STATE_KEY);
   const persistedEditorMode: EditorMode | null = isEditorMode(persistedMode) ? persistedMode : null;
@@ -347,14 +354,15 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         notifySavedRevisionChanged();
         return;
       }
-      const changed = savedRevisionTracker.getCurrentEditBaseline()
+      const hadDiskRevision = savedRevisionTracker.getCurrentEditBaseline() !== null;
+      const changed = hadDiskRevision
         ? savedRevisionTracker.noteDiskRevision(result.text)
         : savedRevisionTracker.initialize(result.text);
       const diskText = normalizeDocumentText(result.text);
       const documentText = normalizeDocumentText(document.getText());
       if (!document.isDirty || diskText === documentText) {
         publishExternalFileStatus('current');
-      } else if (changed || recoveredFromUnavailable) {
+      } else if ((hadDiskRevision && changed) || recoveredFromUnavailable) {
         publishExternalFileStatus('modified-while-dirty', true);
       }
       if (changed || recoveredFromUnavailable) {
@@ -676,6 +684,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   };
 
   const exportSnapshotTransport = createExportSnapshotTransport(postToWebview);
+  const blockExportTransport = createBlockExportTransport(postToWebview);
 
   const postFocusEditor = async (): Promise<void> => {
     if (!webviewReady) {
@@ -696,6 +705,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     gitDocumentState,
     ensureInitDelivered,
     requestExportSnapshot,
+    renderExportBlocks: blockExportTransport.request,
     refreshGitBaseline,
     getGitRepoRoot: () => gitDocumentState.getRepoRoot()
   };
@@ -710,8 +720,14 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     switch (raw.type) {
+      case 'documentStatistics':
+        documentStatistics?.update(raw.statistics);
+        return;
       case 'requestWebviewVisibility':
         await postToWebview({ type: 'webviewVisibilityResult', requestId: raw.requestId, visible: panel.visible });
+        return;
+      case 'extensionFeaturesRequest':
+        // The extension feature owner handles this on the same validated channel.
         return;
       case 'previewPresetRequest':
         await postToWebview(params.performPreviewPresetAction ? await params.performPreviewPresetAction(raw) : {
@@ -1010,9 +1026,23 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await postToWebview(response);
         return;
       }
+      case 'blockExportResult':
+        blockExportTransport.accept(raw);
+        return;
       case 'exportSnapshotResult':
         exportSnapshotTransport.accept(raw);
         return;
+      case 'requestDocumentContent': {
+        try {
+          if (!params.renderDocumentContent) throw new Error('Document content renderer unavailable');
+          const value = await params.renderDocumentContent(raw.text);
+          await postToWebview({ type: 'documentContentResult', requestId: raw.requestId, result: { ok: true, value } });
+        } catch (error) {
+          await postToWebview({ type: 'documentContentResult', requestId: raw.requestId,
+            result: { ok: false, error: { code: 'operation-failed', message: error instanceof Error ? error.message : 'Content rendering failed' } } });
+        }
+        return;
+      }
       case 'requestPreviewRender': {
         let response: PreviewRenderResponse;
         try {
@@ -1288,6 +1318,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     disposed = true;
+    documentStatistics?.dispose();
     params.imageDimensions?.dispose();
     localLinkWatcher.dispose();
     wikiResourcesSubscription.dispose();
@@ -1309,6 +1340,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     }), 'disposeDraftRecovery');
 
     exportSnapshotTransport.close('The editor was closed before export completed.');
+    blockExportTransport.close();
     messageSubscription.dispose();
     documentChangeSubscription.dispose();
     documentSaveSubscription.dispose();

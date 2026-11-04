@@ -1,5 +1,7 @@
+import { readMarkdownListItems } from '../shared/markdownListItems';
 import { parentPort } from 'node:worker_threads';
 import { renderPreviewDocument } from './runtime';
+import { renderDocumentContent } from './documentContent';
 import { createPreviewDocument } from './previewDocument';
 import type { PreviewWorkerRequest, PreviewWorkerResponse } from '../host/previewRenderWorker';
 
@@ -9,7 +11,9 @@ const documentKey = (owner: string, id: string) => `${owner.length}:${owner}${id
 parentPort.on('message', async (request: PreviewWorkerRequest) => {
   let response: PreviewWorkerResponse;
   try {
-    if (request.kind === 'render') response = { id: request.id, value: renderPreviewDocument(request.options) };
+    if (request.kind === 'lists') response = { id: request.id, value: readMarkdownListItems(request.text) };
+    else if (request.kind === 'content') response = { id: request.id, value: renderDocumentContent(request.text) };
+    else if (request.kind === 'render') response = { id: request.id, value: renderPreviewDocument(request.options) };
     else if (request.kind === 'release') {
       for (const [key, entry] of documents) if (entry.owner === request.owner) {
         entry.document.dispose(); documents.delete(key);
