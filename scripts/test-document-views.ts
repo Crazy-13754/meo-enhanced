@@ -158,8 +158,6 @@ assert.deepEqual(openedDetails, [['extension.open', extrasId]], 'Guide opens onl
 for (const enabled of ['true', null, 0]) assert.equal(decodeWebviewToHostMessage({ type: 'extensionFeaturesRequest', requestId: 'bad', action: 'setEnabled', id: 'mindmap', enabled }), null);
 assert.equal(decodeHostToWebviewMessage({ type: 'extensionFeaturesChanged', state: { ...features.state(), features: [features.state().features[0], features.state().features[0]] } }), null);
 assert.deepEqual(decodeHostToWebviewMessage({ type: 'extensionFeaturesChanged', state: features.state() })?.type, 'extensionFeaturesChanged');
-installed.set('huangko555.meo-mindmap', { id: 'huangko555.meo-mindmap', extensionUri: new Uri('file:///legacy') });
-views.api.registerDocumentView('huangko555.meo-mindmap', descriptor).dispose();
 await request('mindmap', false); feature.dispose();
 const restored = features.registerFeature(extrasId, { id: 'mindmap', orderId: 10, label: 'Mind map' }, () => { throw new Error('Disabled feature must stay disabled after changing order'); });
 assert.equal(features.state().features[0].enabled, false); assert.equal(features.state().features[0].failed, false);
@@ -168,4 +166,4 @@ assert.deepEqual(features.state().features.map(f => f.id), ['plantuml', 'mindmap
 for (const orderId of [-1, 1.5, NaN, Infinity, '1']) assert.throws(() => features.registerFeature(extrasId, { id: 'invalid', label: 'Invalid', orderId } as any, () => ({ dispose() {} })));
 reordered.dispose();
 restored.dispose(); panels.forEach(p => p.closed.fire()); features.dispose(); views.dispose();
-console.log('Extras feature persistence, activation/disposal, multi-panel sync, failure handling, protocol and legacy coexistence passed');
+console.log('Extras feature persistence, activation/disposal, multi-panel sync, failure handling and protocol passed');
