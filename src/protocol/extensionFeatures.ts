@@ -14,7 +14,7 @@ export interface ExtensionFeaturesState {
   readonly features: readonly ExtraFeature[];
 }
 export type ExtensionFeaturesRequest = { readonly type: 'extensionFeaturesRequest'; readonly requestId: string } &
-  ({ readonly action: 'get' } | { readonly action: 'setEnabled'; readonly id: string; readonly enabled: boolean });
+  ({ readonly action: 'get' | 'openDetails' } | { readonly action: 'setEnabled'; readonly id: string; readonly enabled: boolean });
 export type ExtensionFeaturesEvent = { readonly type: 'extensionFeaturesChanged'; readonly state: ExtensionFeaturesState }
   | { readonly type: 'extensionFeaturesResult'; readonly requestId: string; readonly state: ExtensionFeaturesState; readonly failed: boolean };
 const identifier = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(value);
@@ -22,7 +22,7 @@ export function decodeExtensionFeaturesRequest(value: unknown): ExtensionFeature
   if (!value || typeof value !== 'object') return null;
   const v = value as Record<string, unknown>;
   if (v.type !== 'extensionFeaturesRequest' || typeof v.requestId !== 'string' || !v.requestId || v.requestId.length > 160) return null;
-  if (v.action === 'get') return { type: v.type, requestId: v.requestId, action: 'get' };
+  if (v.action === 'get' || v.action === 'openDetails') return { type: v.type, requestId: v.requestId, action: v.action };
   return v.action === 'setEnabled' && identifier(v.id) && typeof v.enabled === 'boolean'
     ? { type: v.type, requestId: v.requestId, action: v.action, id: v.id, enabled: v.enabled } : null;
 }

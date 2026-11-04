@@ -144,6 +144,11 @@ try {
   if (process.argv.includes('--extras-only')) {
     for (const text of ['# Notes\n\nUnchanged content', '# Notes\n\n' + 'Document paragraph.\n\n'.repeat(7000)]) {
       await openFixture(text);
+      await page.evaluate(() => {
+        const state = { installed: false, version: '', features: [] };
+        (window as any).__extrasState = state;
+        window.dispatchEvent(new MessageEvent('message', { data: { type: 'extensionFeaturesChanged', state } }));
+      });
       await page.waitForSelector('.editor-wrapper:not(.meo-preload-editor-shell) .cm-content');
       await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button');
       await page.click('[data-tab="extensions"]');
@@ -155,9 +160,14 @@ try {
         (window as any).__extrasState = state;
         window.dispatchEvent(new MessageEvent('message', { data: { type: 'extensionFeaturesChanged', state } }));
       });
+      assert.equal(await page.$eval('#meo-settings-extras .settings-button', e => (e as HTMLButtonElement).disabled), false);
+      await page.click('#meo-settings-extras .settings-button');
+      await page.waitForFunction(() => (window as any).__messages.some((m: any) => m.type === 'extensionFeaturesRequest' && m.action === 'openDetails'));
       const toggle = '[data-extra-feature="mindmap"] [role="switch"]';
       await page.click(toggle);
       await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('aria-checked') === 'false' && !(document.querySelector(selector) as HTMLButtonElement).disabled, {}, toggle);
+      assert(await page.$('[data-tab="extensions"]'), 'All features off keeps the management tab');
+      assert(await page.$(toggle), 'Disabled features remain registered and can be enabled');
       await page.click(toggle);
       await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('aria-checked') === 'true' && !(document.querySelector(selector) as HTMLButtonElement).disabled, {}, toggle);
       await page.evaluate(() => { (window as any).__extrasFail = true; });
@@ -171,7 +181,23 @@ try {
         await page.click('[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`);
         await page.click('[data-tab="extensions"]');
         assert.equal(await page.$eval(toggle, e => e.getAttribute('aria-label')), language === 'en' ? 'Mind map' : '思维导图');
-        assert.equal(await page.$eval('#meo-settings-extras .settings-button', e => e.textContent), language === 'en' ? 'Not published' : '尚未发布');
+        assert.equal(await page.$eval('#meo-settings-extras .settings-button', e => e.textContent), language === 'en' ? 'User guide' : '使用说明');
+        await page.evaluate(() => {
+          const state = { ...(window as any).__extrasState, features: [] };
+          window.dispatchEvent(new MessageEvent('message', { data: { type: 'extensionFeaturesChanged', state } }));
+        });
+        await page.waitForSelector('#meo-settings-extras [role="status"]');
+        assert(await page.$('[data-tab="extensions"]'), 'Installed but unready keeps the tab and recovery controls');
+        await page.click('#meo-settings-extras [role="status"] + button');
+        await page.waitForSelector(toggle);
+        await page.evaluate(() => {
+          const state = (window as any).__extrasState;
+          window.dispatchEvent(new MessageEvent('message', { data: { type: 'extensionFeaturesChanged', state: { ...state,
+            features: [...state.features, { id: 'failed-fixture', label: 'Failed feature', labelZh: '失败功能', enabled: true, active: false, failed: true }] } } }));
+        });
+        assert(await page.$('[data-extra-feature="failed-fixture"] .settings-description'), 'Failed feature has an explanation');
+        assert.equal(await page.$eval(toggle, e => (e as HTMLButtonElement).disabled), false, 'Other features remain operable');
+        await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'extensionFeaturesChanged', state: (window as any).__extrasState } })));
         await page.focus('.settings-search'); await page.keyboard.type('mind map');
         assert.ok(await page.$(toggle)); await page.click('.settings-search-clear');
         await page.setViewport({width: 640, height: 640});

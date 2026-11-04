@@ -17,7 +17,9 @@ class Uri {
 const installed = new Map<string, any>([['test.markmap', { id: 'test.markmap', extensionUri: new Uri('file:///extension') }]]);
 const configurationChanged = new EventEmitter<any>(), extensionsChanged = new EventEmitter<void>();
 let disabledFeatures: string[] = [], failWrite = false;
+const openedDetails: unknown[][] = [];
 mock.module('vscode', () => ({ Disposable, EventEmitter, Uri, ConfigurationTarget: { Global: 1 },
+  commands: { executeCommand: async (...args: unknown[]) => { openedDetails.push(args); } },
   extensions: { getExtension: (id: string) => installed.get(id), onDidChange: extensionsChanged.event },
   workspace: { onDidChangeConfiguration: configurationChanged.event, getConfiguration: () => ({
     get: () => disabledFeatures, update: async (_key: string, value: string[], target: number) => {
@@ -120,9 +122,31 @@ try {
   assert.equal(features.state().features[0].enabled, true); assert.equal(disposals, 1);
   failWrite = false;
   assert.equal((await request('unknown', false)).failed, true);
-  const broken = features.registerFeature(extrasId, { id: 'broken', label: 'Broken' }, () => { throw new Error('fixture activation failure'); });
-  assert.equal(features.state().features[1].failed, true); broken.dispose();
+  let attempts = 0, independentStarts = 0, independentStops = 0;
+  const broken = features.registerFeature(extrasId, { id: 'broken', label: 'Broken' }, () => { attempts++; throw new Error('fixture activation failure'); });
+  const independent = features.registerFeature(extrasId, { id: 'independent', label: 'Independent' }, () => {
+    independentStarts++; return { dispose() { independentStops++; } };
+  });
+  assert.equal(features.state().features[1].failed, true);
+  await request('mindmap', false); await request('mindmap', true);
+  configurationChanged.fire({ affectsConfiguration: () => true });
+  assert.equal(attempts, 1, 'Registration, unrelated toggles and repeated config delivery never retry another failed feature');
+  assert.equal(independentStarts, 1); assert.equal(independentStops, 0);
+  await request('broken', false); await request('broken', true);
+  assert.equal(attempts, 2, 'Only an explicit off/on retries the failed feature');
+  await request('independent', false);
+  assert.equal(independentStops, 1); assert.equal(features.state().features[0].active, true);
+  broken.dispose(); independent.dispose();
+  let cleaned = false;
+  const cleanup = createExtensionFeatures();
+  cleanup.registerFeature(extrasId, { id: 'throws-on-dispose', label: 'Throws' }, () => ({ dispose() { throw new Error('fixture disposal failure'); } }));
+  cleanup.registerFeature(extrasId, { id: 'cleans-up', label: 'Cleans' }, () => ({ dispose() { cleaned = true; } }));
+  cleanup.dispose(); assert.equal(cleaned, true, 'One disposal failure cannot prevent other features from releasing resources');
 } finally { console.error = originalError; failWrite = false; }
+const details = { type: 'extensionFeaturesRequest', requestId: 'details', action: 'openDetails' };
+assert.deepEqual(decodeWebviewToHostMessage(details), details);
+panels[0].incoming.fire(details); await settle();
+assert.deepEqual(openedDetails, [['extension.open', extrasId]], 'Guide opens only the installed companion details');
 for (const enabled of ['true', null, 0]) assert.equal(decodeWebviewToHostMessage({ type: 'extensionFeaturesRequest', requestId: 'bad', action: 'setEnabled', id: 'mindmap', enabled }), null);
 assert.equal(decodeHostToWebviewMessage({ type: 'extensionFeaturesChanged', state: { ...features.state(), features: [features.state().features[0], features.state().features[0]] } }), null);
 assert.deepEqual(decodeHostToWebviewMessage({ type: 'extensionFeaturesChanged', state: features.state() })?.type, 'extensionFeaturesChanged');

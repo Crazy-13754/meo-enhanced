@@ -9,7 +9,7 @@ export function createExtensionFeatureSettings(post: (request: ExtensionFeatures
   const pending = new Map<string, { id?: string; timer: ReturnType<typeof setTimeout> }>();
   const session = createRequestPrefix();
   const notify = () => { revision++; changed(); };
-  const request = (action: { action: 'get' } | { action: 'setEnabled'; id: string; enabled: boolean }) => {
+  const request = (action: { action: 'get' | 'openDetails' } | { action: 'setEnabled'; id: string; enabled: boolean }) => {
     if (disposed) return;
     const requestId = `extra-${session}-${sequence++}`;
     const timer = setTimeout(() => { pending.delete(requestId); failed = true; notify(); }, 15000);
@@ -36,29 +36,38 @@ export function createExtensionFeatureSettings(post: (request: ExtensionFeatures
       const t = (zh: string, en: string) => language === 'zh-CN' ? zh : en;
       const section = node('section', 'settings-section'); section.id = 'meo-settings-extras';
       section.append(node('h3', 'settings-section-title', 'MEO Extras'));
-      section.append(node('p', 'settings-description', t('可选功能集中在 MEO Extras，按需开启；关闭功能不会修改 Markdown 原文。', 'Optional features live in MEO Extras. Enable them as needed; disabling a feature never edits Markdown.')));
+      section.append(node('p', 'settings-description', t('MEO Extras 为编辑器提供可选功能。各功能独立开启或关闭，不会修改 Markdown 原文。', 'MEO Extras adds optional features to the editor. Enable or disable each independently without changing your Markdown.')));
       const row = node('div', 'settings-item'); const text = node('div', 'settings-item-text');
       text.append(node('div', 'settings-item-title', state?.installed ? t('已安装', 'Installed') + (state.version ? ` · ${state.version}` : '') : state ? t('未检测到 MEO Extras', 'MEO Extras not detected') : t('正在读取…', 'Loading…')));
-      text.append(node('p', 'settings-description', t('尚未发布到扩展市场。当前使用本地体验包，发布后再开放安装入口。', 'Not published to the Marketplace yet. Use the local trial package; the installation link will be enabled after publication.')));
-      const install = document.createElement('button'); install.type = 'button'; install.className = 'settings-button'; install.textContent = t('尚未发布', 'Not published'); install.disabled = true;
+      text.append(node('p', 'settings-description', state?.installed
+        ? t('使用说明可在扩展详情页查看。功能开关对所有文档生效。', 'Read the guide on the extension details page. Feature switches apply to all documents.')
+        : t('包含全文思维导图和文档内导图。尚未发布到扩展市场，发布后将提供安装链接。', 'Includes whole-document mind maps and embedded map blocks. An installation link will be available after publication.')));
+      const install = document.createElement('button'); install.type = 'button'; install.className = 'settings-button';
+      install.textContent = state?.installed ? t('使用说明', 'User guide') : t('尚未发布', 'Not published');
+      install.disabled = !state?.installed;
+      install.addEventListener('click', () => request({ action: 'openDetails' }));
       row.append(text, install); section.append(row);
-      for (const feature of state?.features ?? []) {
+      for (const feature of state?.installed ? state.features : []) {
         if (!matches(query, '扩展 功能 MEO Extras extensions features', feature.id, feature.label, feature.labelZh, feature.description, feature.descriptionZh)) continue;
         const title = language === 'zh-CN' ? feature.labelZh ?? feature.label : feature.label;
         const description = language === 'zh-CN' ? feature.descriptionZh ?? feature.description : feature.description;
         const item = node('div', 'settings-item'); item.dataset.extraFeature = feature.id;
         const words = node('div', 'settings-item-text'); words.append(node('div', 'settings-item-title', title));
         if (description) words.append(node('p', 'settings-description', description));
-        if (feature.failed) words.append(node('p', 'settings-description', t('启用失败，可关闭后重试。', 'Activation failed. Turn off and on to retry.')));
+        if (feature.failed) words.append(node('p', 'settings-description', feature.enabled
+          ? t('启用失败，可关闭后重试；其他功能不受影响。', 'Activation failed. Turn off and on to retry; other features are unaffected.')
+          : t('关闭时未能完全释放资源，请重新加载窗口。', 'Some resources could not be released. Reload the window.')));
         const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'settings-switch'; toggle.setAttribute('role', 'switch');
         toggle.setAttribute('aria-label', title); toggle.setAttribute('aria-checked', String(feature.enabled)); toggle.append(createMenuSwitch());
         toggle.disabled = [...pending.values()].some(operation => operation.id === feature.id);
         toggle.addEventListener('click', () => request({ action: 'setEnabled', id: feature.id, enabled: !feature.enabled }));
         item.append(words, toggle); section.append(item);
       }
-      if (state?.installed && !state.features.length) section.append(node('p', 'settings-description', t('功能尚未就绪，请重新加载窗口。', 'Features are not ready. Reload the window.')));
-      if (failed) {
-        const error = node('p', 'settings-description', t('操作未完成，请重试。', 'The operation did not complete. Please retry.')); error.setAttribute('role', 'status');
+      const unavailable = state?.installed && !state.features.length;
+      if (failed || unavailable) {
+        const error = node('p', 'settings-description', unavailable
+          ? t('功能尚未就绪。可先刷新；若仍无功能，请重新加载窗口并检查扩展是否启用。', 'Features are not ready. Refresh first; if none appear, reload the window and check that the extension is enabled.')
+          : t('操作未完成，请重试。', 'The operation did not complete. Please retry.')); error.setAttribute('role', 'status');
         const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'settings-button'; retry.textContent = t('刷新', 'Refresh'); retry.addEventListener('click', () => request({ action: 'get' }));
         section.append(error, retry);
       }
