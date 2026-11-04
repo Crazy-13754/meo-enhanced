@@ -2565,7 +2565,7 @@ async function main(): Promise<void> {
         && diagram.graphicsWithinViewport && diagram.graphicsWithinPage
         && diagram.preserveAspectRatio !== 0
         && diagram.draggable === null
-        && diagram.cursor === 'auto'
+        && diagram.cursor === 'default'
       )), JSON.stringify({ width, zoom, deviceScaleFactor, mermaidSuccess: result.mermaidSuccess }));
       assert.deepEqual(result.table.semanticCounts, { table: 2, thead: 2, tbody: 2, tr: 5, th: 10, td: 18 });
       assert.equal(result.table.resizeHandleCount, 0);
