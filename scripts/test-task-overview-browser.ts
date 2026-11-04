@@ -79,20 +79,27 @@ try {
   console.log('Current document task rows loaded');
   async function measureTaskUpdate(label: 'ordinary' | 'large') {
     const timing = await page.evaluate(async large => {
+      const refresh = document.querySelector<HTMLButtonElement>('[data-view-action="refresh"]')!;
+      let refreshStateChanges = 0;
+      const observer = new MutationObserver(records => { refreshStateChanges += records.length; });
+      observer.observe(refresh, { attributes: true, attributeFilter: ['disabled'] });
       const started = performance.now(), view = (window as any).__viewportTestView();
       const at = large ? view.state.doc.length - 1 : view.state.doc.line(3).to;
       view.dispatch({ changes: { from: at, insert: ' task-update-probe' } });
+      refresh.click(); // Manual refresh can safely coalesce with the pending input update.
       while (![...document.querySelectorAll('.task-label')].some(e => e.textContent?.includes('task-update-probe'))) {
         if (performance.now() - started > 3000) throw new Error('Task update exceeded 3 seconds');
         await new Promise(resolve => setTimeout(resolve, 5));
       }
       const elapsed = performance.now() - started;
       view.dispatch({ changes: { from: at, to: at + ' task-update-probe'.length, insert: '' } });
-      return elapsed;
+      await Promise.resolve(); observer.disconnect();
+      return { elapsed, refreshStateChanges, sameRefresh: refresh.isConnected };
     }, label === 'large');
     await page.waitForFunction(() => ![...document.querySelectorAll('.task-label')].some(e => e.textContent?.includes('task-update-probe')));
-    console.log(`Task update latency (${label}): ${timing.toFixed(1)}ms`);
-    assert(timing < 350, `${label} task updates must not stack idle waits`);
+    console.log(`Task update latency (${label}): ${timing.elapsed.toFixed(1)}ms`);
+    assert(timing.elapsed < 350, `${label} task updates must not stack idle waits`);
+    assert(timing.sameRefresh && timing.refreshStateChanges === 0, 'Typing must keep the refresh button attached and enabled without flashing');
   }
   await measureTaskUpdate('ordinary');
   assert.equal(await page.$('[data-view-action="locate"]'), null, 'Task rows navigate directly; no duplicate locate action');

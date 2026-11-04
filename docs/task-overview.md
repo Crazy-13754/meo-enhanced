@@ -22,6 +22,8 @@ Enabling the feature only registers its description and entry. Opening the view 
 
 Header actions use 24 px buttons with 16 px icons. The inline scope keeps the same underline thickness on hover and no selection box when opened; keyboard focus remains visible. Search uses a muted clear control matching editor inputs. Workspace file headings use a full-width neutral background with a paired readable foreground, without an accent edge.
 
+The list's refresh action remains enabled during document input and index updates. Refresh requests coalesce in the index, so typing does not toggle the button's appearance or interrupt manual refresh. Actions depending on rendered geometry retain their existing update guards.
+
 Workspace enumeration respects enabled `files.exclude` and `search.exclude` patterns and excludes `.git`, `node_modules`, `dist`, `.cache` and `.obsidian`. Multi-root workspaces retain file identity. With no open workspace, the view uses the current document. The current document remains available even when excluded from workspace discovery.
 
 Enumeration is capped at 10,000 files and indexing at 8 MiB per source. Limits and unreadable files are reported in the view, never represented as a complete empty result. The host retains at most 32 parsed document results; the feature retains task projections rather than document text for workspace files. Closing or disabling the view releases file listeners, cancels enumeration, clears its index and rejects pending view requests. Shared reading-worker lifetime remains owned by the main editor.

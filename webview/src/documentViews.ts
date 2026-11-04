@@ -110,7 +110,12 @@ export function mountDocumentViews(host: Host) {
       const hint = selectedLine === null ? t('先选择内容，再定位正文', 'Select an item to locate in the document') : t('在正文中查看', 'Show in document');
       locate.dataset.tooltip = hint; locate.setAttribute('aria-label', hint);
     }
-    for (const action of actionButtons) action.disabled = running || dirty;
+    for (const action of actionButtons) {
+      // List refresh requests coalesce in the index and do not depend on rendered geometry.
+      const refresh = active?.presentation === 'list' && action.dataset.viewAction === 'refresh';
+      const disabled = !refresh && (running || dirty);
+      if (action.disabled !== disabled) action.disabled = disabled;
+    }
   }
 
   function button(title: string, icon: Parameters<typeof createElement>[0], run: () => void, text = false) {
