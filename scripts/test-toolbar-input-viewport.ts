@@ -920,11 +920,13 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
       await (window as any).__timeoutClock.advance(34);
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       document.getElementById('caret-paint-epoch')!.style.background = 'rgb(180,40,60)';
-      return { now: (window as any).__timeoutClock.now(), pending: (window as any).__timeoutClock.pending(), trusted: (window as any).__caretTrusted };
+      return { now: (window as any).__timeoutClock.now(), pending: (window as any).__timeoutClock.pending(), trusted: (window as any).__caretTrusted,
+        statisticsReports: (window as any).__hostMessages.filter((message: any) => message.type === 'documentStatistics').length };
     });
     assert.equal(clock.now, 68, mode + ' timeout clock did not preserve 0\u219234\u219268');
     assert.equal(clock.trusted, true, mode + ' caret click was not trusted');
-    assert.deepEqual(clock.pending, [], mode + ' click left pending fake timeout callbacks');
+    assert.deepEqual(clock.pending.map((timer: { due: number }) => timer.due), [214],
+      mode + ' only the selection statistics debounce may remain after the cancelled activation guard');
     frames.push({ data: Buffer.from(await page.screenshot({ captureBeyondViewport: false })).toString('base64'), sequence: frames.length });
     await input.send('Page.stopScreencast');
     input.off('Page.screencastFrame', observeFrame);
@@ -950,6 +952,17 @@ async function runPaintedActivationClick(browser: Browser, mode: 'live' | 'sourc
       pixels.push({ epoch, old: count(geometry.old), next: count(geometry.next) });
     }
     assertPaintedCaretFrames(mode, pixels);
+    // The caret's original 0→34→68 timing and every paint sample are complete.
+    // This fixture has no Worker URI: its new selection debounce must publish
+    // exactly one unavailable-statistics report, then leave the clock empty.
+    await page.evaluate(() => (window as any).__timeoutClock.advance(180));
+    await page.waitForFunction(count => (window as any).__hostMessages.filter((message: any) => message.type === 'documentStatistics').length > count,
+      {}, clock.statisticsReports);
+    const settled = await page.evaluate(() => ({ pending: (window as any).__timeoutClock.pending(),
+      reports: (window as any).__hostMessages.filter((message: any) => message.type === 'documentStatistics') }));
+    assert.deepEqual(settled.pending, [], mode + ' click left pending fake timeout callbacks');
+    assert.equal(settled.reports.length, clock.statisticsReports + 1, mode + ' remaining callback was not the selection statistics report');
+    assert.equal(settled.reports.at(-1).statistics, null);
     console.log(mode + ' activation caret pixels: ' + JSON.stringify({ pixels, clock }));
   } catch (error) { primaryError = error; }
   finally {
