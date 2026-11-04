@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { DomUtils, parseDocument } from 'htmlparser2';
 import { renderMarkdownToHtml } from '../src/export/renderMarkdown';
 import { githubPictureMedia } from '../src/shared/githubPicture';
 import { githubReadmeSemantics } from './github-readme-semantics';
@@ -52,7 +53,11 @@ const embeddedImage = renderMarkdownToHtml({ markdownText: '<picture><source src
   markdownFilePath: 'scripts/fixtures/github-readme/README.md', target: 'html', preset: 'github-readme' }).html;
 assert.ok(embeddedImage.includes('srcset="data:image/svg+xml;base64,') && embeddedImage.includes('src="data:image/svg+xml;base64,'));
 
-assert.ok(render('H~2~O :smile: <u>underlined</u>', 'default').includes('<sub>2</sub>O :smile: <u>underlined</u>'));
+// Native HTML layout markers may add attributes without changing reading semantics.
+const defaultInline = parseDocument(render('H~2~O :smile: <u>underlined</u>', 'default'));
+assert.equal(DomUtils.textContent(defaultInline).trim(), 'H2O :smile: underlined');
+assert.deepEqual(DomUtils.getElementsByTagName('sub', defaultInline).map(node => DomUtils.textContent(node)), ['2']);
+assert.deepEqual(DomUtils.getElementsByTagName('u', defaultInline).map(node => DomUtils.textContent(node)), ['underlined']);
 assert.ok(render('```Math\nx^2\n```', 'default').includes('meo-export-math'));
 assert.ok(!render('<input type="checkbox" checked disabled>').includes('<input'));
 assert.ok(render('- [x] Generated task').includes('<input'));

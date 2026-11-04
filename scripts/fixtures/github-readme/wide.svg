@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1200" viewBox="0 0 2400 1200">
+  <rect width="2400" height="1200" fill="#f6f8fa"/>
+  <g fill="none" stroke="#d1d9e0" stroke-width="4">
+    <path d="M600 0v1200M1200 0v1200M1800 0v1200M0 600h2400"/>
+    <rect x="2" y="2" width="2396" height="1196"/>
+  </g>
+  <circle cx="600" cy="600" r="360" fill="#0969da"/>
+  <rect x="1440" y="240" width="720" height="720" rx="24" fill="#1a7f37"/>
+  <g font-family="Arial,sans-serif" font-size="72" text-anchor="middle" fill="#ffffff">
+    <text x="600" y="625">Circle</text>
+    <text x="1800" y="625">Square</text>
+  </g>
+  <text x="1200" y="1120" font-family="Arial,sans-serif" font-size="56" text-anchor="middle" fill="#1f2328">2400 × 1200 — preserve the 2:1 ratio</text>
+</svg>

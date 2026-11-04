@@ -103,6 +103,16 @@ one_very_long_code_line_for_horizontal_overflow_abcdefghijklmnopqrstuvwxyz_abcde
 
 ![Local sample diagram](sample.svg)
 
+### Responsive image proportions
+
+The following 2400 × 1200 images should fit the reading area without stretching. Resize the preview or switch presets: the circle should stay round and the square should keep equal sides, both before and after loading.
+
+![Wide image with a circle and a square](wide.svg)
+
+The same image with explicit HTML dimensions should also keep its 2:1 ratio:
+
+<img src="wide.svg" width="2400" height="1200" alt="Wide HTML image with a circle and a square">
+
 <details>
 <summary>Collapsed details with Markdown</summary>
 

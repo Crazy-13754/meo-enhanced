@@ -72,6 +72,8 @@ html[data-meo-preview-preset='github-readme'] body::-webkit-scrollbar-track { ba
 body { margin: 0; background: ${background}; color: ${foreground}; }
 .meo-export-page { min-height: 100vh; }
 .markdown-body { --borderColor-muted: ${appearance === 'light' ? '#d1d9e0b3' : '#3d444db3'}; box-sizing: border-box; padding: 32px; width: 100%; max-width: 1076px; margin: 0 auto; font-family: 'Mona Sans VF', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; }
+/* Intrinsic width/height attributes reserve space before Preview decodes images. */
+.markdown-body img { height: auto; }
 @media (max-width: 767px) { .markdown-body { padding: 16px; } }
 .markdown-body .meo-table-scroll { overflow-x: auto; }
 .markdown-body .meo-table-scroll :is(th, td) { overflow-wrap: normal; word-break: normal; }
