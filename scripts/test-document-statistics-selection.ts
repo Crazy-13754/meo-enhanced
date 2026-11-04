@@ -107,6 +107,83 @@ try {
   const start=await position(0,0),end=await position(1,1);
   await page.mouse.move(start.x,start.y); await page.mouse.down(); await page.mouse.move(end.x,end.y,{steps:6}); await page.mouse.up();
   await settle(total,6,true,6);
+  for (const large of [false, true]) for (const transition of ['outer-selection', 'replacement', 'source', 'offscreen'] as const) {
+    const prefix = 'outer selection witness\n\n';
+    const table = '| A | B |\n| --- | --- |\n| hello | world |\n| good | day |\n';
+    const tailCount = large ? 9000 : 150;
+    const suffix = '\n' + 'tail\n'.repeat(tailCount);
+    await page.evaluate(text => (window as any).mountStatistics(text), prefix + table + suffix);
+    await settle(9 + tailCount, 0, false);
+    const band = await page.evaluate(() => (window as any).statisticsPresentation());
+    assert.equal(band !== null, large, 'table disposal must cover both actual presentation strategies');
+    if (large) assert.ok(band.to < prefix.length + table.length + suffix.length, 'large fixture must retain a bounded presentation band');
+    const oldTable = await page.$('.meo-md-html-table');
+    assert.ok(oldTable);
+    const first = await position(0, 0);
+    if (transition === 'outer-selection') {
+      const last = await position(1, 1);
+      await page.mouse.move(first.x, first.y); await page.mouse.down();
+      await page.mouse.move(last.x, last.y, { steps: 6 }); await page.mouse.up();
+      await settle(9 + tailCount, 4, true, 6);
+    } else {
+      await page.mouse.click(first.x, first.y);
+      await page.waitForFunction(() => document.activeElement instanceof HTMLTextAreaElement);
+      await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).setSelectionRange(0, 5));
+      await settle(9 + tailCount, 1, true, 5);
+      assert.equal(await page.evaluate(() => (window as any).selectionMenu.visible), true, 'cell text selection must expose its menu before disposal');
+    }
+    if (transition === 'source') {
+      await page.evaluate(() => (window as any).editor.setMode('source'));
+      await page.waitForFunction(() => (window as any).editor.view.dom.classList.contains('meo-mode-source'));
+    } else if (transition === 'offscreen') {
+      // A focused native cell owns its mounted input. Finish that interaction
+      // with a real outer-text selection before virtualizing the idle table.
+      await page.click('.cm-line'); await page.keyboard.press('Home');
+      await page.keyboard.down('Shift');
+      for (let index = 0; index < 5; index++) await page.keyboard.press('ArrowRight');
+      await page.keyboard.up('Shift');
+      await page.waitForFunction(() => {
+        const editor = (window as any).editor, selection = editor.view.state.selection.main;
+        return editor.view.hasFocus && selection.from === 0 && selection.to === 5;
+      });
+      await page.mouse.move(300, 500); await page.mouse.wheel({ deltaY: 30000 });
+      await page.waitForFunction(() => !document.querySelector('.meo-md-html-table'));
+      assert.ok(await page.evaluate(() => (window as any).editor.view.scrollDOM.scrollTop) > 650, 'offscreen disposal requires actual document scroll progress');
+    } else {
+      await page.evaluate(({ from, to, selected }) => (window as any).editor.view.dispatch({
+        changes: { from, to, insert: 'replacement\n' }, ...(selected ? { selection: { anchor: 0, head: 5 } } : {})
+      }), { from: prefix.length, to: prefix.length + table.length, selected: transition === 'outer-selection' });
+    }
+    const replaced = transition === 'outer-selection' || transition === 'replacement';
+    await settle((replaced ? 4 : 9) + tailCount, transition === 'replacement' ? 0 : 1, transition !== 'replacement');
+    assert.equal(await page.evaluate(() => (window as any).editor.getText()), prefix + (replaced ? 'replacement\n' : table) + suffix);
+    assert.equal(await page.$('.meo-md-html-table'), null, 'the selected table must actually be disposed');
+    assert.equal(await oldTable.evaluate(element => element.isConnected), false, 'the old widget must leave its document');
+    await oldTable.dispose();
+    const selection = await page.evaluate(() => (window as any).selectionMenu);
+    assert.equal(selection.visible, transition !== 'replacement', 'the menu model must follow the current selection owner');
+    if (transition === 'outer-selection') assert.deepEqual([selection.from, selection.to], [0, 5]);
+    if (transition === 'source') {
+      const current = await page.evaluate(() => {
+        const view = (window as any).editor.view, range = view.state.selection.main;
+        return { from: range.from, to: range.to, coords: view.coordsAtPos(range.from) };
+      });
+      assert.deepEqual([selection.from, selection.to], [current.from, current.to], 'Source keeps the valid native-cell text range');
+      assert.ok(current.coords && Math.abs(selection.anchorY - current.coords.top) <= 1, 'Source menu uses its current reading geometry');
+    }
+    if (transition === 'offscreen') assert.deepEqual([selection.from, selection.to], [0, 5], 'unmount must publish the surviving outer range, not the retired cell range');
+    if (transition === 'offscreen') {
+      await page.mouse.wheel({ deltaY: -30000 });
+      await page.waitForSelector('.meo-md-html-table');
+      await settle(9 + tailCount, 1, true, 1);
+      assert.deepEqual(await page.evaluate(() => {
+        const selection = (window as any).selectionMenu;
+        return [selection.visible, selection.from, selection.to];
+      }), [true, 0, 5], 'remount retains the current outer range rather than the disposed cell range');
+    }
+    assert.deepEqual(errors, [], 'retiring table controls must not read layout during an editor update');
+    console.log(`Table disposal preserved current selection and statistics (${large ? 'bounded' : 'ordinary'}/${transition})`);
+  }
   assert.deepEqual(errors, []);
   console.log(`Document statistics drag matrix passed (${assertions} assertions, ${statisticsCases.length} content cases)`);
 } finally { await closeTestBrowser(browser); server.stop(true); }

@@ -510,6 +510,7 @@ export function createEditor({
   let onWidgetOpenLink: EventListener | null = null;
   let onWidgetActivateImage: EventListener | null = null;
   let onTableSelectionChange: EventListener | null = null;
+  let tableSelectionChangeQueued = false;
   let onScroll: (() => void) | null = null;
   let viewportController: ViewportController;
   let interactionContinuity: EditorInteractionContinuity | null = null;
@@ -3365,9 +3366,18 @@ export function createEditor({
   };
   view.dom.addEventListener('meo-activate-image', onWidgetActivateImage);
   onTableSelectionChange = () => {
-    onStatisticsChange?.();
-    emitSelectionChange();
-    emitHistoryAvailability();
+    if (tableSelectionChangeQueued) return;
+    tableSelectionChangeQueued = true;
+    // Widget disposal can publish during CodeMirror's DOM update. Read the
+    // current selection once that update ends, including when no selection
+    // transaction follows, and discard work owned by a destroyed editor.
+    queueMicrotask(() => {
+      tableSelectionChangeQueued = false;
+      if (editorDestroyed) return;
+      onStatisticsChange?.();
+      emitSelectionChange();
+      emitHistoryAvailability();
+    });
   };
   view.dom.addEventListener('meo-table-selection-change', onTableSelectionChange);
   onHtmlContentPointerDown = (event) => {
