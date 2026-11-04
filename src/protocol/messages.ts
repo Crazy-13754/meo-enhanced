@@ -3,6 +3,7 @@ import { decodeBlockExportRequest, decodeBlockExportResponse, type BlockExportRe
 import { decodeDocumentViewsChanged, type DocumentViewsChanged } from './documentViews';
 import { decodeExtensionFeaturesRequest, decodeExtensionFeaturesEvent, type ExtensionFeaturesRequest, type ExtensionFeaturesEvent } from './extensionFeatures';
 import { decodeDocumentContentRequest, decodeDocumentContentResponse, type DocumentContentRequest, type DocumentContentResponse } from './documentContent';
+import { decodeDocumentStatistics, type DocumentStatisticsMessage } from './documentStatistics';
 import { decodePreviewFontsRequest, decodePreviewFontsResponse, type PreviewFontsRequest, type PreviewFontsResponse } from './previewFonts';
 import { decodeImageIntrinsicSizesEvent, type ImageIntrinsicSizesEvent } from './imageDimensions';
 import { decodeEditorServiceRequest, decodeEditorServiceResponse, type EditorServiceRequest, type EditorServiceResponse } from './editorServices';
@@ -36,6 +37,7 @@ export type WebviewToHostMessage =
   | WorkspaceDocumentsRequest | WorkspaceDocumentsClose | DocumentOperationResponse
   | ExtensionFeaturesRequest
   | DocumentContentRequest
+  | DocumentStatisticsMessage
   | PreviewFontsRequest
   | WebviewVisibilityRequest
   | UpdateUiColorsRequest
@@ -103,6 +105,7 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
     ?? decodeDocumentOperationResponse(value)
     ?? decodeDocumentContentRequest(value)
     ?? decodeExtensionFeaturesRequest(value)
+    ?? decodeDocumentStatistics(value)
     ?? decodePreviewFontsRequest(value)
     ?? decodeWebviewVisibilityRequest(value)
     ?? decodePreviewPresetRequest(value)

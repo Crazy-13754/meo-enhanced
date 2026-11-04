@@ -31,6 +31,11 @@ if (build.status !== 0) {
   process.exit(build.status ?? 1);
 }
 
+const statisticsWorkerBuild = spawnSync(process.execPath, [
+  'build', 'webview/src/documentStatisticsWorker.ts', '--target=browser', '--format=iife',
+  '--minify', '--outfile=webview/dist/document-statistics-worker.js'
+], { cwd: root, stdio: 'inherit' });
+if (statisticsWorkerBuild.status !== 0) process.exit(statisticsWorkerBuild.status ?? 1);
 const workerBuild = spawnSync(process.execPath, [
   'build', 'webview/src/helpers/gitDiffWorker.ts', '--target=browser', '--format=iife',
   '--minify', '--outfile=webview/dist/git-diff-worker.js'

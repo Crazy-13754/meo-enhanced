@@ -74,7 +74,33 @@ try {
   assert.equal(await page.$('.mm-view-entry'), null); assert.deepEqual(requests, []);
   const catalog = { type: 'documentViewsChanged', views: [{ ...contribution, id: 'test/mindmap', entryUri: 'https://document-view.test/view.js' }] };
   await send(catalog); await page.waitForSelector('.mm-view-entry'); assert.deepEqual(requests, []);
-  if (process.argv.includes('--plantuml-only') || process.argv.includes('--graph-continuity-only')) {
+  if (process.argv.includes('--catalog-only')) {
+    for (const large of [false, true]) {
+      await page.evaluate(large => {
+        const view = (window as any).__viewportTestView();
+        const text = '# Catalog lifecycle\n\nStable content\n' + (large ? 'background paragraph\n\n'.repeat(60_000) : '');
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: 5 } });
+      }, large);
+      await page.waitForFunction(large => (window as any).__viewportTestLargeBudget() === large, {}, large);
+      const sample = await page.evaluate(catalog => {
+        const view = (window as any).__viewportTestView();
+        const text = view.state.doc.toString();
+        // Count native configuration storage as a resource budget, without exposing it in the product API.
+        const before = view.state.config.base.length;
+        for (let i = 0; i < 24; i++) {
+          window.dispatchEvent(new MessageEvent('message', { data: { ...catalog, views: [] } }));
+          window.dispatchEvent(new MessageEvent('message', { data: catalog }));
+        }
+        return { before, after: view.state.config.base.length, unchanged: view.state.doc.toString() === text,
+          anchor: view.state.selection.main.anchor, entries: document.querySelectorAll('.mm-view-entry').length };
+      }, catalog);
+      assert.equal(sample.after, sample.before, 'Catalog changes must not accumulate native editor configuration');
+      assert.equal(sample.unchanged, true); assert.equal(sample.anchor, 5); assert.equal(sample.entries, 1);
+    }
+    assert.deepEqual(requests, [], 'Unused contributions stay lazy during catalog churn');
+    assert.deepEqual(errors, []);
+    console.log('PASS: ordinary/large repeated catalog updates retain bounded configuration, source, selection and lazy resources.');
+  } else if (process.argv.includes('--plantuml-only') || process.argv.includes('--graph-continuity-only')) {
     await send({ type: 'documentViewsChanged', views: [...catalog.views, { id: 'test/plantuml', label: 'PlantUML', blockOnly: true,
       codeBlockLanguages: ['plantuml', 'puml'], entryUri: 'https://document-view.test/plantuml/renderer.js' }] });
     assert.equal(await page.$$('.mm-view-entry').then(entries => entries.length), 1, 'A block-only feature adds no toolbar entry');

@@ -33,6 +33,8 @@ The toolbar and its settings panel provide the following options:
 
 ## Three display modes
 
+The VS Code status bar shows the active MEO document's current/total source lines and word count, including selected words in Live and Source. Preview shows document totals. Hover for the counting rules and source character count; CJK characters count individually, other languages by word, with code text included and Markdown markup, link destinations and frontmatter excluded.
+
 - **Live**: Displays rendered headings, lists, tables, images, diagrams, formulas, and other content in place while retaining direct editing.
 - **Source**: Displays the complete Markdown source with syntax highlighting for precise markup changes, bulk editing, and inspection of the original content.
 - **Preview**: Displays the fully rendered document in a read-only view, with preset and export controls.

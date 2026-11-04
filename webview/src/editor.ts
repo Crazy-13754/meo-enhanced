@@ -116,6 +116,7 @@ import {
   tableCellEditorValueToSource,
   tableCellSourceOffsetToEditorOffset,
   tableCellSourceRangeForInput,
+  mountedTableStatisticsSelection,
   tableHeaderAlignmentOverrideField,
   commitPendingTableEdits,
   endTableCellEditing,
@@ -259,6 +260,7 @@ type CreateEditorOptions = {
   parent: HTMLElement;
   text: string | Text;
   onApplyTransaction: (edit: DocumentTextEdit) => void;
+  onStatisticsChange?: () => void;
   onOpenLink?: (href: string) => void;
   onCommentBlocked?: () => void;
   onSelectionChange?: (state: SelectionMenuState & { from?: number; to?: number }) => void;
@@ -416,6 +418,7 @@ export function createEditor({
   parent,
   text: initialDocument,
   onApplyTransaction,
+  onStatisticsChange,
   onOpenLink,
   onCommentBlocked,
   onSelectionChange,
@@ -454,6 +457,7 @@ export function createEditor({
   const lineNumberCompartment = new Compartment();
   const longCodeBlockPreferenceCompartment = new Compartment();
   const uiLanguageCompartment = new Compartment();
+  const documentBlocksCompartment = new Compartment();
   let currentSourceLineNumbers = sourceLineNumbers;
   const startMode = initialMode === 'live' ? 'live' : 'source';
   let documentAssessment = assessLargeDocument(text);
@@ -2679,7 +2683,7 @@ export function createEditor({
         mermaidDiagramPresentationConsumer
       ),
       markdownContentStyleTheme,
-      ...(documentBlocks ? [documentBlocksFacet.of(documentBlocks)] : []),
+      documentBlocksCompartment.of(documentBlocks ? documentBlocksFacet.of(documentBlocks) : []),
       sourcePreparationCompartment.of(lightweightSourceSyntax ? [] : sourceSyntaxPreparation),
       createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork })] : sourceMode(boundedEditorWork, lightweightSourceSyntax)),
@@ -2693,6 +2697,7 @@ export function createEditor({
         return suppressHistoryAutoScrollAt(range.head);
       }),
       EditorView.updateListener.of((update) => {
+        if (update.docChanged || update.selectionSet) onStatisticsChange?.();
         if (update.docChanged && outlineCache) {
           outlineChanges = outlineChanges?.composeDesc(update.changes) ?? update.changes.desc;
         }
@@ -3360,6 +3365,7 @@ export function createEditor({
   };
   view.dom.addEventListener('meo-activate-image', onWidgetActivateImage);
   onTableSelectionChange = () => {
+    onStatisticsChange?.();
     emitSelectionChange();
     emitHistoryAvailability();
   };
@@ -3420,6 +3426,7 @@ export function createEditor({
   };
   view.dom.addEventListener('pointerdown', onGitDiffSelectionPointerDown, true);
   onDocumentSelectionChange = () => {
+    if (getActiveTableInput()) onStatisticsChange?.();
     const selection = document.getSelection();
     if (
       (!selection || selection.isCollapsed) &&
@@ -3660,6 +3667,9 @@ export function createEditor({
       if (!target || !view.contentDOM.contains(target)) return '';
       return editableLinkHrefAtPointer({ target, clientX: point.x, clientY: point.y }, view);
     },
+    refreshDocumentBlocks() {
+      if (!editorDestroyed) view.dispatch({ effects: documentBlocksCompartment.reconfigure(documentBlocks ? documentBlocksFacet.of(documentBlocks) : []) });
+    },
     applyContributedEdit(edit: { text: string; from: number; expected: string; insert: string }) {
       if (editorDestroyed || view.composing || imeCompositionActive || historyCompositionActive) throw new Error('Finish composing before editing / 请先完成当前输入');
       commitActiveTableInput();
@@ -3667,6 +3677,20 @@ export function createEditor({
         throw new Error('The document changed; refresh and retry. / 文档已变化，请刷新后重试。');
       view.dispatch({ changes: { from: edit.from, to: edit.from + edit.expected.length, insert: edit.insert },
         annotations: [Transaction.userEvent.of('input.contribution'), isolateHistory.of('full')] });
+    },
+    readStatisticsSelection() {
+      const input = getActiveTableInput();
+      const range = input ? getTableInputSourceRange(input) : null;
+      if (input && range) {
+        const from = Math.min(range.to, range.from + tableCellEditorOffsetToSourceOffset(input.value, input.selectionStart));
+        const to = Math.min(range.to, range.from + tableCellEditorOffsetToSourceOffset(input.value, input.selectionEnd));
+        const head = input.selectionDirection === 'backward' ? from : to;
+        return { selections: [{ from, to }], line: view.state.doc.lineAt(head).number };
+      }
+      const cells = mountedTableStatisticsSelection(view);
+      if (cells) return { selections: cells.ranges, line: view.state.doc.lineAt(cells.head).number, hasSelection: true };
+      return { selections: view.state.selection.ranges.map(({ from, to }) => ({ from, to })),
+        line: view.state.doc.lineAt(view.state.selection.main.head).number };
     },
     getText() {
       commitActiveTableInput();

@@ -70,7 +70,8 @@ export function createWorkspaceDocumentsHost(dependencies: {
         const changed = (uri?: vscode.Uri) => {
           if (disposed || scopes.get(request.sessionId) !== current) return;
           if (!allowedView(request.viewId)) { close(request.sessionId); return; }
-          void panel.webview.postMessage({ type: 'workspaceDocumentsChanged', sessionId: request.sessionId, ...(uri ? { uri: uri.toString() } : {}) });
+          void panel.webview.postMessage({ type: 'workspaceDocumentsChanged', sessionId: request.sessionId,
+            ...(uri && current.allowed.has(uri.toString()) ? { uri: uri.toString() } : {}) });
         };
         current.subscriptions.push(vscode.workspace.onDidChangeTextDocument(e => { if (e.contentChanges.length && current.allowed.has(e.document.uri.toString())) changed(e.document.uri); }),
           vscode.workspace.onDidChangeWorkspaceFolders(() => { changed(); close(request.sessionId); }),

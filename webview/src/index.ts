@@ -4,13 +4,12 @@ import { mountDocumentViews } from './documentViews';
 import { createBlockExportAdapter } from './adapters/blockExportAdapter';
 import { renderExportBlocks } from './helpers/blockExport';
 import { createDocumentBlocks } from './documentBlocks';
-import { StateEffect } from '@codemirror/state';
-import { documentBlocksFacet } from './editor/documentBlocks';
 import { createDocumentContentTransport } from './adapters/documentContentTransport';
 import { createLoadingPresentation } from './adapters/loadingPresentation';
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
 import { version as productVersion } from '../../package.json';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
+import { createDocumentStatisticsReporter } from './adapters/documentStatistics';
 import { createEditorFontWheel } from './adapters/editorFontWheel';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
 import { createImageStorageTransport } from './adapters/imageStorageTransport';
@@ -2895,6 +2894,7 @@ const runDocumentDerivedUiRefresh = (): void => {
 const scheduleDocumentDerivedUiRefresh = (text: DocumentText): void => {
   documentViews?.documentChanged();
   documentBlocks.closeFullscreen();
+  documentStatistics.schedule();
   pendingDocumentDerivedText = text;
   editor?.requestDerivedWork(runDocumentDerivedUiRefresh);
 };
@@ -2962,6 +2962,13 @@ const documentOperationResponder = createDocumentOperationResponder({
   }
 });
 window.addEventListener('pagehide', () => { workspaceDocumentsTransport.dispose(); documentOperationResponder.dispose(); }, { once: true });
+const documentStatistics = createDocumentStatisticsReporter(() => {
+  const text = documentSessionAdapter.readCurrentText() ?? pendingInitialText;
+  if (text === null) return null;
+  const selection = getActiveEditorMode() === 'preview' || !editor
+    ? { selections: [], line: null } : editor.readStatisticsSelection();
+  return { text, ...selection };
+}, message => vscode.postMessage(message));
 
 const documentCopyTransport = createDocumentCopyTransport({
   getUiLanguage: () => activeUiLanguage,
@@ -3138,6 +3145,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     initialDiagnostics: pendingDiagnostics,
     initialImageIntrinsicSizes: [...imageIntrinsicSizes.values()],
     onApplyTransaction: handleLocalEditorChange,
+    onStatisticsChange: () => documentStatistics.schedule(),
     onOpenLink: (href: string) => vscode.postMessage({ type: 'openLink', href }),
     onCommentBlocked: () => editorNotice.setEditorNotice(activeUiStrings.commentSelectionBlocked),
     onSelectionChange: (state: any) => selectionMenuController.update(state),
@@ -3215,6 +3223,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     }
   });
   editorScrollToTopController.setScrollElement(editor.view.scrollDOM);
+  documentStatistics.schedule();
   if (gitChangesGutterVisible) gitClient?.applyBaselineToEditor(editor);
   syncGitDiffDetails();
   syncGitDiffLineHighlights();
@@ -3459,7 +3468,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
   },
   focusEditor: () => editor?.focus(),
   persistMode: (mode, lastEditableMode) => persistUiState(mode, lastEditableMode),
-  postMode: (mode) => vscode.postMessage({ type: 'setMode', mode }),
+  postMode: (mode) => { vscode.postMessage({ type: 'setMode', mode }); documentStatistics.schedule(); },
   showNotice(notice) {
     finishEditorLoading();
     if (notice === 'transient-live') {
@@ -3766,7 +3775,7 @@ window.addEventListener('message', (event) => {
   if (message?.type === 'documentOperationRequest') { documentOperationResponder.accept(message); return; }
   if (message?.type === 'documentViewsChanged') {
     documentViews?.setViews(message.views); documentBlocks.setViews(message.views);
-    editor?.view.dispatch({ effects: StateEffect.appendConfig.of(documentBlocksFacet.of(documentBlocks.port)) }); return;
+    editor?.refreshDocumentBlocks(); return;
   }
   if (!message) {
     return;
@@ -4193,6 +4202,7 @@ window.addEventListener('beforeunload', () => {
   editingPreferencesTransport.dispose();
   uiColorsTransport.dispose();
   editorServicesTransport.dispose();
+  documentStatistics.dispose();
   clearReadyRetryTimers();
   cancelPendingWikiStatusRefresh();
   cancelPendingLocalLinkStatusRefresh();

@@ -1,3 +1,4 @@
+import type { createVscodeDocumentStatistics } from '../host/vscodeDocumentStatistics';
 import { DEFAULT_EDITOR_LINE_HEIGHT } from '../foundation/editorLineHeight';
 import { runEditorService } from '../host/editorServices';
 import type { createImageDimensionCatalog } from '../host/imageDimensions';
@@ -135,6 +136,7 @@ type PanelDiagnostics = {
 };
 
 type PanelSessionControllerParams = {
+  documentStatistics?: ReturnType<typeof createVscodeDocumentStatistics>;
   panel: vscode.WebviewPanel;
   document: vscode.TextDocument;
   documentUri: vscode.Uri;
@@ -268,6 +270,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   } = params;
 
   const documentKey = document.uri.toString();
+  const documentStatistics = params.documentStatistics;
   const saveAsViewState = params.saveAsViewStateHandoff?.take(documentKey, document.getText()) ?? null;
   const persistedMode = context.globalState.get(EDITOR_MODE_STATE_KEY);
   const persistedEditorMode: EditorMode | null = isEditorMode(persistedMode) ? persistedMode : null;
@@ -717,6 +720,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     switch (raw.type) {
+      case 'documentStatistics':
+        documentStatistics?.update(raw.statistics);
+        return;
       case 'requestWebviewVisibility':
         await postToWebview({ type: 'webviewVisibilityResult', requestId: raw.requestId, visible: panel.visible });
         return;
@@ -1312,6 +1318,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       return;
     }
     disposed = true;
+    documentStatistics?.dispose();
     params.imageDimensions?.dispose();
     localLinkWatcher.dispose();
     wikiResourcesSubscription.dispose();
