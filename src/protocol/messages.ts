@@ -1,3 +1,4 @@
+import { decodeDocumentStatistics, type DocumentStatisticsMessage } from './documentStatistics';
 import { decodePreviewFontsRequest, decodePreviewFontsResponse, type PreviewFontsRequest, type PreviewFontsResponse } from './previewFonts';
 import { decodeImageIntrinsicSizesEvent, type ImageIntrinsicSizesEvent } from './imageDimensions';
 import { decodeEditorServiceRequest, decodeEditorServiceResponse, type EditorServiceRequest, type EditorServiceResponse } from './editorServices';
@@ -28,6 +29,7 @@ import { decodeImageLocationRequest, decodeImageLocationResponse, decodeImageSto
 import { decodeUpdateUiColorsRequest, decodeUiColorsResult, type UpdateUiColorsRequest, type UiColorsResult } from './uiColors';
 
 export type WebviewToHostMessage =
+  | DocumentStatisticsMessage
   | PreviewFontsRequest
   | WebviewVisibilityRequest
   | UpdateUiColorsRequest
@@ -85,7 +87,8 @@ export type HostToWebviewMessage =
   | GitBaselineChangedEvent;
 
 export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage | null {
-  return decodePreviewFontsRequest(value)
+  return decodeDocumentStatistics(value)
+    ?? decodePreviewFontsRequest(value)
     ?? decodeWebviewVisibilityRequest(value)
     ?? decodePreviewPresetRequest(value)
     ?? decodeImageLocationRequest(value)

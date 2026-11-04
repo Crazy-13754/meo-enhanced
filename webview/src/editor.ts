@@ -114,6 +114,7 @@ import {
   tableCellEditorValueToSource,
   tableCellSourceOffsetToEditorOffset,
   tableCellSourceRangeForInput,
+  mountedTableStatisticsSelection,
   tableHeaderAlignmentOverrideField,
   commitPendingTableEdits,
   endTableCellEditing,
@@ -257,6 +258,7 @@ type CreateEditorOptions = {
   parent: HTMLElement;
   text: string | Text;
   onApplyTransaction: (edit: DocumentTextEdit) => void;
+  onStatisticsChange?: () => void;
   onOpenLink?: (href: string) => void;
   onCommentBlocked?: () => void;
   onSelectionChange?: (state: SelectionMenuState & { from?: number; to?: number }) => void;
@@ -413,6 +415,7 @@ export function createEditor({
   parent,
   text: initialDocument,
   onApplyTransaction,
+  onStatisticsChange,
   onOpenLink,
   onCommentBlocked,
   onSelectionChange,
@@ -2688,6 +2691,7 @@ export function createEditor({
         return suppressHistoryAutoScrollAt(range.head);
       }),
       EditorView.updateListener.of((update) => {
+        if (update.docChanged || update.selectionSet) onStatisticsChange?.();
         if (update.docChanged && outlineCache) {
           outlineChanges = outlineChanges?.composeDesc(update.changes) ?? update.changes.desc;
         }
@@ -3355,6 +3359,7 @@ export function createEditor({
   };
   view.dom.addEventListener('meo-activate-image', onWidgetActivateImage);
   onTableSelectionChange = () => {
+    onStatisticsChange?.();
     emitSelectionChange();
     emitHistoryAvailability();
   };
@@ -3415,6 +3420,7 @@ export function createEditor({
   };
   view.dom.addEventListener('pointerdown', onGitDiffSelectionPointerDown, true);
   onDocumentSelectionChange = () => {
+    if (getActiveTableInput()) onStatisticsChange?.();
     const selection = document.getSelection();
     if (
       (!selection || selection.isCollapsed) &&
@@ -3654,6 +3660,20 @@ export function createEditor({
       const target = view.dom.ownerDocument.elementFromPoint(point.x, point.y);
       if (!target || !view.contentDOM.contains(target)) return '';
       return editableLinkHrefAtPointer({ target, clientX: point.x, clientY: point.y }, view);
+    },
+    readStatisticsSelection() {
+      const input = getActiveTableInput();
+      const range = input ? getTableInputSourceRange(input) : null;
+      if (input && range) {
+        const from = Math.min(range.to, range.from + tableCellEditorOffsetToSourceOffset(input.value, input.selectionStart));
+        const to = Math.min(range.to, range.from + tableCellEditorOffsetToSourceOffset(input.value, input.selectionEnd));
+        const head = input.selectionDirection === 'backward' ? from : to;
+        return { selections: [{ from, to }], line: view.state.doc.lineAt(head).number };
+      }
+      const cells = mountedTableStatisticsSelection(view);
+      if (cells) return { selections: cells.ranges, line: view.state.doc.lineAt(cells.head).number, hasSelection: true };
+      return { selections: view.state.selection.ranges.map(({ from, to }) => ({ from, to })),
+        line: view.state.doc.lineAt(view.state.selection.main.head).number };
     },
     getText() {
       commitActiveTableInput();

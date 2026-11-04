@@ -3570,8 +3570,11 @@ class HtmlTableController extends UiLanguageSensitiveWidget {
         Math.max(effect.anchorCaret, effect.headCaret),
         effect.headCaret < effect.anchorCaret ? 'backward' : 'forward'
       ));
-      if (wrap) runPrimary(() => this.emitTableSelectionChange(wrap));
     }
+    // Rectangular selection and clearing it also change the document selection.
+    // Publish once after all effects (including focus) have settled, not only
+    // after the native textarea selection branch.
+    if (wrap && transition.effects.length) runPrimary(() => this.emitTableSelectionChange(wrap));
     if (hasPrimaryError && cleanupErrors.length) {
       throw new AggregateError(
         [primaryError, ...cleanupErrors],
@@ -7177,6 +7180,27 @@ export function mountedTableClipboardText(view: EditorView, format: 'markdown' |
   const cells = [matrix.headerCells, ...matrix.rows];
   const selected = selection ? cells.slice(selection.fromRow, selection.toRow + 1).map(row => row.slice(selection.fromCol, selection.toCol + 1)) : cells;
   return format === 'csv' ? serializeDelimitedTable(selected, ',') : markdownTableFromCells(selected, true);
+}
+
+/** Read the existing rectangular selection without committing cell drafts or changing focus. */
+export function mountedTableStatisticsSelection(view: EditorView): { ranges: TableCellRange[]; head: number } | null {
+  const active = view.dom.ownerDocument.activeElement;
+  const shell = active instanceof Element ? active.closest<HTMLElement>('.meo-md-html-table-shell') : null;
+  const owner = shell && view.dom.contains(shell) ? tableDomOwners.get(shell) : null;
+  const state = owner?.cellSelection.snapshot();
+  const selection = state?.range;
+  if (!owner || !selection || !state || state.phase !== 'dragging' && state.phase !== 'persisted') return null;
+  const ranges: TableCellRange[] = [];
+  for (let row = selection.fromRow; row <= selection.toRow; row++) {
+    for (let column = selection.fromCol; column <= selection.toCol; column++) {
+      const range = owner.cellSourceRange(row, column);
+      if (range) ranges.push(range);
+    }
+  }
+  const headRow = state.anchor?.row === selection.fromRow ? selection.toRow : selection.fromRow;
+  const headCol = state.anchor?.col === selection.fromCol ? selection.toCol : selection.fromCol;
+  const head = owner.cellSourceRange(headRow, headCol)?.to ?? ranges[0]?.from;
+  return head === undefined ? null : { ranges, head };
 }
 
 /** Explicit/rebound cell-break commands share the native cell input and commit path. */

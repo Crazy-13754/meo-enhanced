@@ -1,6 +1,7 @@
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
 import { version as productVersion } from '../../package.json';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
+import { createDocumentStatisticsReporter } from './adapters/documentStatistics';
 import { createEditorFontWheel } from './adapters/editorFontWheel';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
 import { createImageStorageTransport } from './adapters/imageStorageTransport';
@@ -2869,6 +2870,7 @@ const runDocumentDerivedUiRefresh = (): void => {
   }
 };
 const scheduleDocumentDerivedUiRefresh = (text: DocumentText): void => {
+  documentStatistics.schedule();
   pendingDocumentDerivedText = text;
   editor?.requestDerivedWork(runDocumentDerivedUiRefresh);
 };
@@ -2879,6 +2881,7 @@ const presentDocumentText = async (
 ): Promise<boolean> => {
   if (!editor) {
     pendingInitialText = text;
+    documentStatistics.schedule();
     return true;
   }
 
@@ -2922,6 +2925,14 @@ const presentDocumentText = async (
   scheduleDocumentDerivedUiRefresh(text);
   return true;
 };
+
+const documentStatistics = createDocumentStatisticsReporter(() => {
+  const text = documentSessionAdapter.readCurrentText() ?? pendingInitialText;
+  if (text === null) return null;
+  const selection = getActiveEditorMode() === 'preview' || !editor
+    ? { selections: [], line: null } : editor.readStatisticsSelection();
+  return { text, ...selection };
+}, message => vscode.postMessage(message));
 
 const documentCopyTransport = createDocumentCopyTransport({
   getUiLanguage: () => activeUiLanguage,
@@ -3097,6 +3108,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     initialDiagnostics: pendingDiagnostics,
     initialImageIntrinsicSizes: [...imageIntrinsicSizes.values()],
     onApplyTransaction: handleLocalEditorChange,
+    onStatisticsChange: () => documentStatistics.schedule(),
     onOpenLink: (href: string) => vscode.postMessage({ type: 'openLink', href }),
     onCommentBlocked: () => editorNotice.setEditorNotice(activeUiStrings.commentSelectionBlocked),
     onSelectionChange: (state: any) => selectionMenuController.update(state),
@@ -3174,6 +3186,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     }
   });
   editorScrollToTopController.setScrollElement(editor.view.scrollDOM);
+  documentStatistics.schedule();
   if (gitChangesGutterVisible) gitClient?.applyBaselineToEditor(editor);
   syncGitDiffDetails();
   syncGitDiffLineHighlights();
@@ -3418,7 +3431,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
   },
   focusEditor: () => editor?.focus(),
   persistMode: (mode, lastEditableMode) => persistUiState(mode, lastEditableMode),
-  postMode: (mode) => vscode.postMessage({ type: 'setMode', mode }),
+  postMode: (mode) => { vscode.postMessage({ type: 'setMode', mode }); documentStatistics.schedule(); },
   showNotice(notice) {
     finishEditorLoading();
     if (notice === 'transient-live') {
@@ -4137,6 +4150,7 @@ window.addEventListener('beforeunload', () => {
   editingPreferencesTransport.dispose();
   uiColorsTransport.dispose();
   editorServicesTransport.dispose();
+  documentStatistics.dispose();
   clearReadyRetryTimers();
   cancelPendingWikiStatusRefresh();
   cancelPendingLocalLinkStatusRefresh();

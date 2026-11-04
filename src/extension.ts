@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as vscode from 'vscode';
+import { createVscodeDocumentStatistics } from './host/vscodeDocumentStatistics';
 import { createBackgroundPreviewRenderer } from './host/previewRenderWorker';
 import { createImageDimensionCatalog } from './host/imageDimensions';
 import { disposeWikiResources, resolveDocumentWikiResources } from './host/wikiResources';
@@ -637,6 +638,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     };
 
     const controller = createPanelSessionController({
+      documentStatistics: createVscodeDocumentStatistics(panel, () => this.getUiLanguage()),
       panel,
       document,
       documentUri,
@@ -1076,7 +1078,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         <link href="${styleUri}" rel="stylesheet" />
         ${preloadMermaid ? `<link rel="modulepreload" href="${mermaidModuleUri}" />` : ''}
       </head>
-      <body data-meo-katex-src="${katexStyleUri}" data-meo-mermaid-src="${mermaidRuntimeUri}" data-meo-mermaid-module-src="${mermaidModuleUri}" data-meo-git-diff-worker-src="${gitDiffWorkerUri}" data-meo-shiki-worker-src="${shikiWorkerUri}" data-meo-markdown-worker-src="${markdownWorkerUri}" data-meo-script-nonce="${nonce}">
+      <body data-meo-statistics-worker-src="${webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'dist', 'document-statistics-worker.js'))}" data-meo-katex-src="${katexStyleUri}" data-meo-mermaid-src="${mermaidRuntimeUri}" data-meo-mermaid-module-src="${mermaidModuleUri}" data-meo-git-diff-worker-src="${gitDiffWorkerUri}" data-meo-shiki-worker-src="${shikiWorkerUri}" data-meo-markdown-worker-src="${markdownWorkerUri}" data-meo-script-nonce="${nonce}">
         <div id="app" class="editor-root">
           ${getWebviewPreloadShellMarkup()}
         </div>

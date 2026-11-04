@@ -1,5 +1,20 @@
 {
   "separate": {
+    "scripts/test-document-statistics-selection.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-document-statistics-selection.ts",
+      "reason": "Real pointer rectangular and native cell selections through the production statistics worker, covering mixed-language cell combinations."
+    },
+    "scripts/test-vscode-document-statistics.cjs": {
+      "kind": "native",
+      "command": "VS Code --extensionTestsPath=scripts/test-vscode-document-statistics.cjs (MEO_STATISTICS_OUTPUT and MEO_STATISTICS_BROWSER_URL)",
+      "reason": "Real workbench status bar, worker delivery, Live/Source/Preview, native cell selection, split activity, disposal and bilingual screenshots."
+    },
+    "scripts/test-document-statistics.ts": {
+      "kind": "targeted",
+      "command": "bun scripts/test-document-statistics.ts",
+      "reason": "Document word-count semantics, partial source selections, protocol validation, active panel visibility and large-document index."
+    },
     "scripts/test-editor-loading-presentation.ts": {
       "kind": "targeted",
       "command": "bun scripts/test-editor-loading-presentation.ts",
@@ -277,6 +292,7 @@
   ],
   "resources": {
     "process": [
+      "scripts/test-document-statistics.ts",
       "scripts/test-appearance-settings.ts",
       "scripts/test-appearance-webview-adapter.ts",
       "scripts/test-browser-discovery.ts",
@@ -450,6 +466,8 @@
       "scripts/test-wiki-resources.ts"
     ],
     "exclusive": [
+      "scripts/test-document-statistics-selection.ts",
+      "scripts/test-vscode-document-statistics.cjs",
       "scripts/test-architecture-shared-module-contracts.ts",
       "scripts/test-background-markdown-structure.ts",
       "scripts/test-background-shiki-production.ts",
