@@ -30,15 +30,16 @@ export async function createGitApiWatcher(
     return null;
   }
 
+  let api: GitApi | undefined;
   try {
     if (!extension.isActive) {
       await extension.activate();
     }
+    api = extension.exports?.getAPI?.(1);
   } catch {
     return null;
   }
 
-  const api = extension.exports?.getAPI?.(1);
   if (!api) {
     return null;
   }

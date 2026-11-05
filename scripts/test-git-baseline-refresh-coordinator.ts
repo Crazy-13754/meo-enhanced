@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mock } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -154,3 +155,34 @@ assert.match(panelSession, /gitBaselineRefresh\.request\(options\)/);
 assert.match(panelSession, /gitBaselineRefresh\.dispose\(\)/);
 
 console.log('Git baseline refresh coordinator checks passed');
+
+let gitExtension: any;
+mock.module('vscode', () => ({
+  extensions: { getExtension: () => gitExtension },
+  Disposable: class { constructor(private readonly release: () => void) {} dispose() { this.release(); } }
+}));
+const { createGitApiWatcher } = await import('../src/git/gitApiWatch');
+assert.equal(await createGitApiWatcher(() => {}), null);
+gitExtension = { isActive: false, activate: async () => { throw new Error('Git unavailable'); } };
+assert.equal(await createGitApiWatcher(() => {}), null);
+gitExtension = { isActive: true, exports: { getAPI() { throw new Error('Git model not found'); } } };
+await assert.doesNotReject(async () => assert.equal(await createGitApiWatcher(() => {}), null),
+  'An active Git extension without a model must leave optional baseline watching unavailable');
+gitExtension = { isActive: true, exports: {} };
+assert.equal(await createGitApiWatcher(() => {}), null);
+let gitRepositoryChanged: (() => void) | undefined;
+let gitRepositoryDisposed = 0, gitActivations = 0;
+const gitChanges: string[] = [];
+gitExtension = { isActive: false, activate: async () => { gitActivations++; }, exports: { getAPI: () => ({
+  repositories: [{ rootUri: { fsPath: 'C:/git-watcher-fixture' }, state: {
+    onDidChange(listener: () => void) { gitRepositoryChanged = listener; return { dispose() { gitRepositoryDisposed++; } }; }
+  } }]
+}) } };
+const gitWatcher = await createGitApiWatcher(root => gitChanges.push(root));
+assert.ok(gitWatcher, 'A later available API must still create the existing watcher');
+assert.equal(gitActivations, 1);
+gitRepositoryChanged!();
+assert.deepEqual(gitChanges, ['C:/git-watcher-fixture']);
+gitWatcher.dispose();
+assert.equal(gitRepositoryDisposed, 1);
+console.log('Optional Git API absence, activation failure, missing model, recovery and watcher disposal passed');
