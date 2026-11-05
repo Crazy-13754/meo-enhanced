@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import assert from 'node:assert/strict';
 import { launchTestBrowser } from './browser-test-helpers';
+import { assessLargeDocument } from '../src/foundation/largeDocument';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-table-cell-editing-'));
@@ -10,6 +12,106 @@ const source = `| A | B |\n| --- | --- |\n| ${wrappedCell} | two |\n| three | fo
 
 async function waitForTable(page: any) {
   await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-table-shell tbody textarea').length === 4);
+}
+
+async function checkCellEntryRegressions(page: any) {
+  const first = 'tbody td:first-child textarea';
+  const preview = 'tbody td:nth-child(2) .meo-md-html-table-cell-preview';
+  for (const large of [false, true]) {
+    const text = 'outside before\n\n| A | B |\n| --- | --- |\n| seed | abcdefghijklmnopqrstuvwxyz |\n\noutside after'
+      + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
+    const label = large ? 'optimized' : 'ordinary';
+    assert.equal(assessLargeDocument(text).boundedEditorWork, large, `${label}/policy`);
+    const reset = async () => {
+      await page.evaluate((text: string) => {
+        (window as any).__tableCellEditor?.destroy();
+        (window as any).__tableCellEditor = (window as any).TableStabilityHarness.createEditor({
+          parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {}
+        });
+      }, text);
+      await page.waitForSelector(first);
+      await page.waitForFunction((large: boolean) => (window as any).TableStabilityHarness
+        .usesLargeDocumentDerivedWorkBudget((window as any).__tableCellEditor.view.state) === large, {}, large);
+    };
+    if (!process.argv.includes('--entry-drag-only')) {
+      for (const delay of [0, 75, 150]) {
+        await reset();
+        await page.click('tbody td:first-child .meo-md-html-table-cell-preview');
+        await page.keyboard.press('End');
+        await page.$eval(first, (input: HTMLTextAreaElement) => { (window as any).__entryInput = input; });
+        await page.keyboard.type('x ', { delay });
+        // Let the normal auto-commit and derived presentation both complete.
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 220)));
+        const state = await page.$eval(first, (input: HTMLTextAreaElement) => ({ value: input.value,
+          start: input.selectionStart, end: input.selectionEnd, active: document.activeElement === input,
+          retained: input === (window as any).__entryInput }));
+        assert.deepEqual(state, { value: 'seedx ', start: 6, end: 6, active: true, retained: true }, `${label}/${delay}ms trailing space`);
+        // A presentation-only refresh must also retain whitespace in the native session.
+        await page.evaluate(() => {
+          const editor = (window as any).__tableCellEditor;
+          editor.commitTransientEdits();
+          const from = editor.view.state.doc.toString().indexOf('seedx');
+          editor.setDiagnostics([{ from, to: from + 1, severity: 1, message: 'Cell presentation refresh' }]);
+        });
+        await page.keyboard.type('y');
+        await page.keyboard.press('Escape');
+        const edited = await page.evaluate(() => (window as any).__tableCellEditor.getText());
+        assert.equal(edited, text.replace('seed', 'seedx y'), `${label}/committed separator`);
+        await page.evaluate(async () => {
+          const editor = (window as any).__tableCellEditor, depth = editor.getHistoryDepth().undo;
+          for (let i = 0; i < depth; i++) await editor.undo();
+        });
+        assert.equal(await page.evaluate(() => (window as any).__tableCellEditor.getText()), text, `${label}/undo`);
+        await page.evaluate(async () => {
+          const editor = (window as any).__tableCellEditor, depth = editor.getHistoryDepth().redo;
+          for (let i = 0; i < depth; i++) await editor.redo();
+        });
+        assert.equal(await page.evaluate(() => (window as any).__tableCellEditor.getText()), edited, `${label}/redo`);
+      }
+    }
+    if (!process.argv.includes('--rapid-input-only')) {
+      for (const origin of ['body', 'cell'] as const) {
+        await reset();
+        if (origin === 'cell') await page.click('tbody td:first-child .meo-md-html-table-cell-preview');
+        else await page.click('.cm-line');
+        const points = await page.$eval(preview, (element: HTMLElement) => {
+          const node = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode()!;
+          const at = (offset: number) => {
+            const range = document.createRange(); range.setStart(node, offset); range.setEnd(node, offset + 1);
+            const box = range.getBoundingClientRect();
+            return { x: Math.ceil(box.left + 2), y: Math.round(box.top + box.height / 2) };
+          };
+          (window as any).__entryPreview = element;
+          return { start: at(0), middle: at(5), end: at(11) };
+        });
+        await page.mouse.move(points.start.x, points.start.y);
+        await page.mouse.down();
+        let selectedLength = 0;
+        for (const point of [points.middle, points.end]) {
+          await page.mouse.move(point.x, point.y, { steps: 3 });
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          const held = await page.$eval(preview, (element: HTMLElement) => ({ selected: window.getSelection()?.toString(),
+            retained: element === (window as any).__entryPreview, tableFocused: document.activeElement === element.closest('table') }));
+          assert(held.selected && 'abcdefghijklmnopqrstuvwxyz'.startsWith(held.selected), `${label}/${origin}/held text: ${JSON.stringify(held)}`);
+          assert(held.selected.length > selectedLength, `${label}/${origin}/held range grows with the pointer`);
+          selectedLength = held.selected.length;
+          assert(held.retained && held.tableFocused, `${label}/${origin}/held owner`);
+        }
+        const selected = await page.evaluate(() => window.getSelection()?.toString());
+        if (process.env.MEO_TEST_SCREENSHOTS) {
+          fs.mkdirSync(process.env.MEO_TEST_SCREENSHOTS, { recursive: true });
+          await page.screenshot({ path: path.join(process.env.MEO_TEST_SCREENSHOTS, `table-held-${label}-${origin}.png`) });
+        }
+        await page.mouse.up();
+        const released = await page.$eval('tbody td:nth-child(2) textarea', (input: HTMLTextAreaElement) => ({
+          selected: input.value.slice(input.selectionStart, input.selectionEnd), active: document.activeElement === input
+        }));
+        assert.deepEqual(released, { selected, active: true }, `${label}/${origin}/released range`);
+        assert.equal(await page.evaluate(() => (window as any).__tableCellEditor.getText()), text, `${label}/${origin}/unchanged text`);
+      }
+    }
+    console.log(`Table rapid input and held entry selection passed (${label}, actual derived-work budget)`);
+  }
 }
 
 async function main() {
@@ -29,9 +131,12 @@ async function main() {
     await page.setContent('<!doctype html><div id="app"></div>');
     await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
     await page.addStyleTag({ content: ':root { --meo-background:#24292e; --meo-foreground:#e6edf3; --meo-caret:#e6edf3; --meo-semantic-tableBorder:#474b50; --meo-semantic-tableSelectionBorder:#79b8ff; }' });
-    await page.addStyleTag({ content: '.cm-editor .meo-md-html-table { width: 240px !important; table-layout: fixed !important; } .cm-editor .meo-md-html-table :is(th, td) { width: 120px !important; max-width: 120px !important; }' });
     await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+    await checkCellEntryRegressions(page);
+    if (process.argv.includes('--entry-regressions-only') || process.argv.includes('--rapid-input-only') || process.argv.includes('--entry-drag-only')) return;
+    await page.addStyleTag({ content: '.cm-editor .meo-md-html-table { width: 240px !important; table-layout: fixed !important; } .cm-editor .meo-md-html-table :is(th, td) { width: 120px !important; max-width: 120px !important; }' });
     await page.evaluate((text) => {
+      (window as any).__tableCellEditor?.destroy();
       (window as any).__tableCellEditor = (window as any).TableStabilityHarness.createEditor({
         parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {}
       });

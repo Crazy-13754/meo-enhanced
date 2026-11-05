@@ -2824,7 +2824,7 @@ class HtmlTableController extends UiLanguageSensitiveWidget {
       const previousValues = [previousData.headerCells, ...previousData.rows];
       const footnotesChanged = JSON.stringify(JSON.parse(previousData.signature).footnoteReferences)
         !== JSON.stringify(JSON.parse(tableData.signature).footnoteReferences);
-      const pending = this.cellInteraction.snapshot().pending;
+      const { pending, editingTarget } = this.cellInteraction.snapshot();
       for (let row = 0; row < allRowInputs.length; row += 1) {
         for (let col = 0; col < allRowInputs[row].length; col += 1) {
           const input = allRowInputs[row][col];
@@ -2832,7 +2832,11 @@ class HtmlTableController extends UiLanguageSensitiveWidget {
           // A late parse or diagnostic still describes the accepted source.
           // The native textarea may already own a newer, uncommitted edit.
           const ownsPending = pending.some(edit => edit.row === row && edit.col === col);
-          if (input !== this.composingInput && !ownsPending && input.value !== value) input.value = value;
+          // Source cells omit edge padding. An acknowledged native edit can
+          // still contain the space separating it from the user's next word.
+          const ownsEquivalentEdit = editingTarget?.row === row && editingTarget.col === col
+            && tableCellEditorValueToSource(input.value).trim() === (values[row]?.[col] ?? '').trim();
+          if (input !== this.composingInput && !ownsPending && !ownsEquivalentEdit && input.value !== value) input.value = value;
           // A cell owns its preview; reference numbering remains a dependency
           // even when the cell's own source text has not changed.
           if (previousValues[row]?.[col] !== values[row]?.[col]
@@ -3545,11 +3549,11 @@ class HtmlTableController extends UiLanguageSensitiveWidget {
         });
         runPrimary(() => {
           const active = document.activeElement;
-          if (active instanceof HTMLTextAreaElement && this.view?.contentDOM.contains(active)
-            && active.closest('.meo-md-html-table-shell')) {
-            // Activation may restore the old input before the new press. Hand
-            // focus to the accepted table gesture, without a body blur that
-            // would prematurely commit pending input as a separate history step.
+          if (active instanceof HTMLElement && this.view?.contentDOM.contains(active)) {
+            // The gesture owns its DOM range while held. Move focus out of
+            // CodeMirror's editable body so its selection observer cannot
+            // replace the table's live text selection with the old body caret.
+            // This also hands off an activation-restored native cell directly.
             table?.focus({ preventScroll: true });
           }
         });

@@ -1398,6 +1398,13 @@ for the staged snapshot. A staging/content change invalidates earlier index chec
 
 ## Document-scale coverage
 
+`scripts/test-table-cell-editing-production.ts --entry-regressions-only` pairs
+ordinary and actual optimized work budgets for rapid text/space input, delayed
+diagnostic presentation, retained textarea identity, commit and undo/redo. It also
+checks the growing native text range before pointer release when entering a cell
+from the document body or another cell, then its accepted textarea selection.
+The complete contract remains in the table editing and browser release suites.
+
 `scripts/test-preview-image-actions.ts` covers ordinary and actually windowed full/side
 Preview in English/light and Chinese/dark. Native pointer and keyboard actions check
 image refresh without Markdown rerendering, retained images and painted reading anchors
