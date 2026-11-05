@@ -65,6 +65,11 @@ const controller = createPanelSessionController(createPanelSessionControllerPara
   }),
   readDiskText: () => document.text,
   overrides: {
+    sidebarOutline: {
+      setReady: (ready: boolean) => { messages.push({ type: 'sidebarReadiness', ready }); },
+      update() {},
+      dispose() {}
+    },
     imageDimensions: { snapshot: () => dimensions, ready: imageHeaders, dispose: () => { imageHeadersDisposed = true; } },
     getEditorLineHeight: () => lineHeight,
     setEditorLineHeight: async (value: number) => { lineHeight = value; },
@@ -93,8 +98,12 @@ const readyMessages = [
   controller.handleMessage({ type: 'ready' }),
   controller.handleMessage({ type: 'ready' })
 ];
+assert.equal(messages.some(message => message.type === 'sidebarReadiness' && message.ready), false,
+  'outline subscription remains gated while the real init is waiting on disk');
 releaseDiskRead?.();
 await Promise.all(readyMessages);
+assert.ok(messages.findIndex(message => message.type === 'sidebarReadiness' && message.ready)
+  > messages.findIndex(message => message.type === 'init'), 'Panel Session enables the outline only after init delivery');
 assert.equal(messages.filter((message) => message.type === 'init').length, 1,
   'concurrent ready messages must share one pending init');
 assert.ok(messages.some(message => message.type === 'documentSaveStateChanged'

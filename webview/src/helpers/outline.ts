@@ -1,5 +1,6 @@
 import { createElement, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ArrowLeftToLine, ArrowRightToLine, Pin, PinOff, X, type IconNode } from 'lucide';
 import { DEFAULT_OUTLINE_WIDTH, normalizeOutlineWidth } from '../../../src/shared/outlineWidth';
+import { outlineHeadingKeys, visibleOutlineHeadingIndexes } from '../../../src/foundation/outline';
 import type { HeadingInlineSegment } from './markdownSyntax';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 import { applyOutlinePalette, type OutlinePaletteInput } from './uiTheme';
@@ -95,21 +96,17 @@ export function buildOutlineTree(headings: OutlineHeading[]): {
 } {
   const roots: OutlineTreeNode[] = [];
   const stack: OutlineTreeNode[] = [];
-  const siblingCounts = new Map<string, number>();
+  const keys = outlineHeadingKeys(headings);
   const nodeByIndex = new Map<number, OutlineTreeNode>();
 
   headings.forEach((heading, index) => {
     while (stack.length && stack[stack.length - 1].heading.level >= heading.level) stack.pop();
     const parent = stack.at(-1) ?? null;
-    const parentKey = parent?.key ?? 'root';
-    const baseKey = `${parentKey}/h${heading.level}:${heading.text.trim().toLowerCase()}`;
-    const occurrence = siblingCounts.get(baseKey) ?? 0;
-    siblingCounts.set(baseKey, occurrence + 1);
     const node: OutlineTreeNode = {
       heading,
       index,
       depth: stack.length,
-      key: `${baseKey}:${occurrence}`,
+      key: keys[index],
       parentIndex: parent?.index ?? null,
       children: []
     };
@@ -126,17 +123,7 @@ export function findVisibleHeadingIndexes(
   headings: OutlineHeading[],
   visibleRange: { from: number; to: number; fromLine: number; toLine: number } | null
 ): number[] {
-  if (!visibleRange) return [];
-  return headings.flatMap((heading, index) => {
-    const nextHeadingLine = headings[index + 1]?.line ?? Number.POSITIVE_INFINITY;
-    const sectionLastLine = nextHeadingLine - 1;
-    const visibleLines = Math.max(
-      0,
-      Math.min(sectionLastLine, visibleRange.toLine) - Math.max(heading.line, visibleRange.fromLine) + 1
-    );
-    const headingLineVisible = heading.line >= visibleRange.fromLine && heading.line <= visibleRange.toLine;
-    return headingLineVisible || visibleLines >= 4 ? [index] : [];
-  });
+  return visibleOutlineHeadingIndexes(headings, headings.map(heading => heading.line), visibleRange);
 }
 
 function iconButton(icon: IconNode, action: string, title: string): HTMLButtonElement {

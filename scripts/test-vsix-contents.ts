@@ -53,6 +53,7 @@ const requiredFiles = [
   archive ? 'LICENSE.txt' : 'LICENSE',
   'THIRD_PARTY_NOTICES.md',
   'logo.png',
+  'media/outline.svg',
   'dist/extension.js',
   'dist/export-runtime.js',
   'dist/preview-render-worker.js',

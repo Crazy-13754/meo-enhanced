@@ -4,6 +4,7 @@ import { decodeDocumentViewsChanged, type DocumentViewsChanged } from './documen
 import { decodeExtensionFeaturesRequest, decodeExtensionFeaturesEvent, type ExtensionFeaturesRequest, type ExtensionFeaturesEvent } from './extensionFeatures';
 import { decodeDocumentContentRequest, decodeDocumentContentResponse, type DocumentContentRequest, type DocumentContentResponse } from './documentContent';
 import { decodeDocumentStatistics, type DocumentStatisticsMessage } from './documentStatistics';
+import { decodeSidebarOutlineHostEvent, decodeSidebarOutlineMessage, type SidebarOutlineHostEvent, type SidebarOutlineMessage } from './sidebarOutline';
 import { decodePreviewFontsRequest, decodePreviewFontsResponse, type PreviewFontsRequest, type PreviewFontsResponse } from './previewFonts';
 import { decodeImageIntrinsicSizesEvent, type ImageIntrinsicSizesEvent } from './imageDimensions';
 import { decodeEditorServiceRequest, decodeEditorServiceResponse, type EditorServiceRequest, type EditorServiceResponse } from './editorServices';
@@ -38,6 +39,7 @@ export type WebviewToHostMessage =
   | ExtensionFeaturesRequest
   | DocumentContentRequest
   | DocumentStatisticsMessage
+  | SidebarOutlineMessage
   | PreviewFontsRequest
   | WebviewVisibilityRequest
   | UpdateUiColorsRequest
@@ -84,6 +86,7 @@ export type HostToWebviewMessage =
   | DocumentRevisionResponse
   | FlushDocumentEditsRequest
   | HostEditorEvent
+  | SidebarOutlineHostEvent
   | HostConfigurationEvent
   | UpdatedEditingPreferencesResponse
   | EditingPreferencesChangedEvent
@@ -106,6 +109,7 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
     ?? decodeDocumentContentRequest(value)
     ?? decodeExtensionFeaturesRequest(value)
     ?? decodeDocumentStatistics(value)
+    ?? decodeSidebarOutlineMessage(value)
     ?? decodePreviewFontsRequest(value)
     ?? decodeWebviewVisibilityRequest(value)
     ?? decodePreviewPresetRequest(value)
@@ -155,6 +159,7 @@ export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage
     ?? decodeDocumentRevisionResponse(value)
     ?? decodeFlushDocumentEditsRequest(value)
     ?? decodeHostEditorEvent(value)
+    ?? decodeSidebarOutlineHostEvent(value)
     ?? decodeHostConfigurationEvent(value)
     ?? decodeUpdatedEditingPreferencesResponse(value)
     ?? decodeEditingPreferencesChangedEvent(value)

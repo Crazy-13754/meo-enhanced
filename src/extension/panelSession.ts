@@ -1,4 +1,5 @@
 import type { createVscodeDocumentStatistics } from '../host/vscodeDocumentStatistics';
+import type { createVscodeSidebarOutline } from '../host/vscodeSidebarOutline';
 import { DEFAULT_EDITOR_LINE_HEIGHT } from '../foundation/editorLineHeight';
 import { runEditorService } from '../host/editorServices';
 import type { createImageDimensionCatalog } from '../host/imageDimensions';
@@ -137,6 +138,7 @@ type PanelDiagnostics = {
 
 type PanelSessionControllerParams = {
   documentStatistics?: ReturnType<typeof createVscodeDocumentStatistics>;
+  sidebarOutline?: ReturnType<ReturnType<typeof createVscodeSidebarOutline>['attach']>;
   panel: vscode.WebviewPanel;
   document: vscode.TextDocument;
   documentUri: vscode.Uri;
@@ -271,6 +273,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
 
   const documentKey = document.uri.toString();
   const documentStatistics = params.documentStatistics;
+  const sidebarOutline = params.sidebarOutline;
   const saveAsViewState = params.saveAsViewStateHandoff?.take(documentKey, document.getText()) ?? null;
   const persistedMode = context.globalState.get(EDITOR_MODE_STATE_KEY);
   const persistedEditorMode: EditorMode | null = isEditorMode(persistedMode) ? persistedMode : null;
@@ -647,6 +650,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           await viewNavigation.ready({ preserveInitialView: saveAsViewState !== null });
         }
         publishSaveState(true);
+        sidebarOutline?.setReady(true);
       } finally {
         initDelivery = null;
       }
@@ -723,6 +727,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       case 'documentStatistics':
         documentStatistics?.update(raw.statistics);
         return;
+      case 'sidebarOutline':
+        sidebarOutline?.update(raw);
+        return;
       case 'requestWebviewVisibility':
         await postToWebview({ type: 'webviewVisibilityResult', requestId: raw.requestId, visible: panel.visible });
         return;
@@ -769,6 +776,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         return;
       }
       case 'ready':
+        sidebarOutline?.setReady(false);
         webviewReady = true;
         await ensureInitDelivered(true);
         refreshGitBaseline({ forcePost: true, delayMs: GIT_BASELINE_STARTUP_DELAY_MS });
@@ -1319,6 +1327,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     }
     disposed = true;
     documentStatistics?.dispose();
+    sidebarOutline?.dispose();
     params.imageDimensions?.dispose();
     localLinkWatcher.dispose();
     wikiResourcesSubscription.dispose();
