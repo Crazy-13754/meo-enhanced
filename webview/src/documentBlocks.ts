@@ -227,7 +227,16 @@ export function createDocumentBlocks(host: Host) {
   function refreshPreview(doc: Document) {
     if (previewDocument !== doc) {
       previewObserver?.disconnect(); for (const block of previewBlocks.values()) block.dispose(); previewBlocks.clear();
-      previewDocument = doc;
+      previewDocument = doc; previewObserver = undefined;
+    }
+    for (const [block, record] of previewBlocks) if (!block.isConnected || !record.element.isConnected) { record.dispose(); previewBlocks.delete(block); }
+    // Optional renderers must be idle when absent or disabled. Keep the current
+    // document so a later catalog can mount its existing code blocks on demand.
+    if (!views.some(view => view.codeBlockLanguages?.length) || doc.documentElement.dataset.meoPreviewRenderer === 'github-readme') {
+      previewObserver?.disconnect(); previewObserver = undefined;
+      return;
+    }
+    if (!previewObserver) {
       let queued = false;
       previewObserver = new MutationObserver(() => {
         if (queued) return; queued = true;
@@ -235,8 +244,6 @@ export function createDocumentBlocks(host: Host) {
       });
       previewObserver.observe(doc.body, { childList: true, subtree: true });
     }
-    for (const [block, record] of previewBlocks) if (!block.isConnected || !record.element.isConnected) { record.dispose(); previewBlocks.delete(block); }
-    if (doc.documentElement.dataset.meoPreviewRenderer === 'github-readme') return;
     for (const code of doc.querySelectorAll<HTMLElement>('pre > code')) {
       const source = previewCodeSource(code);
       const language = source?.language ?? [...code.classList].find(name => name.startsWith('language-'))?.slice(9) ?? '';

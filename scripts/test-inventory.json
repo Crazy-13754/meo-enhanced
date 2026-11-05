@@ -471,6 +471,7 @@
       "scripts/test-workspace-documents-host.ts"
     ],
     "exclusive": [
+      "scripts/test-document-block-preview-idle.ts",
       "scripts/test-document-statistics-selection.ts",
       "scripts/test-vscode-document-statistics.cjs",
       "scripts/test-architecture-shared-module-contracts.ts",

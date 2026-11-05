@@ -1405,6 +1405,13 @@ checks the growing native text range before pointer release when entering a cell
 from the document body or another cell, then its accepted textarea selection.
 The complete contract remains in the table editing and browser release suites.
 
+`scripts/test-document-block-preview-idle.ts` exercises the production optional
+block adapter with small and many-code-block preview DOMs. Absent, panel-only and
+disabled renderers perform no code-block scans after DOM mutations; enabling a
+renderer mounts existing content, retains its DOM, and disabling it restores the
+original source. This isolated browser contract requires no companion extension
+and belongs to `test:browser`.
+
 `scripts/test-preview-image-actions.ts` covers ordinary and actually windowed full/side
 Preview in English/light and Chinese/dark. Native pointer and keyboard actions check
 image refresh without Markdown rerendering, retained images and painted reading anchors
