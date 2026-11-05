@@ -4,6 +4,8 @@
   "extension.description": "适用于 VS Code、支持实时编辑模式的增强型 Markdown 编辑器。",
   "command.open": "使用 MEO Enhanced 打开",
   "command.toggleMode": "MEO Enhanced：切换实时/源码模式",
+  "view.outline": "MEO Outline",
+  "command.outline.expandAll": "展开全部标题",
   "command.exportHtml": "MEO Enhanced：导出为 HTML",
   "command.exportPdf": "MEO Enhanced：导出为 PDF",
   "command.exportDocx": "MEO Enhanced：导出为 Word 文档",

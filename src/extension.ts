@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as vscode from 'vscode';
 import { createVscodeDocumentStatistics } from './host/vscodeDocumentStatistics';
+import { createVscodeSidebarOutline } from './host/vscodeSidebarOutline';
 import { createBackgroundPreviewRenderer } from './host/previewRenderWorker';
 import { createImageDimensionCatalog } from './host/imageDimensions';
 import { disposeWikiResources, resolveDocumentWikiResources } from './host/wikiResources';
@@ -407,6 +408,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
   private readonly saveAsViewStateHandoff = createDocumentSaveAsViewStateHandoff();
   private lastActivePanel: vscode.WebviewPanel | null = null;
+  private readonly sidebarOutline: ReturnType<typeof createVscodeSidebarOutline>;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -418,6 +420,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
     private readonly documentViews: ReturnType<typeof createDocumentViewsRegistry>,
     private readonly extensionFeatures: ReturnType<typeof createExtensionFeatures>
   ) {
+    this.sidebarOutline = createVscodeSidebarOutline(() => this.getUiLanguage());
     this.previewRenderer = createBackgroundPreviewRenderer(
       vscode.Uri.joinPath(context.extensionUri, 'dist', 'preview-render-worker.js').fsPath);
     this.workspaceDocuments = createWorkspaceDocumentsHost({
@@ -432,7 +435,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         }
       }
     });
-    context.subscriptions.push(this.previewRenderer, this.previewFonts, this.workspaceDocuments);
+    context.subscriptions.push(this.previewRenderer, this.previewFonts, this.workspaceDocuments, this.sidebarOutline);
     this.previewPresetPreferences = createPreviewPresetPreferences({
       readStored: () => context.globalState.get(PREVIEW_PRESET_PREFERENCES_STATE_KEY),
       writeStored: preferences => context.globalState.update(PREVIEW_PRESET_PREFERENCES_STATE_KEY, preferences),
@@ -662,8 +665,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       ]
     };
 
+    const sidebarOutline = this.sidebarOutline.attach(panel, document);
     const controller = createPanelSessionController({
       documentStatistics: createVscodeDocumentStatistics(panel, () => this.getUiLanguage()),
+      sidebarOutline,
       panel,
       document,
       documentUri,

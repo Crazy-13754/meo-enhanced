@@ -1,0 +1,150 @@
+const vscode = require('vscode');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const puppeteer = require('puppeteer-core');
+
+exports.run = async () => {
+  const output = process.env.MEO_OUTLINE_OUTPUT;
+  assert.ok(output && path.isAbsolute(output));
+  const result = { passed: false, cases: [] };
+  const restoring = process.env.MEO_OUTLINE_PHASE === 'restore';
+  const browser = await puppeteer.connect({ browserURL: process.env.MEO_OUTLINE_BROWSER_URL, defaultViewport: null });
+  let page;
+  try {
+    page = (await browser.pages()).find(candidate => candidate.url().startsWith('vscode-file:'));
+    assert.ok(page, 'A real VS Code workbench must be connected');
+    page.setDefaultTimeout(15000);
+    const file = path.join(output, 'workspace', 'outline.md');
+    const headings = ['Native root', 'Native second', 'Native third', 'Native fourth', 'Native fifth', 'Native sixth'];
+    fs.writeFileSync(file, headings.map((text, index) => `${'#'.repeat(index + 1)} ${text}\n\n${'Readable content.\n\n'.repeat(35)}`).join('\n'));
+    await vscode.workspace.getConfiguration('meoEnhanced').update('language', 'en', vscode.ConfigurationTarget.Global);
+    await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), 'meoEnhanced.editor');
+    await vscode.commands.executeCommand('meoEnhanced.outline.focus');
+    const tree = '.monaco-list[aria-label="MEO Outline"]';
+    const rows = `${tree} .monaco-list-rows > .monaco-list-row`;
+    if (restoring) {
+      await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(row => row.textContent.includes('Native root')), {}, rows);
+      await page.evaluate(() => new Promise(resolve => {
+        let count = 0;
+        const next = () => ++count < 12 ? requestAnimationFrame(next) : resolve();
+        requestAnimationFrame(next);
+      }));
+      // Custom TreeView does not persist its expansion model across workbench
+      // restarts. Verify fresh publication rather than require an extension-owned
+      // persistence mechanism that this feature does not otherwise need.
+      assert.equal(await page.$$eval(rows, nodes => nodes.length), 6, 'fresh host restores the complete outline');
+      assert.equal(await page.$$eval(`${rows} .codicon-symbol-string`, icons => icons.length), 0);
+      result.cases.push('a fresh extension host restores complete icon-free outline contents');
+      result.passed = true;
+      return;
+    }
+    await page.waitForFunction(selector => document.querySelectorAll(selector).length === 6, {}, rows);
+    assert.equal(await page.$$eval(`${rows} .codicon-symbol-string, ${rows} .codicon-symbol-number`, icons => icons.length), 0);
+    result.cases.push('six native heading rows without symbol icons');
+
+    const collapse = (await vscode.commands.getCommands(true)).find(command => command.includes('meoEnhanced.outline') && /collapseAll/i.test(command));
+    assert.ok(collapse, 'The native collapse-all action is registered');
+    await vscode.commands.executeCommand(collapse);
+    await page.waitForFunction(selector => document.querySelectorAll(selector).length === 1, {}, rows);
+    const expandButton = '.pane-header .codicon-expand-all';
+    const outlineHeader = '.pane-header:has(.codicon-expand-all)';
+    await page.waitForSelector(outlineHeader);
+    await page.hover(outlineHeader);
+    await page.waitForSelector(expandButton, { visible: true });
+    await page.click(expandButton);
+    await page.waitForFunction(selector => document.querySelectorAll(selector).length === 6
+      && ![...document.querySelectorAll(selector)].some(row => row.getAttribute('aria-expanded') === 'false'), {}, rows);
+    result.cases.push('native collapse all and complete six-level expansion');
+
+    await vscode.commands.executeCommand('meoEnhanced.outline.focus');
+    await vscode.commands.executeCommand('list.focusLast');
+    await vscode.commands.executeCommand('list.select');
+    let editorFrame;
+    for (const frame of page.frames()) {
+      if (await frame.evaluate(() => !!document.querySelector('.editor-root')).catch(() => false)) editorFrame = frame;
+    }
+    assert.ok(editorFrame);
+    await editorFrame.waitForFunction(() => [...document.querySelectorAll('.cm-line')].some(line =>
+      line.textContent.includes('Native sixth') && line.getBoundingClientRect().top >= 0 && line.getBoundingClientRect().top < 400));
+    result.cases.push('native tree click navigates the MEO editor');
+
+    await vscode.commands.executeCommand('meoEnhanced.outline.focus');
+    await vscode.commands.executeCommand('workbench.action.moveFocusedView', 'meoEnhanced.outline');
+    const destinationInput = '.quick-input-widget input';
+    await page.waitForSelector(destinationInput, { visible: true });
+    await page.type(destinationInput, 'New Side Bar Entry');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(destinationInput, { hidden: true });
+    await page.waitForFunction(() => document.querySelector('.part.sidebar .composite.title .title-label')?.textContent.trim() === 'MEO Outline');
+    result.cases.push('standalone sidebar container shows one MEO Outline title');
+
+    for (const language of ['zh-CN', 'en']) {
+      await vscode.workspace.getConfiguration('meoEnhanced').update('language', language, vscode.ConfigurationTarget.Global);
+      await page.waitForFunction(() => [...document.querySelectorAll('.pane-header')].some(header => header.textContent.includes('MEO Outline')));
+      assert.ok(!await page.evaluate(() => [...document.querySelectorAll('.pane-header')].some(header => header.textContent.includes('MEO 大纲'))),
+        'the view title remains English when MEO language changes');
+      assert.equal(await page.$eval('.part.sidebar .composite.title .title-label', element => element.textContent.trim()), 'MEO Outline',
+        'standalone title does not combine container and view names');
+      for (const [theme, themeClass] of [['Light 2026', 'vs'], ['Dark 2026', 'vs-dark']]) {
+        await vscode.workspace.getConfiguration('workbench').update('colorTheme', theme, vscode.ConfigurationTarget.Global);
+        await page.waitForFunction(themeClass => document.querySelector('.monaco-workbench')?.classList.contains(themeClass), {}, themeClass);
+        assert.equal(await page.$$eval(rows, nodes => nodes.length), 6);
+        assert.equal(await page.$$eval(`${rows} .monaco-highlighted-label .highlight`, nodes => nodes.length), 0,
+          'visible sections have no label highlights');
+        assert.equal(await page.$$eval(`${rows}[aria-selected="true"]`, nodes => nodes.length), 1,
+          'only the current heading is selected');
+        await page.screenshot({ path: path.join(output, `${language}-${themeClass}.png`) });
+        result.cases.push(`${language}, ${theme}: rows and expansion preserved`);
+      }
+    }
+
+    const otherFile = path.join(output, 'workspace', 'other.md');
+    fs.writeFileSync(otherFile, '# Other focused document\n');
+    await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(otherFile), 'meoEnhanced.editor', vscode.ViewColumn.Beside);
+    await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(row => row.textContent.includes('Other focused document')), {}, rows);
+    await vscode.commands.executeCommand('meoEnhanced.outline.focus');
+    assert.equal(await page.$$eval(rows, nodes => nodes.length), 1, 'Sidebar focus preserves the last MEO outline');
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(row => row.textContent.includes('Native root')), {}, rows);
+    result.cases.push('split focus, sidebar focus and closing the current editor');
+
+    const scaleFile = path.join(output, 'workspace', 'scale.md');
+    fs.writeFileSync(scaleFile, Array.from({ length: 10000 }, (_, index) =>
+      `# Scale root ${index}\n\n## Scale child ${index}\n\n`).join(''));
+    await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(scaleFile), 'meoEnhanced.editor');
+    await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(row => row.textContent.includes('Scale root')), { timeout: 30000 }, rows);
+    await vscode.commands.executeCommand(collapse);
+    await page.waitForFunction(selector => ![...document.querySelectorAll(selector)].some(row => row.getAttribute('aria-level') === '2'), {}, rows);
+    const collapsedHeight = await page.$eval(`${tree} .monaco-list-rows`, element => parseFloat(element.style.height));
+    const started = Date.now();
+    await vscode.commands.executeCommand('meoEnhanced.outline.expandAll');
+    await page.waitForFunction(({ tree, collapsedHeight }) => parseFloat(document.querySelector(`${tree} .monaco-list-rows`).style.height) > collapsedHeight * 1.9,
+      {}, { tree, collapsedHeight });
+    result.expandAll20000Milliseconds = Date.now() - started;
+    assert.ok(result.expandAll20000Milliseconds < 10000, '20,000 headings expand within the native interaction budget');
+    await vscode.commands.executeCommand('meoEnhanced.outline.focus');
+    await vscode.commands.executeCommand('list.focusLast');
+    await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(row => row.textContent.includes('Scale child 9999')), {}, rows);
+    result.cases.push('20,000 native headings: bulk expansion reaches the final child');
+    await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), 'meoEnhanced.editor');
+    await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(row => row.textContent.includes('Native root')), {}, rows);
+    await vscode.commands.executeCommand(collapse);
+    await page.waitForFunction(selector => document.querySelectorAll(selector).length === 1, {}, rows);
+    result.passed = true;
+  } catch (error) {
+    result.error = String(error.stack || error);
+    if (page) {
+      result.trees = await page.evaluate(() => [...document.querySelectorAll('.monaco-list')].map(tree => ({
+        label: tree.getAttribute('aria-label'), rows: tree.querySelectorAll('.monaco-list-row').length,
+        text: tree.textContent.slice(0, 500)
+      }))).catch(() => null);
+      await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {});
+    }
+    throw error;
+  } finally {
+    browser.disconnect();
+    fs.writeFileSync(path.join(output, restoring ? 'result-restore.json' : 'result.json'), JSON.stringify(result, null, 2));
+  }
+};

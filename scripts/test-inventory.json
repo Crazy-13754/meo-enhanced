@@ -1,5 +1,15 @@
 {
   "separate": {
+    "scripts/test-vscode-sidebar-outline.ps1": {
+      "kind": "native",
+      "command": "./scripts/test-vscode-sidebar-outline.ps1 -CodePath <Code.exe>",
+      "reason": "Isolated real workbench outline expansion, icon-free rows, navigation, split focus, bilingual light/dark screenshots and disposal."
+    },
+    "scripts/test-vscode-sidebar-outline.cjs": {
+      "kind": "native",
+      "command": "scripts/test-vscode-sidebar-outline.cjs is loaded by scripts/test-vscode-sidebar-outline.ps1",
+      "reason": "Runs against the production extension and real native TreeView in a disposable VS Code profile."
+    },
     "scripts/test-vscode-document-statistics.cjs": {
       "kind": "native",
       "command": "VS Code --extensionTestsPath=scripts/test-vscode-document-statistics.cjs (MEO_STATISTICS_OUTPUT and MEO_STATISTICS_BROWSER_URL)",
@@ -398,6 +408,7 @@
       "scripts/test-ordered-list-renumber.ts",
       "scripts/test-ordered-list-work-bound.ts",
       "scripts/test-outline-tree.ts",
+      "scripts/test-sidebar-outline.ts",
       "scripts/test-panel-session-change-echo.ts",
       "scripts/test-panel-session-external-file-notice.ts",
       "scripts/test-panel-session-reading-position.ts",
@@ -629,6 +640,7 @@
       "scripts/test-native-save-table-flush.ts",
       "scripts/test-native-scroll-progress-production.ts",
       "scripts/test-ordered-list-sync.ts",
+      "scripts/test-sidebar-outline-browser.ts",
       "scripts/test-outline-colors-production.ts",
       "scripts/test-outline-floating-dismissal.ts",
       "scripts/test-outline-large-startup.ts",
@@ -762,6 +774,8 @@
       "scripts/test-vscode-preview-shortcuts.cjs",
       "scripts/test-vscode-preview-shortcuts.ps1",
       "scripts/test-vscode-toolbar-viewport.cjs",
+      "scripts/test-vscode-sidebar-outline.cjs",
+      "scripts/test-vscode-sidebar-outline.ps1",
       "scripts/test-vscode-toolbar-viewport.ps1",
       "scripts/test-vsix-contents.ts",
       "scripts/test-vsix-privacy.ts",
