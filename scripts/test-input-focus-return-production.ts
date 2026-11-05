@@ -599,6 +599,7 @@ async function checkOffscreenReturn(page: Page, frame: Frame, target: 'table' | 
 
 try {
   const onlyInactiveScroll = process.argv.includes('--only=inactive-scroll');
+  const onlyInputs = process.argv.includes('--only=inputs');
   const onlyTable = onlyInactiveScroll || process.argv.includes('--only=table-activation') || process.argv.includes('--only=table-boundaries');
   for (const mode of (onlyTable ? ['live'] : ['live', 'source', 'preview']) as ('live' | 'source' | 'preview')[]) {
     const page = await browser.newPage();
@@ -629,7 +630,7 @@ try {
         restoreReadingPositionOnOpen: false, vscodeTheme: null
       } })), { text, mode });
       await frame.waitForSelector('.editor-wrapper:not(.meo-preload-editor-shell) .cm-content');
-      if (mode === 'live') {
+      if (mode === 'live' && !onlyInputs) {
         if (!onlyInactiveScroll) {
           if (!process.argv.includes('--only=table-boundaries')) await checkTableActivationClick(page, frame);
           await checkTableActivationBoundaries(page, frame);
@@ -718,6 +719,9 @@ try {
       await frame.evaluate(() => {
         const input = document.querySelector<HTMLInputElement>('.find-row .find-input')!;
         input.value = 'old range'; input.setSelectionRange(2, 5, 'backward');
+        // Search/replace content survives closing. Establish an explicit next
+        // target so this tests recovery ownership, independently of prior cases.
+        document.querySelector<HTMLInputElement>('.find-replace-row .find-input')!.value = 'next target';
       });
       await leave(page, frame, '.find-row .find-input');
       const nextInput = mode === 'preview' ? '.find-row .find-input' : '.find-replace-row .find-input';
@@ -728,7 +732,7 @@ try {
       }, nextInput);
       await page.keyboard.type('NEW');
       await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'focusEditor' } })));
-      assert.equal((await readInput(frame, nextInput)).value, mode === 'preview' ? 'NEWold range' : 'NEW');
+      assert.equal((await readInput(frame, nextInput)).value, mode === 'preview' ? 'NEWold range' : 'NEWnext target');
       assert.equal((await readInput(frame, nextInput)).focused, true);
       await frame.focus('[data-action="find"]');
       await chord(page, 'f');

@@ -1398,6 +1398,19 @@ for the staged snapshot. A staging/content change invalidates earlier index chec
 
 ## Document-scale coverage
 
+`scripts/test-webview-search-controls.ts --selection-entry-only` covers search
+entry through the actual Webview and native shortcuts in ordinary/optimized
+documents. A stale native cell range cannot override the current body selection;
+toolbar focus borrowing retains the accepted cell. The selection/query matrix,
+repeated Find, close/reopen, single-line whitespace, multiline rejection and mode
+changes retain source and the actual derived-work policy without scanning all
+cell inputs. The full owning suite also covers selected/empty Preview entry and
+light/dark panel geometry; window-return input selection remains owned by the
+existing focus-return contracts. The helper runs in the default browser suite.
+`scripts/test-input-focus-return-production.ts --only=inputs` runs the complete
+Live/Source/Preview input-return and document-handoff cases without repeating the
+independent table activation matrix. The default release invocation retains both.
+
 `scripts/test-table-cell-editing-production.ts --entry-regressions-only` pairs
 ordinary and actual optimized work budgets for rapid text/space input, delayed
 diagnostic presentation, retained textarea identity, commit and undo/redo. It also

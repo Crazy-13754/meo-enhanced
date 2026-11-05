@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { darkBuiltInVisuals } from '../src/shared/builtInVisualBaseline';
 import { launchTestBrowser } from './browser-test-helpers';
+import { checkSearchPanelEntry } from './search-panel-entry-checks';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-webview-search-'));
@@ -61,6 +62,10 @@ async function main() {
     }, { documentText: text, theme: darkBuiltInVisuals });
     await page.waitForSelector('.editor-host > .cm-editor');
     await new Promise((resolve) => setTimeout(resolve, 100));
+    if (process.argv.includes('--selection-entry-only')) {
+      await checkSearchPanelEntry(page);
+      return;
+    }
     const localizedFindChrome = await page.evaluate(() => ({
       panel: document.querySelector('.find-panel')?.getAttribute('aria-label'),
       find: document.querySelector<HTMLInputElement>('.find-input')?.placeholder,
@@ -245,6 +250,11 @@ async function main() {
     });
     await page.click('.find-close-button');
 
+    await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentWindow!.getSelection()!.removeAllRanges());
+    await page.click('[data-action="find"]');
+    const previewReopenedQuery = await page.$eval('.find-input', input => (input as HTMLInputElement).value);
+    await page.click('.find-close-button');
+
     const discardState = await page.evaluate(async () => {
       const messages = (window as any).__hostMessages as Array<{ type?: string; topLine?: number }>;
       messages.length = 0;
@@ -295,6 +305,9 @@ async function main() {
     if (previewState.selectedText !== 'Preview selected phrase') {
       failures.push(`Preview selection was not copied into Find: ${JSON.stringify(previewState.selectedText)}`);
     }
+    if (previewReopenedQuery !== 'Preview selected phrase') {
+      failures.push(`Empty Preview selection must retain the previous query: ${JSON.stringify(previewReopenedQuery)}`);
+    }
     if (!previewState.wheelTrusted || previewState.wheelCount !== 1 || previewState.wheelPrevented || Math.abs(previewState.wheelDelta - 80) > 1) {
       failures.push(`Preview wheel must retain native scrolling and selection: ${JSON.stringify(previewState)}`);
     }
@@ -313,6 +326,7 @@ async function main() {
       failures.push(`Code block control did not use SquareCode: ${JSON.stringify(codeBlockIconShape)}`);
     }
     if (failures.length) throw new Error(failures.join('\n'));
+    await checkSearchPanelEntry(page);
     console.log('webview search and control checks passed');
   } finally {
     await browser.close();

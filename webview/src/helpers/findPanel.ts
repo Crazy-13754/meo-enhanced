@@ -291,8 +291,6 @@ export const createFindPanelController = (
     visible = false;
     elements.panel.classList.remove('is-visible');
     elements.toggleBtn.classList.remove('is-active');
-    elements.findInput.value = '';
-    elements.replaceInput.value = '';
     setFindStatus('');
     clearSurfaceSearch();
     const editor = getEditor();
@@ -303,32 +301,22 @@ export const createFindPanelController = (
   };
 
   const getSelectedEditorText = (): string => {
-    const surfaceText = getSelectedSurfaceText?.() ?? '';
-    if (surfaceText) {
-      return surfaceText;
-    }
-    const editor = getEditor();
-    const state = editor?.view?.state;
-    const selection = state?.selection?.main;
-    if (!selection || selection.empty) {
-      return '';
-    }
-    return state.doc.sliceString(Math.min(selection.from, selection.to), Math.max(selection.from, selection.to));
+    // An empty surface selection is authoritative; do not fall back to a
+    // suspended body range behind a cell or a different editor mode.
+    return getSelectedSurfaceText?.() ?? getEditor()?.getSelectedText?.() ?? '';
   };
 
   const open = (target: 'find' | 'replace' = 'find'): void => {
-    const wasVisible = visible;
+    const fromPanel = elements.panel.contains(document.activeElement);
     updateFindPanelAnchor();
     visible = true;
     elements.panel.classList.add('is-visible');
     elements.toggleBtn.classList.add('is-active');
-    const selectedText = wasVisible ? '' : getSelectedEditorText();
-    if (selectedText) {
+    const selectedText = fromPanel ? '' : getSelectedEditorText();
+    // The current control is single-line. Preserve whitespace exactly, but
+    // never let the browser silently remove newlines from a selected block.
+    if (selectedText && !/[\r\n]/.test(selectedText)) {
       elements.findInput.value = selectedText;
-    }
-    const editor = getEditor();
-    if (editor) {
-      editor.setSearchQuery(elements.findInput.value, getSearchOptions());
     }
     updateFindStatusSummary();
     const input = target === 'replace' ? elements.replaceInput : elements.findInput;

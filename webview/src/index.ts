@@ -1573,12 +1573,7 @@ const findPanelController = createFindPanelController(
     if (getActiveEditorMode() === 'preview') {
       return previewController.getSelectedText();
     }
-    for (const textarea of root.querySelectorAll<HTMLTextAreaElement>('.meo-md-html-table textarea')) {
-      if (textarea.selectionEnd > textarea.selectionStart) {
-        return textarea.value.slice(textarea.selectionStart, textarea.selectionEnd);
-      }
-    }
-    return '';
+    return editor?.getSelectedText() ?? '';
   },
   activeUiLanguage,
   () => {

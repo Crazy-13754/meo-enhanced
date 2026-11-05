@@ -1268,6 +1268,15 @@ export function createEditor({
     return active.closest('.meo-md-html-table-wrap') ? active : null;
   };
 
+  const getEditorReturnTarget = (): HTMLElement | null => {
+    if (tablePointerFocus?.released && (tablePointerFocus.isCurrent?.() === false ||
+      tablePointerFocus.nativeTarget?.isConnected === false)) tablePointerFocus = null;
+    // A held preview gesture or rectangular cell range owns focus without an
+    // editable text target. Its suspended body/cell range is not current text.
+    if (tablePointerFocus && !tablePointerFocus.nativeTarget) return null;
+    return tablePointerFocus?.nativeTarget ?? lastFocusedEditorTarget ?? view.contentDOM;
+  };
+
   const getTableInputSourceRange = (input: HTMLTextAreaElement): { from: number; to: number } | null => {
     return view ? tableCellSourceRangeForInput(view, input) : null;
   };
@@ -3702,6 +3711,23 @@ export function createEditor({
       return { selections: view.state.selection.ranges.map(({ from, to }) => ({ from, to })),
         line: view.state.doc.lineAt(view.state.selection.main.head).number };
     },
+    getSelectedText(): string {
+      if (editorDestroyed) return '';
+      // Read the same target that owns editor focus return. Native inputs keep
+      // ranges after blur, including when a newer body selection supersedes them.
+      const target = getEditorReturnTarget();
+      if (!target?.isConnected || !view.contentDOM.contains(target)) return '';
+      if (target instanceof HTMLTextAreaElement) {
+        if (target.closest('.meo-md-html-table-shell') && !target.parentElement?.classList.contains('is-editing')) return '';
+        const selection = document.activeElement !== target && lastTextareaSelection?.target === target
+          ? lastTextareaSelection : { start: target.selectionStart, end: target.selectionEnd };
+        return target.value.slice(selection.start, selection.end);
+      }
+      const owner = EditorView.findFromDOM(target);
+      if (!owner || target !== owner.contentDOM) return '';
+      const { from, to } = owner.state.selection.main;
+      return owner.state.sliceDoc(from, to);
+    },
     getText() {
       commitActiveTableInput();
       return readDocumentTextProjection(view.state.doc);
@@ -3899,16 +3925,14 @@ export function createEditor({
       return viewportController.retainViewportOnWindowReturn(isCurrent);
     },
     focus() {
-      if (tablePointerFocus?.released && (tablePointerFocus.isCurrent?.() === false ||
-        tablePointerFocus.nativeTarget?.isConnected === false)) tablePointerFocus = null;
-      if (tablePointerFocus && !tablePointerFocus.nativeTarget) {
+      const target = getEditorReturnTarget();
+      if (!target) {
         // A pending text hit or accepted cell range owns focus before the old
         // document return point. CodeMirror.focus would reapply its suspended
         // prose range after the native focus event and scroll away from the hit.
-        restoreTablePointerSelection(view, tablePointerFocus.released === true);
+        restoreTablePointerSelection(view, tablePointerFocus?.released === true);
         return;
       }
-      const target = tablePointerFocus?.nativeTarget ?? lastFocusedEditorTarget;
       // A modal can move the browser selection away from the document. CodeMirror
       // restores that selection as well as focus; DOM focus alone cannot do so.
       const focusedView = target?.isConnected && view.contentDOM.contains(target) ? EditorView.findFromDOM(target) : null;
