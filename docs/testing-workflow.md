@@ -1739,6 +1739,15 @@ operating-system IME candidate handling still needs native verification.
 
 ## Window return focus and caret
 
+Internal Workbench/Webview handoff fixtures must deliver the Host's post-init
+`hostWindowFocusChanged` state, as `panelSession` does in production. An internal
+frame handoff keeps the native Host focused; a real window departure sends false.
+Establish that state before sampling activation boundaries, retain the original
+pointer/paint assertions, and keep the inactive-Host outline negative control.
+Keep deliberate unknown-window/late-Host activation cases separate. Omitting the
+state from an internal-handoff case exercises that different paint guard and can
+make an unchanged outline test depend on its first visible frame's timing.
+
 `scripts/test-toolbar-input-viewport.ts` runs in the regression and release gates.
 It checks input immediately after activation without waiting for focus, a trusted
 click delivered in a later frame, late Host notifications, Alt release, composition,

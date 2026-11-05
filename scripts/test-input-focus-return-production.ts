@@ -222,6 +222,11 @@ async function checkTableActivationClick(page: Page, frame: Frame): Promise<void
 }
 
 async function checkTableActivationBoundaries(page: Page, frame: Frame): Promise<void> {
+  // These cycles stay inside the focused Workbench. The earlier activation
+  // cases separately retain the unknown-window paint guard and late Host hint.
+  await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', {
+    data: { type: 'hostWindowFocusChanged', focused: true }
+  })));
   const original = (await readEditor(frame)).text;
   for (const large of [false, true]) for (const origin of ['cell', 'document'] as const) {
     for (const target of ['same', 'other', 'left-border', 'bottom-border', 'row-border', 'column-border', 'chrome'] as const)
@@ -238,6 +243,8 @@ async function checkTableActivationBoundaries(page: Page, frame: Frame): Promise
       if (origin === 'cell') await (await frame.$('tbody td .meo-md-html-table-cell-preview'))!.click();
       if (origin === 'cell') await frame.evaluate(() => (document.activeElement as HTMLTextAreaElement).setSelectionRange(2, 5, 'backward'));
       await settle(frame, 3);
+      assert.equal(await frame.evaluate(() => document.querySelector('.editor-root')?.classList.contains('meo-editor-focus-owned')), true,
+        'activation boundary fixture must establish the real focused Host before internal handoffs');
       const point = await frame.evaluate(target => {
         const table = document.querySelector<HTMLTableElement>('.meo-md-html-table:not(.meo-md-html-table-sticky-table)')!;
         const cells = [...table.querySelectorAll<HTMLTableCellElement>('tbody td')];
