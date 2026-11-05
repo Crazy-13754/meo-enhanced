@@ -1844,6 +1844,7 @@ const previewController = createPreviewController({
     // A ready frame must not start a new spinner while split linkage settles.
     // Preserve an already visible cover until the atomic reveal completes.
     previewController.finishLoadingPresentation({ keepVisible: splitWillReveal });
+    documentStatistics.schedule();
     outlineController?.refreshAppearance(); documentViews?.refreshAppearance();
     if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
     if (getActiveEditorMode() === 'preview') findPanelController.refreshForModeChange();
@@ -1983,6 +1984,8 @@ const finishEditorLoading = (): void => {
   // never take it from a mode button, search field or another user action.
   if (wasVisible && editorInteractive && document.hasFocus() && document.activeElement === document.body
     && editorModeApplication.getState().mode !== 'preview') editor?.focus();
+  // Resume statistics that waited for this presentation owner to accept the surface.
+  documentStatistics.schedule();
 };
 const editorPresentationPending = (mode: 'live' | 'source', intent: number): boolean => {
   const state = editorModeApplication.getState();
@@ -2963,9 +2966,12 @@ const documentOperationResponder = createDocumentOperationResponder({
 });
 window.addEventListener('pagehide', () => { workspaceDocumentsTransport.dispose(); documentOperationResponder.dispose(); }, { once: true });
 const documentStatistics = createDocumentStatisticsReporter(() => {
+  const mode = getActiveEditorMode();
+  if (mode === 'preview' ? !previewController.isReadingSurfaceReady()
+    : !editor || !editorInteractive || editorLoadingPresentation.pending) return null;
   const text = documentSessionAdapter.readCurrentText() ?? pendingInitialText;
   if (text === null) return null;
-  const selection = getActiveEditorMode() === 'preview' || !editor
+  const selection = mode === 'preview' || !editor
     ? { selections: [], line: null } : editor.readStatisticsSelection();
   return { text, ...selection };
 }, message => vscode.postMessage(message));

@@ -44,6 +44,8 @@ try {
   assert.equal(sharing.shared, true, 'initial Editor and Document Session must own the same persistent Text tree');
   assert.equal(sharing.uniqueTrees, 1, 'identical current and saved Init text must share one tree');
   assert.equal(sharing.previews, 0, 'Source startup must not prepare hidden Preview');
+  await page.waitForFunction(() => document.querySelector<HTMLElement>('.editor-host')?.inert === false
+    && document.querySelector<HTMLElement>('.editor-loading')?.hidden === true);
   await page.evaluate(() => (window as any).__sharingView.focus());
   await page.keyboard.type('Q');
   await page.waitForFunction(() => (window as any).__sharingMessages.some((message: any) => message.type === 'applyChanges'));

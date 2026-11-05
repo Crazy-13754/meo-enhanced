@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mock } from 'bun:test';
 import { createDocumentStatisticsIndex as createIndex } from '../webview/src/adapters/documentStatisticsIndex';
+import { createDocumentStatisticsReporter } from '../webview/src/adapters/documentStatistics';
 import { markdownLanguage } from '@codemirror/lang-markdown';
 import type { MarkdownParser } from '@lezer/markdown';
 import { inlineMarkdownExtensions } from '../webview/src/helpers/inlineMarkdownParser';
@@ -70,4 +71,16 @@ first.dispose(); second.dispose(); assert.ok(items.every(i => i.disposed));
 const large = createDocumentStatisticsIndex('Hello 世界\n'.repeat(20_000));
 assert.equal(large([], 1).words, 60_000);
 assert.equal(large([{ from: 0, to: 5 }], 1).selectedWords, 1);
+const reporter = createDocumentStatisticsReporter(() => null, () => { throw new Error('Disposed statistics must not publish'); });
+reporter.dispose();
+const originalSetTimeout = globalThis.setTimeout;
+let scheduledAfterDispose = 0;
+try {
+  globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+    scheduledAfterDispose++;
+    return Reflect.apply(originalSetTimeout, globalThis, args);
+  }) as typeof setTimeout;
+  reporter.schedule();
+  assert.equal(scheduledAfterDispose, 0, 'Presentation teardown must not requeue a disposed statistics reporter');
+} finally { globalThis.setTimeout = originalSetTimeout; reporter.dispose(); }
 console.log(`Document statistics: ${statisticsCases.length} cases, ${combinations} paired combinations, source selections, protocol, lifecycle and large document passed`);

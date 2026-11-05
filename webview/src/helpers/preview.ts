@@ -3672,6 +3672,8 @@ export function createPreviewController({
 
   return {
     host,
+    isReadingSurfaceReady: () => !disposed && !host.hidden && !loadingPresentation.pending
+      && (activeFrameDocument !== null || !status.hidden),
     beginLoadingPresentation,
     finishLoadingPresentation,
     presetControl,

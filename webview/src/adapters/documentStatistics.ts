@@ -49,6 +49,6 @@ export function createDocumentStatisticsReporter(
       deadline = setTimeout(fail, 10_000);
     } catch { if (!disposed) fail(); }
   };
-  const schedule = () => { generation++; clearTimeout(timer); timer = setTimeout(() => void run(), 180); };
+  const schedule = () => { if (disposed) return; generation++; clearTimeout(timer); timer = setTimeout(() => void run(), 180); };
   return { schedule, dispose() { disposed = true; clearTimeout(timer); clearTimeout(deadline); worker?.terminate(); } };
 }
