@@ -9,12 +9,13 @@ import { adoptDocumentMathRanges, collectDocumentMathRanges } from './helpers/di
 import { adoptMarkdownLiteralRanges, collectMarkdownLiteralRanges } from './helpers/markdownLiteralRanges';
 import { adoptCodeFenceSource, readCodeFenceSource } from './helpers/codeFenceSource';
 import { collectHtmlDocumentStyles, adoptHtmlDocumentStyles } from './helpers/htmlDocumentStyles';
+import { latexDelimitersFacet } from './editor/mathSyntaxPreference';
 
 /** A read-only worker context uses the completed outer tree. No View, history,
  * mounted language or DOM is constructed, and no EditorState crosses the wire. */
 export function prepareMarkdownDocumentContext(doc: Text, tree: Tree, tabSize: number,
-  known?: { footnotes: ParsedFootnotes; code: readonly MarkdownCodeFence[] }) {
-  const state = EditorState.create({ doc, extensions: EditorState.tabSize.of(tabSize) });
+  known?: { footnotes: ParsedFootnotes; code: readonly MarkdownCodeFence[] }, latexDelimiters = false) {
+  const state = EditorState.create({ doc, extensions: [EditorState.tabSize.of(tabSize), latexDelimitersFacet.of(latexDelimiters)] });
   if (known) {
     adoptFootnoteContext(doc, tree, tabSize, known.footnotes, null);
     adoptCodeFenceSource(doc, tree, tabSize, known.code);

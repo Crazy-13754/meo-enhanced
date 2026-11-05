@@ -13,7 +13,7 @@ import { createEditingPreferencesTransport } from '../webview/src/adapters/editi
 import type { EditingPreferences } from '../src/foundation/editingPreferences';
 import type { UpdateEditingPreferencesRequest } from '../src/protocol/editingPreferences';
 
-assert.deepEqual(Object.keys(generalSearchKeywords).sort(), ['lineNumbers', 'foldCode', 'width', 'strongColor', 'boldHeadings', 'stickyHeader', 'restorePosition', 'largeDocument', 'language'].sort());
+assert.deepEqual(Object.keys(generalSearchKeywords).sort(), ['latexDelimiters', 'lineNumbers', 'foldCode', 'width', 'strongColor', 'boldHeadings', 'stickyHeader', 'restorePosition', 'largeDocument', 'language'].sort());
 assert.deepEqual(appearanceCatalog.map(item => item.id).sort(), ['mode', 'fontSize', 'mouseWheelZoom', 'lineHeight', 'surface', 'documentBackground', 'text', 'accent', 'textEmphasis', 'link', 'success', 'warning', 'danger'].sort());
 const wheelSetting = appearanceCatalog.find(item => item.id === 'mouseWheelZoom')!;
 for (const title of ['Ctrl + 滚轮调整字号', 'Cmd + 滚轮调整字号', 'Ctrl + wheel font size', 'Cmd + wheel font size']) {

@@ -65,6 +65,7 @@ import {
 } from './previewTableLayout';
 
 type PreviewControllerOptions = {
+  getLatexDelimiters?: () => boolean;
   refreshDocumentBlocks?: (document: Document) => void;
   vscode: { postMessage: (message: WebviewMessage) => void };
   uiLanguage: UiLanguage;
@@ -810,6 +811,7 @@ function collectPreviewKatexStyles(katexHref: string): string {
 }
 
 export function createPreviewController({
+  getLatexDelimiters,
   refreshDocumentBlocks,
   vscode,
   uiLanguage: initialUiLanguage,
@@ -2733,6 +2735,7 @@ export function createPreviewController({
       text,
       uiLanguage,
       environment: getStyleEnvironment(),
+      latexDelimiters: getLatexDelimiters?.() === true,
       preset: presetPreference,
       ...(getPreviewPreset(presetPreference).custom ? { presetRevision: getPreviewPreset(presetPreference).custom!.revision } : {}),
       contentWidth: contentWidthPreference,

@@ -47,5 +47,6 @@
   "config.imageStorage": "Pasted image storage and naming. Use Settings > Input > Paste for folders and naming presets. Names default to the document name plus a sequence number.",
   "config.imageFolderDeprecated": "Legacy folder settings keep their existing location. Choose a new image storage mode in the editor settings.",
   "config.preview.codeFontFamily": "Default code font family for Preview and HTML/PDF exports. Applies to inline code and code blocks; leave empty to use the default font.",
-  "config.disabledExtraFeatures": "Disabled optional features provided by MEO Extras. Manage these in the editor Settings > Extensions."
+  "config.disabledExtraFeatures": "Disabled optional features provided by MEO Extras. Manage these in the editor Settings > Extensions.",
+  "config.math.latexDelimiters": "When enabled, recognize \\(...\\) as inline math and \\[...\\] as display math."
 }

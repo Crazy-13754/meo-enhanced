@@ -13,6 +13,7 @@ export const DIFF_BASELINE_MODE_SETTING_KEY = 'changes.baseline';
 export const GIT_DIFF_DETAILS_VISIBLE_SETTING_KEY = 'changes.showBeforeContent';
 export const CONTENT_MAX_WIDTH_SETTING_KEY = 'contentMaxWidth.visible';
 export const TABLE_STICKY_HEADER_SETTING_KEY = 'table.stickyHeader';
+export const LATEX_DELIMITERS_SETTING_KEY = 'math.latexDelimiters';
 export const BOLD_HEADINGS_SETTING_KEY = 'appearance.boldHeadings';
 export const RESTORE_READING_POSITION_SETTING_KEY = 'readingPosition.restoreOnOpen';
 export const LARGE_DOCUMENT_OPTIMIZATION_SETTING_KEY = LARGE_DOCUMENT_SOURCE_OPENING_SETTING_KEY;
@@ -82,6 +83,10 @@ export function getTableStickyHeaderEnabled(): boolean {
   return vscode.workspace
     .getConfiguration(EXTENSION_CONFIG_SECTION)
     .get<boolean>(TABLE_STICKY_HEADER_SETTING_KEY, true);
+}
+
+export function getLatexDelimitersEnabled(resource?: vscode.Uri): boolean {
+  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION, resource).get<boolean>(LATEX_DELIMITERS_SETTING_KEY, false) === true;
 }
 
 export function getBoldHeadingsEnabled(): boolean {

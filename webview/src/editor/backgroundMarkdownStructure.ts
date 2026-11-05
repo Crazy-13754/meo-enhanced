@@ -24,7 +24,7 @@ type Result = { readonly doc: Text; readonly ready: Promise<void>; resolve(): vo
   languageHosts?: Float64Array;
   footnotesTab?: number; blocksTab?: number; blocksRequested?: true };
 
-function createBackgroundMarkdownStructure(uri: string, nodeSet: NodeSet, context: DocumentContextAdapter) {
+function createBackgroundMarkdownStructure(uri: string, nodeSet: NodeSet, context: DocumentContextAdapter, latexDelimiters: boolean) {
   const receiver = createMarkdownTreeReceiver(nodeSet), cache = new WeakMap<Text, Result>(), waiting = new Set<Result>();
   const grammar = nodeSet.types.map(type => type.name).join('\0');
   let mixedFragments: readonly TreeFragment[] = [];
@@ -157,7 +157,7 @@ function createBackgroundMarkdownStructure(uri: string, nodeSet: NodeSet, contex
       flight = { id, base: request.base, before: posted, update, result, tabSize, blocks, syntaxReceived: false };
       posted = doc; postedRevision = id; changes = null;
       timeout = setTimeout(() => fail(new Error('Markdown parser worker timed out')), 20_000);
-      worker.send(request);
+      worker.send({ ...request, latexDelimiters });
     } catch (error) { fail(error); }
   };
   return {
@@ -217,9 +217,9 @@ export const backgroundMarkdownParser: { wrap: ParseWrapper } = { wrap(inner, in
     stopAt(position) { stoppedAt = stoppedAt === null ? position : Math.min(stoppedAt, position); }, advance: () => tree };
 } };
 
-export function backgroundMarkdownStructureExtensions(uri: string | undefined, nodeSet: NodeSet, context: DocumentContextAdapter): Extension {
+export function backgroundMarkdownStructureExtensions(uri: string | undefined, nodeSet: NodeSet, context: DocumentContextAdapter, latexDelimiters = false): Extension {
   if (!uri) return [];
-  const backend = createBackgroundMarkdownStructure(uri, nodeSet, context);
+  const backend = createBackgroundMarkdownStructure(uri, nodeSet, context, latexDelimiters);
   return [runtime.of(backend), liveInputDerivedWorkReadiness.of(state => !!backend.error
     || !usesLargeDocumentDerivedWorkBudget(state) || isCompleteMarkdownStructure(syntaxTree(state), state.doc.length)
       && (!context.enabled() || backend.presentationReady(state.doc, state.tabSize))), ViewPlugin.define(view => {

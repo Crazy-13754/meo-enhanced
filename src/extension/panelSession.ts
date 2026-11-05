@@ -37,6 +37,8 @@ import {
   CONTENT_MAX_WIDTH_SETTING_KEY,
   LARGE_DOCUMENT_OPTIMIZATION_SETTING_KEY,
   TABLE_STICKY_HEADER_SETTING_KEY,
+  LATEX_DELIMITERS_SETTING_KEY,
+  getLatexDelimitersEnabled,
   BOLD_HEADINGS_SETTING_KEY,
   RESTORE_READING_POSITION_SETTING_KEY,
   OUTLINE_WIDTH_KEY,
@@ -168,6 +170,7 @@ type PanelSessionControllerParams = {
     sourceDocumentPath: string;
     uiLanguage: InitMessage['uiLanguage'];
     styleEnvironment?: ExportStyleEnvironment;
+    latexDelimiters?: boolean;
     preset?: import('../foundation/previewPresets').PreviewPresetId;
     presetRevision?: string;
     contentWidth?: import('../foundation/previewPresets').PreviewContentWidth;
@@ -538,6 +541,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       contentMaxWidthEnabled: getContentMaxWidthEnabled(context),
       largeDocumentOptimizationEnabled: getLargeDocumentOptimizationEnabled(),
       tableStickyHeaderEnabled: getTableStickyHeaderEnabled(),
+      latexDelimiters: getLatexDelimitersEnabled(documentUri),
       boldHeadingsEnabled: getBoldHeadingsEnabled(),
       restoreReadingPositionOnOpen,
       readingPositionRestore,
@@ -838,6 +842,15 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           .getConfiguration(EXTENSION_CONFIG_SECTION)
           .update(LARGE_DOCUMENT_OPTIMIZATION_SETTING_KEY, raw.enabled === true, vscode.ConfigurationTarget.Global);
         return;
+      case 'setLatexDelimiters': {
+        const configuration = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION, documentUri);
+        const inspected = configuration.inspect(LATEX_DELIMITERS_SETTING_KEY);
+        const target = inspected?.workspaceFolderValue !== undefined ? vscode.ConfigurationTarget.WorkspaceFolder
+          : vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+        try { await configuration.update(LATEX_DELIMITERS_SETTING_KEY, raw.enabled, target); }
+        finally { void panel.webview.postMessage({ type: 'latexDelimitersChanged', enabled: getLatexDelimitersEnabled(documentUri) }); }
+        return;
+      }
       case 'setTableStickyHeader':
         await vscode.workspace
           .getConfiguration(EXTENSION_CONFIG_SECTION)
@@ -1051,6 +1064,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
             sourceDocumentPath: documentUri.fsPath,
             uiLanguage: raw.uiLanguage,
             styleEnvironment: raw.environment,
+            latexDelimiters: raw.latexDelimiters,
             preset: raw.preset,
             presetRevision: raw.presetRevision,
             contentWidth: raw.contentWidth,

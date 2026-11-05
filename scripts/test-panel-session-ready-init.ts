@@ -16,7 +16,10 @@ const document = createPanelSessionTestDocument(
 );
 let emitSaveStateChange: () => void = () => undefined;
 let emitSave: () => void = () => undefined;
-mock.module('vscode', () => createPanelSessionVscodeMock(document, {
+let latexSetting = false, failLatexWrite = false, folderLatexOverride = false;
+const latexWrites: unknown[] = [];
+mock.module('vscode', () => {
+const mocked = createPanelSessionVscodeMock(document, {
   onDidChangeTextDocument(listener) {
     emitSaveStateChange = () => listener({ document, contentChanges: [] } as never);
     return panelSessionDisposable();
@@ -25,7 +28,22 @@ mock.module('vscode', () => createPanelSessionVscodeMock(document, {
     emitSave = () => listener(document as never);
     return panelSessionDisposable();
   }
-}));
+});
+Object.assign(mocked.ConfigurationTarget, { Workspace: 2, WorkspaceFolder: 3 });
+Object.assign(mocked.workspace, {
+  workspaceFolders: [{}],
+  getConfiguration: (_section: string, _resource: unknown) => ({
+    get: <T>(key: string, fallback: T): T | boolean => key === 'math.latexDelimiters' ? latexSetting : fallback,
+    inspect: (key: string) => key === 'math.latexDelimiters' && folderLatexOverride ? { workspaceFolderValue: latexSetting } : undefined,
+    update: async (key: string, value: boolean, target: number) => {
+      if (key !== 'math.latexDelimiters') return;
+      if (failLatexWrite) throw new Error('fixture math syntax write failure');
+      latexWrites.push({ key, value, target }); latexSetting = value;
+    }
+  })
+});
+return mocked;
+});
 
 const [{ createPanelSessionController }, { createPendingDraftRecovery }] = await Promise.all([
   import('../src/extension/panelSession'),
@@ -135,6 +153,16 @@ for (const message of initMessages) {
   assert.deepEqual(decoded?.savedRevision, { version: document.version, text: '# Preview startup\n\nBody' });
 }
 const requestedColors: UiColors = { light: { surface: '#F8F8F8' }, dark: { textEmphasis: '#99CCAA' } };
+assert.equal(decodeInitMessage(initMessages[0])?.latexDelimiters, false, 'new profiles preserve Markdown escapes');
+await controller.handleMessage({ type: 'setLatexDelimiters', enabled: true });
+assert.deepEqual(latexWrites.at(-1), { key: 'math.latexDelimiters', value: true, target: 2 }, 'the floating switch writes the workspace setting');
+assert.deepEqual(messages.at(-1), { type: 'latexDelimitersChanged', enabled: true });
+failLatexWrite = true;
+await assert.rejects(controller.handleMessage({ type: 'setLatexDelimiters', enabled: false }), /fixture math syntax write failure/);
+assert.deepEqual(messages.at(-1), { type: 'latexDelimitersChanged', enabled: true }, 'failed writes restore the authoritative setting');
+failLatexWrite = false; folderLatexOverride = true;
+await controller.handleMessage({ type: 'setLatexDelimiters', enabled: true });
+assert.equal((latexWrites.at(-1) as { target: number }).target, 3, 'an existing folder override remains the setting owner');
 await controller.handleMessage({ type: 'updateUiColors', requestId: 'color-save', colors: requestedColors });
 assert.deepEqual(messages.at(-2), { type: 'uiColorsChanged', colors: requestedColors });
 assert.deepEqual(messages.at(-1), { type: 'uiColorsResult', requestId: 'color-save', result: { ok: true, value: requestedColors } });
@@ -183,6 +211,7 @@ assert.equal(diskReads, 1, 'refresh-first init must reuse the populated Saved Re
 const refreshedInit = refreshedMessages.find(message => message.type === 'init');
 assert.ok(refreshedInit);
 const decodedRefreshedInit = decodeInitMessage(refreshedInit);
+assert.equal(decodedRefreshedInit?.latexDelimiters, true, 'reopened editors read the saved syntax preference');
 assert.notEqual(decodedRefreshedInit, null, 'refresh-first CRLF init must cross the actual Protocol decoder');
 assert.deepEqual(decodedRefreshedInit?.savedRevision, { version: document.version, text: '# Preview startup\n\nBody' });
 assert.equal(document.text, '# Preview startup\r\n\r\nBody', 'Protocol projection must preserve physical document text');

@@ -8,8 +8,10 @@ import { renderMathToHtml } from '../../../src/shared/mathRenderer';
 
 export type { LatexMathMode, LatexMathRange } from '../../../src/shared/latexMathScanner';
 export { findFencedDisplayMathEnd } from '../../../src/shared/latexMathScanner';
+export { mathDelimiterLength } from '../../../src/shared/latexMathScanner';
 
 export interface ParseLatexMathAtOptions {
+  latexDelimiters?: boolean;
   excludedRanges?: ReadonlyArray<Readonly<{ from: number; to: number }>>;
   allowInline?: boolean;
   allowDisplay?: boolean;
@@ -54,7 +56,7 @@ export function parseLatexMathAt(
   if (!text || index < 0 || index >= text.length) {
     return null;
   }
-  const range = scanLatexMathAt(text, index, { includeEmptyDisplay: options.includeEmptyDisplay, excludedRanges: options.excludedRanges });
+  const range = scanLatexMathAt(text, index, options);
   if (!range) {
     return null;
   }
@@ -73,10 +75,11 @@ export function collectLatexMathRanges(
     baseOffset?: number;
     excludedRanges?: SimpleRange[];
     includeEmptyDisplay?: boolean;
+    latexDelimiters?: boolean;
   } = {}
 ): LatexMathRange[] {
   const { baseOffset = 0, excludedRanges = [] } = options;
-  const ranges = scanLatexMath(text, { excludedRanges, includeEmptyDisplay: options.includeEmptyDisplay });
+  const ranges = scanLatexMath(text, { excludedRanges, includeEmptyDisplay: options.includeEmptyDisplay, latexDelimiters: options.latexDelimiters });
   if (baseOffset === 0) {
     return ranges;
   }

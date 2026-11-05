@@ -9,6 +9,8 @@ import type { ImageLocationRequest } from '../src/protocol/imageStorage';
 import { editorCommandIds } from '../src/foundation/editingPreferences';
 import { assessLargeDocument } from '../src/foundation/largeDocument';
 import { version as productVersion } from '../package.json';
+import { renderPreviewDocument } from '../src/export/runtime';
+import type { PreviewPresetId } from '../src/foundation/previewPresets';
 const logoDataUrl = 'data:image/png;base64,' + (await fs.readFile('logo.png')).toString('base64');
 const build = await Bun.build({ entrypoints: ['scripts/test-settings-window-production-entry.ts'], target: 'browser', format: 'iife' });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
@@ -84,10 +86,20 @@ try {
     await page.setViewport({ width: 1100, height: 780 });
     await page.setContent(`<!doctype html><meta name="meo-logo" content="${logoDataUrl}"><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>`);
     await page.addStyleTag({ path: 'webview/src/styles.css' });
+    if (process.argv.includes('--latex-only')) {
+      await page.evaluate(({ markdown, shiki }) => {
+        document.body.dataset.meoMarkdownWorkerSrc = URL.createObjectURL(new Blob([markdown], { type: 'text/javascript' }));
+        document.body.dataset.meoShikiWorkerSrc = URL.createObjectURL(new Blob([shiki], { type: 'text/javascript' }));
+      }, { markdown: await fs.readFile('webview/dist/markdown-parse-worker.js', 'utf8'),
+        shiki: await fs.readFile('webview/dist/shiki-highlight-worker.js', 'utf8') });
+    }
     await page.addScriptTag({ content: `
       window.__messages=[]; window.__revision=0; window.__clipboard='';
       window.acquireVsCodeApi=()=>({getState(){},setState(){},postMessage(message){
         window.__messages.push(message);
+        if(message.type==='requestPreviewRender' && window.__renderLatexPreview) {
+          window.__renderLatexPreview(message).then(value=>window.dispatchEvent(new MessageEvent('message',{data:{type:'previewRenderResult',requestId:message.requestId,result:{ok:true,value}}})));
+        }
         if(message.type==='extensionFeaturesRequest') {
           const state = window.__extrasState ?? {installed:false,version:'',features:[]};
           const failed = !!window.__extrasFail;
@@ -148,7 +160,145 @@ try {
       window.dispatchEvent(new MessageEvent('message', { data: global.__initMessage }));
     }, { text, mode, outline });
   };
-  if (process.argv.includes('--extras-only')) {
+  if (process.argv.includes('--latex-only')) {
+    await page.exposeFunction('__renderLatexPreview', (request: { text: string; latexDelimiters?: boolean; uiLanguage: 'en' | 'zh-CN'; preset?: PreviewPresetId }) =>
+      renderPreviewDocument({ markdownText: request.text, latexDelimiters: request.latexDelimiters, uiLanguage: request.uiLanguage, preset: request.preset, sourceDocumentPath: '' }));
+    const sample = '# Math\n\nInline: \\( a+b \\)\n\n\\[\nx^2\n\\]\n\n| Formula | Note |\n| --- | --- |\n| \\(c+d\\) | plain |\n\n`\\(code\\)`\n\nOutside';
+    const open = async () => { await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button'); };
+    const switchSelector = '[data-setting="latexDelimiters"] [role="switch"]';
+    const quickSwitchSelector = '.more-tools-panel [data-action="latexDelimiters"]';
+    const mathCount = () => page.evaluate(() => {
+      const h = (window as any).EditingSettingsHarness;
+      const view = h.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+      return h.collectDocumentMathRanges(view.state).length;
+    });
+    for (const large of [false, true]) {
+      const text = sample + (large ? '\n\nPlain paragraph.\n\n'.repeat(7000) : '');
+      await openFixture(text, 'source');
+      await page.waitForSelector('.editor-wrapper:not(.meo-preload-editor-shell) .cm-content');
+      await page.waitForFunction(() => !(window as any).EditingSettingsHarness.syntaxParserRunning((window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'))));
+      await page.evaluate(() => {
+        const h = (window as any).EditingSettingsHarness, view = h.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+        view.dispatch({ selection: { anchor: 2, head: 4 } });
+        (window as any).__latexBefore = view.state.doc.toString();
+      });
+      assert.equal(await mathCount(), 0, 'new and reopened sessions default off');
+      await page.click('.more-tools-wrapper > .format-button');
+      assert.deepEqual(await page.$$eval('.more-tools-panel [role="menuitemcheckbox"]', nodes => nodes.map(node => (node as HTMLElement).dataset.action)),
+        ['sourceLineNumbers', 'longCodeBlockFolding', 'contentMaxWidth', 'liveStrongColoring', 'latexDelimiters']);
+      assert.equal(await page.$eval('.more-tools-section-label', node => node.textContent), '文档设置');
+      assert.equal(await page.$eval(quickSwitchSelector, node => node.getAttribute('aria-checked')), 'false');
+      await page.click('.more-tools-wrapper > .format-button');
+      await open();
+      assert.equal(await page.$eval(switchSelector, e => e.getAttribute('aria-checked')), 'false');
+      assert.equal(await page.$eval('[data-setting="latexDelimiters"] .settings-description', e => e.textContent),
+        '开启后，将 \\(...\\) 识别为行内公式，将 \\[...\\] 识别为块级公式。');
+      await page.click(switchSelector);
+      assert.equal(await page.$eval(quickSwitchSelector, node => node.getAttribute('aria-checked')), 'true', 'settings panel updates the quick switch');
+      await page.waitForFunction(() => {
+        const h = (window as any).EditingSettingsHarness, view = h.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+        return h.collectDocumentMathRanges(view.state).length === 3;
+      });
+      assert.deepEqual(await page.evaluate(() => {
+        const h = (window as any).EditingSettingsHarness, view = h.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+        return { unchanged: view.state.doc.toString() === (window as any).__latexBefore,
+          anchor: view.state.selection.main.anchor, head: view.state.selection.main.head,
+          large: h.usesLargeDocumentDerivedWorkBudget(view.state) };
+      }), { unchanged: true, anchor: 2, head: 4, large });
+      assert(await page.evaluate(() => (window as any).__messages.some((m: any) => m.type === 'setLatexDelimiters' && m.enabled === true)));
+      if (!large) for (const language of ['zh-CN', 'en']) for (const appearance of ['light', 'dark']) {
+        await page.click('[data-tab="general"]');
+        await page.click(`[data-setting="language"] [data-value="${language}"]`);
+        await page.click('[data-tab="appearance"]'); await page.click(`[data-appearance-mode="${appearance}"]`);
+        await page.click('[data-tab="general"]');
+        await page.click('.settings-jump[data-section="math"]');
+        await fs.mkdir('.local/latex-delimiters', { recursive: true });
+        await page.screenshot({ path: `.local/latex-delimiters/settings-${language}-${appearance}.png` });
+        assert.equal(await page.$eval('[data-setting="latexDelimiters"] .settings-item-title', e => e.textContent), language === 'zh-CN'
+          ? 'LaTeX 风格公式定界符' : 'LaTeX math delimiters');
+        assert.equal(await page.$eval('[data-setting="latexDelimiters"] .settings-description', e => e.textContent), language === 'zh-CN'
+          ? '开启后，将 \\(...\\) 识别为行内公式，将 \\[...\\] 识别为块级公式。'
+          : String.raw`When enabled, recognize \(...\) as inline math and \[...\] as display math.`);
+        await page.click('.settings-close');
+        await page.click('.more-tools-wrapper > .format-button');
+        assert.equal(await page.$eval('.more-tools-section-label', node => node.textContent), language === 'zh-CN' ? '文档设置' : 'Document settings');
+        assert.equal(await page.$eval(`${quickSwitchSelector} .more-tools-option-label`, node => node.textContent), language === 'zh-CN' ? 'LaTeX 风格公式' : 'LaTeX math');
+        assert.equal(await page.$eval(quickSwitchSelector, node => node.getAttribute('aria-checked')), 'true');
+        assert(await page.$eval(`${quickSwitchSelector} .more-tools-option-label`, node => node.scrollWidth <= node.clientWidth), 'quick switch label fits');
+        await page.screenshot({ path: `.local/latex-delimiters/quick-settings-${language}-${appearance}.png` });
+        await page.click('.more-tools-settings-button');
+      }
+      await page.click('.settings-close');
+      await page.click('button[data-mode="live"]');
+      await page.waitForSelector('.cm-editor.meo-mode-live .meo-md-math-inline');
+      assert.equal(await page.$$eval('tbody .meo-md-math-inline', nodes => nodes.length), 1, 'table formulas use the same syntax preference');
+      await page.click('.more-tools-wrapper > .format-button'); await page.click(quickSwitchSelector);
+      assert.equal(await page.$eval('.more-tools-panel', node => (node as HTMLElement).hidden), false, 'quick switch keeps the popover open');
+      assert.equal(await page.$eval(quickSwitchSelector, node => node.getAttribute('aria-checked')), 'false');
+      await page.click('.more-tools-wrapper > .format-button');
+      await page.waitForFunction(() => !document.querySelector('tbody .meo-md-math-inline'));
+      await page.click('.more-tools-wrapper > .format-button'); await page.click(quickSwitchSelector);
+      await page.click('.more-tools-wrapper > .format-button');
+      await page.waitForSelector('tbody .meo-md-math-inline');
+      await page.click('button[data-mode="preview"]');
+      await page.waitForFunction(() => [...document.querySelectorAll('iframe')].some(frame => frame.contentDocument?.querySelectorAll('.meo-export-math').length === 3));
+      assert(await page.evaluate(() => (window as any).__messages.some((m: any) => m.type === 'requestPreviewRender' && m.latexDelimiters === true)));
+      await open(); await page.click(switchSelector);
+      await page.waitForFunction(() => [...document.querySelectorAll('iframe')].some(frame => frame.getBoundingClientRect().height > 0
+        && frame.contentDocument?.querySelectorAll('.meo-export-math').length === 0));
+      await page.click(switchSelector);
+      await page.waitForFunction(() => [...document.querySelectorAll('iframe')].some(frame => frame.getBoundingClientRect().height > 0
+        && frame.contentDocument?.querySelectorAll('.meo-export-math').length === 3));
+      await page.click('.settings-close');
+      if (!large) {
+        const selectPreset = async (preset: string, mathCount: number) => {
+          await page.select('.preview-preset-control select', preset);
+          await page.waitForFunction(({ preset, mathCount }) => [...document.querySelectorAll('iframe')].some(frame =>
+            frame.getBoundingClientRect().height > 0 && frame.contentDocument?.documentElement.dataset.meoPreviewPreset === preset
+              && frame.contentDocument.querySelectorAll('.meo-export-math').length === mathCount), {}, { preset, mathCount });
+        };
+        await selectPreset('github-readme', 0);
+        await page.click('.more-tools-wrapper > .format-button'); await page.click(quickSwitchSelector);
+        await page.click('.more-tools-wrapper > .format-button');
+        await selectPreset('default', 0);
+        await page.click('.more-tools-wrapper > .format-button'); await page.click(quickSwitchSelector);
+        await page.click('.more-tools-wrapper > .format-button');
+        await page.waitForFunction(() => [...document.querySelectorAll('iframe')].some(frame => frame.getBoundingClientRect().height > 0
+          && frame.contentDocument?.querySelectorAll('.meo-export-math').length === 3));
+        await selectPreset('github-readme', 0);
+        await selectPreset('default', 3);
+      }
+      await page.click('button[data-mode="source"]');
+      await page.waitForSelector('.cm-editor.meo-mode-source');
+      await open(); await page.click(switchSelector);
+      await page.waitForFunction(() => {
+        const h = (window as any).EditingSettingsHarness, view = h.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+        return !view.state.facet(h.latexDelimitersFacet) && h.collectDocumentMathRanges(view.state).length === 0;
+      });
+      await page.click('.settings-close');
+      assert.equal(await page.evaluate(() => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString()), text);
+      await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'latexDelimitersChanged', enabled: true } })));
+      await page.waitForFunction(() => {
+        const h = (window as any).EditingSettingsHarness;
+        return h.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.facet(h.latexDelimitersFacet);
+      });
+      if (large) {
+        await page.evaluate(() => {
+          const h = (window as any).EditingSettingsHarness, view = h.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+          view.dispatch({ changes: { from: view.state.doc.length, insert: '!' } });
+          window.dispatchEvent(new MessageEvent('message', { data: { type: 'latexDelimitersChanged', enabled: false } }));
+          view.focus();
+        });
+        await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+        await page.waitForFunction(text => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString() === text, {}, text);
+        await page.keyboard.down('Control'); await page.keyboard.press('y'); await page.keyboard.up('Control');
+        await page.waitForFunction(text => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString() === text + '!', {}, text);
+      }
+    }
+    assert.deepEqual(errors, []);
+    console.log('LaTeX settings switch: visible bilingual UI, off/on, normal/worker paths, Source/Live/table/Preview, external updates and unchanged source passed');
+    await closeTestBrowser(browser); process.exit(0);
+  } else if (process.argv.includes('--extras-only')) {
     for (const text of ['# Notes\n\nUnchanged content', '# Notes\n\n' + 'Document paragraph.\n\n'.repeat(7000)]) {
       await openFixture(text);
       await page.evaluate(() => {
@@ -330,9 +480,9 @@ try {
   await page.waitForSelector('.cm-editor.meo-mode-source');
   await page.click('.more-tools-wrapper > .format-button');
   assert.equal(await page.$eval('.more-tools-panel', element => element.getBoundingClientRect().width), 288);
-  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 7);
-  assert.deepEqual(await page.$$eval('.more-tools-panel [role="menuitemcheckbox"]', elements => elements.map(element => (element as HTMLElement).dataset.action)), ['sourceLineNumbers', 'longCodeBlockFolding', 'contentMaxWidth', 'liveStrongColoring']);
-  assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置', '关于与支持']);
+  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 8);
+  assert.deepEqual(await page.$$eval('.more-tools-panel [role="menuitemcheckbox"]', elements => elements.map(element => (element as HTMLElement).dataset.action)), ['sourceLineNumbers', 'longCodeBlockFolding', 'contentMaxWidth', 'liveStrongColoring', 'latexDelimiters']);
+  assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档设置', '界面设置', '更多设置', '关于与支持']);
   assert.equal(await page.$eval('.more-tools-sponsor-button', element => element.previousElementSibling?.classList.contains('more-tools-feedback-link')), true);
   await page.evaluate(() => { (window as any).__failNextEnvironment = true; });
   await page.click('.more-tools-sponsor-button');

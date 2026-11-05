@@ -1,3 +1,4 @@
+import { mathDelimiterLength } from './math';
 import { readDocumentTextProjection } from '../application/documentTextProjection';
 import {
   RangeSetBuilder,
@@ -384,8 +385,8 @@ function buildDecorations(
     const math = collectDocumentMathRanges(view.state);
     const bodies = math.map(range => {
       const source = range.fencedDisplay ? getDisplayMathCopySource(view.state, range) : null;
-      return { from: source?.from ?? range.from + (range.mode === 'display' ? 2 : 1),
-        to: source?.to ?? range.to - (range.mode === 'display' ? 2 : 1),
+      return { from: source?.from ?? range.from + mathDelimiterLength(range),
+        to: source?.to ?? range.to - mathDelimiterLength(range),
         prefix: range.fencedDisplay ? getDisplayMathSource(view.state, range)?.prefix ?? '' : '' };
     });
     const head = view.state.selection.main.head;

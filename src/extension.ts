@@ -43,6 +43,8 @@ import {
   GIT_CHANGES_GUTTER_SETTING_KEY,
   LARGE_DOCUMENT_OPTIMIZATION_SETTING_KEY,
   TABLE_STICKY_HEADER_SETTING_KEY,
+  LATEX_DELIMITERS_SETTING_KEY,
+  getLatexDelimitersEnabled,
   BOLD_HEADINGS_SETTING_KEY,
   RESTORE_READING_POSITION_SETTING_KEY,
   OUTLINE_VISIBLE_KEY,
@@ -568,6 +570,14 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         type: 'largeDocumentOptimizationChanged',
         enabled: getLargeDocumentOptimizationEnabled()
       });
+    }
+
+    if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LATEX_DELIMITERS_SETTING_KEY}`)) {
+      for (const session of this.panelSessions.values()) {
+        if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${LATEX_DELIMITERS_SETTING_KEY}`, session.documentUri)) {
+          void session.panel.webview.postMessage({ type: 'latexDelimitersChanged', enabled: getLatexDelimitersEnabled(session.documentUri) } satisfies HostConfigurationEvent);
+        }
+      }
     }
 
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${TABLE_STICKY_HEADER_SETTING_KEY}`)) {

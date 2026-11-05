@@ -1,9 +1,12 @@
+import { latexDelimitersFacet } from '../editor/mathSyntaxPreference';
+import { latexMarkdownSyntaxLanguage } from '../adapters/markdownSyntaxGrammar';
 import { readDocumentTextProjection } from '../application/documentTextProjection';
 import { Prec, RangeSetBuilder, StateEffect, type ChangeDesc } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { activateShikiCodeHighlighting, getShikiTokens, getShikiThemeVersion, isShikiThemeReady, requestShikiTokens, subscribeShikiRefresh, type ShikiToken } from './shikiHighlighter';
 import { getViewportController } from './viewportController';
 
+const sourceLanguage = (view: EditorView) => view.state.facet(latexDelimitersFacet) ? latexMarkdownSyntaxLanguage : 'markdown';
 const refreshSourceSyntax = StateEffect.define<null>();
 
 // The editor session retains both syntax runtimes across compartment changes.
@@ -35,7 +38,7 @@ export const sourceSyntaxPreparation = ViewPlugin.fromClass(class {
   update(update: ViewUpdate): void {
     const becameVisible = !this.inView && update.view.inView;
     this.inView = update.view.inView;
-    if (update.docChanged || becameVisible) this.schedule();
+    if (update.docChanged || becameVisible || update.startState.facet(latexDelimitersFacet) !== update.state.facet(latexDelimitersFacet)) this.schedule();
   }
 
   private cancel(): void {
@@ -51,9 +54,10 @@ export const sourceSyntaxPreparation = ViewPlugin.fromClass(class {
       this.text = doc.toString();
     }
     const text = this.text;
-    if (getShikiTokens('markdown', text, 'source')) return true;
-    requestShikiTokens('markdown', text, 'source', () =>
-      !this.destroyed && isCurrent() && this.view.state.doc === doc
+    const language = sourceLanguage(this.view);
+    if (getShikiTokens(language, text, 'source')) return true;
+    requestShikiTokens(language, text, 'source', () =>
+      !this.destroyed && isCurrent() && this.view.state.doc === doc && sourceLanguage(this.view) === language
       && (foreground || this.view.inView), foreground ? 'foreground' : 'background',
       () => !foreground && Boolean(getViewportController(this.view)?.isUserScrolling()));
     return false;
@@ -111,6 +115,7 @@ export const sourceSyntax = Prec.highest(ViewPlugin.fromClass(class {
   private readonly unsubscribe: () => void;
   private readonly marks = new Map<string, Decoration>();
   private generation = -1;
+  private language = '';
   private document: EditorView['state']['doc'] | undefined;
   private text = '';
   private inView: boolean;
@@ -134,14 +139,16 @@ export const sourceSyntax = Prec.highest(ViewPlugin.fromClass(class {
         this.tokenChanges = this.tokenChanges?.composeDesc(update.changes) ?? update.changes.desc;
       }
     }
-    if (update.docChanged || update.viewportChanged || becameVisible || update.transactions.some(tr => tr.effects.some(effect => effect.is(refreshSourceSyntax)))) {
+    if (update.docChanged || update.viewportChanged || becameVisible || update.startState.facet(latexDelimitersFacet) !== update.state.facet(latexDelimitersFacet) || update.transactions.some(tr => tr.effects.some(effect => effect.is(refreshSourceSyntax)))) {
       this.build(update.view);
     }
   }
 
   private build(view: EditorView): void {
     const generation = getShikiThemeVersion('source');
-    if (generation !== this.generation) {
+    const language = sourceLanguage(view);
+    if (generation !== this.generation || language !== this.language) {
+      this.language = language;
       this.generation = generation;
       this.marks.clear();
       this.decorations = Decoration.none;
@@ -155,10 +162,10 @@ export const sourceSyntax = Prec.highest(ViewPlugin.fromClass(class {
     }
     const doc = this.document;
     // Hidden revisions supersede pending work; tokenize only the latest document on reveal.
-    const tokens = getShikiTokens('markdown', this.text, 'source');
+    const tokens = getShikiTokens(language, this.text, 'source');
     if (!tokens && !view.inView) return;
     if (!tokens) {
-      requestShikiTokens('markdown', this.text, 'source', () => !this.destroyed && view.inView && this.document === doc);
+      requestShikiTokens(language, this.text, 'source', () => !this.destroyed && view.inView && this.document === doc && sourceLanguage(view) === language);
     } else {
       this.tokens = tokens;
       this.tokenDocument = doc;

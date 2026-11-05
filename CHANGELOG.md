@@ -3,6 +3,9 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## Unreleased
+- Added an explicit, default-off LaTeX delimiter switch in the Settings popover and More Settings → General, with consistent `\(...\)` and `\[...\]` parsing, completion, source highlighting, Live tables, Preview and exports. GitHub README retains its fixed math syntax.
+
 ## 0.4.0
 - Added bilingual status-bar line and word counts for the active MEO document, including text and table-cell selections in Live and Source.
 - Added optional document-view and code-block integration interfaces with feature controls, lazy loading and explicit cleanup; the main editor remains usable without companion extensions.

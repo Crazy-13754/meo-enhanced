@@ -1,3 +1,4 @@
+import { latexDelimitersFacet } from '../editor/mathSyntaxPreference';
 import { editorViewportBounds } from '../editor/editorViewportBounds';
 import { EditorSelection, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, lineNumbers, type DecorationSet } from '@codemirror/view';
@@ -104,9 +105,9 @@ function emptyMathEditingRange(state: EditorState, anchor: number): LatexMathRan
   if (anchor < 0 || anchor > state.doc.length) return null;
   const opening = state.doc.lineAt(anchor);
   if (opening.from !== anchor || opening.number + 2 > state.doc.lines) return null;
-  const offset = opening.text.indexOf('$$');
+  const offset = state.facet(latexDelimitersFacet) ? opening.text.search(/\$\$|\\\[/) : opening.text.indexOf('$$');
   if (offset < 0) return null;
-  const range = parseLatexMathAt(state.doc.toString(), opening.from + offset, { includeEmptyDisplay: true });
+  const range = parseLatexMathAt(state.doc.toString(), opening.from + offset, { includeEmptyDisplay: true, latexDelimiters: state.facet(latexDelimitersFacet) });
   return range?.fencedDisplay && !range.content ? range : null;
 }
 

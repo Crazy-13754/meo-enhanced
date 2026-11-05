@@ -10,6 +10,8 @@ export type LatexMathRange = {
 };
 
 export type LatexMathScanOptions = {
+  /** Opt-in LaTeX delimiters; ordinary Markdown keeps its backslash escapes. */
+  latexDelimiters?: boolean;
   /** Half-open input ranges whose contents do not participate in delimiter matching. */
   excludedRanges?: ReadonlyArray<Readonly<{ from: number; to: number }>>;
   /** Editing adapters may retain an empty fenced block; reading surfaces leave it unrendered. */
@@ -89,7 +91,7 @@ function excludedRangeAt(ranges: ReadonlyArray<SourceRange>, index: number): Sou
   return null;
 }
 
-function findInlineMathClose(text: string, start: number, excludedRanges: ReadonlyArray<SourceRange>): number {
+function findInlineMathClose(text: string, start: number, excludedRanges: ReadonlyArray<SourceRange>, closer = '$'): number {
   let braceLevel = 0;
   for (let index = start; index < text.length; index += 1) {
     const excluded = excludedRangeAt(excludedRanges, index);
@@ -101,7 +103,12 @@ function findInlineMathClose(text: string, start: number, excludedRanges: Readon
     if (character === '\n' || character === '\r') {
       return -1;
     }
-    if (character === '$' && !isEscaped(text, index) && braceLevel === 0) {
+    // Escape pairs are advanced together below, so this is an unescaped slash.
+    if (closer !== '$' && character === '\\') {
+      if (text.startsWith(closer, index) && braceLevel === 0) return index;
+      if (text.startsWith('\\(', index) || text.startsWith('\\[', index)) return -1;
+    }
+    if (closer === '$' && character === '$' && !isEscaped(text, index) && braceLevel === 0) {
       if (text[index - 1] === '$' || text[index + 1] === '$') return -1;
       return index;
     }
@@ -116,7 +123,7 @@ function findInlineMathClose(text: string, start: number, excludedRanges: Readon
   return -1;
 }
 
-function findDisplayMathClose(text: string, start: number, excludedRanges: ReadonlyArray<SourceRange>): number {
+function findDisplayMathClose(text: string, start: number, excludedRanges: ReadonlyArray<SourceRange>, closer = '$$'): number {
   let braceLevel = 0;
   for (let index = start; index < text.length - 1; index += 1) {
     const excluded = excludedRangeAt(excludedRanges, index);
@@ -126,10 +133,11 @@ function findDisplayMathClose(text: string, start: number, excludedRanges: Reado
     }
     const character = text[index];
     if (character === '\n' || character === '\r') return -1;
-    if (character === '$' && text[index + 1] === '$' && !isEscaped(text, index)) {
-      if (text[index - 1] === '$' || text[index + 2] === '$') return -1;
+    if (text.startsWith(closer, index) && !isEscaped(text, index)) {
+      if (closer === '$$' && (text[index - 1] === '$' || text[index + 2] === '$')) return -1;
       if (braceLevel === 0) return index;
     }
+    if (closer !== '$$' && text.startsWith('\\[', index) && !isEscaped(text, index)) return -1;
     if (character === '\\') {
       index += 1;
     } else if (character === '{') {
@@ -144,7 +152,7 @@ function findDisplayMathClose(text: string, start: number, excludedRanges: Reado
 /** Finds a standalone $$ closer or the first Markdown boundary after bodyFrom.
  * openingPrefix is the original opener's quote/list prefix. `to` is the closer's
  * dollar offset when closed, otherwise the boundary line's start (or EOF). */
-export function findFencedDisplayMathEnd(text: string, bodyFrom: number, openingPrefix: string): { to: number; closed: boolean } {
+export function findFencedDisplayMathEnd(text: string, bodyFrom: number, openingPrefix: string, closer = '$$'): { to: number; closed: boolean } {
   const quoteDepth = openingPrefix.match(/>/g)?.length ?? 0;
   const listMarker = /(?:[-+*]|\d+[.)])[ \t]+$/.exec(openingPrefix);
   let prefixPayload = openingPrefix;
@@ -164,10 +172,11 @@ export function findFencedDisplayMathEnd(text: string, bodyFrom: number, opening
     const payload = line.slice(offset);
     if (payload.trim()) {
       if (continuationIndent && (/^[ \t]*/.exec(payload)?.[0].length ?? 0) < continuationIndent) return { to: start, closed: false };
-      if (/^[ \t]*\$\$[ \t\r]*$/.test(payload)) return { to: start + offset + payload.indexOf('$$'), closed: true };
+      if (payload.trim() === closer) return { to: start + offset + payload.indexOf(closer), closed: true };
       // Do not hide headings, code fences, container exits or another display formula.
       if (/^[ \t]*(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|\$\$)/.test(payload)
-        || /^[ \t]*(?:>[ \t]*|(?:[-+*]|\d+[.)])[ \t]+)\$\$/.test(payload)) return { to: start, closed: false };
+        || /^[ \t]*(?:>[ \t]*|(?:[-+*]|\d+[.)])[ \t]+)\$\$/.test(payload)
+        || closer !== '$$' && /^[ \t]*(?:(?:>[ \t]*|(?:[-+*]|\d+[.)])[ \t]+))*\\\[/.test(payload)) return { to: start, closed: false };
     }
     if (newline < 0) break;
     start = newline + 1;
@@ -184,29 +193,32 @@ function scanLatexMathCandidateAt(
   text: string,
   open: number,
   excludedRanges: ReadonlyArray<SourceRange>,
-  includeEmptyDisplay = false
+  includeEmptyDisplay = false,
+  latexDelimiters = false
 ): LatexMathCandidate {
   const excluded = excludedRangeAt(excludedRanges, open);
   if (excluded) {
     return { range: null, nextOpen: excluded.to };
   }
-  if (text[open] !== '$' || isEscaped(text, open)) {
+  const bracket = latexDelimiters && text[open] === '\\' && (text[open + 1] === '(' || text[open + 1] === '[');
+  if ((!bracket && text[open] !== '$') || isEscaped(text, open)) {
     return { range: null, nextOpen: open + 1 };
   }
-  if (text[open - 1] === '$') return { range: null, nextOpen: open + 1 };
-  if (text[open + 1] === '$' && text[open + 2] === '$') {
+  if (!bracket && text[open - 1] === '$') return { range: null, nextOpen: open + 1 };
+  if (!bracket && text[open + 1] === '$' && text[open + 2] === '$') {
     let end = open + 3;
     while (text[end] === '$') end++;
     return { range: null, nextOpen: end };
   }
-  if (text[open + 1] === '$') {
+  if (text[open + 1] === '$' || bracket && text[open + 1] === '[') {
+    const closer = bracket ? '\\]' : '$$';
     const openLineStart = text.lastIndexOf('\n', Math.max(0, open - 1)) + 1;
     const openLineEnd = text.indexOf('\n', open + 2);
     const openingPrefix = text.slice(openLineStart, open);
     const standaloneOpen = /^[ \t]*(?:>[ \t]*)*(?:(?:[-+*]|\d+[.)])[ \t]+)?$/.test(openingPrefix)
       && openLineEnd >= 0 && !text.slice(open + 2, openLineEnd).trim();
-    const end = standaloneOpen ? findFencedDisplayMathEnd(text, openLineEnd + 1, openingPrefix) : null;
-    const close = end ? (end.closed ? end.to : -1) : findDisplayMathClose(text, open + 2, excludedRanges);
+    const end = standaloneOpen ? findFencedDisplayMathEnd(text, openLineEnd + 1, openingPrefix, closer) : null;
+    const close = end ? (end.closed ? end.to : -1) : findDisplayMathClose(text, open + 2, excludedRanges, closer);
     if (close <= open + 2) {
       return { range: null, nextOpen: open + 2 };
     }
@@ -248,6 +260,13 @@ function scanLatexMathCandidateAt(
       nextOpen: close + 2
     };
   }
+  if (bracket) {
+    const close = findInlineMathClose(text, open + 2, excludedRanges, '\\)');
+    if (close < 0) return { range: null, nextOpen: open + 2 };
+    const content = text.slice(open + 2, close).trim();
+    return { range: content ? { from: open, to: close + 2, mode: 'inline', content,
+      raw: text.slice(open, close + 2) } : null, nextOpen: close + 2 };
+  }
   if (!text[open + 1] || isWhitespace(text[open + 1])) {
     return { range: null, nextOpen: open + 1 };
   }
@@ -284,7 +303,8 @@ export function scanLatexMathAt(
     text,
     index,
     normalizeExcludedRanges(options.excludedRanges ?? []),
-    options.includeEmptyDisplay
+    options.includeEmptyDisplay,
+    options.latexDelimiters
   ).range;
 }
 
@@ -295,14 +315,20 @@ export function scanLatexMathAt(
 export function scanLatexMath(text: string, options: LatexMathScanOptions = {}): LatexMathRange[] {
   const excludedRanges = normalizeExcludedRanges(options.excludedRanges ?? []);
   const ranges: LatexMathRange[] = [];
-  // Only dollar signs can open a formula. Skipping ordinary text also avoids
-  // a binary exclusion lookup for every prose/code character in a large file.
-  for (let open = text.indexOf('$'); open >= 0;) {
-    const candidate = scanLatexMathCandidateAt(text, open, excludedRanges, options.includeEmptyDisplay);
+  // Advance one native search cursor, including on backslash-heavy documents.
+  const openings = options.latexDelimiters ? /[$\\]/g : /\$/g;
+  for (let match; (match = openings.exec(text));) {
+    const open = match.index;
+    const candidate = scanLatexMathCandidateAt(text, open, excludedRanges, options.includeEmptyDisplay, options.latexDelimiters);
     if (candidate.range) {
       ranges.push(candidate.range);
     }
-    open = text.indexOf('$', candidate.nextOpen);
+    openings.lastIndex = candidate.nextOpen;
   }
   return ranges;
+}
+
+/** Source positions use the actual wrapper, rather than inferring it from display mode. */
+export function mathDelimiterLength(range: Pick<LatexMathRange, 'raw' | 'mode'>): number {
+  return range.mode === 'display' || range.raw.startsWith('\\(') ? 2 : 1;
 }

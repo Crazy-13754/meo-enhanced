@@ -5,7 +5,7 @@ import { toShikiTheme } from './shikiTheme';
 import { createShikiTokenCache } from './shikiTokenCache';
 import type { RawVscodeTheme, ShikiToken, ShikiTokenLines, ShikiSurface } from './shikiTypes';
 export type { RawVscodeTheme, ShikiToken, ShikiTokenLines, ShikiSurface } from './shikiTypes';
-import { mathSyntaxGrammar, withMarkdownSyntax } from '../adapters/markdownSyntaxGrammar';
+import { latexMarkdownSyntaxLanguage, mathSyntaxGrammar, withMarkdownSyntax } from '../adapters/markdownSyntaxGrammar';
 import { withMermaidBodySyntax } from '../adapters/mermaidSyntaxGrammar';
 
 const THEME_NAME = 'meo-code-theme';
@@ -16,7 +16,7 @@ type LanguageLoader = () => Promise<{ default: unknown }>;
 // Shiki's bundled registry is the single language capability source for every
 // fenced-code surface. Keeping a hand-maintained subset here made valid VS Code
 // languages silently fall through to Markdown's inline-code color.
-const LANG_LOADERS = bundledLanguages as unknown as Readonly<Record<string, LanguageLoader>>;
+const LANG_LOADERS = { ...bundledLanguages, [latexMarkdownSyntaxLanguage]: bundledLanguages.markdown } as unknown as Readonly<Record<string, LanguageLoader>>;
 const LANGUAGE_IDS = new Map<string, string>();
 for (const language of bundledLanguagesInfo) {
   LANGUAGE_IDS.set(language.id.toLowerCase(), language.id);
@@ -24,6 +24,8 @@ for (const language of bundledLanguagesInfo) {
     LANGUAGE_IDS.set(alias.toLowerCase(), language.id);
   }
 }
+
+LANGUAGE_IDS.set(latexMarkdownSyntaxLanguage, latexMarkdownSyntaxLanguage);
 
 const PLAIN_TEXT_LANGUAGE_IDS = new Set(['text', 'plaintext', 'plain', 'txt']);
 
@@ -326,7 +328,7 @@ async function ensureLang(
   }
   const grammar = (await loader()).default;
   record.grammarVersion += 1;
-  const adapted = lang === 'markdown' ? withMarkdownSyntax(grammar as any)
+  const adapted = lang === 'markdown' || lang === latexMarkdownSyntaxLanguage ? withMarkdownSyntax(grammar as any, lang === latexMarkdownSyntaxLanguage)
     : lang === 'mermaid' ? withMermaidBodySyntax(grammar as any) : grammar;
   await highlighter.loadLanguage(adapted as any);
   record.loadedLangs.add(lang);
@@ -496,7 +498,7 @@ async function tokenizeAndCache(
     if (workerUri && state.rawTheme) {
       state.background ??= createBackgroundShiki(workerUri, state.rawTheme, async (language, content, loaded) => {
         const required = new Set([language]);
-        if (state === runtimeStates.source && language === 'markdown') {
+        if (state === runtimeStates.source && (language === 'markdown' || language === latexMarkdownSyntaxLanguage)) {
           required.add('yaml'); required.add('html'); required.add('html-derivative');
           for (const fence of content.matchAll(/^[ \t]*(?:>[ \t]*)*(?:`{3,}|~{3,})[ \t]*([^\s`~]+)/gm)) {
             const embedded = resolveShikiLang(fence[1]);
@@ -510,7 +512,7 @@ async function tokenizeAndCache(
             const loader = LANG_LOADERS[requiredLanguage];
             if (!loader) continue;
             const grammar = (await loader()).default;
-            const adapted = requiredLanguage === 'markdown' ? withMarkdownSyntax(grammar as any)
+            const adapted = requiredLanguage === 'markdown' || requiredLanguage === latexMarkdownSyntaxLanguage ? withMarkdownSyntax(grammar as any, requiredLanguage === latexMarkdownSyntaxLanguage)
               : requiredLanguage === 'mermaid' ? withMermaidBodySyntax(grammar as any) : grammar;
             grammars.push(...(Array.isArray(adapted) ? adapted : [adapted]));
           }
@@ -544,7 +546,7 @@ async function tokenizeAndCache(
       finish();
       return;
     }
-    if (state === runtimeStates.source && lang === 'markdown') {
+    if (state === runtimeStates.source && (lang === 'markdown' || lang === latexMarkdownSyntaxLanguage)) {
       const embedded = new Set(['yaml', 'html', 'html-derivative']);
       for (const fence of code.matchAll(/^[ \t]*(?:>[ \t]*)*(?:`{3,}|~{3,})[ \t]*([^\s`~]+)/gm)) {
         const language = resolveShikiLang(fence[1]);

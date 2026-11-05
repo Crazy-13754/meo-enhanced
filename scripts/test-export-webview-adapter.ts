@@ -22,6 +22,7 @@ const posted: WebviewToHostMessage[] = [];
 let currentText = '# first';
 let currentTextError: Error | null = null;
 let currentAppearance: 'light' | 'dark' = 'light';
+let currentLatexDelimiters = false;
 let currentEnvironment = { previewFontFamily: '', editorBackgroundColor: '#fff' };
 let idle = createDeferred();
 const adapter = createExportWebviewAdapter({
@@ -34,6 +35,7 @@ const adapter = createExportWebviewAdapter({
   },
   whenDocumentIdle: () => idle.promise,
   getPreviewAppearance: () => currentAppearance,
+  getLatexDelimiters: () => currentLatexDelimiters,
   getUiLanguage: () => 'en',
   getStyleEnvironment: () => currentEnvironment,
   getCodeTheme: () => ({ name: 'light test', type: 'light', colors: {}, tokenColors: [] })
@@ -61,6 +63,7 @@ assert.equal(adapter.accept({ type: 'focusEditor' } as HostToWebviewMessage), fa
 
 assert.equal(adapter.accept({ type: 'requestExportSnapshot', requestId: 'snapshot-1' }), true);
 currentText = '# second';
+currentLatexDelimiters = true;
 currentAppearance = 'dark';
 currentEnvironment = { previewFontFamily: '', editorBackgroundColor: '#111' };
 assert.equal(adapter.accept({ type: 'requestExportSnapshot', requestId: 'snapshot-2' }), true);
@@ -71,6 +74,7 @@ idle.resolve();
 await Promise.resolve();
 await Promise.resolve();
 currentText = '# changed after capture';
+currentLatexDelimiters = false;
 currentAppearance = 'light';
 currentEnvironment.editorBackgroundColor = '#eeeeee';
 assert.deepEqual(posted.splice(0), [
@@ -81,6 +85,7 @@ assert.deepEqual(posted.splice(0), [
       ok: true,
       value: {
         snapshotId: 'snapshot-1',
+        latexDelimiters: true,
         text: '# second',
         appearance: 'dark',
         uiLanguage: 'en',
@@ -96,6 +101,7 @@ assert.deepEqual(posted.splice(0), [
       ok: true,
       value: {
         snapshotId: 'snapshot-2',
+        latexDelimiters: true,
         text: '# second',
         appearance: 'dark',
         uiLanguage: 'en',
@@ -160,6 +166,7 @@ assert.deepEqual(posted.shift(), {
     ok: true,
     value: {
       snapshotId: 'snapshot-next-request',
+      latexDelimiters: false,
       text: '# next request',
       appearance: 'light',
       uiLanguage: 'en',

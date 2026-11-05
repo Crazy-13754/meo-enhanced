@@ -40,6 +40,10 @@ try {
         })]);
         assert.match(first.html, /<strong>prose<\\/strong>/); assert.match(second.html, /<table/);
         assert.match(second.html, /katex/); assert.match(second.html, /hljs-keyword/);
+        const bracketSource = String.fromCharCode(92) + '( a+b ' + String.fromCharCode(92) + ')';
+        assert.doesNotMatch((await reader.render('panel-a', { ...options, markdownText: bracketSource })).html, /class="katex"/);
+        assert.match((await reader.render('panel-a', { ...options, markdownText: bracketSource, latexDelimiters: true })).html, /class="katex"/);
+        assert.doesNotMatch((await reader.render('panel-a', { ...options, markdownText: bracketSource, latexDelimiters: false })).html, /class="katex"/);
         const content = await reader.renderContent('# Shared\\n\\n| Cell |\\n| --- |\\n| > Outer<br>> > Inner |');
         assert.match(content.html, /<blockquote>/); assert.match(content.html, /Inner/);
         assert.equal((content.html.match(/<blockquote>/g) || []).length, 2);

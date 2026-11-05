@@ -12,6 +12,7 @@ import type { PreviewDocumentOperation, PreviewDocumentResult } from '../foundat
 
 export type BackgroundPreviewOptions = Readonly<{
   markdownText: string;
+  latexDelimiters?: boolean;
   sourceDocumentPath: string;
   uiLanguage: UiLanguage;
   styleEnvironment?: EditorStyleEnvironment;

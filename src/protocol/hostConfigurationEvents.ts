@@ -11,6 +11,7 @@ export type CodeThemeDto = {
 };
 
 export type HostConfigurationEvent =
+  | { readonly type: 'latexDelimitersChanged'; readonly enabled: boolean }
   | { readonly type: 'editorMouseWheelZoomChanged'; readonly enabled: boolean }
   | { readonly type: 'editorLineHeightChanged'; readonly value: number }
   | { readonly type: 'uiColorsChanged'; readonly colors: UiColors }
@@ -66,6 +67,7 @@ export function decodeHostConfigurationEvent(value: unknown): HostConfigurationE
     case 'developmentStylesChanged':
       return typeof value.css === 'string' ? { type: 'developmentStylesChanged', css: value.css } : null;
     case 'largeDocumentOptimizationChanged':
+    case 'latexDelimitersChanged':
     case 'editorMouseWheelZoomChanged':
     case 'tableStickyHeaderChanged':
     case 'boldHeadingsChanged':
