@@ -4,6 +4,7 @@
   "extension.description": "An enhanced Markdown editor with live editing mode for VS Code.",
   "command.open": "Open With MEO Enhanced",
   "command.toggleMode": "MEO Enhanced: Toggle Live/Source Mode",
+  "view.outline": "MEO Outline",
   "command.exportHtml": "MEO Enhanced: Export as HTML",
   "command.exportPdf": "MEO Enhanced: Export as PDF",
   "command.exportDocx": "MEO Enhanced: Export as Word document",

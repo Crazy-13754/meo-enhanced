@@ -433,6 +433,7 @@
       "scripts/test-ordered-list-renumber.ts",
       "scripts/test-ordered-list-work-bound.ts",
       "scripts/test-outline-tree.ts",
+      "scripts/test-sidebar-outline.ts",
       "scripts/test-panel-session-change-echo.ts",
       "scripts/test-panel-session-external-file-notice.ts",
       "scripts/test-panel-session-reading-position.ts",

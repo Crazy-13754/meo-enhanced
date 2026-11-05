@@ -33,6 +33,8 @@ The toolbar and its settings panel provide the following options:
 
 ## Three display modes
 
+The Explorer **MEO Outline** view mirrors the headings of the most recently focused MEO editor, so split editors can share one sidebar outline instead of each showing its own. It follows split-editor focus, highlights the current heading while you scroll, and jumps on click in Live, Source and Preview. Expand it once in the Explorer; while collapsed or hidden it does no work.
+
 The VS Code status bar shows the active MEO document's current/total source lines and word count, including selected words in Live and Source. Preview shows document totals. Hover for the counting rules and source character count; CJK characters count individually, other languages by word, with code text included and Markdown markup, link destinations and frontmatter excluded.
 
 - **Live**: Displays rendered headings, lists, tables, images, diagrams, formulas, and other content in place while retaining direct editing.

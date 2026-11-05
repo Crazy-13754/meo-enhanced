@@ -10,6 +10,7 @@ import { effectiveShortcuts } from '../../src/application/editingPreferences';
 import { version as productVersion } from '../../package.json';
 import type { DocumentText, DocumentTextEdit } from '../../src/foundation/documentSnapshot';
 import { createDocumentStatisticsReporter } from './adapters/documentStatistics';
+import { createSidebarOutlineReporter } from './adapters/sidebarOutline';
 import { createEditorFontWheel } from './adapters/editorFontWheel';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
 import { createImageStorageTransport } from './adapters/imageStorageTransport';
@@ -1723,6 +1724,7 @@ editorHost.appendChild(editorScrollToTopController.button);
 let editor: any = null;
 let readingPositionLifecycle: ReadingPositionLifecycle | null = null;
 let outlineController: ReturnType<typeof createOutlineController>;
+let sidebarOutline: ReturnType<typeof createSidebarOutlineReporter> | null = null;
 const mermaidDiagramRenderPool = createMermaidDiagramRenderPool({
   initialize: initializeMermaidEditorRuntime,
   render: renderMermaidRuntime
@@ -1846,6 +1848,7 @@ const previewController = createPreviewController({
     previewController.finishLoadingPresentation({ keepVisible: splitWillReveal });
     outlineController?.refreshAppearance(); documentViews?.refreshAppearance();
     if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
+    if (getActiveEditorMode() === 'preview') sidebarOutline?.refreshViewport();
     if (getActiveEditorMode() === 'preview') findPanelController.refreshForModeChange();
   },
   onLoadingVisible: () => {
@@ -1866,6 +1869,7 @@ const previewController = createPreviewController({
     if (outlineController?.isVisible()) {
       outlineController.refresh();
     }
+    sidebarOutline?.schedule();
     editor?.linkedPreviewReady?.(options?.skipLinkedViewportProjection !== true);
     readingPositionLifecycle?.surfaceReady();
   },
@@ -1886,6 +1890,7 @@ const previewController = createPreviewController({
   },
   onGeometryChanged: () => {
     if (getActiveEditorMode() === 'preview' && outlineController?.isVisible()) outlineController.refreshViewport();
+    if (getActiveEditorMode() === 'preview') sidebarOutline?.refreshViewport();
     if (isSidePreviewVisible()) editor?.linkedPreviewReady?.();
   },
   runViewportTransaction: (mutate, documentChange) => {
@@ -1960,6 +1965,10 @@ outlineController = createOutlineController({
     }
   }
 });
+sidebarOutline = createSidebarOutlineReporter(
+  () => getActiveEditorMode() === 'preview' ? previewController.getOutlineAdapter() : editor,
+  message => vscode.postMessage(message)
+);
 
 const editorSurface = document.createElement('div');
 editorSurface.className = 'editor-surface';
@@ -2879,6 +2888,7 @@ const runDocumentDerivedUiRefresh = (): void => {
   const text = pendingDocumentDerivedText.toString();
   const operations: ReadonlyArray<readonly [string, () => void]> = [
     ['outline', () => { if (outlineController.isVisible()) outlineController.refresh(); }],
+    ['sidebarOutline', () => sidebarOutline?.schedule()],
     ['wikiLinks', () => scheduleWikiLinkStatusRefresh(text)],
     ['localLinks', () => scheduleLocalLinkStatusRefresh(text)],
     ['findSummary', () => findPanelController.updateFindStatusSummary()]
@@ -3237,6 +3247,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
   if (pendingRevealDocumentFragment) applyRevealDocumentFragmentFromHost(pendingRevealDocumentFragment);
   if (pendingEditorFocus) focusEditorFromHost();
   if (outlineController.isVisible()) outlineController.refresh();
+  sidebarOutline?.schedule();
   failureNotice.updateEditorNotice();
   setWikiLinkRefreshContext({ refreshDecorations: () => editor?.refreshDecorations?.() });
   setLocalLinkRefreshContext({ refreshDecorations: () => editor?.refreshDecorations?.() });
@@ -3321,6 +3332,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
       syncGitDiffDetails();
       syncGitDiffLineHighlights();
       if (outlineController.isVisible()) outlineController.refresh();
+      sidebarOutline?.schedule();
       failureNotice.clearFailureNotice(editorNoticeIssue.editorModeTransition);
       if (mode === 'live') failureNotice.clearFailureNotice(editorNoticeIssue.liveModeUnavailable);
       failureNotice.updateEditorNotice();
@@ -3411,6 +3423,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
   },
   setOutlineOwner: () => {
     if (outlineController.isVisible()) outlineController.refresh();
+    sidebarOutline?.schedule();
   },
   setReplaceEnabled(enabled) {
     for (const control of [
@@ -3599,6 +3612,7 @@ const handleInit = (message: InitMessage) => {
   if (editor && outlineController.isVisible()) {
     outlineController.refresh();
   }
+  sidebarOutline?.schedule();
   scheduleEditorSurfaceRecovery();
   scheduleWikiLinkStatusRefresh(message.text);
   scheduleLocalLinkStatusRefresh(message.text);
@@ -4057,6 +4071,17 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'sidebarOutlineSubscription') {
+    sidebarOutline?.setEnabled(message.enabled);
+    return;
+  }
+
+  if (message.type === 'revealOutlineHeading') {
+    readingPositionLifecycle?.explicitNavigation();
+    sidebarOutline?.reveal(message.line);
+    return;
+  }
+
   if (message.type === 'gitBaselineChanged') {
     if (message.payload.mode === 'git-head') {
       gitBaselineState = message.payload;
@@ -4203,6 +4228,7 @@ window.addEventListener('beforeunload', () => {
   uiColorsTransport.dispose();
   editorServicesTransport.dispose();
   documentStatistics.dispose();
+  sidebarOutline?.dispose();
   clearReadyRetryTimers();
   cancelPendingWikiStatusRefresh();
   cancelPendingLocalLinkStatusRefresh();
