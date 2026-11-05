@@ -71,6 +71,21 @@ first.dispose(); second.dispose(); assert.ok(items.every(i => i.disposed));
 const large = createDocumentStatisticsIndex('Hello 世界\n'.repeat(20_000));
 assert.equal(large([], 1).words, 60_000);
 assert.equal(large([{ from: 0, to: 5 }], 1).selectedWords, 1);
+const originalIndexOf = String.prototype.indexOf;
+for (const header of ['StatisticsScan', 'StatisticsScan | text']) {
+  const paragraph = header + '\n' + 'Hello 世界\n'.repeat(20_000);
+  let newlineSearchCharacters = 0;
+  try {
+    String.prototype.indexOf = function(this: string, search: string, position?: number) {
+      if (search === '\n' && this.startsWith('StatisticsScan')) newlineSearchCharacters += this.length;
+      return originalIndexOf.call(this, search, position);
+    };
+    const statistics = createDocumentStatisticsIndex(paragraph)([], 1);
+    assert.equal(statistics.words, header.includes('|') ? 60_002 : 60_001);
+    assert.ok(newlineSearchCharacters <= paragraph.length * 8,
+      `Long prose must not rescan a growing paragraph for a table header: ${newlineSearchCharacters} characters`);
+  } finally { String.prototype.indexOf = originalIndexOf; }
+}
 const reporter = createDocumentStatisticsReporter(() => null, () => { throw new Error('Disposed statistics must not publish'); });
 reporter.dispose();
 const originalSetTimeout = globalThis.setTimeout;

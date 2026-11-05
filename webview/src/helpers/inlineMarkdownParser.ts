@@ -10,7 +10,7 @@ import { wikiImageMarkdownExtension } from '../../../src/foundation/wikiReferenc
 import { createMarkdownContentGrammar, inlineScriptMarkdownExtension } from './markdownContentGrammar';
 
 const tableBlock = Table.parseBlock![0];
-const tableParsers = new WeakMap<LeafBlock, { parser: LeafBlockParser; confirmed: boolean }>();
+const tableParsers = new WeakMap<LeafBlock, { parser: LeafBlockParser; confirmed: boolean | null }>();
 const tableBlockBoundaryExtension: MarkdownConfig = { parseBlock: [{
   ...tableBlock,
   leaf(context, leaf) {
@@ -30,15 +30,19 @@ const tableBlockBoundaryExtension: MarkdownConfig = { parseBlock: [{
       },
       finish: (context, leaf) => parser.finish(context, leaf)
     };
-    tableParsers.set(leaf, { parser: adapted, confirmed: false });
+    tableParsers.set(leaf, { parser: adapted, confirmed: null });
     return adapted;
   },
   endLeaf(context, line, leaf) {
     const table = tableParsers.get(leaf);
-    const firstBreak = leaf.content.indexOf('\n');
-    if (table && !table.confirmed && firstBreak >= 0) {
-      const secondBreak = leaf.content.indexOf('\n', firstBreak + 1);
-      table.confirmed = Boolean(parseMarkdownTable(leaf.content.slice(0, secondBreak < 0 ? undefined : secondBreak)));
+    // Only an unresolved table candidate needs its first two lines inspected.
+    // Reading every growing prose leaf here repeatedly flattens its whole text.
+    if (table?.confirmed === null) {
+      const firstBreak = leaf.content.indexOf('\n');
+      if (firstBreak >= 0) {
+        const secondBreak = leaf.content.indexOf('\n', firstBreak + 1);
+        table.confirmed = Boolean(parseMarkdownTable(leaf.content.slice(0, secondBreak < 0 ? undefined : secondBreak)));
+      }
     }
     if (table?.confirmed) {
       // Once a table header is established, later underlines cannot turn its
