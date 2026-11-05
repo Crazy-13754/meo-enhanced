@@ -487,6 +487,15 @@ entering a native table cell whose widget bypasses CodeMirror's pointer handlers
 cover forward/reverse HTML/math cross-block drags, keyboard selection extension,
 source-only copying, exact cut/undo/redo and native HTML reading selection.
 `bun scripts/test-html-content.ts --selection-only` isolates those selection checks.
+The same slice runs `scripts/rendered-widget-pointer.ts` against actual ordinary
+and optimized policies. Block/inline HTML keeps its growing native range through
+small pointer moves and harmless editor transactions, including entry from a
+focused control. Native copy/paste and one-step undo verify the rendered text;
+native input and noncancelable browser composition cannot mutate the reading
+DOM, and a subsequent drag remains available. Stationary clicks enter source only
+after release, while returning drags and cancellation preserve reading. Formula
+results and property pills retain their widget through press/drag/cancellation
+and enter source after a completed click.
 Editing previews must not add a second copy of rendered text to the native source
 selection. Native VS Code clipboard acceptance has a separate disposable-profile
 launcher: `./scripts/test-vscode-html-copy.ps1 -CodePath <Code.exe>`. Build the

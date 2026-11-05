@@ -4,6 +4,8 @@ export type InlineBoundaryFixture = {
   name: string;
   markdown: string;
   styles: readonly InlineBoundaryStyle[];
+  activeStyles?: readonly InlineBoundaryStyle[];
+  activeLiteral?: string;
   literal?: string;
   forbiddenLiteral?: string;
   mathCount?: number;
@@ -89,7 +91,8 @@ const proseFixtures: readonly InlineBoundaryFixture[] = [
   { name: 'image-label-style', markdown: '**outer ![*ALT：*AFTER](https://example.com/image.png) TARGET** OUTSIDE', styles: ['strong'], witnesses: [{ text: 'OUTSIDE', styles: [] }] },
   { name: 'table-style-nested', markdown: '| Header |\n| --- |\n| **outer *TARGET：*AFTER** OUTSIDE |', styles: ['strong', 'emphasis'], literal: 'outer TARGET：AFTER', witnesses: [{ text: 'AFTER', styles: ['strong'] }, { text: 'OUTSIDE', styles: [] }] },
   { name: 'link-label', markdown: '[*TARGET：*后续](https://example.com)', styles: ['emphasis'], href: 'https://example.com' },
-  { name: 'normal-html', markdown: 'before <b>TARGET</b> after', styles: ['strong'] },
+  { name: 'normal-html', markdown: 'before <b>TARGET</b> after', styles: ['strong'],
+    activeStyles: [], activeLiteral: '<b>TARGET</b>' },
   ...(['*', '**', '~~', '=='] as const).map((marker, index) => ({
     name: `table-style-${index}`, markdown: `| Header |\n| --- |\n| ${marker}TARGET：${marker}后续 |`,
     styles: [(['emphasis', 'strong', 'strikethrough', 'highlight'] as const)[index]!]

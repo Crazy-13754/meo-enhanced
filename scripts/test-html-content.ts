@@ -14,6 +14,7 @@ import { launchTestBrowser } from './browser-test-helpers';
 import { renderMarkdownToHtml } from '../src/export/renderMarkdown';
 import { formatHtmlFragment } from '../webview/src/editor/htmlFormatting';
 import { checkHtmlStyleRendering } from './test-html-styles-browser';
+import { checkHtmlReadingPointer, checkAtomicWidgetPointer } from './rendered-widget-pointer';
 
 {
 // HTML discovery also depends on the runtime details owner, even with the
@@ -770,6 +771,9 @@ async function main(): Promise<void> {
       await checkHtmlEditingTools(page);
       assert.deepEqual(errors, []); console.log('HTML icon-only formatting, feedback, undo and customized shortcuts passed.'); return;
     }
+    await checkHtmlReadingPointer(page);
+    await checkAtomicWidgetPointer(page);
+    await resetHtmlEditor(page, source);
     await checkHtmlCrossBlockSelection(page);
     if (process.argv.includes('--selection-only')) {
       assert.deepEqual(errors, []); console.log('HTML/math cross-block dragging, keyboard extension, copy/cut history and HTML reading selection passed.'); return;

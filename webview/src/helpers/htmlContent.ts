@@ -53,6 +53,7 @@ import { formatHtmlFragment } from '../editor/htmlFormatting';
 import { createSourceFormatButton, type SourceFormatOutcome } from '../editor/sourceFormatButton';
 import { isLivePointerSelectionActive, setLivePointerSelectionActiveEffect, sourcePresentationSelection } from '../editor/livePointerSelection';
 import { blockReadingFocusAt, enterBlockSource, focusBlockReading } from '../editor/blockInteraction';
+import { bindWidgetClick, disposeWidgetClick } from '../editor/widgetPointer';
 
 export interface RenderableHtmlBlock {
   from: number;
@@ -567,21 +568,39 @@ function annotateHtmlSourceLines(root: ParentNode, source: string, startLine: nu
   }
 }
 
-function bindHtmlReadingClick(root: HTMLElement, activate: (event: MouseEvent) => void): void {
-  let pointer: { x: number; y: number } | null = null;
-  root.addEventListener('pointerdown', event => {
-    if (event.button === 0) pointer = { x: event.clientX, y: event.clientY };
+const htmlReadingControls = 'summary, button, a, input, select, textarea, label, audio, video, .meo-md-image';
+
+function prepareHtmlReadingContent(content: HTMLElement, root: HTMLElement): void {
+  // A native reading host owns its DOM selection independently of CodeMirror's
+  // suspended source caret. Inline noneditable widgets otherwise act as atoms
+  // in Chromium. Input stays read-only and is never serialized into Markdown.
+  content.contentEditable = 'true';
+  content.tabIndex = -1;
+  root.tabIndex = -1;
+  content.setAttribute('role', 'document');
+  const preventReadingInput = (event: Event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('input, textarea, select')) return;
+    event.preventDefault();
+    // Chromium's composition input is noncancelable. Leave its editing host
+    // before it can insert composition text into this read-only presentation.
+    if (event.type === 'compositionstart') {
+      content.contentEditable = 'false';
+      root.focus({ preventScroll: true });
+    }
+  };
+  content.addEventListener('beforeinput', preventReadingInput);
+  content.addEventListener('compositionstart', preventReadingInput);
+  content.addEventListener('pointerdown', event => {
+    if (event.button === 0 && !root.classList.contains('meo-md-html-live-result')) content.contentEditable = 'true';
   });
-  root.addEventListener('click', event => {
-    const start = pointer;
-    pointer = null;
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
-      || !start && event.detail > 0
-      || start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4) return;
-    const selection = root.ownerDocument.getSelection();
-    if (selection && !selection.isCollapsed
-      && (root.contains(selection.anchorNode) || root.contains(selection.focusNode))) return;
-    activate(event);
+  root.addEventListener('keydown', event => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (event.key !== 'Enter' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey
+      || target?.closest(htmlReadingControls)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    root.click();
   });
 }
 
@@ -614,7 +633,7 @@ function showHtmlComments(
       const current = currentHtmlBlock(view, source, sourceStartLine);
       if (current) enterHtmlSource(view, current, current.from + comment.from);
     };
-    bindHtmlReadingClick(note, openSource);
+    bindWidgetClick(note, openSource);
     const node = nodes[index];
     if (!node) {
       note.dataset.display = 'block';
@@ -916,6 +935,8 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     }
     const contentRoot = document.createElement('div');
     contentRoot.className = 'meo-md-html-content';
+    prepareHtmlReadingContent(contentRoot, root);
+    contentRoot.contentEditable = this.editing ? 'false' : 'true';
     const content = createSanitizedHtml(
       this.block.source,
       false,
@@ -940,11 +961,11 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     root.addEventListener('pointerdown', event => {
       if (event.button === 0 && htmlBlockWidgets.get(root)?.editing) event.preventDefault();
     });
-    bindHtmlReadingClick(root, event => {
+    bindWidgetClick(root, event => {
       const target = event.target instanceof Element ? event.target : null;
       const widget = htmlBlockWidgets.get(root)!;
       if (widget.editing
-        || target?.closest('summary, button, a, input, select, textarea, label, audio, video, .meo-md-html-comment, .meo-md-image')) return;
+        || target?.closest(htmlReadingControls + ', .meo-md-html-comment')) return;
       const currentBlock = currentHtmlBlock(view, widget.block.source, widget.block.startLine);
       if (!currentBlock) return;
       const line = Number(target?.closest<HTMLElement>('[data-meo-html-source-line]')?.dataset.meoHtmlSourceLine);
@@ -976,12 +997,14 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
       label.textContent = getUiStrings(view.state.facet(uiLanguageFacet)).preview; root.prepend(label);
     } else if (!this.editing) label?.remove();
     const current = root.querySelector<HTMLElement>(':scope > .meo-md-html-content')!;
+    current.contentEditable = this.editing ? 'false' : 'true';
     if (previous.block.source !== this.block.source) {
       const next = root.ownerDocument.createElement('div');
       const content = createSanitizedHtml(this.block.source, false, view.state.facet(uiLanguageFacet), view, this.block.from, this.block.startLine);
       if (content) next.append(content);
       this.prepareDetails(next, root, view);
       updateHtmlContentDom(current, next, element => {
+        disposeWidgetClick(element);
         if (element.classList.contains('meo-md-image')) disposeImagePresentations(element);
         if (element instanceof HTMLMediaElement) { element.pause(); element.removeAttribute('src'); element.load(); }
       });
@@ -1010,6 +1033,8 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
   }
 
   destroy(dom: HTMLElement): void {
+    disposeWidgetClick(dom);
+    for (const note of dom.querySelectorAll<HTMLElement>('.meo-md-html-comment')) disposeWidgetClick(note);
     htmlTableLayouts.get(dom)?.dispose();
     htmlTableLayouts.delete(dom);
     htmlBlockWidgets.delete(dom);
@@ -1129,16 +1154,27 @@ class InlineHtmlWidget extends UiLanguageSensitiveWidget {
   toDOM(view: EditorView): HTMLElement {
     const wrapper = document.createElement('span');
     wrapper.className = 'meo-md-html-inline';
+    const contentRoot = document.createElement('span');
+    contentRoot.className = 'meo-md-html-content';
+    prepareHtmlReadingContent(contentRoot, wrapper);
     const content = createSanitizedHtml(
       this.source, true, view.state.facet(uiLanguageFacet), view, this.from, this.startLine
     );
-    if (content) wrapper.appendChild(content);
+    if (content) contentRoot.appendChild(content);
+    wrapper.appendChild(contentRoot);
     attachHtmlResources(wrapper);
-    const firstElement = wrapper.firstElementChild;
+    const firstElement = contentRoot.firstElementChild;
     if (firstElement) {
       const tagName = firstElement.tagName.toLowerCase();
       firstElement.classList.add(`meo-md-html-${tagName === 'b' ? 'strong' : tagName}`);
     }
+    bindWidgetClick(wrapper, event => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(htmlReadingControls + ', .meo-md-html-comment')) return;
+      event.preventDefault();
+      view.focus();
+      view.dispatch({ selection: { anchor: this.from } });
+    });
     return wrapper;
   }
 
@@ -1147,6 +1183,8 @@ class InlineHtmlWidget extends UiLanguageSensitiveWidget {
   }
 
   destroy(dom: HTMLElement): void {
+    disposeWidgetClick(dom);
+    for (const note of dom.querySelectorAll<HTMLElement>('.meo-md-html-comment')) disposeWidgetClick(note);
     disposeHtmlResources(dom);
     disposeImagePresentations(dom);
   }

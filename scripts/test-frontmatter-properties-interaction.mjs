@@ -232,6 +232,12 @@ try {
     if (aliasesPills instanceof HTMLElement) {
       aliasesPills.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
       await wait();
+      if (!aliasesPills.isConnected) {
+        failures.push({ source: sourceLines[2], lineNumber: 3, symptom: 'array-pill-expanded-before-release' });
+      }
+      aliasesPills.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+      aliasesPills.click();
+      await wait();
       const aliasesLine = lineElement(3);
       if (aliasesLine?.querySelector('.meo-md-frontmatter-array-pills') || !aliasesLine?.textContent?.includes('[Properties Test, YAML Test]')) {
         failures.push({ source: sourceLines[2], lineNumber: 3, symptom: 'array-pill-did-not-expand' });

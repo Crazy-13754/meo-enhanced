@@ -90,8 +90,10 @@ async function main(): Promise<void> {
           }
           const sample = await snapshot(mode === 'preview' ? preview : live, mode === 'preview' ? 'main' : '.cm-content', fixture.witnesses?.map(witness => witness.text));
           try {
-            const expected = [...fixture.styles].sort();
+            const expected = [...(mode === 'live-active' ? fixture.activeStyles ?? fixture.styles : fixture.styles)].sort();
             assert.deepEqual(sample.targets, [expected], 'target formatting');
+            if (mode === 'live-active' && fixture.activeLiteral)
+              assert.ok(sample.text.includes(fixture.activeLiteral), 'active HTML reveals its exact source');
             for (const [index, witness] of (fixture.witnesses ?? []).entries()) assert.deepEqual(sample.witnesses[index]!.styles, [[...witness.styles].sort()], `${witness.text} formatting`);
             if (fixture.literal) {
               // Live can reveal escape slashes as source syntax; escaped tags must still stay literal.

@@ -14,6 +14,7 @@ import { undoDepth } from '@codemirror/commands';
 import { blockStickyHeaderExtension } from './helpers/blockStickyHeader';
 import { livePointerSelectionActiveField, setLivePointerSelectionActiveEffect, sourcePresentationSelection } from './editor/livePointerSelection';
 import { blockReadingFocusAt, enterBlockSource, isBlockInteractionEffect } from './editor/blockInteraction';
+import { bindWidgetClick, disposeWidgetClick } from './editor/widgetPointer';
 import { countColumn, RangeSetBuilder, StateEffect, StateField, EditorState, type ChangeDesc, type ChangeSet, type Range, type RangeSet, type Extension, type EditorSelection, type Transaction } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { html } from '@codemirror/lang-html';
@@ -1053,6 +1054,10 @@ class FrontmatterArrayPillsWidget extends WidgetType {
     container.addEventListener('pointerdown', (event) => {
       event.preventDefault();
       event.stopPropagation();
+    });
+    bindWidgetClick(container, event => {
+      event.preventDefault();
+      event.stopPropagation();
       const view = EditorView.findFromDOM(container);
       if (!view) {
         return;
@@ -1066,6 +1071,10 @@ class FrontmatterArrayPillsWidget extends WidgetType {
 
   ignoreEvent(): boolean {
     return true;
+  }
+
+  destroy(dom: HTMLElement): void {
+    disposeWidgetClick(dom);
   }
 }
 
@@ -2903,15 +2912,13 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     const wrapper = view.dom.ownerDocument.createElement(this.mode === 'display' ? 'div' : 'span') as LatexMathWidgetElement;
     wrapper.__meoLatexMathWidget = this;
     wrapper.className = `meo-md-math meo-md-math-${this.mode}`;
+    wrapper.addEventListener('pointerdown', event => {
+      if (event.button === 0) event.preventDefault();
+    });
     if (this.fencedDisplay && this.mode === 'display') {
       wrapper.classList.add('meo-md-math-fenced-display');
       wrapper.dataset.meoMathAnchor = String(this.anchor);
       wrapper.classList.toggle('meo-math-live-result', this.editing);
-      wrapper.addEventListener('pointerdown', (event: PointerEvent) => {
-        if (event.button === 0) {
-          event.preventDefault();
-        }
-      });
     }
     wrapper.innerHTML = this.html;
     if (this.fencedDisplay && this.mode === 'display') {
@@ -2919,10 +2926,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
       wrapper.__meoLatexMathViewport = attachLatexMathViewport(wrapper);
       if (!this.editing) wrapper.append(createDisplayMathActions(view, () => wrapper.__meoLatexMathWidget!.anchor, false));
       this.updateResultLabel(wrapper, view);
-      // Enter before pointerdown bubbles: another embedded editor may release
-      // its projected selection and replace this DOM before a click can arrive.
-      wrapper.addEventListener('pointerdown', event => {
-        if (event.button !== 0) return;
+      bindWidgetClick(wrapper, event => {
         event.preventDefault();
         const widget = wrapper.__meoLatexMathWidget!;
         if (!widget.editing) {
@@ -2940,6 +2944,12 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
       return wrapper;
     }
     applyLiveBlockIndent(wrapper, this.indentColumns);
+    bindWidgetClick(wrapper, event => {
+      event.preventDefault();
+      const from = view.posAtDOM(wrapper);
+      view.dispatch({ selection: { anchor: Math.min(from + (this.mode === 'display' ? 2 : 1), view.state.doc.length) } });
+      view.focus();
+    });
     return wrapper;
   }
 
@@ -2975,6 +2985,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
   }
 
   destroy(dom: HTMLElement): void {
+    disposeWidgetClick(dom);
     this[renderedBlockPreviewHeight].destroy(dom);
     const wrapper = (dom.matches('.meo-md-math-fenced-display')
       ? dom
@@ -4585,7 +4596,8 @@ const liveDecorationField = StateField.define<DecorationSet>({
     // Guard against transient empty parse results on selection-only transactions.
     if (!transaction.docChanged && !isLiveInputDerivedWorkRefresh(transaction)
       && isEmptyDecorationSet(next) && !isEmptyDecorationSet(decorations)
-      && !liveDecorationMetadata.get(transaction.state)?.complete) {
+      && !(usesLargeDocumentDerivedWorkBudget(transaction.state)
+        ? liveDecorationMetadata.get(transaction.state)?.complete : markdownStructureAvailable(transaction.state))) {
       liveDecorationMetadata.set(transaction.state, { complete: false });
       return decorations;
     }
