@@ -4,16 +4,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const puppeteer = require('puppeteer-core');
 
-exports.run = async () => {
+exports.run = async ({ browser: sharedBrowser } = {}) => {
   const output = process.env.MEO_STATISTICS_OUTPUT;
   assert.ok(output && path.isAbsolute(output));
   const file = path.join(output, 'workspace', 'statistics.md');
   fs.writeFileSync(file, '# MEOStatisticsSmall 世界\n\nOne two three\n\n| A | B |\n| --- | --- |\n| 中文 | word |\n');
   const result = { passed: false, cases: [] };
-  let browser;
+  let browser = sharedBrowser;
+  let statisticsPage, previousTimeout;
   try {
     await vscode.workspace.getConfiguration('meoEnhanced').update('language', 'en', vscode.ConfigurationTarget.Global);
-    browser = await puppeteer.connect({ browserURL: process.env.MEO_STATISTICS_BROWSER_URL, defaultViewport: null });
+    if (!browser) browser = await puppeteer.connect({ browserURL: process.env.MEO_STATISTICS_BROWSER_URL, defaultViewport: null });
     const control = path.join(output, 'workspace', 'statistics-control.txt');
     fs.writeFileSync(control, 'Non-MEO active-editor control');
     await vscode.window.showTextDocument(vscode.Uri.file(control), { preview: false });
@@ -27,7 +28,7 @@ exports.run = async () => {
       if (!frame) await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.ok(frame, 'MEO Webview must load');
-    const page = frame.page(); page.setDefaultTimeout(15000);
+    const page = statisticsPage = frame.page(); previousTimeout = page.getDefaultTimeout(); page.setDefaultTimeout(15000);
     const ready = (target, mode) => target.waitForFunction(mode => {
       if (document.querySelector('.meo-preload-toolbar') || document.querySelector('.editor-root')?.dataset.mode !== mode) return false;
       return mode === 'preview'
@@ -102,6 +103,10 @@ exports.run = async () => {
     const largeText = 'MEOStatisticsLarge 世界\n' + 'Hello 世界\n'.repeat(19_999);
     fs.writeFileSync(largeFile, largeText);
     await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(largeFile), 'meoEnhanced.editor');
+    const largeTab = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+    assert.ok(largeTab instanceof vscode.TabInputCustom && largeTab.uri.toString() === vscode.Uri.file(largeFile).toString());
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    await page.keyboard.down('Control'); await page.keyboard.press('Home'); await page.keyboard.up('Control');
     let largeFrame;
     const largeLimit = Date.now() + 15000;
     while (!largeFrame && Date.now() < largeLimit) {
@@ -137,7 +142,9 @@ exports.run = async () => {
     assert.ok(requests.length > 0 && requests.every(r => !r.fullText), 'selection changes reuse the worker index');
     result.cases.push('large document worker index reused on selection changes');
     await page.keyboard.down('Control'); await page.keyboard.press('End'); await page.keyboard.up('Control');
-    await page.keyboard.type(' Extra');
+    // One input transaction keeps this statistics/undo case independent of
+    // inter-key delays that legitimately split a typing history group.
+    await page.keyboard.sendCharacter(' Extra');
     await status('字数 60,001');
     const largeDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(largeFile));
     assert.equal(largeDocument.getText(), largeText + ' Extra');
@@ -161,5 +168,9 @@ exports.run = async () => {
     }
     throw error;
   }
-  finally { browser?.disconnect(); fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(result, null, 2)); }
+  finally {
+    if (statisticsPage) statisticsPage.setDefaultTimeout(previousTimeout);
+    if (!sharedBrowser) browser?.disconnect();
+    fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(result, null, 2));
+  }
 };
