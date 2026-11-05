@@ -1400,8 +1400,10 @@ for the staged snapshot. A staging/content change invalidates earlier index chec
 
 `scripts/test-webview-search-controls.ts --selection-entry-only` covers search
 entry through the actual Webview and native shortcuts in ordinary/optimized
-documents. A stale native cell range cannot override the current body selection;
-toolbar focus borrowing retains the accepted cell. The selection/query matrix,
+documents. Ctrl+A selects the active native cell without selecting the outer document;
+replacement, undo/redo and Source full-document selection retain their scopes.
+A stale native cell range cannot override the current body selection; toolbar
+focus borrowing retains the accepted cell. The selection/query matrix,
 repeated Find, close/reopen, single-line whitespace, multiline rejection and mode
 changes retain source and the actual derived-work policy without scanning all
 cell inputs. The full owning suite also covers selected/empty Preview entry and

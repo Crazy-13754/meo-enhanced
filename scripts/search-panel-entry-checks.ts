@@ -16,6 +16,10 @@ export async function checkSearchPanelEntry(page: Page) {
     await page.waitForSelector('.find-panel.is-visible');
   };
   const query = () => page.$eval(find, input => (input as HTMLInputElement).value);
+  const chord = async (key: string) => {
+    await page.keyboard.down('Control');
+    try { await page.keyboard.press(key); } finally { await page.keyboard.up('Control'); }
+  };
   const body = async (selected = true) => {
     const handle = await page.evaluateHandle(() => [...document.querySelectorAll<HTMLElement>('.editor-host .cm-line')]
       .find(line => line.textContent === 'body-selected')!);
@@ -32,6 +36,7 @@ export async function checkSearchPanelEntry(page: Page) {
     await close();
     await page.click('[data-mode="live"]');
     await page.waitForSelector('.editor-host .meo-mode-live');
+    await page.waitForFunction(() => (document.querySelector('.preview-host') as HTMLElement).hidden);
     const text = 'body-selected\n\n| A | B |\n| --- | --- |\n| table-selected | second-cell |\n\nother body\n\n  spaces  '
       + (large ? '\n\n' + 'padding text\n'.repeat(8100) : '');
     assert.equal(assessLargeDocument(text).boundedEditorWork, large);
@@ -44,7 +49,28 @@ export async function checkSearchPanelEntry(page: Page) {
     const label = large ? 'optimized' : 'ordinary';
     // Leave a native range in the cell, then establish a newer body selection.
     await page.click(firstCell + ' .meo-md-html-table-cell-preview');
-    await page.$eval(firstCell + ' textarea', (input: HTMLTextAreaElement) => input.setSelectionRange(0, input.value.length));
+    await page.waitForFunction(selector => document.activeElement === document.querySelector(selector),
+      {}, firstCell + ' textarea');
+    await chord('KeyA');
+    assert.deepEqual(await page.$eval(firstCell + ' textarea', (input: HTMLTextAreaElement) => ({
+      active: document.activeElement === input, start: input.selectionStart, end: input.selectionEnd, length: input.value.length
+    })), { active: true, start: 0, end: 'table-selected'.length, length: 'table-selected'.length },
+    `${label}/Select All belongs to the active native cell`);
+    assert.equal(await page.evaluate(() => {
+      const view = (window as any).__viewportTestView(), range = view.state.selection.main;
+      return range.from === 0 && range.to === view.state.doc.length;
+    }), false, `${label}/cell Select All must not select the outer document`);
+    const replaced = text.replace('table-selected', 'cell replacement');
+    await page.keyboard.type('cell replacement');
+    const exact = async (expected: string) => page.waitForFunction(expected =>
+      (window as any).__viewportTestView().state.doc.toString() === expected, {}, expected);
+    await exact(replaced);
+    await chord('KeyZ'); await exact(text);
+    await chord('KeyY'); await exact(replaced);
+    await chord('KeyZ'); await exact(text);
+    await page.waitForFunction(selector => document.activeElement === document.querySelector(selector)
+      && (document.activeElement as HTMLTextAreaElement).value === 'table-selected', {}, firstCell + ' textarea');
+    await chord('KeyA');
     await body();
     const stale = await page.$eval(firstCell + ' textarea', (input: HTMLTextAreaElement) => input.selectionEnd > input.selectionStart);
     assert(stale, `${label}/fixture must contain an unfocused native range`);
@@ -128,6 +154,12 @@ export async function checkSearchPanelEntry(page: Page) {
     assert.equal(await query(), 'body-selected', `${label}/Source uses the current document selection`);
     assert.equal(await page.evaluate(() => (window as any).__viewportTestView().state.doc.toString()), beforeMode, `${label}/search never edits source`);
     await close();
+    await body(false);
+    await chord('KeyA');
+    assert.deepEqual(await page.evaluate(() => {
+      const view = (window as any).__viewportTestView(), range = view.state.selection.main;
+      return { from: range.from, to: range.to, length: view.state.doc.length };
+    }), { from: 0, to: beforeMode.length, length: beforeMode.length }, `${label}/Source Select All retains complete-document scope`);
     console.log(`Search entry selection, query retention and mode continuity passed (${label}, actual derived-work budget)`);
   }
 }

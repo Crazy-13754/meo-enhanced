@@ -3745,6 +3745,15 @@ export function createEditor({
       return commitActiveTableInput();
     },
     selectAll() {
+      const target = getEditorReturnTarget();
+      if (target instanceof HTMLTextAreaElement && target.isConnected && view.contentDOM.contains(target)
+        && (!target.closest('.meo-md-html-table-shell') || target.parentElement?.classList.contains('is-editing'))) {
+        // The shared shortcut already consumed the native key. Keep selection
+        // in the cell that owns input instead of selecting the outer document.
+        target.focus({ preventScroll: true });
+        target.select();
+        return true;
+      }
       view.dispatch({
         selection: {
           anchor: 0,
