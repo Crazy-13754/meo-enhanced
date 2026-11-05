@@ -115,6 +115,8 @@ Mermaid diagrams expand their syntax-colored source directly in the Live documen
 
 Click a block LaTeX formula to edit its syntax-colored source in the main document, with a live preview below. Completion suggestions include formula previews. Select-all and layout-formatting buttons appear while the source is shown. Larger diagrams and formulas adapt to the available Preview and export area.
 
+Enable **LaTeX math delimiters** in the toolbar's **Settings → Document settings** popover, or in **More Settings → General → Math syntax**, to recognize `\(...\)` inline and `\[...\]` display math across editing, preview and export. The GitHub README preset keeps GitHub's fixed math syntax regardless of this switch. It is off by default to preserve Markdown bracket escapes; when enabled, escaped bracket text using these pairs is interpreted as math. Changes are saved to workspace settings when a workspace is open, and do not rewrite the document.
+
 Code blocks support syntax highlighting, select all, copy, and folding for long code. Preview and exported documents can retain syntax colors.
 
 ![Rendered Mermaid diagram, LaTeX formula, and code block in Live mode](docs/readme/en/diagrams-formulas-code.png)

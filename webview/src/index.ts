@@ -26,7 +26,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, isEditorCommandId, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, ArrowRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, CircleQuestionMark, ExternalLink, Heart, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Sigma, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, ChevronRight, ArrowRight, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, CircleQuestionMark, ExternalLink, Heart, History, Info } from 'lucide';
 import { createCodicon } from './helpers/codicons';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
@@ -284,6 +284,7 @@ let liveStrongColoring = false;
 let boldHeadingsEnabled = true;
 let largeDocumentOptimizationEnabled = false;
 let tableStickyHeaderEnabled = true;
+let latexDelimiters = false;
 let restoreReadingPositionOnOpen = true;
 let outlineUiState: { mode: 'floating' | 'fixed'; width: number } = { mode: 'fixed', width: 260 };
 
@@ -360,6 +361,14 @@ liveStrongColoringBtn.dataset.action = 'liveStrongColoring';
 liveStrongColoringBtn.setAttribute('role', 'menuitemcheckbox');
 liveStrongColoringBtn.setAttribute('aria-checked', 'false');
 appendMoreToolsOptionContent(liveStrongColoringBtn, Bold, activeUiStrings.strongColoring);
+
+const latexDelimitersBtn = document.createElement('button');
+latexDelimitersBtn.type = 'button';
+latexDelimitersBtn.className = 'more-tools-option more-tools-toggle-option';
+latexDelimitersBtn.dataset.action = 'latexDelimiters';
+latexDelimitersBtn.setAttribute('role', 'menuitemcheckbox');
+latexDelimitersBtn.setAttribute('aria-checked', 'false');
+appendMoreToolsOptionContent(latexDelimitersBtn, Sigma, activeUiStrings.latexMathDelimitersShort);
 
 const sourceLineNumbersBtn = document.createElement('button');
 sourceLineNumbersBtn.type = 'button';
@@ -588,6 +597,19 @@ const setContentMaxWidthEnabled = (
   if (post && changed) {
     vscode.postMessage({ type: 'setContentMaxWidth', enabled: contentMaxWidthEnabled });
   }
+};
+
+const setLatexDelimiters = (enabled: boolean, { post = true }: { post?: boolean } = {}) => {
+  const changed = latexDelimiters !== enabled;
+  latexDelimiters = enabled;
+  latexDelimitersBtn.classList.toggle('is-active', enabled);
+  latexDelimitersBtn.setAttribute('aria-checked', enabled ? 'true' : 'false');
+  if (changed) {
+    editor?.setLatexDelimiters(enabled);
+    previewAdapter.refreshVisible(getCurrentEditorText(), { preserveViewport: true });
+  }
+  if (post) vscode.postMessage({ type: 'setLatexDelimiters', enabled });
+  settingsWindow?.present();
 };
 
 const setTableStickyHeaderEnabled = (
@@ -1136,7 +1158,7 @@ toolbarOverflowSection.setAttribute('aria-label', activeUiStrings.toolbarOverflo
 toolbarOverflowSection.hidden = true;
 const displaySettingsHeading = document.createElement('div');
 displaySettingsHeading.className = 'more-tools-section-label';
-displaySettingsHeading.textContent = activeUiStrings.documentDisplaySettings;
+displaySettingsHeading.textContent = activeUiStrings.documentSettings;
 const preferencesHeading = document.createElement('div');
 preferencesHeading.className = 'more-tools-section-label';
 const preferencesLabel = document.createElement('span'); preferencesLabel.className = 'more-tools-preferences-label';
@@ -1265,6 +1287,7 @@ const applyUiLanguage = (language: UiLanguage): void => {
   contentMaxWidthBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.constrainWidth;
   sourceLineNumbersBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.showLineNumbers;
   liveStrongColoringBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.strongColoring;
+  latexDelimitersBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.latexMathDelimitersShort;
   longCodeBlockFoldingBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.foldLongCodeBlocks;
   largeDocumentOptimizationBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.largeDocumentStartup;
   largeDocumentTooltip?.setContent({ text: strings.largeDocumentStartupHint, kind: 'description' });
@@ -1300,7 +1323,7 @@ const applyUiLanguage = (language: UiLanguage): void => {
   moreToolsButton.dataset.tooltip = strings.more;
   moreToolsButton.setAttribute('aria-label', strings.moreTools);
   moreToolsPanel.setAttribute('aria-label', strings.moreTools);
-  displaySettingsHeading.textContent = strings.documentDisplaySettings;
+  displaySettingsHeading.textContent = strings.documentSettings;
   openingDocumentsHeading.textContent = strings.openingDocumentsSettings;
   interfaceSettingsHeading.textContent = strings.interfaceSettings;
   supportHeading.textContent = strings.supportHeading;
@@ -1390,6 +1413,7 @@ moreToolsPanel.append(
   longCodeBlockFoldingBtn,
   contentMaxWidthBtn,
   liveStrongColoringBtn,
+  latexDelimitersBtn,
   interfaceSettingsHeading,
   editorAppearanceRow,
   uiLanguageRow,
@@ -1806,6 +1830,7 @@ const previewController = createPreviewController({
   vscode,
   optionsMenu: previewOptionsPanel,
   uiLanguage: activeUiLanguage,
+  getLatexDelimiters: () => latexDelimiters,
   getEditorAppearance: () => resolveEditorAppearanceForPreview(),
   isCurrentText: (text) => normalizeDocumentText(getCurrentEditorText()) === text,
   getCodePalette: (appearance) => resolveCodePaletteForPreview(appearance),
@@ -3153,6 +3178,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     initialGitGutter: gitChangesGutterVisible,
     initialLongCodeBlockFolding: longCodeBlockFoldingEnabled,
     initialTableStickyHeaderEnabled: tableStickyHeaderEnabled,
+    initialLatexDelimiters: latexDelimiters,
     initialDiagnostics: pendingDiagnostics,
     initialImageIntrinsicSizes: [...imageIntrinsicSizes.values()],
     onApplyTransaction: handleLocalEditorChange,
@@ -3564,6 +3590,7 @@ const handleInit = (message: InitMessage) => {
   sourceLineNumbersBtn.setAttribute('aria-checked', message.sourceLineNumbers !== 'off' ? 'true' : 'false');
   longCodeBlockFoldingBtn.setAttribute('aria-checked', longCodeBlockFoldingEnabled ? 'true' : 'false');
   setTableStickyHeaderEnabled(message.tableStickyHeaderEnabled, { post: false });
+  setLatexDelimiters(message.latexDelimiters === true, { post: false });
   setLiveStrongColoring(message.liveStrongColoring, { post: false });
   setBoldHeadingsEnabled(message.boldHeadingsEnabled, { post: false });
   setLargeDocumentOptimizationEnabled(message.largeDocumentOptimizationEnabled, { post: false });
@@ -3626,6 +3653,7 @@ const exportAdapter = createExportWebviewAdapter({
   getBlockRenderers: documentBlocks.getDescriptors,
   postMessage: (message) => vscode.postMessage(message),
   getCurrentText: getCurrentEditorText,
+  getLatexDelimiters: () => latexDelimiters,
   whenDocumentIdle: () => documentSessionAdapter.whenIdle(),
   getPreviewAppearance: () => previewAdapter.getAppearance(),
   getUiLanguage: () => activeUiLanguage,
@@ -3752,7 +3780,7 @@ settingsWindow = createSettingsWindow({
   getPreferences: () => editingPreferences, update: change => editingPreferencesTransport.update(change), returnFocus: () => getActiveEditorMode() === 'preview' ? moreToolsButton : editor ?? moreToolsButton,
   getGeneral: language => {
     const strings = getUiStrings(language);
-    const switchItem = (id: GeneralSetting['id'], section: 'display' | 'opening', title: string, get: () => boolean, set: (value: boolean) => void, description?: string): GeneralSetting => ({ id, section, title, description, control: { kind: 'switch', get, set } });
+    const switchItem = (id: GeneralSetting['id'], section: 'display' | 'math' | 'opening', title: string, get: () => boolean, set: (value: boolean) => void, description?: string): GeneralSetting => ({ id, section, title, description, control: { kind: 'switch', get, set } });
     return [
       switchItem('lineNumbers', 'display', strings.showLineNumbers, () => pendingSourceLineNumbers !== 'off', () => sourceLineNumbersBtn.click()),
       switchItem('foldCode', 'display', strings.foldLongCodeBlocks, () => longCodeBlockFoldingEnabled, () => longCodeBlockFoldingBtn.click()),
@@ -3760,6 +3788,7 @@ settingsWindow = createSettingsWindow({
       switchItem('strongColor', 'display', strings.strongColoring, () => liveStrongColoring, setLiveStrongColoring),
       switchItem('boldHeadings', 'display', strings.boldHeadings, () => boldHeadingsEnabled, setBoldHeadingsEnabled),
       switchItem('stickyHeader', 'display', strings.stickyTableHeader, () => tableStickyHeaderEnabled, setTableStickyHeaderEnabled),
+      switchItem('latexDelimiters', 'math', strings.latexMathDelimiters, () => latexDelimiters, setLatexDelimiters, strings.latexMathDelimitersDescription),
       switchItem('restorePosition', 'opening', strings.resumeReadingPositionLabel, () => restoreReadingPositionOnOpen, setRestoreReadingPositionOnOpen),
       switchItem('largeDocument', 'opening', strings.largeDocumentStartup, () => largeDocumentOptimizationEnabled, setLargeDocumentOptimizationEnabled, strings.largeDocumentStartupDescription),
       { id: 'language', section: 'interface', title: strings.interfaceLanguage, control: { kind: 'choice', get: () => activeUiLanguagePreference, set: value => { activeUiLanguagePreference = value as UiLanguagePreference; uiLanguageControl.setActive(activeUiLanguagePreference); applyUiLanguage(value === 'auto' ? automaticUiLanguage : value as UiLanguage); vscode.postMessage({ type: 'setUiLanguagePreference', language: activeUiLanguagePreference }); }, options: [{ value: 'auto', label: strings.auto }, { value: 'zh-CN', label: '简体中文' }, { value: 'en', label: 'English' }] } },
@@ -4039,6 +4068,10 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (message.type === 'latexDelimitersChanged') {
+    setLatexDelimiters(message.enabled, { post: false });
+    return;
+  }
   if (message.type === 'tableStickyHeaderChanged') {
     setTableStickyHeaderEnabled(message.enabled, { post: false });
     return;
@@ -4490,6 +4523,9 @@ contentMaxWidthBtn.addEventListener('click', () => {
 });
 liveStrongColoringBtn.addEventListener('click', () => {
   setLiveStrongColoring(!liveStrongColoring);
+});
+latexDelimitersBtn.addEventListener('click', () => {
+  setLatexDelimiters(!latexDelimiters);
 });
 sourceLineNumbersBtn.addEventListener('click', () => {
   const nextMode = pendingSourceLineNumbers === 'off' ? previousVisibleSourceLineNumbers : 'off';

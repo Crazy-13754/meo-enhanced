@@ -60,6 +60,7 @@ const completeInit = {
   contentMaxWidthEnabled: true,
   largeDocumentOptimizationEnabled: true,
   tableStickyHeaderEnabled: true,
+  latexDelimiters: false,
   restoreReadingPositionOnOpen: true,
   readingPositionRestore: { line: 42, lineOffset: 6.5 },
   findOptions: { wholeWord: false, caseSensitive: false },
@@ -78,6 +79,9 @@ const completeInit = {
 assert.deepEqual(decodeReadyMessage({ type: 'ready', extra: true }), { type: 'ready' });
 assert.equal(decodeReadyMessage(null), null);
 assert.deepEqual(decodeReadyMessage({ type: 'ready', version: 1 }), { type: 'ready' });
+assert.equal(decodeInitMessage({ ...completeInit, latexDelimiters: undefined })?.latexDelimiters, false);
+assert.equal(decodeInitMessage({ ...completeInit, latexDelimiters: true })?.latexDelimiters, true);
+assert.equal(decodeInitMessage({ ...completeInit, latexDelimiters: 'true' }), null);
 
 assert.deepEqual(decodeInitMessage({ ...completeInit, editingPreferences: undefined, editingPreferencesRevision: undefined }), completeInit, 'older init messages receive the default preferences and revision');
 assert.equal(decodeInitMessage({ ...completeInit, editorLineHeight: undefined })?.editorLineHeight,

@@ -8,6 +8,7 @@ import {
 import { renderMathToHtml } from '../shared/mathRenderer';
 
 export type { LatexMathMode, LatexMathRange } from '../shared/latexMathScanner';
+export { findFencedDisplayMathEnd } from '../shared/latexMathScanner';
 
 export function collectLatexMathRanges(text: string, options: LatexMathScanOptions = {}): LatexMathRange[] {
   return scanLatexMath(text, options);

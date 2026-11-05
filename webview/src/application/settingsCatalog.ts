@@ -42,7 +42,8 @@ export const typingSections = ['symbols', 'structure', 'paste', 'candidates'] as
 export type TypingSection = typeof typingSections[number];
 export const sectionTitles = {
   appearanceMode: ['界面模式', 'Interface mode'], appearanceTypography: ['文档排版', 'Document typography'], appearanceColors: ['基础颜色', 'Basic colors'], appearanceAdvanced: ['高级颜色', 'Advanced colors'],
-  display: ['文档显示', 'Document display'], opening: ['打开文档时', 'Opening documents'], interface: ['界面设置', 'Interface'],
+  math: ['公式语法', 'Math syntax'],
+  display: ['文档设置', 'Document settings'], opening: ['打开文档时', 'Opening documents'], interface: ['界面设置', 'Interface'],
   presetList: ['预设列表', 'Preset list'], presetFiles: ['导入与制作', 'Import and authoring'],
   aboutProject: ['MEO Enhanced', 'MEO Enhanced'], aboutFeedback: ['问题与建议', 'Questions and ideas'], aboutSupport: ['支持持续开发', 'Support development'],
   symbols: ['符号与选区', 'Symbols and selections'], structure: ['列表与结构', 'Lists and structure'], paste: ['粘贴', 'Pasting'], candidates: ['输入候选', 'Suggestions'],
@@ -110,6 +111,7 @@ export function commandTitle(command: EditorCommandId, language: UiLanguage): st
 type SearchKeywords = readonly [string, string];
 /** Search aliases belong to the setting, and are indexed in both languages. */
 export const generalSearchKeywords = {
+  latexDelimiters: ['公式 数学 LaTeX 定界符 分隔符 括号 反斜杠 ChatGPT', 'math formula LaTeX delimiters brackets backslash ChatGPT'],
   lineNumbers: ['行号 行数 行编号 边栏', 'line numbers numbering gutter'],
   foldCode: ['代码折叠 收起代码 展开代码 长代码', 'code folding collapse expand long code'],
   width: ['内容宽度 页面宽度 最大宽度 限宽 版心 阅读宽度', 'content width page width max width reading width wrap'],

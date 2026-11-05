@@ -10,6 +10,7 @@ import { renderedBlockPreviewHeight, RenderedBlockPreviewHeight } from './render
 import { matchInlineScript } from '../../../src/foundation/inlineScript';
 import { markdownTableSeparatorPipes } from '../../../src/foundation/markdownTableRow';
 import { matchInlineHtmlCode } from '../../../src/shared/htmlPolicy';
+import { latexDelimitersFacet } from '../editor/mathSyntaxPreference';
 import { parseTableInlineSyntax } from './inlineMarkdownParser';
 import { wireNativeSymbolInput, nativeSymbolInput } from '../editor/nativeTypingAssistance';
 import { automaticSymbolPairs, symbolOriginEpoch, replaceAutomaticSymbolPairArea, inputAssistanceFacet, type AutomaticSymbolPair } from '../editor/typingAssistance';
@@ -1569,7 +1570,7 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
   inlineSyntax?: ReturnType<typeof parseTableInlineSyntax>;
 }) {
   const { baseOffset = 0, diagnostics = [], disableLinkParsers = false, searchState = null, sourceRange = null } = options;
-  const inlineSyntax = options.inlineSyntax ?? parseTableInlineSyntax(text, baseOffset);
+  const inlineSyntax = options.inlineSyntax ?? parseTableInlineSyntax(text, baseOffset, options.view.state.facet(latexDelimitersFacet));
   options = { ...options, inlineSyntax };
   const colorRangesByStart = new Map(collectHexColorRangesFromText(text).map((range) => [range.from, range]));
   let buffer = '';
@@ -1587,6 +1588,26 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
   };
 
   for (let i = 0; i < text.length;) {
+    const math = (text[i] === '$' || options.view.state.facet(latexDelimitersFacet) && text[i] === '\\') ? parseLatexMathAt(text, i, { latexDelimiters: options.view.state.facet(latexDelimitersFacet), excludedRanges: inlineSyntax.mathExcludedRanges
+      .filter(range => range.from > baseOffset + i)
+      .map(range => ({ from: range.from - baseOffset, to: range.to - baseOffset })) }) : null;
+    if (math) {
+      const mathElement = createLatexMathElement(math.content, math.mode);
+      if (mathElement) {
+        flushBuffer();
+        setInlineSourceRange(
+          mathElement,
+          { from: baseOffset + math.from, to: baseOffset + math.to },
+          { atomic: true }
+        );
+        parent.appendChild(mathElement);
+      } else {
+        appendToBuffer(text.slice(math.from, math.to), math.from);
+      }
+      i = math.to;
+      continue;
+    }
+
     if (text[i] === '\\' && i + 1 < text.length && tableInlineEscapableChars.has(text[i + 1])) {
       flushBuffer();
       const mapped = appendInlineMappedText(parent, text[i + 1], {
@@ -1683,26 +1704,6 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       flushBuffer();
       appendTablePlainText(parent, text.slice(i, htmlTagEnd - baseOffset), baseOffset + i, diagnostics, searchState, sourceRange);
       i = htmlTagEnd - baseOffset;
-      continue;
-    }
-
-    const math = text[i] === '$' ? parseLatexMathAt(text, i, { excludedRanges: inlineSyntax.mathExcludedRanges
-      .filter(range => range.from > baseOffset + i)
-      .map(range => ({ from: range.from - baseOffset, to: range.to - baseOffset })) }) : null;
-    if (math) {
-      const mathElement = createLatexMathElement(math.content, math.mode);
-      if (mathElement) {
-        flushBuffer();
-        setInlineSourceRange(
-          mathElement,
-          { from: baseOffset + math.from, to: baseOffset + math.to },
-          { atomic: true }
-        );
-        parent.appendChild(mathElement);
-      } else {
-        appendToBuffer(text.slice(math.from, math.to), math.from);
-      }
-      i = math.to;
       continue;
     }
 
@@ -2418,6 +2419,7 @@ function buildWidgetTableData(
     headerCells,
     rows,
     signature: JSON.stringify({
+      latexDelimiters: state.facet(latexDelimitersFacet),
       colCount,
       headerCells,
       rows,
@@ -2824,6 +2826,7 @@ class HtmlTableController extends UiLanguageSensitiveWidget {
       const previousValues = [previousData.headerCells, ...previousData.rows];
       const footnotesChanged = JSON.stringify(JSON.parse(previousData.signature).footnoteReferences)
         !== JSON.stringify(JSON.parse(tableData.signature).footnoteReferences);
+      const mathSyntaxChanged = JSON.parse(previousData.signature).latexDelimiters !== JSON.parse(tableData.signature).latexDelimiters;
       const { pending, editingTarget } = this.cellInteraction.snapshot();
       for (let row = 0; row < allRowInputs.length; row += 1) {
         for (let col = 0; col < allRowInputs[row].length; col += 1) {
@@ -2840,6 +2843,7 @@ class HtmlTableController extends UiLanguageSensitiveWidget {
           // A cell owns its preview; reference numbering remains a dependency
           // even when the cell's own source text has not changed.
           if (previousValues[row]?.[col] !== values[row]?.[col]
+            || mathSyntaxChanged && /\\[([]/.test(values[row]?.[col] ?? '')
             || JSON.stringify(previousData.diagnostics?.[row]?.[col] ?? []) !== JSON.stringify(tableData.diagnostics?.[row]?.[col] ?? [])
             || footnotesChanged && /\[\^|\^\[/.test(values[row]?.[col] ?? '')) {
             this.refreshCellPreviewFromInput(input);

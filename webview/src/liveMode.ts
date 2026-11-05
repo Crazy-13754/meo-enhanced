@@ -48,7 +48,9 @@ import {
 import { ImageGroupWidget, ImageWidget, getImageData, isImageUrl, type ImageGroupItem } from './helpers/images';
 import { getImagePresentationFactory } from './editor/imagePresentation';
 import { liveHighlightStyle, sourceMarkdownHighlightProps } from './theme';
-import { inlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
+import { getInlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
+import { latexDelimitersFacet } from './editor/mathSyntaxPreference';
+import { mathDelimiterLength } from './helpers/math';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
 import { currentSyntaxTree, getFencedCodeInfo, headingContentRange, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged, withMarkdownSyntaxSnapshot } from './helpers/markdownSyntax';
 import { hasSameLiveMarkdownSyntax, hasSameLiveMarkdownOutsideBlock } from './helpers/livePresentationSyntax';
@@ -2947,7 +2949,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     bindWidgetClick(wrapper, event => {
       event.preventDefault();
       const from = view.posAtDOM(wrapper);
-      view.dispatch({ selection: { anchor: Math.min(from + (this.mode === 'display' ? 2 : 1), view.state.doc.length) } });
+      view.dispatch({ selection: { anchor: Math.min(from + mathDelimiterLength({ mode: this.mode, raw: view.state.doc.sliceString(from, from + 2) }), view.state.doc.length) } });
       view.focus();
     });
     return wrapper;
@@ -4139,7 +4141,7 @@ function projectLiveBlockCommand(decorations: DecorationSet, transaction: Transa
   // references outside this scope. They keep the mapped input presentation.
   const prose = source.replace(/(^|\n)([ \t]*(?:[-+*]|\d+[.)])[ \t]+)\[[ xX/-]\](?=[ \t])/g, '$1$2');
   if (/[`~<>\[\]\\|]/.test(prose) || parseFrontmatter(before)?.openingFrom === from) return;
-  const local = editorBaseMarkdownParser.parse(source);
+  const local = editorBaseMarkdownParsers[Number(state.facet(latexDelimitersFacet))]!.parse(source);
   const snapshot = new Tree(local.type, local.children, local.positions.map(position => position + nextFrom), state.doc.length);
   const mapped = mapStableLiveDecorations(decorations, transaction.changes, state);
   if (!mapped || !projectUnchangedFootnotes(before, state, transaction.changes)) return;
@@ -4882,27 +4884,31 @@ const markdownHtmlLanguage = html({ matchClosingTags: false });
 // Separate configure calls preserve wrapper order. Markdown extension arrays
 // compose wrappers outside-in; the background pass must replace only the outer
 // grammar, while CodeMirror still runs its mixed-language pass afterwards.
-const editorBaseMarkdownParser = (markdownLanguage.parser as MarkdownParser)
-  .configure([...inlineMarkdownExtensions, { props: [sourceMarkdownHighlightProps] }, { remove: ['Emoji'] }]);
+const editorBaseMarkdownParsers = [false, true].map(latexDelimiters => (markdownLanguage.parser as MarkdownParser)
+  .configure([...getInlineMarkdownExtensions(latexDelimiters), { props: [sourceMarkdownHighlightProps] }, { remove: ['Emoji'] }]));
 
 /** Cold Source input can precede the worker. Starting at document offset zero
  * proves all preceding container/fence context; cap the complete current line.
  * This command-local prefix is never published as a document syntax result. */
 export function boundedMarkdownInputPrefix(state: EditorState, upto: number): Tree | undefined {
-  return upto <= 4_096 ? editorBaseMarkdownParser.parse(state.doc.sliceString(0, upto)) : undefined;
+  return upto <= 4_096 ? editorBaseMarkdownParsers[Number(state.facet(latexDelimitersFacet))]!.parse(state.doc.sliceString(0, upto)) : undefined;
 }
 
-const editorOuterMarkdownParser = editorBaseMarkdownParser
-  .configure(backgroundMarkdownParser)
-  .configure(certifyMarkdownStructure);
-const editorOuterMarkdownLanguage = new Language(markdownLanguage.data, editorOuterMarkdownParser, [], 'markdown');
-const editorMarkdownSupport = markdown({ base: editorOuterMarkdownLanguage, addKeymap: false, htmlTagLanguage: markdownHtmlLanguage });
-export const editorMarkdownLanguage = new LanguageSupport(new Language(markdownLanguage.data,
-  editorOuterMarkdownParser.configure(markdownMixedLanguages({
-    codeLanguage: resolveCodeLanguage, htmlParser: markdownHtmlLanguage.language.parser
-  })), [], 'markdown'), editorMarkdownSupport.support);
+const editorMarkdownLanguages = editorBaseMarkdownParsers.map(editorBaseMarkdownParser => {
+  const editorOuterMarkdownParser = editorBaseMarkdownParser
+    .configure(backgroundMarkdownParser)
+    .configure(certifyMarkdownStructure);
+  const editorOuterMarkdownLanguage = new Language(markdownLanguage.data, editorOuterMarkdownParser, [], 'markdown');
+  const editorMarkdownSupport = markdown({ base: editorOuterMarkdownLanguage, addKeymap: false, htmlTagLanguage: markdownHtmlLanguage });
+  return new LanguageSupport(new Language(markdownLanguage.data,
+    editorOuterMarkdownParser.configure(markdownMixedLanguages({
+      codeLanguage: resolveCodeLanguage, htmlParser: markdownHtmlLanguage.language.parser
+    })), [], 'markdown'), editorMarkdownSupport.support);
+});
+export const getEditorMarkdownLanguage = (latexDelimiters = false) => editorMarkdownLanguages[Number(latexDelimiters)]!;
+export const editorMarkdownLanguage = getEditorMarkdownLanguage();
 
-export function liveModeExtensions(options: { readonly largeDocument?: boolean } = {}): Extension[] {
+export function liveModeExtensions(options: { readonly largeDocument?: boolean; readonly language?: Extension } = {}): Extension[] {
   return [
     ...liveInputDerivedWorkExtensions(options),
     liveInputDerivedWorkReadiness.of(state => !deferredLiveLocalInputs.has(state)
@@ -4910,7 +4916,7 @@ export function liveModeExtensions(options: { readonly largeDocument?: boolean }
     // Seed changed-line conflict proofs before any Live presentation reader.
     ...mergeConflictSourceExtensions(),
     ...(options.largeDocument ? liveViewportPresentationExtensions() : []),
-    editorMarkdownLanguage,
+    options.language ?? editorMarkdownLanguage,
     options.largeDocument ? viewportSyntaxHighlighting(liveHighlightStyle) : syntaxHighlighting(liveHighlightStyle),
     markdownTagField,
     livePointerSelectionActiveField,

@@ -105,7 +105,12 @@ export function assessLargeDocument(text: string): LargeDocumentAssessment {
   }
   const images = countMatches(text, /!\[[^\]\r\n]*\]\([^\r\n]+\)/gu, excluded);
   const displayMathDelimiters = countMatches(text, /^\$\$\s*$/gmu, excluded);
-  const math = fencedMath + Math.floor(displayMathDelimiters / 2);
+  // Admission counts potential rich blocks conservatively; the explicit syntax
+  // preference still owns whether these markers are rendered as mathematics.
+  const bracketPrefix = String.raw`^[ \t]*(?:>[ \t]*)*(?:(?:[-+*]|\d+[.)])[ \t]+)?`;
+  const bracketMath = Math.min(countMatches(text, new RegExp(bracketPrefix + String.raw`\\\[[ \t\r]*$`, 'gmu'), excluded),
+    countMatches(text, new RegExp(bracketPrefix + String.raw`\\\][ \t\r]*$`, 'gmu'), excluded));
+  const math = fencedMath + Math.floor(displayMathDelimiters / 2) + bracketMath;
   const dimensions: LargeDocumentDimensions = {
     bytes: new TextEncoder().encode(text).byteLength,
     ...lineDimensions(text),

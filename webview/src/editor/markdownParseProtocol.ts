@@ -1,7 +1,7 @@
 import type { MarkdownTreeTransfer } from './markdownTreeTransfer';
 import type { ParsedFootnotes, MarkdownPresentationContext, MarkdownCodeFence } from '../../../src/foundation/markdownDocumentContext';
 
-export type MarkdownParseRequest = { readonly id: number; readonly base: number; readonly tabSize: number; readonly blocks: boolean } & (
+export type MarkdownParseRequest = { readonly id: number; readonly base: number; readonly tabSize: number; readonly blocks: boolean; readonly latexDelimiters?: boolean } & (
   | { readonly text: string; readonly changes?: never }
   | { readonly changes: unknown; readonly text?: never }
 );

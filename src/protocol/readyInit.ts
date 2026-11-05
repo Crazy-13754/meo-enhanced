@@ -82,6 +82,7 @@ export type InitMessage = {
   readonly contentMaxWidthEnabled: boolean;
   readonly largeDocumentOptimizationEnabled: boolean;
   readonly tableStickyHeaderEnabled: boolean;
+  readonly latexDelimiters?: boolean;
   readonly boldHeadingsEnabled: boolean;
   readonly restoreReadingPositionOnOpen: boolean;
   readonly readingPositionRestore: ReadingPositionDto | null;
@@ -110,6 +111,7 @@ export function decodeReadyMessage(value: unknown): ReadyMessage | null {
 }
 
 export function decodeInitMessage(value: unknown): InitMessage | null {
+  if (isRecord(value) && value.latexDelimiters !== undefined && typeof value.latexDelimiters !== 'boolean') return null;
   if (isRecord(value) && value.imageIntrinsicSizes !== undefined && decodeImageIntrinsicSizes(value.imageIntrinsicSizes) === null) return null;
   if (isRecord(value) && value.editorMouseWheelZoom !== undefined && typeof value.editorMouseWheelZoom !== 'boolean') return null;
   if (isRecord(value) && value.editorLineHeight !== undefined
@@ -251,6 +253,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     editorLineHeight: value.editorLineHeight === undefined ? DEFAULT_EDITOR_LINE_HEIGHT : value.editorLineHeight as number,
     largeDocumentOptimizationEnabled,
     tableStickyHeaderEnabled,
+    latexDelimiters: value.latexDelimiters === true,
     boldHeadingsEnabled,
     restoreReadingPositionOnOpen,
     readingPositionRestore

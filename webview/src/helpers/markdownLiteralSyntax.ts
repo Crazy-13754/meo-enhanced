@@ -36,19 +36,19 @@ export function collectInlineMathExcludedRanges(parser: MarkdownParser, text: st
   return ranges;
 }
 
-export function createMathLiteralSyntaxExtension(parser: MarkdownParser): MarkdownConfig {
+export function createMathLiteralSyntaxExtension(parser: MarkdownParser, latexDelimiters = false): MarkdownConfig {
   const excludedByContext = new WeakMap<InlineContext, { from: number; to: number }[]>();
   return { defineNodes: ['InlineMath', 'InlineMathExcluded'], parseInline: [{
-    name: 'MathLiteral', before: 'HTMLCodeLiteral',
+    name: 'MathLiteral', before: 'Escape',
     parse(context, next, pos) {
-      if (next !== 36) return -1;
+      if (next !== 36 && !(latexDelimiters && next === 92)) return -1;
       let excluded = excludedByContext.get(context);
       if (!excluded) {
         excluded = collectInlineMathExcludedRanges(parser, context.text);
         excludedByContext.set(context, excluded);
       }
       const from = pos - context.offset;
-      const math = parseLatexMathAt(context.text, from, { excludedRanges: excluded.filter(range => range.from > from) });
+      const math = parseLatexMathAt(context.text, from, { latexDelimiters, excludedRanges: excluded.filter(range => range.from > from) });
       return math ? context.addElement(context.elt('InlineMath', pos, math.to + context.offset,
         excluded.filter(range => range.from > from && range.to < math.to).map(range =>
           context.elt('InlineMathExcluded', context.offset + range.from, context.offset + range.to)))) : -1;

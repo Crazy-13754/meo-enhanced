@@ -12,6 +12,8 @@ import { collectMarkdownLiteralRanges } from './markdownLiteralRanges';
 import { getFencedCodeInfo, resolvedSyntaxTree } from './markdownSyntax';
 import { markdownStructureIdentity } from '../editor/markdownStructure';
 import type { MarkdownMathRange } from '../../../src/foundation/markdownDocumentContext';
+import { latexDelimitersFacet } from '../editor/mathSyntaxPreference';
+import { mathDelimiterLength } from './math';
 
 export type DocumentMathRange = MarkdownMathRange;
 const fullRangeCache = new Map<EditorState['doc'], { tree: Tree; tabSize: number; ranges: readonly DocumentMathRange[]; bytes: number }>();
@@ -54,7 +56,8 @@ export function collectDocumentMathRanges(
     baseOffset,
     excludedRanges: exclusions.filter(range => !scope || range.to > scope.from && range.from < scope.to)
       .map(range => ({ from: Math.max(0, range.from - baseOffset), to: range.to - baseOffset })),
-    includeEmptyDisplay: true
+    includeEmptyDisplay: true,
+    latexDelimiters: state.facet(latexDelimitersFacet)
   });
   const scripts = literalRanges.filter(range => range.script
     && !candidates.some(math => range.from >= math.from && range.from < math.to));
@@ -72,7 +75,7 @@ export function collectDocumentMathRanges(
     const text = lines.map(line => state.doc.sliceString(line.prefixTo, line.to)).join('\n');
     const firstContent = lines.find(line => line.prefixTo < line.to);
     ranges.push({ from: node.from, to: node.to, mode: 'display', fencedDisplay: true,
-      content: mathFenceContent(text), raw: state.doc.sliceString(node.from, node.to),
+      content: mathFenceContent(text, state.facet(latexDelimitersFacet)), raw: state.doc.sliceString(node.from, node.to),
       fenceSource: { text, from: lines[0]?.prefixTo ?? closing.from,
         prefix: firstContent ? state.doc.sliceString(firstContent.from, firstContent.prefixTo)
           : parseBlockLinePrefix(closing.text, state.tabSize).prefix } });
@@ -99,7 +102,7 @@ export function getDisplayMathSource(state: EditorState, range: DocumentMathRang
 export function getDisplayMathCopySource(state: EditorState, range: DocumentMathRange) {
   const source = getDisplayMathSource(state, range);
   if (!source) return null;
-  const body = range.fenceSource ? mathFenceBodyRange(source.text) : { from: 0, to: source.text.length };
+  const body = range.fenceSource ? mathFenceBodyRange(source.text, state.facet(latexDelimitersFacet)) : { from: 0, to: source.text.length };
   const lines = source.text.split('\n');
   const position = (offset: number) => {
     const before = source.text.slice(0, offset).split('\n');
@@ -134,8 +137,8 @@ export function getMathCompletionBody(state: EditorState, position: number): Mat
   const range = ranges.find(range => position > range.from && position < range.to);
   if (range) {
     const source = range.fencedDisplay ? getDisplayMathSource(state, range) : null;
-    return { from: source?.from ?? range.from + (range.mode === 'display' ? 2 : 1),
-      to: range.fencedDisplay ? state.doc.lineAt(range.to - 1).from : range.to - (range.mode === 'display' ? 2 : 1),
+    return { from: source?.from ?? range.from + mathDelimiterLength(range),
+      to: range.fencedDisplay ? state.doc.lineAt(range.to - 1).from : range.to - mathDelimiterLength(range),
       display: range.mode === 'display', prefix: source?.prefix ?? '' };
   }
   for (;;) {
@@ -147,21 +150,26 @@ export function getMathCompletionBody(state: EditorState, position: number): Mat
   const excluded = collectMarkdownLiteralRanges(state, tree).filter(range => !range.script);
   // A virtual closing delimiter recognizes editing context only. It is never
   // written to the document or shared with preview/export's complete syntax.
-  const inline = collectLatexMathRanges(before + '$', { excludedRanges: excluded.map(range => ({ from: range.from - line.from, to: range.to - line.from })) })
-    .find(range => range.to === before.length + 1 && range.mode === 'inline');
+  const latexDelimiters = state.facet(latexDelimitersFacet);
+  const inline = (latexDelimiters ? ['$', '\\)'] : ['$']).flatMap(closer =>
+    collectLatexMathRanges(before + closer, { latexDelimiters, excludedRanges: excluded.map(range => ({ from: range.from - line.from, to: range.to - line.from })) })
+      .filter(range => range.to === before.length + closer.length && range.mode === 'inline')).at(-1);
   // A virtual closer must not turn a price into math. Numeric starts need an
   // explicit TeX cue or operator until the author supplies a real closing $.
-  const ambiguousNumber = inline && /^[+-]?(?:\d|\.\d)/.test(inline.content)
+  const ambiguousNumber = inline?.raw.startsWith('$') && /^[+-]?(?:\d|\.\d)/.test(inline.content)
     && !/\\(?!\$)|[_^{}=+*/<>-]/.test(inline.content.replace(/^[+-]/, ''));
-  if (inline && !ambiguousNumber && !/^\d+(?:[.,]\d+)?\s+[A-Za-z]{2}/.test(inline.content)) {
-    return { from: line.from + inline.from + 1, to: line.to, display: false, prefix: '' };
+  if (inline && !ambiguousNumber && (!inline.raw.startsWith('$') || !/^\d+(?:[.,]\d+)?\s+[A-Za-z]{2}/.test(inline.content))) {
+    return { from: line.from + inline.from + mathDelimiterLength(inline), to: line.to, display: false, prefix: '' };
   }
   const prefix = parseBlockLinePrefix(line.text, state.tabSize).prefix;
-  const beforeHead = state.sliceDoc(0, position), closing = '\n' + prefix + '$$';
-  const display = collectLatexMathRanges(beforeHead + closing, { excludedRanges: excluded, includeEmptyDisplay: true })
-    .find(range => range.fencedDisplay && range.to === beforeHead.length + closing.length);
+  const beforeHead = state.sliceDoc(0, position);
+  const display = (latexDelimiters ? ['$$', '\\]'] : ['$$']).flatMap(closer => {
+    const closing = '\n' + prefix + closer;
+    return collectLatexMathRanges(beforeHead + closing, { latexDelimiters, excludedRanges: excluded, includeEmptyDisplay: true })
+      .filter(range => range.fencedDisplay && range.to === beforeHead.length + closing.length);
+  }).at(-1);
   if (!display) return null;
   const opening = state.doc.lineAt(display.from);
-  const end = findFencedDisplayMathEnd(state.doc.toString(), opening.to + 1, state.sliceDoc(opening.from, display.from));
+  const end = findFencedDisplayMathEnd(state.doc.toString(), opening.to + 1, state.sliceDoc(opening.from, display.from), display.raw.startsWith('\\[') ? '\\]' : '$$');
   return { from: display.from + 2, to: end.closed ? state.doc.lineAt(end.to).from : end.to, display: true, prefix };
 }

@@ -7,7 +7,8 @@ import block from './grammars/md-math-block.json';
 export const mathSyntaxGrammar: LanguageRegistration = { ...math, name: 'meo-math' };
 
 /** Keep Markdown's multiline stack, standard fence endings and embedded math. */
-export function withMarkdownSyntax(grammars: readonly LanguageRegistration[]): LanguageRegistration[] {
+export const latexMarkdownSyntaxLanguage = 'meo-markdown-latex';
+export function withMarkdownSyntax(grammars: readonly LanguageRegistration[], latexDelimiters = false): LanguageRegistration[] {
   const single = structuredClone(inline.repository.math_inline_single);
   const double = structuredClone(inline.repository.math_inline_double);
   // Escaped dollars remain prose; an unfinished inline formula stops at EOL.
@@ -22,6 +23,16 @@ export function withMarkdownSyntax(grammars: readonly LanguageRegistration[]): L
       patterns: [{ include: math.scopeName + '#math' }]
     }
   ];
+  if (latexDelimiters) for (const [begin, end] of [['\\(', '\\)'], ['\\[', '\\]']]) {
+    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    inlinePatterns.unshift({
+      name: 'markup.math.inline.markdown', contentName: 'meta.embedded.math.markdown',
+      begin: `(?<!\\\\)(${escape(begin!)})`, end: `(${escape(end!)})|$`,
+      beginCaptures: { 1: { name: 'punctuation.definition.math.begin.markdown' } },
+      endCaptures: { 1: { name: 'punctuation.definition.math.end.markdown' } },
+      patterns: [{ include: math.scopeName + '#math' }]
+    });
+  }
   const display = structuredClone(block.repository.double_dollar_math_block);
   display.begin = String.raw`(?<=^[ \t]*(?:>[ \t]*)*(?:(?:[-+*]|\d+[.)])[ \t]+)?)(\${2})[ \t]*$`;
   // The outer while rule unwinds unfinished TeX before tokenizing a boundary.
@@ -39,6 +50,10 @@ export function withMarkdownSyntax(grammars: readonly LanguageRegistration[]): L
     },
     patterns: [{ ...display.patterns[0], beginCaptures: quoteCaptures, whileCaptures: quoteCaptures }]
   };
+  const latexDisplayRule = structuredClone(displayRule);
+  latexDisplayRule.begin = String.raw`(?<=^[ \t]*(?:>[ \t]*)*(?:(?:[-+*]|\d+[.)])[ \t]+)?)(\\\[)[ \t]*$`;
+  latexDisplayRule.end = String.raw`(?:^|\G)([ \t]*(?:>[ \t]*)*)(\\\])[ \t]*$`;
+  latexDisplayRule.patterns[0]!.while = String.raw`(^|\G)(?![ \t]*(?:>[ \t]*)*\\\][ \t]*$)([ \t]*(?:>[ \t]*)*)`;
   const markdown = grammars.map(grammar => {
     if (grammar.name !== 'markdown') return grammar;
     // TextMate's bundled rules require the exact opening fence length. Markdown
@@ -53,12 +68,17 @@ export function withMarkdownSyntax(grammars: readonly LanguageRegistration[]): L
       injections: { ...grammar.injections,
         [inline.injectionSelector]: { patterns: inlinePatterns },
         // MEO uses $$ for multiline math, never a single-dollar block.
-        [block.injectionSelector + ' - meta.math.recovery.markdown']: { patterns: [{ include: '#double_dollar_math_block' }] },
+        [block.injectionSelector + ' - meta.math.recovery.markdown']: { patterns: [{ include: '#double_dollar_math_block' }, ...(latexDelimiters ? [{ include: '#meo_latex_math_block' }] : [])] },
         // Reuse one recovery frame across later formulas in the same container.
-        [block.injectionSelector.replace('text.html.markdown', 'meta.math.recovery.markdown')]: { patterns: [displayRule] }
+        [block.injectionSelector.replace('text.html.markdown', 'meta.math.recovery.markdown')]: { patterns: [displayRule, ...(latexDelimiters ? [latexDisplayRule] : [])] }
       },
       repository: {
         ...repository, math_inline_single: single, math_inline_double: double,
+        ...(latexDelimiters ? { meo_latex_math_block: {
+          name: 'meta.math.recovery.markdown', begin: `(?=${latexDisplayRule.begin})`,
+          while: String.raw`(^|\G)(?![ \t]*(?:>[ \t]*)*${boundary})`,
+          patterns: [latexDisplayRule, { include: '#block' }]
+        } } : {}),
         double_dollar_math_block: {
           name: 'meta.math.recovery.markdown',
           begin: `(?=${display.begin})`,
@@ -73,5 +93,7 @@ export function withMarkdownSyntax(grammars: readonly LanguageRegistration[]): L
       }
     };
   });
-  return [mathSyntaxGrammar, ...markdown];
+  return [mathSyntaxGrammar, ...markdown.map(grammar => grammar.name !== 'markdown' || !latexDelimiters ? grammar
+    : { ...JSON.parse(JSON.stringify(grammar).replace(/text\.html\.markdown(?![.\w-])/g, 'text.html.meo-markdown-latex')),
+        name: latexMarkdownSyntaxLanguage, aliases: [] } as LanguageRegistration)];
 }

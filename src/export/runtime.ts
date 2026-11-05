@@ -62,6 +62,7 @@ async function renderExportHtmlDocument(
     rendered = renderMarkdownToHtml({
       wikiResources: options.wikiResources,
       markdownText: snapshot.text,
+      latexDelimiters: snapshot.latexDelimiters,
       exportBlockLanguages: snapshot.blockRenderers?.flatMap(view => view.codeBlockLanguages ?? []),
       markdownFilePath: options.sourceDocumentPath,
       imageSearchRoots: options.imageSearchRoots,
@@ -108,6 +109,7 @@ export type PreviewDocumentOptions = {
   layout?: 'side' | 'full';
   wikiResources?: ResolvedWikiResources;
   markdownText: string;
+  latexDelimiters?: boolean;
   sourceDocumentPath: string;
   uiLanguage: ReadingSnapshot['uiLanguage'];
   styleEnvironment?: ExportStyleEnvironment;
@@ -132,6 +134,7 @@ export function preparePreviewDocument(options: PreviewDocumentOptions, windowed
     sourceFootnotes: options.layout === 'side',
     wikiResources: options.wikiResources,
     markdownText: options.markdownText,
+    latexDelimiters: options.latexDelimiters,
     markdownFilePath: options.sourceDocumentPath,
     target: 'html',
     uiLanguage: options.uiLanguage,

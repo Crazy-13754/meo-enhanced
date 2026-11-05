@@ -28,6 +28,7 @@ export type EditorCommand =
   | { readonly type: 'setContentMaxWidth'; readonly enabled: boolean }
   | { readonly type: 'setLargeDocumentOptimization'; readonly enabled: boolean }
   | { readonly type: 'setTableStickyHeader'; readonly enabled: boolean }
+  | { readonly type: 'setLatexDelimiters'; readonly enabled: boolean }
   | { readonly type: 'setBoldHeadings'; readonly enabled: boolean }
   | { readonly type: 'setRestoreReadingPositionOnOpen'; readonly enabled: boolean }
   | {
@@ -91,6 +92,7 @@ export function decodeEditorCommand(value: unknown): EditorCommand | null {
     case 'setContentMaxWidth':
     case 'setLargeDocumentOptimization':
     case 'setTableStickyHeader':
+    case 'setLatexDelimiters':
     case 'setBoldHeadings':
     case 'setRestoreReadingPositionOnOpen':
       return isBoolean(value.enabled) ? value as EditorCommand : null;

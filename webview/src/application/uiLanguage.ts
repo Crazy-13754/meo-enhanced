@@ -45,6 +45,9 @@ export type UiStrings = Readonly<{
   previewAppearance: string;
   previewSourceColoring: string;
   strongColoring: string;
+  latexMathDelimiters: string;
+  latexMathDelimitersShort: string;
+  latexMathDelimitersDescription: string;
   boldHeadings: string;
   showComments: string;
   previewCommentsShow: string;
@@ -349,7 +352,7 @@ export type UiStrings = Readonly<{
   compareWithVersion: string;
   displaySettings: string;
   editorSettings: string;
-  documentDisplaySettings: string;
+  documentSettings: string;
   openingDocumentsSettings: string;
   interfaceSettings: string;
   currentDiskVersionOption: string;
@@ -419,6 +422,9 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
   en: Object.freeze({
     auto: 'Auto', light: 'Light', dark: 'Dark', previewTitle: 'Markdown Preview',
     previewAppearance: 'Preview theme', previewSourceColoring: 'Preview source coloring', strongColoring: 'Color bold text', boldHeadings: 'Bold headings', showComments: 'HTML comments', previewCommentsShow: 'Show', previewCommentsHide: 'Hide',
+    latexMathDelimiters: 'LaTeX math delimiters',
+    latexMathDelimitersShort: 'LaTeX math',
+    latexMathDelimitersDescription: String.raw`When enabled, recognize \(...\) as inline math and \[...\] as display math.`,
     previewCodeColors: 'Code color', previewCodeColorsOn: 'On', previewCodeColorsOff: 'Off',
     previewPreset: 'Preview preset', previewPresetInfo: 'Preset info', previewWidth: 'Width', previewWidthResponsive: 'Fit panel', previewWidthReference: 'Reference width',
     previewPresetManage: 'Custom presets…', previewOnlyLight: 'This preset only supports the light theme', previewOnlyDark: 'This preset only supports the dark theme',
@@ -585,7 +591,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     currentEdits: 'Last Saved Version', recentSave: 'Before Agent Edits',
     gitHead: 'Git HEAD (Latest Commit)',
     compareWithVersion: 'Compare Against', displaySettings: 'Display Settings', editorSettings: 'Editor Settings',
-    documentDisplaySettings: 'Document display', openingDocumentsSettings: 'When opening documents', interfaceSettings: 'Interface settings',
+    documentSettings: 'Document settings', openingDocumentsSettings: 'When opening documents', interfaceSettings: 'Interface settings',
     currentDiskVersionOption: 'Last Saved Version',
     beforeLastSaveVersionOption: 'Before Agent Edits',
     gitHeadOption: 'Git HEAD', manualSnapshot: 'Manual Snapshot',
@@ -666,6 +672,9 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
   'zh-CN': Object.freeze({
     auto: '自动', light: '浅色', dark: '深色', previewTitle: 'Markdown 预览',
     previewAppearance: '预览主题', previewSourceColoring: '预览源码着色', strongColoring: '粗体文字着色', boldHeadings: '标题加粗', showComments: 'HTML 注释', previewCommentsShow: '显示', previewCommentsHide: '隐藏',
+    latexMathDelimiters: 'LaTeX 风格公式定界符',
+    latexMathDelimitersShort: 'LaTeX 风格公式',
+    latexMathDelimitersDescription: '开启后，将 \\(...\\) 识别为行内公式，将 \\[...\\] 识别为块级公式。',
     previewCodeColors: '代码着色', previewCodeColorsOn: '开', previewCodeColorsOff: '关',
     previewPreset: '预览预设', previewPresetInfo: '预设说明', previewWidth: '正文宽度', previewWidthResponsive: '适配面板', previewWidthReference: '参考宽度',
     previewPresetManage: '自定义预设…', previewOnlyLight: '此预设仅支持浅色主题', previewOnlyDark: '此预设仅支持深色主题',
@@ -847,7 +856,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     currentEdits: '最近保存版本', recentSave: 'Agent 编辑前版本',
     gitHead: 'Git HEAD（最新提交）',
     compareWithVersion: '比较方式', displaySettings: '显示设置', editorSettings: '编辑器设置',
-    documentDisplaySettings: '文档显示', openingDocumentsSettings: '打开文档时', interfaceSettings: '界面设置',
+    documentSettings: '文档设置', openingDocumentsSettings: '打开文档时', interfaceSettings: '界面设置',
     currentDiskVersionOption: '与最近保存版本比较',
     beforeLastSaveVersionOption: '与 Agent 编辑前版本比较',
     gitHeadOption: '与 Git HEAD 比较', manualSnapshot: '手动快照',

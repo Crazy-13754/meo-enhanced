@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { parseLatexMathAt, renderLatexMathPresentation, type LatexMathMode } from './math';
+import { findFencedDisplayMathEnd, parseLatexMathAt, renderLatexMathPresentation, type LatexMathMode } from './math';
 import { mathFenceBodyRange } from '../shared/mathFence';
 
 function mathSourceAttribute(content: string, mode: LatexMathMode): string {
@@ -11,6 +11,7 @@ export function installMathTransform(
   md: MarkdownIt,
   options: {
     onRenderedMath?: () => void;
+    latexDelimiters?: boolean;
     githubStyle?: boolean;
     deferDisplay?: boolean;
     output?: 'html' | 'mathml';
@@ -39,8 +40,8 @@ export function installMathTransform(
   }
   // Consume a complete formula before Markdown can reinterpret TeX carets, tildes or escapes.
   // Code, autolinks and literal scripts are consumed by their own enclosing rules.
-  md.inline.ruler.before('strikethrough', 'meo_math_inline', (state, silent) => {
-    if (lookingAhead.has(state) || state.src[state.pos] !== '$') return false;
+  md.inline.ruler.before('escape', 'meo_math_inline', (state, silent) => {
+    if (lookingAhead.has(state) || state.src[state.pos] !== '$' && !(options.latexDelimiters && state.src[state.pos] === '\\')) return false;
     if (options.githubStyle && (state.env?.meoGithubFootnote || (htmlCodeDepth.get(state) ?? 0) > 0
       || (state.pos > 0 && !/\s/.test(state.src[state.pos - 1])))) return false;
     let cached = excludedByState.get(state);
@@ -68,7 +69,7 @@ export function installMathTransform(
       }
       cached.set(scope, excluded);
     }
-    const math = parseLatexMathAt(state.src, state.pos, { excludedRanges: excluded.filter(range => range.from > state.pos) });
+    const math = parseLatexMathAt(state.src, state.pos, { latexDelimiters: options.latexDelimiters, excludedRanges: excluded.filter(range => range.from > state.pos) });
     if (!math || math.to > state.posMax) return false;
     if (options.githubStyle && math.mode === 'display' && listInlineTokens.has(state.tokens)) return false;
     if (options.githubStyle && /\n[ \t]*\n/.test(math.raw)) return false;
@@ -78,7 +79,7 @@ export function installMathTransform(
       const node = state.push('html_inline', '', 0);
       node.meta = { meoTrustedHtml: true, meoMathSource: math.raw };
       const source = state.src.slice(math.from, math.to);
-      const body = mathFenceBodyRange(source);
+      const body = mathFenceBodyRange(source, options.latexDelimiters);
       node.content = `<span class="meo-export-math meo-export-math-${math.mode}"${mathSourceAttribute(source.slice(body.from, body.to), math.mode)}${presentation.attributes}>${presentation.html}</span>`;
       options.onRenderedMath?.();
     }
@@ -90,10 +91,14 @@ export function installMathTransform(
     if (options.githubStyle && (state.env?.meoGithubFootnote || state.listIndent >= 0)) return false;
     const start = state.bMarks[startLine] + state.tShift[startLine];
     const end = state.eMarks[startLine];
-    if (state.src.slice(start, end).trim() !== '$$') {
+    const opener = state.src.slice(start, end).trim();
+    if (opener !== '$$' && !(options.latexDelimiters && opener === '\\[')) {
       return false;
     }
 
+    const closer = opener === '$$' ? '$$' : '\\]';
+    const lineStart = state.src.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+    if (!findFencedDisplayMathEnd(state.src, end + 1, state.src.slice(lineStart, start), closer).closed) return false;
     // Markdown-it has already projected list/quote prefixes into bMarks.
     // Scan that scope with the same boundaries used by the editable surface.
     let scopeEnd = Math.min(endLine, state.lineMax);
@@ -105,13 +110,13 @@ export function installMathTransform(
       // The shared scanner consumes at most the first standalone closer. Do
       // not copy the rest of the document for each individual formula.
       const payload = state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]);
-      if (payload.trim() === '$$') {
+      if (payload.trim() === closer) {
         scopeEnd = line + 1;
         break;
       }
     }
     const source = state.getLines(startLine, scopeEnd, state.blkIndent, false);
-    const math = parseLatexMathAt(source, source.indexOf('$$'));
+    const math = parseLatexMathAt(source, source.indexOf(opener), { latexDelimiters: options.latexDelimiters });
     if (!math?.fencedDisplay || (options.githubStyle && /\n[ \t]*\n/.test(math.raw))) return false;
     if (silent) return true;
     const line = startLine + source.slice(0, math.to).split('\n').length - 1;
@@ -120,10 +125,10 @@ export function installMathTransform(
     mathBlock.block = true;
     mathBlock.content = content;
     const copySource = source.slice(math.from, math.to);
-    const body = mathFenceBodyRange(copySource);
-    mathBlock.meta = { copySource: copySource.slice(body.from, body.to) };
+    const body = mathFenceBodyRange(copySource, options.latexDelimiters);
+    mathBlock.meta = { copySource: copySource.slice(body.from, body.to), rawSource: copySource };
     mathBlock.map = [startLine, line + 1];
-    mathBlock.markup = '$$';
+    mathBlock.markup = opener;
     state.line = line + 1;
     return true;
   });
@@ -132,7 +137,7 @@ export function installMathTransform(
     const mathBlock = tokens[idx];
     const presentation = renderLatexMathPresentation(String(mathBlock.content ?? ''), 'display', options.deferDisplay, options.output);
     if (!presentation) {
-      return `<pre>${md.utils.escapeHtml(`$$\n${mathBlock.content}\n$$`)}</pre>\n`;
+      return `<pre>${md.utils.escapeHtml(String(mathBlock.meta?.rawSource ?? mathBlock.content))}</pre>\n`;
     }
     options.onRenderedMath?.();
     return `<div class="meo-export-math meo-export-math-display meo-export-math-fenced-display"${mathSourceAttribute(String(mathBlock.meta?.copySource ?? mathBlock.content ?? ''), 'display')}${presentation.attributes}${self.renderAttrs(mathBlock)}>${presentation.html}</div>\n`;

@@ -1,4 +1,4 @@
-import { scanLatexMath } from './latexMathScanner';
+import { mathDelimiterLength, scanLatexMath } from './latexMathScanner';
 
 const mathFenceLanguages = new Set(['math', 'latex', 'tex', 'katex']);
 
@@ -7,9 +7,9 @@ export function isMathFenceLanguage(info: string | null | undefined): boolean {
   return mathFenceLanguages.has((info ?? '').trim().split(/\s+/, 1)[0]!.toLowerCase());
 }
 
-export function mathFenceContent(source: string): string {
+export function mathFenceContent(source: string, latexDelimiters = false): string {
   const text = source.trim();
-  const ranges = scanLatexMath(text, { includeEmptyDisplay: true });
+  const ranges = scanLatexMath(text, { includeEmptyDisplay: true, latexDelimiters });
   // Accept an optional complete math wrapper; incomplete delimiters remain
   // literal source so editing errors aren't silently repaired during export.
   return ranges.length === 1 && ranges[0]!.from === 0 && ranges[0]!.to === text.length
@@ -18,15 +18,15 @@ export function mathFenceContent(source: string): string {
 
 /** Copy/select omit a complete wrapper, preserving whitespace inside its body.
  * Unlike rendering, these boundaries must not trim intentional source blank lines. */
-export function mathFenceBodyRange(source: string): { from: number; to: number } {
+export function mathFenceBodyRange(source: string, latexDelimiters = false): { from: number; to: number } {
   const text = source.trim();
-  const ranges = scanLatexMath(text, { includeEmptyDisplay: true });
+  const ranges = scanLatexMath(text, { includeEmptyDisplay: true, latexDelimiters });
   const range = ranges[0];
   if (ranges.length !== 1 || !range || range.from !== 0 || range.to !== text.length) {
     return { from: 0, to: source.length };
   }
   const offset = source.length - source.trimStart().length;
-  const delimiterLength = range.mode === 'display' ? 2 : 1;
+  const delimiterLength = mathDelimiterLength(range);
   let from = offset + delimiterLength;
   let to = offset + text.length - delimiterLength;
   if (range.fencedDisplay) {

@@ -63,6 +63,7 @@ export function createSidebarOutlineReporter(
   // Retain the last displayed identities across unsubscription so the first
   // click can reopen a hidden editor before its new publication arrives.
   let navigationSnapshot: { source: SidebarOutlineSource; headings: readonly SidebarOutlineHeading[]; id: string } | null = null;
+  let pendingNavigation: { key: string; snapshot: string } | null = null;
   const sessionId = createRequestPrefix();
   let snapshotVersion = 0;
   let sentActive = -2;
@@ -102,6 +103,9 @@ export function createSidebarOutlineReporter(
       timer = timers.setTimeout(publish, PENDING_RETRY_MS);
       return;
     }
+    const navigation = pendingNavigation;
+    pendingNavigation = null;
+    if (navigation) reveal(navigation.key, navigation.snapshot);
     bindScroll(source);
     headingStarts = all.slice(0, MAX_SIDEBAR_OUTLINE_HEADINGS).map(heading => heading.from);
     const headings = projectHeadings(all);
@@ -133,15 +137,43 @@ export function createSidebarOutlineReporter(
   };
 
   function scheduleActive() {
+    pendingNavigation = null;
     if (!enabled || disposed || frame !== null) return;
     frame = timers.requestFrame(refreshActive);
   }
 
   const schedule = () => {
+    pendingNavigation = null;
     if (!enabled || disposed) return;
     cancelTimer();
     timer = timers.setTimeout(publish, PUBLISH_DELAY_MS);
   };
+
+  function reveal(key: string, snapshot: string) {
+    if (snapshot !== navigationSnapshot?.id) return;
+    pendingNavigation = null;
+    const source = getSource();
+    if (!source || disposed) return;
+    const headings = projectHeadings(source.getHeadings());
+    // A pending result retains mapped offsets but still has old identities.
+    // Validate the latest click once parsing settles, before replacing its snapshot.
+    if (source.isOutlinePending?.()) {
+      pendingNavigation = { key, snapshot };
+      cancelTimer();
+      if (enabled) timer = timers.setTimeout(publish, PENDING_RETRY_MS);
+      return;
+    }
+    const previous = navigationSnapshot;
+    if (!previous || source !== previous.source || headings.length !== previous.headings.length
+      || headings.some((heading, index) => heading.level !== previous.headings[index].level
+        || heading.text !== previous.headings[index].text)) {
+      cancelTimer();
+      publish();
+      return;
+    }
+    const index = outlineHeadingKeys(headings).indexOf(key);
+    if (index >= 0) source.scrollToLine(headings[index].line, 'top');
+  }
 
   return {
     /** Headings or the editing surface may have changed (edit, mode switch, Preview render). */
@@ -154,6 +186,7 @@ export function createSidebarOutlineReporter(
       cancelTimer();
       cancelFrame();
       if (!enabled) {
+        pendingNavigation = null;
         unbindScroll();
         publishedSource = null;
         publishedHeadings = null;
@@ -165,25 +198,7 @@ export function createSidebarOutlineReporter(
       sentActive = -2;
       timer = timers.setTimeout(publish, 0);
     },
-    reveal(key: string, snapshot: string) {
-      if (snapshot !== navigationSnapshot?.id) return;
-      const source = getSource();
-      if (!source || disposed) return;
-      const headings = projectHeadings(source.getHeadings());
-      // Lines can move without changing identity. A rename, reparent or duplicate
-      // insertion invalidates the displayed snapshot; refresh it rather than guess
-      // which current heading an old row refers to.
-      const previous = navigationSnapshot;
-      if (!previous || source !== previous.source || headings.length !== previous.headings.length
-        || headings.some((heading, index) => heading.level !== previous.headings[index].level
-          || heading.text !== previous.headings[index].text)) {
-        cancelTimer();
-        publish();
-        return;
-      }
-      const index = outlineHeadingKeys(headings).indexOf(key);
-      if (index >= 0) source.scrollToLine(headings[index].line, 'top');
-    },
+    reveal,
     isEnabled: () => enabled,
     dispose() {
       disposed = true;
@@ -192,6 +207,7 @@ export function createSidebarOutlineReporter(
       cancelFrame();
       unbindScroll();
       navigationSnapshot = null;
+      pendingNavigation = null;
     }
   };
 }

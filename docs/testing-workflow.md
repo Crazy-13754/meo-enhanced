@@ -1700,6 +1700,15 @@ gates alongside the compositor timing and production control checks.
 
 ## Math source highlighting
 
+`bun run test:latex-delimiters` covers the default-off LaTeX syntax preference,
+literal escapes, shared scanning, protected contexts, completion, source color
+isolation, MathML export, fixed GitHub preset syntax and windowed Preview. The settings production fixture
+uses `--latex-only` to verify the actual menu switch, bilingual light/dark UI,
+live updates in ordinary and worker-backed documents, table refreshes, mode
+round trips and unchanged document/selection. Screenshots are saved under
+`.local/latex-delimiters/`. Build the Webview first so the fixture uses the current
+production worker bundles. These checks belong to the scanner and browser suites.
+
 `bun scripts/test-math-syntax-production.ts` checks math syntax through the production
 Source and Live editor in both themes: inline and display delimiters, all four math
 fence aliases, quoted/list containers, unfinished formulas, escaped/currency/code

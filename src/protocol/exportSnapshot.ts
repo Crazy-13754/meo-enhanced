@@ -17,6 +17,7 @@ export type ReadingSnapshot = {
   readonly snapshotId: string;
   readonly blockRenderers?: readonly DocumentViewDescriptor[];
   readonly text: string;
+  readonly latexDelimiters?: boolean;
   readonly appearance: PreviewAppearance;
   readonly uiLanguage: UiLanguage;
   readonly environment: EditorStyleEnvironment;
@@ -57,6 +58,7 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
         if (!isRecord(candidate)
           || !isNonEmptyString(candidate.snapshotId)
           || typeof candidate.text !== 'string'
+          || (candidate.latexDelimiters !== undefined && typeof candidate.latexDelimiters !== 'boolean')
           || !isUiLanguage(candidate.uiLanguage)
           || (candidate.appearance !== 'dark' && candidate.appearance !== 'light')) return null;
         const catalog = candidate.blockRenderers === undefined ? undefined : decodeDocumentViewsChanged({ type: 'documentViewsChanged', views: candidate.blockRenderers });
@@ -74,6 +76,7 @@ export function decodeExportSnapshotResponse(value: unknown): ExportSnapshotResp
           snapshotId: candidate.snapshotId,
           ...(catalog ? { blockRenderers: catalog.views } : {}),
           text: candidate.text,
+          ...(candidate.latexDelimiters === undefined ? {} : { latexDelimiters: candidate.latexDelimiters }),
           appearance: candidate.appearance,
           uiLanguage: candidate.uiLanguage,
           environment,

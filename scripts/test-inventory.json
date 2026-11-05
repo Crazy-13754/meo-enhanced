@@ -382,6 +382,7 @@
       "scripts/test-large-document-initial-mode.ts",
       "scripts/test-large-document-opening-migration.ts",
       "scripts/test-large-document-policy.ts",
+      "scripts/test-latex-delimiters.ts",
       "scripts/test-latex-math-scanner-integration.ts",
       "scripts/test-latex-math-scanner.ts",
       "scripts/test-line-jump.ts",

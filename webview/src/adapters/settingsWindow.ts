@@ -13,7 +13,7 @@ import { aboutCatalog, commandTitle, commandTitles, generalSearchKeywords, image
 
 type Section = keyof typeof sectionTitles;
 export type GeneralSetting = {
-  readonly id: keyof typeof generalSearchKeywords; readonly section: 'display' | 'opening' | 'interface'; readonly title: string; readonly description?: string;
+  readonly id: keyof typeof generalSearchKeywords; readonly section: 'display' | 'math' | 'opening' | 'interface'; readonly title: string; readonly description?: string;
   readonly control: { kind: 'switch'; get: () => boolean; set: (value: boolean) => void }
     | { kind: 'choice'; get: () => string; set: (value: string) => void; options: readonly { value: string; label: string }[] };
 };
@@ -262,7 +262,7 @@ export function createSettingsWindow(options: {
     if (tab === 'extensions' && options.extensionFeatures?.count(query())) content.append(options.extensionFeatures.render(language, query()));
     if (tab === 'appearance') content.append(appearance.render(language, query()));
     if (tab === 'about' && visible.about.length) content.append(about.render(language, visible.about));
-    const groups = tab === 'appearance' || tab === 'extensions' || tab === 'about' ? [] : tab === 'general' ? ['display', 'opening', 'interface'] : tab === 'typing' ? typingSections : tab === 'presets' ? ['presetList', 'presetFiles'] : Object.keys(shortcutSections);
+    const groups = tab === 'appearance' || tab === 'extensions' || tab === 'about' ? [] : tab === 'general' ? ['math', 'display', 'opening', 'interface'] : tab === 'typing' ? typingSections : tab === 'presets' ? ['presetList', 'presetFiles'] : Object.keys(shortcutSections);
     for (const name of groups) {
       const section = name as Section;
       const items = tab === 'general' ? visible.general.filter(item => item.section === section).map(renderGeneral)

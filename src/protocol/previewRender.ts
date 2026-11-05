@@ -17,6 +17,7 @@ export type PreviewRenderRequest = {
   readonly type: 'requestPreviewRender';
   readonly requestId: string;
   readonly text: string;
+  readonly latexDelimiters?: boolean;
   readonly uiLanguage: UiLanguage;
   readonly environment: PreviewStyleEnvironment;
   readonly preset?: PreviewPresetId;
@@ -56,6 +57,7 @@ export function decodePreviewRenderRequest(value: unknown): PreviewRenderRequest
     || value.type !== 'requestPreviewRender'
     || !isNonEmptyString(value.requestId)
     || typeof value.text !== 'string'
+    || (value.latexDelimiters !== undefined && typeof value.latexDelimiters !== 'boolean')
     || !isUiLanguage(value.uiLanguage)
     || (value.preset !== undefined && !isPreviewPresetId(value.preset))
     || (value.presetRevision !== undefined && (typeof value.presetRevision !== 'string' || !/^[a-f0-9]{64}$/.test(value.presetRevision)))
@@ -69,6 +71,7 @@ export function decodePreviewRenderRequest(value: unknown): PreviewRenderRequest
     type: 'requestPreviewRender',
     requestId: value.requestId,
     text: value.text,
+    ...(value.latexDelimiters === undefined ? {} : { latexDelimiters: value.latexDelimiters }),
     uiLanguage: value.uiLanguage,
     environment,
     ...(value.layout === undefined ? {} : { layout: value.layout as 'side' | 'full' }),

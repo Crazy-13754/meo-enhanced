@@ -12,6 +12,7 @@ export type ExportWebviewAdapterDependencies = {
   readonly postMessage: (message: WebviewToHostMessage) => void;
   readonly getBlockRenderers?: () => readonly DocumentViewDescriptor[];
   readonly getCurrentText: () => string;
+  readonly getLatexDelimiters?: () => boolean;
   readonly whenDocumentIdle: () => Promise<void>;
   readonly getPreviewAppearance: () => PreviewAppearance;
   readonly getUiLanguage: () => UiLanguage;
@@ -86,6 +87,7 @@ export function createExportWebviewAdapter(
               snapshotId: requestId,
               ...(dependencies.getBlockRenderers ? { blockRenderers: structuredClone(dependencies.getBlockRenderers()) } : {}),
               text: dependencies.getCurrentText(),
+              latexDelimiters: dependencies.getLatexDelimiters?.() === true,
               appearance: dependencies.getPreviewAppearance(),
               uiLanguage: dependencies.getUiLanguage(),
               environment: Object.freeze(environment),

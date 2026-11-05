@@ -78,6 +78,7 @@
 | `meoEnhanced.performance.largeDocumentOptimization` | “大文档打开方式：优先源码”默认关闭并沿用上次模式，显式开启时执行大小/结构打开保护；与自动渲染预算独立，[大文档策略](../scripts/test-large-document-policy.ts)、[启动选项](../scripts/test-basic-capability-production-matrix.ts)、[对照证据](large-document-policy-evidence.md) |
 | `meoEnhanced.gitChanges.visible`、`meoEnhanced.changes.baseline`、`meoEnhanced.changes.showBeforeContent`、`meoEnhanced.gitChanges.lineHighlights` | 概览、基线、旧内容和行高亮有效，[审阅合同](../scripts/test-changes-review.ts)、[行高亮设置](../scripts/test-git-diff-line-highlights-setting.ts) |
 | `meoEnhanced.imageStorage` | 默认文档旁、按文档名分开及高级规则保存到预览目录；图片默认文档名加序号，支持日期时间、图片序号和毫秒时间戳，中文路径示例、跨格式续号、并发避让和最终文件名正确；无工作区、旧配置、无效路径、未保存文档、同名防覆盖与链接转义正确；自动保存、关闭保存、输入法和迟到响应正确。[路径与持久化](../scripts/test-image-storage.ts)、[VS Code 配置及目录选择合同](../scripts/test-vscode-image-storage.ts)、[正式设置与写盘粘贴](../scripts/test-settings-window-production.ts)、[外部资源解析](../scripts/test-webview-image-src.ts)；系统剪贴板权限和原生文件对话框另验 |
+| `meoEnhanced.math.latexDelimiters` | 默认关闭并保留括号转义；浮窗第五项与常规设置同步普通／后台编辑、表格、Preview 及导出，源码、选区和撤销重做保留；GitHub README 渲染器及其 HTML/PDF 导出固定使用 GitHub 公式语法，其他预设跟随开关。[共享语法与导出](../scripts/test-latex-delimiters.ts)、[工作区持久化与失败回退](../scripts/test-panel-session-ready-init.ts)、[生产设置浮窗](../scripts/test-settings-window-production.ts)（`--latex-only`，中英文深浅色、大文档及预设切换） |
 | `meoEnhanced.imageFolder` | 根目录解析和资源路径正确，[图片目录](../scripts/test-clipboard-image-root.ts)；真实剪贴板文件写入另验 |
 
 ## 公开命令与原生边界

@@ -76,6 +76,7 @@ export type RenderMarkdownOptions = {
   sourceFootnotes?: boolean;
   wikiResources?: ResolvedWikiResources;
   markdownText: string;
+  latexDelimiters?: boolean;
   markdownFilePath: string;
   imageSearchRoots?: readonly string[];
   workspaceRootPath?: string;
@@ -133,6 +134,8 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
 /** Parse global Markdown context once. HTML generation is a separate, demand-driven step. */
 export function prepareMarkdownPresentation(options: RenderMarkdownOptions): MarkdownPresentation {
   const github = (options.presetDefinition ?? getPreviewPreset(options.preset)).renderer === 'github-readme';
+  // GitHub owns its math syntax; editor preferences only extend the MEO renderer.
+  const latexDelimiters = !github && options.latexDelimiters === true;
   const uiStrings = getReadingUiStrings(options.uiLanguage ?? 'en');
   let hasMermaid = false;
   let hasMath = false;
@@ -158,7 +161,8 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   const originalSourceLines = String(options.markdownText ?? '').split(/\r?\n/);
   const normalized = { markdown: String(options.markdownText ?? ''), sourceLines: originalSourceLines.map((_, index) => index + 1) };
   const extractedFrontmatter = extractExportFrontmatter(normalized, uiStrings.properties);
-  const shouldEnableMathTransform = extractedFrontmatter.body.markdown.includes('$');
+  const shouldEnableMathTransform = extractedFrontmatter.body.markdown.includes('$')
+    || latexDelimiters && /\\[([]/.test(extractedFrontmatter.body.markdown);
 
   const md = createMarkdownContentParser(github);
   if (github) installGithubInlineRules(md);
@@ -196,6 +200,7 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
   );
   if (shouldEnableMathTransform) {
     installMathTransform(md, {
+      latexDelimiters,
       githubStyle: github,
       deferDisplay: options.deferDisplayMath,
       output: options.contentOnly ? 'mathml' : 'html',
@@ -233,12 +238,12 @@ export function prepareMarkdownPresentation(options: RenderMarkdownOptions): Mar
     const renderRichContent = !github || !env?.meoGithubFootnote;
 
     if (renderRichContent && (github ? richLanguage === 'math' : isMathFenceLanguage(language))) {
-      const mathContent = mathFenceContent(source);
+      const mathContent = mathFenceContent(source, latexDelimiters);
       const presentation = renderLatexMathPresentation(mathContent, 'display', options.deferDisplayMath, options.contentOnly ? 'mathml' : 'html');
       if (presentation) {
         hasMath = true;
         const copySource = source.replace(/\n$/, '');
-        const body = mathFenceBodyRange(copySource);
+        const body = mathFenceBodyRange(copySource, latexDelimiters);
         const sourceB64 = Buffer.from(copySource.slice(body.from, body.to), 'utf8').toString('base64');
         return `<div class="meo-export-math meo-export-math-display meo-export-math-fenced-display" data-source-b64="${sourceB64}"${presentation.attributes}${sourceAttrs}>${presentation.html}</div>`;
       }

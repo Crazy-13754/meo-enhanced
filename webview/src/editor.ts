@@ -1,6 +1,7 @@
 import { readDocumentTextProjection } from './application/documentTextProjection';
 import { markdownTaskMarkerPattern } from '../../src/foundation/markdownTaskList';
 import { editorScrollIntoView } from './editor/scrollEffects';
+import { latexDelimitersFacet } from './editor/mathSyntaxPreference';
 import { markdownSyntaxPublication } from './editor/markdownSyntaxPublication';
 import { editorViewportBounds } from './editor/editorViewportBounds';
 import { applyPrimaryEditorTransactions } from './editor/nativeSelectionRetention';
@@ -24,7 +25,7 @@ import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLi
 import type { SyntaxNode } from '@lezer/common';
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, isolateHistory, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
 import { markdownKeymap } from '@codemirror/lang-markdown';
-import { boundedMarkdownInputPrefix, editorMarkdownLanguage } from './liveMode';
+import { boundedMarkdownInputPrefix, editorMarkdownLanguage, getEditorMarkdownLanguage } from './liveMode';
 import { indentUnit, syntaxTree, forceParsing } from '@codemirror/language';
 import { sourceHighlightStyle } from './theme';
 import { viewportSyntaxHighlighting } from './editor/viewportSyntaxHighlighting';
@@ -275,6 +276,7 @@ type CreateEditorOptions = {
   initialGitGutter?: boolean;
   initialLongCodeBlockFolding?: boolean;
   initialTableStickyHeaderEnabled?: boolean;
+  initialLatexDelimiters?: boolean;
   initialInputAssistance?: InputAssistance;
   requestLinkCandidates?: (input: { kind: 'documents' | 'paths' | 'headings'; query: string; target: string; wiki?: boolean }) => Promise<readonly LinkCandidate[]>;
   initialDiagnostics?: readonly EditorDiagnostic[];
@@ -431,6 +433,7 @@ export function createEditor({
   initialGitGutter = true,
   initialLongCodeBlockFolding = true,
   initialTableStickyHeaderEnabled = true,
+  initialLatexDelimiters = false,
   initialInputAssistance = defaultInputAssistance,
   requestLinkCandidates,
   initialDiagnostics = [],
@@ -451,6 +454,11 @@ export function createEditor({
   }
   const mermaidDiagramPresentationConsumer = mermaidDiagramPresentationFactory.createConsumer();
 
+  let latexDelimiters = initialLatexDelimiters;
+  const mathLanguageCompartment = new Compartment();
+  const mathPreferenceCompartment = new Compartment();
+  const mathBackgroundCompartment = new Compartment();
+  const modeLanguage = () => mathLanguageCompartment.of(getEditorMarkdownLanguage(latexDelimiters));
   const modeCompartment = new Compartment();
   const sourcePreparationCompartment = new Compartment();
   const gitGutterCompartment = new Compartment();
@@ -593,7 +601,7 @@ export function createEditor({
           boundedEditorWork = nextBoundedEditorWork;
           lightweightSourceSyntax = nextLightweightSource;
           view.dispatch({ effects: [sourcePreparationCompartment.reconfigure(lightweightSourceSyntax ? [] : sourceSyntaxPreparation), modeCompartment.reconfigure(
-            currentMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork })] : sourceMode(boundedEditorWork, lightweightSourceSyntax)
+            currentMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork, language: modeLanguage() })] : sourceMode(boundedEditorWork, lightweightSourceSyntax, modeLanguage())
           )], annotations: Transaction.addToHistory.of(false) });
           flushEditorLayout(view);
         });
@@ -1358,12 +1366,13 @@ export function createEditor({
     return false;
   };
 
-  const inputMathRanges = new WeakMap<object, ReturnType<typeof collectLatexMathRanges>>();
+  const inputMathRanges = [new WeakMap<object, ReturnType<typeof collectLatexMathRanges>>(), new WeakMap<object, ReturnType<typeof collectLatexMathRanges>>()];
   const inputContext = (state: EditorState, position: number): MarkdownInputContext => {
     const frontmatter = parseFrontmatterCandidate(state);
     if (frontmatter && position >= frontmatter.from && position <= frontmatter.to) return 'excluded';
-    let ranges = inputMathRanges.get(state.doc);
-    if (!ranges) { ranges = collectLatexMathRanges(readDocumentTextProjection(state.doc)); inputMathRanges.set(state.doc, ranges); }
+    const cache = inputMathRanges[Number(state.facet(latexDelimitersFacet))]!;
+    let ranges = cache.get(state.doc);
+    if (!ranges) { ranges = collectLatexMathRanges(readDocumentTextProjection(state.doc), { latexDelimiters: state.facet(latexDelimitersFacet) }); cache.set(state.doc, ranges); }
     if (ranges.some(range => position > range.from && position < range.to)) return 'excluded';
     return markdownSyntaxContext(state, position);
   };
@@ -1484,7 +1493,7 @@ export function createEditor({
     } finally { mirror.remove(); }
     if (offset === undefined) return '';
     if (tableLinkLookup?.input !== input || tableLinkLookup.value !== input.value) {
-      tableLinkLookup = { input, value: input.value, state: EditorState.create({ doc: tableCellEditorValueToSource(input.value), extensions: [editorMarkdownLanguage] }) };
+      tableLinkLookup = { input, value: input.value, state: EditorState.create({ doc: tableCellEditorValueToSource(input.value), extensions: [getEditorMarkdownLanguage(latexDelimiters), latexDelimitersFacet.of(latexDelimiters)] }) };
     }
     return getLinkHrefAtSourcePosition(tableLinkLookup.state, tableCellEditorOffsetToSourceOffset(input.value, offset), { exactTextHit: true }, editorView.state);
   };
@@ -2393,15 +2402,20 @@ export function createEditor({
     : null;
   const historyCompartment = new Compartment();
   const inputAssistanceCompartment = new Compartment();
+  const backgroundSyntax = () => {
+    const language = getEditorMarkdownLanguage(latexDelimiters);
+    return backgroundMarkdownStructureExtensions(document.body.dataset.meoMarkdownWorkerSrc,
+      (language.language.parser as MarkdownParser).nodeSet, {
+        enabled: () => currentMode === 'live',
+        receive: (doc, tree, tabSize, part) => adoptMarkdownDocumentContext(doc, tree, tabSize, part, language.language.parser)
+      }, latexDelimiters);
+  };
   const state = EditorState.create({
     doc: initialDocument,
     selection: { anchor: initialCursorPos },
     extensions: [
-      backgroundMarkdownStructureExtensions(document.body.dataset.meoMarkdownWorkerSrc,
-        (editorMarkdownLanguage.language.parser as MarkdownParser).nodeSet, {
-          enabled: () => currentMode === 'live',
-          receive: (doc, tree, tabSize, part) => adoptMarkdownDocumentContext(doc, tree, tabSize, part, editorMarkdownLanguage.language.parser)
-        }),
+      mathBackgroundCompartment.of(backgroundSyntax()),
+      mathPreferenceCompartment.of(latexDelimitersFacet.of(latexDelimiters)),
       markdownSyntaxPublication,
       EditorState.tabSize.of(4),
       indentUnit.of('  '),
@@ -2696,7 +2710,7 @@ export function createEditor({
       documentBlocksCompartment.of(documentBlocks ? documentBlocksFacet.of(documentBlocks) : []),
       sourcePreparationCompartment.of(lightweightSourceSyntax ? [] : sourceSyntaxPreparation),
       createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
-      modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork })] : sourceMode(boundedEditorWork, lightweightSourceSyntax)),
+      modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork, language: modeLanguage() })] : sourceMode(boundedEditorWork, lightweightSourceSyntax, modeLanguage())),
       searchQueryField,
       searchAnchorField,
       Prec.high(searchMatchField),
@@ -4226,7 +4240,7 @@ export function createEditor({
               setMermaidSearchRevealEffect.of(null),
               setLatexMathSearchRevealEffect.of(null),
               modeCompartment.reconfigure(
-                nextMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork })] : sourceMode(boundedEditorWork, lightweightSourceSyntax)
+                nextMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument: boundedEditorWork, language: modeLanguage() })] : sourceMode(boundedEditorWork, lightweightSourceSyntax, modeLanguage())
               ),
               gitGutterCompartment.reconfigure(
                 nextMode === 'live' ? gitDiffGutterLiveRenderExtensions() : gitDiffGutterRenderExtensions()
@@ -4320,6 +4334,21 @@ export function createEditor({
       view.dispatch({
         effects: longCodeBlockPreferenceCompartment.reconfigure(longCodeBlockEnabledFacet.of(enabled))
       });
+    },
+    setLatexDelimiters(enabled: boolean) {
+      if (latexDelimiters === enabled) return;
+      commitActiveTableInput();
+      const top = computeTopVisiblePosition();
+      latexDelimiters = enabled;
+      tableLinkLookup = undefined;
+      view.dispatch({ effects: [
+        mathPreferenceCompartment.reconfigure(latexDelimitersFacet.of(enabled)),
+        mathLanguageCompartment.reconfigure(getEditorMarkdownLanguage(enabled)),
+        mathBackgroundCompartment.reconfigure(backgroundSyntax()),
+        supersedeLiveInputDerivedWork()
+      ], annotations: Transaction.addToHistory.of(false) });
+      if (top) restoreTopVisibleLine(top.lineNumber, top.lineOffset, { syncCursor: false, force: true });
+      view.requestMeasure();
     },
     setTableStickyHeaderEnabled(enabled: boolean) {
       tableStickyHeaderAdapterFactory.setEnabled(enabled);
@@ -5331,7 +5360,7 @@ function insertWikiLink(
   });
 }
 
-function sourceMode(boundedEditorWork: boolean, lightweightSourceSyntax: boolean): Extension[] {
+function sourceMode(boundedEditorWork: boolean, lightweightSourceSyntax: boolean, language: Extension = editorMarkdownLanguage): Extension[] {
   return [
     // The viewport owner already reveals the requested source line. Keep a
     // visible native caret from adding a second five-pixel vertical scroll.
@@ -5340,7 +5369,7 @@ function sourceMode(boundedEditorWork: boolean, lightweightSourceSyntax: boolean
     // Block display choices belong to the editing session, including Source.
     mermaidEditingStateField,
     latexMathEditingStateField,
-    editorMarkdownLanguage,
+    language,
     // Preserve parser context and viewport coloring without preparing TextMate
     // tokens for every line before a large Source surface can become editable.
     lightweightSourceSyntax ? viewportSyntaxHighlighting(sourceHighlightStyle) : sourceSyntax,
@@ -5402,7 +5431,7 @@ const blockedInlineSelectionAncestors = new Set([
   'TableDelimiter'
 ]);
 
-const latexSelectionBlockCache = new WeakMap<object, Array<{ from: number; to: number }>>();
+const latexSelectionBlockCache = [new WeakMap<object, Array<{ from: number; to: number }>>(), new WeakMap<object, Array<{ from: number; to: number }>>()];
 
 function hasBlockedInlineAncestor(state: EditorState, position: number): boolean {
   let node: SyntaxNode | null = syntaxTree(state).resolveInner(position, 1);
@@ -5417,19 +5446,21 @@ function hasBlockedInlineAncestor(state: EditorState, position: number): boolean
 
 function getLatexSelectionBlockRanges(state: EditorState): Array<{ from: number; to: number }> {
   const docKey = state.doc as unknown as object;
-  const cached = latexSelectionBlockCache.get(docKey);
+  const latexDelimiters = state.facet(latexDelimitersFacet);
+  const cache = latexSelectionBlockCache[Number(latexDelimiters)]!;
+  const cached = cache.get(docKey);
   if (cached) {
     return cached;
   }
 
   const text = readDocumentTextProjection(state.doc);
-  if (text.indexOf('$') === -1) {
-    latexSelectionBlockCache.set(docKey, []);
+  if (text.indexOf('$') === -1 && !(latexDelimiters && text.includes('\\'))) {
+    cache.set(docKey, []);
     return [];
   }
 
-  const ranges = collectLatexMathRanges(text).map((range) => ({ from: range.from, to: range.to }));
-  latexSelectionBlockCache.set(docKey, ranges);
+  const ranges = collectLatexMathRanges(text, { latexDelimiters }).map((range) => ({ from: range.from, to: range.to }));
+  cache.set(docKey, ranges);
   return ranges;
 }
 
