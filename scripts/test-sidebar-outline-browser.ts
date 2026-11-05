@@ -45,7 +45,9 @@ try {
           scroller.scrollTop = scroller.scrollHeight * 0.65;
         }, mode);
         await page.waitForFunction(() => (window as any).__sidebarMessages.some((message: any) =>
-          !message.headings && message.activeIndex > 0 && message.visibleIndexes?.length));
+          !message.headings && message.activeIndex > 0));
+        assert.ok(await page.evaluate(() => (window as any).__sidebarMessages.every((message: any) =>
+          !Object.hasOwn(message, 'visibleIndexes'))), 'sidebar publishes only the current heading');
         assert.equal(await page.evaluate(() => (window as any).__sidebarMessages.filter((message: any) => message.headings).length), 1,
           'scrolling sends viewport metadata without resending the heading tree');
 
@@ -93,7 +95,7 @@ try {
         const state = await page.evaluate(() => ({
           mode: document.querySelector('.editor-root')?.getAttribute('data-mode'),
           messages: (window as any).__sidebarMessages?.slice(-4).map((message: any) => ({
-            headings: message.headings?.length, activeIndex: message.activeIndex, visibleIndexes: message.visibleIndexes
+            headings: message.headings?.length, activeIndex: message.activeIndex
           })),
           previewFrames: [...document.querySelectorAll<HTMLIFrameElement>('.preview-frame')].map(frame => ({
             hidden: frame.hidden, bounds: { top: frame.getBoundingClientRect().top, height: frame.getBoundingClientRect().height },

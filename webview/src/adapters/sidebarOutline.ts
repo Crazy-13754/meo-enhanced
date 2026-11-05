@@ -4,7 +4,7 @@ import {
   type SidebarOutlineHeading,
   type SidebarOutlineMessage
 } from '../../../src/protocol/sidebarOutline';
-import { findOutlineHeadingIndex, outlineHeadingKeys, visibleOutlineHeadingIndexes } from '../../../src/foundation/outline';
+import { findOutlineHeadingIndex, outlineHeadingKeys } from '../../../src/foundation/outline';
 import { createRequestPrefix } from './requestIdentity';
 
 /** The same surface the in-editor outline reads: the Live/Source editor or the Preview adapter. */
@@ -66,9 +66,7 @@ export function createSidebarOutlineReporter(
   const sessionId = createRequestPrefix();
   let snapshotVersion = 0;
   let sentActive = -2;
-  let sentVisible = '';
   let headingStarts: number[] = [];
-  let headingLines: number[] = [];
 
   const cancelTimer = () => {
     if (timer !== null) timers.clearTimeout(timer);
@@ -90,14 +88,8 @@ export function createSidebarOutlineReporter(
     element.addEventListener('scroll', scheduleActive, { passive: true } as AddEventListenerOptions);
   };
 
-  const readViewport = (source: SidebarOutlineSource) => {
-    const range = source.getVisibleDocumentRange();
-    const activeIndex = range ? findOutlineHeadingIndex(headingStarts,
-      source.getViewportAnchorOffset(SIDEBAR_OUTLINE_ACTIVE_VIEWPORT_RATIO)) : -1;
-    const visibleIndexes = visibleOutlineHeadingIndexes(publishedHeadings ?? [], headingLines, range);
-    if (visibleIndexes.length === 0 && activeIndex >= 0) visibleIndexes.push(activeIndex);
-    return { activeIndex, visibleIndexes };
-  };
+  const readActiveIndex = (source: SidebarOutlineSource) => source.getVisibleDocumentRange()
+    ? findOutlineHeadingIndex(headingStarts, source.getViewportAnchorOffset(SIDEBAR_OUTLINE_ACTIVE_VIEWPORT_RATIO)) : -1;
 
   const publish = () => {
     timer = null;
@@ -122,13 +114,10 @@ export function createSidebarOutlineReporter(
     publishedHeadings = headings;
     const snapshot = changed ? `${sessionId}:${++snapshotVersion}` : navigationSnapshot!.id;
     navigationSnapshot = { source, headings, id: snapshot };
-    headingLines = headings.map(heading => heading.line);
-    const viewport = readViewport(source);
-    const visibleKey = viewport.visibleIndexes.join(',');
-    if (changed || viewport.activeIndex !== sentActive || visibleKey !== sentVisible) {
-      sentActive = viewport.activeIndex;
-      sentVisible = visibleKey;
-      post({ type: 'sidebarOutline', snapshot, ...(changed ? { headings } : {}), ...viewport });
+    const activeIndex = readActiveIndex(source);
+    if (changed || activeIndex !== sentActive) {
+      sentActive = activeIndex;
+      post({ type: 'sidebarOutline', snapshot, ...(changed ? { headings } : {}), activeIndex });
     }
   };
 
@@ -137,12 +126,10 @@ export function createSidebarOutlineReporter(
     if (!enabled || disposed || publishedHeadings === null) return;
     const source = getSource();
     if (!source || source !== publishedSource) return;
-    const viewport = readViewport(source);
-    const visibleKey = viewport.visibleIndexes.join(',');
-    if (viewport.activeIndex === sentActive && visibleKey === sentVisible) return;
-    sentActive = viewport.activeIndex;
-    sentVisible = visibleKey;
-    post({ type: 'sidebarOutline', snapshot: navigationSnapshot!.id, ...viewport });
+    const activeIndex = readActiveIndex(source);
+    if (activeIndex === sentActive) return;
+    sentActive = activeIndex;
+    post({ type: 'sidebarOutline', snapshot: navigationSnapshot!.id, activeIndex });
   };
 
   function scheduleActive() {
@@ -171,13 +158,11 @@ export function createSidebarOutlineReporter(
         publishedSource = null;
         publishedHeadings = null;
         headingStarts = [];
-        headingLines = [];
         return;
       }
       // The document may have changed while hidden; always resend on enable.
       publishedHeadings = null;
       sentActive = -2;
-      sentVisible = '';
       timer = timers.setTimeout(publish, 0);
     },
     reveal(key: string, snapshot: string) {

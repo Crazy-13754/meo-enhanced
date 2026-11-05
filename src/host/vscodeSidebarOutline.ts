@@ -13,7 +13,6 @@ type Entry = {
   roots: OutlineNode[];
   nodes: OutlineNode[];
   activeIndex: number;
-  visibleIndexes: Set<number>;
   collapsedKeys: Set<string>;
   loaded: boolean;
   enabled: boolean;
@@ -30,8 +29,6 @@ export type SidebarOutlineTreeNode<T, E> = E & {
   readonly heading: T;
   readonly id: string;
   readonly key: string;
-  readonly depth: number;
-  readonly index: number;
   readonly parent: SidebarOutlineTreeNode<T, E> | null;
   readonly children: SidebarOutlineTreeNode<T, E>[];
 };
@@ -49,7 +46,7 @@ export function buildSidebarOutlineTree<T extends { level: number; text: string 
     while (stack.length && stack[stack.length - 1].heading.level >= heading.level) stack.pop();
     const parent = stack.at(-1) ?? null;
     const key = keys[nodes.length];
-    const node: Node = { ...extra, heading, id: `${prefix}/${key}`, key, depth: stack.length, index: nodes.length, parent, children: [] };
+    const node: Node = { ...extra, heading, id: `${prefix}/${key}`, key, parent, children: [] };
     (parent ? parent.children : roots).push(node);
     nodes.push(node);
     stack.push(node);
@@ -82,8 +79,7 @@ export function createVscodeSidebarOutline(language: () => string) {
     getParent: node => node.parent ?? undefined,
     getTreeItem: node => {
       const item = new vscode.TreeItem(
-        { label: node.heading.text || (zh() ? '（空标题）' : '(empty heading)'),
-          highlights: node.entry.visibleIndexes.has(node.index) ? [[0, node.heading.text.length]] : [] },
+        node.heading.text || (zh() ? '（空标题）' : '(empty heading)'),
         node.children.length ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
       );
       item.id = node.id;
@@ -96,7 +92,7 @@ export function createVscodeSidebarOutline(language: () => string) {
   const view = vscode.window.createTreeView(SIDEBAR_OUTLINE_VIEW_ID, { treeDataProvider: provider, showCollapseAll: true });
 
   const presentHeader = () => {
-    view.title = zh() ? 'MEO 大纲' : 'MEO Outline';
+    view.title = 'MEO Outline';
     view.description = current ? documentName(current.document) : undefined;
     view.message = !current
       ? (zh() ? '没有活动的 MEO 编辑器。' : 'No active MEO editor.')
@@ -198,7 +194,6 @@ export function createVscodeSidebarOutline(language: () => string) {
       roots: [],
       nodes: [],
       activeIndex: -1,
-      visibleIndexes: new Set(),
       collapsedKeys: new Set(),
       loaded: false,
       enabled: false,
@@ -242,8 +237,7 @@ export function createVscodeSidebarOutline(language: () => string) {
       update(message: SidebarOutlineMessage) {
         if (detached || disposed || !ready || !entry.enabled) return;
         if (!message.headings && message.snapshot !== entry.snapshot) return;
-        if (message.activeIndex >= (message.headings?.length ?? entry.nodes.length)
-          || message.visibleIndexes?.some(index => index >= (message.headings?.length ?? entry.nodes.length))) return;
+        if (message.activeIndex >= (message.headings?.length ?? entry.nodes.length)) return;
         if (message.headings) {
           entry.snapshot = message.snapshot;
           expansionGeneration += 1;
@@ -254,17 +248,9 @@ export function createVscodeSidebarOutline(language: () => string) {
         }
         const headingsChanged = message.headings !== undefined;
         const activeChanged = entry.activeIndex !== message.activeIndex;
-        const previousVisible = entry.visibleIndexes;
-        if (message.visibleIndexes || headingsChanged) entry.visibleIndexes = new Set(message.visibleIndexes ?? []);
         entry.activeIndex = message.activeIndex;
         if (entry !== current) return;
         if (headingsChanged) { presentHeader(); changed.fire(undefined); }
-        else {
-          const visibilityChanged = [...new Set([...previousVisible, ...entry.visibleIndexes])]
-            .filter(index => previousVisible.has(index) !== entry.visibleIndexes.has(index))
-            .map(index => entry.nodes[index]);
-          if (visibilityChanged.length) changed.fire(visibilityChanged);
-        }
         // Initial data must not open an ancestor before native collapse events
         // arrive (for example while a webview is reinitialized).
         if (!headingsChanged && activeChanged) revealActive();

@@ -21,7 +21,7 @@ exports.run = async () => {
     await vscode.workspace.getConfiguration('meoEnhanced').update('language', 'en', vscode.ConfigurationTarget.Global);
     await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), 'meoEnhanced.editor');
     await vscode.commands.executeCommand('meoEnhanced.outline.focus');
-    const tree = '.monaco-list:is([aria-label="MEO Outline"], [aria-label="MEO 大纲"])';
+    const tree = '.monaco-list[aria-label="MEO Outline"]';
     const rows = `${tree} .monaco-list-rows > .monaco-list-row`;
     if (restoring) {
       await page.waitForFunction(selector => [...document.querySelectorAll(selector)].some(row => row.textContent.includes('Native root')), {}, rows);
@@ -69,13 +69,31 @@ exports.run = async () => {
       line.textContent.includes('Native sixth') && line.getBoundingClientRect().top >= 0 && line.getBoundingClientRect().top < 400));
     result.cases.push('native tree click navigates the MEO editor');
 
-    for (const [language, title] of [['zh-CN', 'MEO 大纲'], ['en', 'MEO Outline']]) {
+    await vscode.commands.executeCommand('meoEnhanced.outline.focus');
+    await vscode.commands.executeCommand('workbench.action.moveFocusedView', 'meoEnhanced.outline');
+    const destinationInput = '.quick-input-widget input';
+    await page.waitForSelector(destinationInput, { visible: true });
+    await page.type(destinationInput, 'New Side Bar Entry');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(destinationInput, { hidden: true });
+    await page.waitForFunction(() => document.querySelector('.part.sidebar .composite.title .title-label')?.textContent.trim() === 'MEO Outline');
+    result.cases.push('standalone sidebar container shows one MEO Outline title');
+
+    for (const language of ['zh-CN', 'en']) {
       await vscode.workspace.getConfiguration('meoEnhanced').update('language', language, vscode.ConfigurationTarget.Global);
-      await page.waitForFunction(title => [...document.querySelectorAll('.pane-header')].some(header => header.textContent.includes(title)), {}, title);
+      await page.waitForFunction(() => [...document.querySelectorAll('.pane-header')].some(header => header.textContent.includes('MEO Outline')));
+      assert.ok(!await page.evaluate(() => [...document.querySelectorAll('.pane-header')].some(header => header.textContent.includes('MEO 大纲'))),
+        'the view title remains English when MEO language changes');
+      assert.equal(await page.$eval('.part.sidebar .composite.title .title-label', element => element.textContent.trim()), 'MEO Outline',
+        'standalone title does not combine container and view names');
       for (const [theme, themeClass] of [['Light 2026', 'vs'], ['Dark 2026', 'vs-dark']]) {
         await vscode.workspace.getConfiguration('workbench').update('colorTheme', theme, vscode.ConfigurationTarget.Global);
         await page.waitForFunction(themeClass => document.querySelector('.monaco-workbench')?.classList.contains(themeClass), {}, themeClass);
         assert.equal(await page.$$eval(rows, nodes => nodes.length), 6);
+        assert.equal(await page.$$eval(`${rows} .monaco-highlighted-label .highlight`, nodes => nodes.length), 0,
+          'visible sections have no label highlights');
+        assert.equal(await page.$$eval(`${rows}[aria-selected="true"]`, nodes => nodes.length), 1,
+          'only the current heading is selected');
         await page.screenshot({ path: path.join(output, `${language}-${themeClass}.png`) });
         result.cases.push(`${language}, ${theme}: rows and expansion preserved`);
       }

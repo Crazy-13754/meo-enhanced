@@ -4,6 +4,8 @@ import { decodeHostToWebviewMessage, decodeWebviewToHostMessage } from '../src/p
 import { MAX_SIDEBAR_OUTLINE_HEADINGS, MAX_SIDEBAR_OUTLINE_TEXT_LENGTH } from '../src/protocol/sidebarOutline';
 import { createSidebarOutlineReporter, type SidebarOutlineSource } from '../webview/src/adapters/sidebarOutline';
 import { findOutlineHeadingIndex as findActiveHeadingIndex, outlineHeadingKeys } from '../src/foundation/outline';
+import englishLabels from '../package.nls.json';
+import chineseLabels from '../package.nls.zh-cn.json';
 
 // Protocol: both directions validate shape and bounds.
 const heading = (level: number, text: string, line: number) => ({ level, text, line });
@@ -29,9 +31,6 @@ assert.equal(decodeHostToWebviewMessage({ type: 'revealOutlineHeading', key: 'ro
 assert.equal(decodeWebviewToHostMessage({ type: 'sidebarOutline', activeIndex: 0 }), null);
 assert.equal(decodeHostToWebviewMessage({ type: 'revealOutlineHeading', snapshot: 'test:1', key: '' }), null);
 assert.equal(decodeWebviewToHostMessage({ type: 'sidebarOutline', snapshot: 'test:1', activeIndex: MAX_SIDEBAR_OUTLINE_HEADINGS }), null);
-for (const visibleIndexes of [[1, 0], [0, 0], [-1], [MAX_SIDEBAR_OUTLINE_HEADINGS]]) {
-  assert.equal(decodeWebviewToHostMessage({ type: 'sidebarOutline', snapshot: 'test:1', activeIndex: 0, visibleIndexes }), null);
-}
 
 // Active heading: same rule as the in-editor outline.
 assert.equal(findActiveHeadingIndex([], 10), -1);
@@ -78,12 +77,14 @@ const reporter = createSidebarOutlineReporter(() => source, message => posted.pu
 reporter.schedule(); flush();
 assert.equal(posted.length, 0, 'hidden sidebar does no work');
 reporter.setEnabled(true); flush();
-assert.deepEqual(posted.at(-1), { type: 'sidebarOutline', snapshot: posted[0].snapshot, activeIndex: 0, visibleIndexes: [0], headings: [heading(1, 'Intro', 1), heading(2, 'Detail', 4), heading(1, 'End', 9)] });
+assert.deepEqual(posted.at(-1), { type: 'sidebarOutline', snapshot: posted[0].snapshot, activeIndex: 0, headings: [heading(1, 'Intro', 1), heading(2, 'Detail', 4), heading(1, 'End', 9)] });
 assert.ok(scrollListener, 'scroll is observed while enabled');
 reporter.schedule(); flush();
 assert.equal(posted.length, 1, 'unchanged headings are not resent');
 anchor = 35; visibleRange = { fromLine: 4, toLine: 8 }; scrollListener!(); scrollListener!(); flush();
-assert.deepEqual(posted.slice(1), [{ type: 'sidebarOutline', snapshot: posted[0].snapshot, activeIndex: 1, visibleIndexes: [1] }], 'scroll sends only viewport metadata, once per frame');
+assert.deepEqual(posted.slice(1), [{ type: 'sidebarOutline', snapshot: posted[0].snapshot, activeIndex: 1 }], 'scroll sends only the current heading, once per frame');
+visibleRange = { fromLine: 3, toLine: 7 }; scrollListener!(); flush();
+assert.equal(posted.length, 2, 'changing the visible range within the same section sends nothing');
 headings = [...headings, { level: 2, text: 'More', from: 90, line: 11 }];
 pending = true; reporter.schedule();
 queue.shift()!.run();
@@ -244,6 +245,7 @@ const roots = provider.getChildren(undefined);
 assert.deepEqual(roots.map((node: any) => node.heading.text), ['1']);
 assert.deepEqual(provider.getChildren(roots[0]).map((node: any) => node.heading.text), ['11']);
 const item = provider.getTreeItem(roots[0]);
+assert.equal(typeof item.label, 'string', 'rows use plain labels without viewport range emphasis');
 assert.equal(item.collapsibleState, 2);
 assert.equal(item.tooltip, 'H1 · 第 1 行');
 assert.equal(item.iconPath, undefined, 'heading rows have no leading icon');
@@ -276,7 +278,7 @@ assert.equal(treeView.message, '当前文档没有标题。');
 rightHandle.dispose();
 assert.equal(treeView.description, '1.md', 'closing the shown editor falls back to another one');
 const deep = Array.from({ length: 6 }, (_, index) => heading(index + 1, `Heading ${index + 1}`, index + 1));
-leftHandle.update({ type: 'sidebarOutline', snapshot: 'test:1', headings: deep, activeIndex: 5, visibleIndexes: [4, 5] });
+leftHandle.update({ type: 'sidebarOutline', snapshot: 'test:1', headings: deep, activeIndex: 5 });
 let deepNode = provider.getChildren(undefined)[0];
 while (deepNode.children.length) {
   collapsedNodes.add(deepNode.id); treeView.collapse.fire({ element: deepNode }); deepNode = deepNode.children[0];
@@ -294,7 +296,9 @@ language = 'en'; configuration.fire({ affectsConfiguration: key => key === 'meoE
 assert.equal(treeView.title, 'MEO Outline');
 assert.equal(provider.getTreeItem(deepNode).tooltip, 'H6 · Line 6');
 language = 'zh-CN'; configuration.fire({ affectsConfiguration: key => key === 'meoEnhanced.language' });
-assert.equal(treeView.title, 'MEO 大纲');
+assert.equal(treeView.title, 'MEO Outline');
+assert.equal(treeView.title, englishLabels['view.outline']);
+assert.equal(treeView.title, chineseLabels['view.outline'], 'view and container titles match in both locales');
 assert.equal(provider.getTreeItem(deepNode).tooltip, 'H6 · 第 6 行');
 commands.get(SIDEBAR_OUTLINE_REVEAL_COMMAND)!(target); await settle();
 assert.equal(right.posted.filter(message => message.type === 'revealOutlineHeading').length, 1, 'closed editors ignore stale tree items');

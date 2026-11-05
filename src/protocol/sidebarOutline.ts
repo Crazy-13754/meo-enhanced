@@ -11,7 +11,6 @@ export type SidebarOutlineMessage = {
   readonly snapshot: string;
   readonly headings?: readonly SidebarOutlineHeading[];
   readonly activeIndex: number;
-  readonly visibleIndexes?: readonly number[];
 };
 
 /** Host -> webview. The webview publishes headings only while the Explorer view is visible. */
@@ -43,24 +42,17 @@ function isHeading(value: unknown): value is SidebarOutlineHeading {
 export function decodeSidebarOutlineMessage(value: unknown): SidebarOutlineMessage | null {
   if (!isRecord(value) || value.type !== 'sidebarOutline' || !isSnapshot(value.snapshot)) return null;
   const snapshot = value.snapshot;
-  const { headings, activeIndex, visibleIndexes } = value;
+  const { headings, activeIndex } = value;
   if (!Number.isSafeInteger(activeIndex) || (activeIndex as number) < -1
     || (activeIndex as number) >= MAX_SIDEBAR_OUTLINE_HEADINGS) return null;
-  const count = Array.isArray(headings) ? headings.length : MAX_SIDEBAR_OUTLINE_HEADINGS;
-  if (visibleIndexes !== undefined && (!Array.isArray(visibleIndexes)
-    || visibleIndexes.length > MAX_SIDEBAR_OUTLINE_HEADINGS
-    || !visibleIndexes.every((index, position) => Number.isSafeInteger(index) && index >= 0
-      && index < count && (position === 0 || visibleIndexes[position - 1] < index)))) return null;
-  const viewport = visibleIndexes === undefined ? {} : { visibleIndexes: [...visibleIndexes] as number[] };
-  if (headings === undefined) return { type: 'sidebarOutline', snapshot, activeIndex: activeIndex as number, ...viewport };
+  if (headings === undefined) return { type: 'sidebarOutline', snapshot, activeIndex: activeIndex as number };
   if (!Array.isArray(headings) || headings.length > MAX_SIDEBAR_OUTLINE_HEADINGS
     || (activeIndex as number) >= headings.length || !headings.every(isHeading)) return null;
   return {
     type: 'sidebarOutline',
     snapshot,
     headings: headings.map(({ level, text, line }) => ({ level, text, line })),
-    activeIndex: activeIndex as number,
-    ...viewport
+    activeIndex: activeIndex as number
   };
 }
 
