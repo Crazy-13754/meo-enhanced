@@ -5584,7 +5584,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   justify-content: center;
   overflow: hidden;
   background: var(--meo-code-background);
-  cursor: grab;
+  cursor: default;
 }
 
 .meo-md-image-fullscreen.is-dragging {
