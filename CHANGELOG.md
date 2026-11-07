@@ -4,6 +4,7 @@ This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
 ## Unreleased
+- Fixed undo after Backspace placing the caret before the restored text in Source and Live text; it now returns to where the deletion happened.
 - Added an explicit, default-off LaTeX delimiter switch in the Settings popover and More Settings → General, with consistent `\(...\)` and `\[...\]` parsing, completion, source highlighting, Live tables, Preview and exports. GitHub README retains its fixed math syntax.
 
 ## 0.4.0

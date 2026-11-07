@@ -17,6 +17,62 @@ async function waitForFrames(page: any, count = 8): Promise<void> {
   }, count);
 }
 
+async function assertNativeSelectionHistory(page: any): Promise<void> {
+  const wordModifier = process.platform === 'darwin' ? 'Alt' : 'Control';
+  const cases = [
+    { name: 'character Backspace', text: 'alpha beta gamma', ranges: [{ anchor: 10, head: 10 }], main: 0,
+      key: 'Backspace', word: false, deleted: 'alpha bet gamma' },
+    { name: 'word Backspace', text: 'alpha beta gamma', ranges: [{ anchor: 10, head: 10 }], main: 0,
+      key: 'Backspace', word: true, deleted: 'alpha  gamma' },
+    { name: 'word Delete', text: 'alpha beta gamma', ranges: [{ anchor: 6, head: 6 }], main: 0,
+      key: 'Delete', word: true, deleted: 'alpha  gamma' },
+    { name: 'backward selection', text: 'alpha beta gamma', ranges: [{ anchor: 10, head: 6 }], main: 0,
+      key: 'Backspace', word: false, deleted: 'alpha  gamma' },
+    { name: 'multiple cursors and directed selections', text: 'abcd\nefgh\nijkl',
+      ranges: [{ anchor: 2, head: 2 }, { anchor: 8, head: 6 }, { anchor: 10, head: 12 }], main: 1,
+      key: 'Backspace', word: false, deleted: 'acd\neh\nkl' }
+  ];
+  const snapshot = () => page.evaluate(() => {
+    const editor = (window as any).__historyProductionEditor, view = editor.view;
+    return { text: editor.getText(), main: view.state.selection.mainIndex,
+      ranges: view.state.selection.ranges.map(({ anchor, head }: { anchor: number; head: number }) => ({ anchor, head })) };
+  });
+  for (const mode of ['source', 'live'] as const) {
+    for (const fixture of cases) {
+      await page.evaluate(({ fixture, mode }) => {
+        (window as any).__historyProductionEditor?.destroy();
+        document.getElementById('app')!.replaceChildren();
+        const { createEditor, EditorSelection } = (window as any).MermaidEditingHarness;
+        const editor = createEditor({ parent: document.getElementById('app')!, text: fixture.text,
+          initialMode: mode, onApplyChanges() {} });
+        (window as any).__historyProductionEditor = editor;
+        editor.view.dispatch({ selection: EditorSelection.create(fixture.ranges.map(
+          ({ anchor, head }: { anchor: number; head: number }) => EditorSelection.range(anchor, head)), fixture.main) });
+        editor.focus();
+      }, { fixture, mode });
+      await waitForFrames(page, 2);
+      if (fixture.word) await page.keyboard.down(wordModifier);
+      await page.keyboard.press(fixture.key);
+      if (fixture.word) await page.keyboard.up(wordModifier);
+      const deleted = await snapshot();
+      const label = `${mode} ${fixture.name}`;
+      assert.equal(deleted.text, fixture.deleted, `${label}: native deletion reached the editor`);
+      assert.equal(await page.evaluate(() => (window as any).__historyProductionEditor.undo()), true);
+      await waitForFrames(page, 2);
+      assert.deepEqual(await snapshot(), { text: fixture.text, main: fixture.main, ranges: fixture.ranges },
+        `${label}: undo restores text, selection direction and primary cursor`);
+      assert.equal(await page.evaluate(() => (window as any).__historyProductionEditor.redo()), true);
+      await waitForFrames(page, 2);
+      assert.deepEqual(await snapshot(), deleted, `${label}: redo restores the deletion and its selections`);
+    }
+    console.log(`Native selection history ${mode}: ${cases.length} deletion/undo/redo cases passed`);
+  }
+  await page.evaluate(() => {
+    (window as any).__historyProductionEditor.destroy();
+    delete (window as any).__historyProductionEditor;
+  });
+}
+
 async function assertTallNativeHistory(page: any, kind: 'math' | 'mermaid'): Promise<void> {
   const enterSource = kind === 'math' ? enterDisplayMathSource : enterMermaidSource;
   const sourceBounds = kind === 'math' ? displayMathSourceBounds : mermaidSourceBounds;
@@ -414,6 +470,8 @@ async function main(): Promise<void> {
     await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
     await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
     await page.addScriptTag({ path: path.join(tempDir, 'production.js') });
+    await assertNativeSelectionHistory(page);
+    if (process.argv.includes('--selection-only')) return;
     await page.evaluate(() => {
       (window as any).mermaid = {
         initialize() {},

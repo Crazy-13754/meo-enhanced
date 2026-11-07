@@ -650,7 +650,14 @@ export function focusHistoryChange(
   isCurrent: () => boolean = () => true
 ) {
   if (!isCurrent()) return;
-  const target = targetPosition ?? changed?.to;
+  // Native history has already restored every range, its primary index and
+  // the caret from before the replayed edit; undoing Backspace leaves that
+  // caret after the restored text, not at the changed range's start. A change
+  // boundary is only a fallback when the restored caret does not touch it.
+  const { selection } = view.state, head = selection.main.head;
+  const nativeSelectionRestored = selection.ranges.length > 1 || !selection.main.empty
+    || (changed != null && changed.from <= head && head <= changed.to);
+  const target = nativeSelectionRestored ? head : targetPosition ?? changed?.to;
   const targetLineBeforeFocus = typeof target === 'number'
     ? view.state.doc.lineAt(Math.max(0, Math.min(target, view.state.doc.length))).number
     : null;

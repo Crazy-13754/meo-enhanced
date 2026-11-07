@@ -3116,6 +3116,7 @@ export function createEditor({
     },
     attemptBoundaryRestore(request: EditorHistoryRestoreRequest, isCurrent) {
       if (!isCurrent()) return 'not-rendered';
+      if (view.state.selection.ranges.length > 1) return 'not-rendered';
       if (currentMode !== 'live') return 'not-rendered';
       const tableTarget = tableHistoryFocusAdapter.read(view.state);
       if (!isLiveInputDerivedWorkReady(view.state) && !tableTarget?.contentOnly) return 'retry';
