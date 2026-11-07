@@ -207,6 +207,7 @@ import { markExternalDocumentPresentation } from './editor/externalDocumentPrese
 import { inputAssistanceFacet, typingAssistance } from './editor/typingAssistance';
 import { defaultInputAssistance, type InputAssistance } from '../../src/foundation/editingPreferences';
 import { inlineCodeMarkers } from './application/symbolInput';
+import { chineseWordNavigation } from './editor/chineseWordNavigation';
 
 declare module '@codemirror/view' {
   interface EditorView {
@@ -2444,6 +2445,7 @@ export function createEditor({
         }
       })),
       EditorState.allowMultipleSelections.of(true),
+      chineseWordNavigation,
       secondarySelections,
       orderedListRenumberTransactionFilter(() => !applyingExternal && !editorDestroyed),
       keymap.of([
